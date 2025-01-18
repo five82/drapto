@@ -28,134 +28,118 @@ class Encoder:
         self.encode_script = self.script_dir / "encode.sh"
         if not self.encode_script.exists():
             raise RuntimeError(f"Encode script not found: {self.encode_script}")
+            
+        # Set up environment for shell scripts
+        self.env = os.environ.copy()
+        self.env["SCRIPT_DIR"] = str(self.script_dir)
+        # Remove any existing PYTHONPATH to avoid conflicts
+        self.env.pop("PYTHONPATH", None)
         
         # Make scripts executable
         for script in self.script_dir.glob("*.sh"):
             script.chmod(0o755)
     
     def _encode_file(self, input_path: Path, output_path: Path, env: dict, is_last_file: bool = True) -> None:
-        """Encode a single video file."""
-        # Set up environment
-        env["INPUT_DIR"] = str(input_path.parent)
-        env["OUTPUT_DIR"] = str(output_path.parent)
-        env["LOG_DIR"] = str(Path(env["TEMP_DIR"]) / "logs")
-        env["INPUT_FILE"] = input_path.name
-        env["PRINT_FINAL_SUMMARY"] = "1" if is_last_file else "0"
-        
-        # Create logs directory
-        Path(env["LOG_DIR"]).mkdir(parents=True, exist_ok=True)
-        
-        # Run encode script with real-time output using pty
-        try:
-            cmd = [str(self.encode_script)]
-            
-            # Create pseudo-terminal
-            master_fd, slave_fd = pty.openpty()
-            
-            # Set terminal attributes
-            old_attr = termios.tcgetattr(slave_fd)
-            new_attr = list(old_attr)
-            
-            # Enable canonical mode and echo
-            new_attr[3] = new_attr[3] | termios.ICANON | termios.ECHO | termios.ISIG
-            
-            # Enable output processing
-            new_attr[1] = new_attr[1] | termios.OPOST | termios.ONLCR
-            
-            # Apply the new attributes
-            termios.tcsetattr(slave_fd, termios.TCSANOW, new_attr)
-            
-            # Ensure the slave PTY is treated as a TTY
-            env["PTY"] = "1"
-            
-            # Set terminal size to match parent terminal if possible
+        """Encode a single file."""
+        # Create temporary directory for working files
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Set up environment
+            encode_env = self.env.copy()
+            encode_env.update(env)
+            encode_env["TEMP_DATA_DIR"] = temp_dir
+            encode_env["INPUT_DIR"] = str(input_path.parent)
+            encode_env["OUTPUT_DIR"] = str(output_path.parent)
+            encode_env["LOG_DIR"] = str(Path(temp_dir) / "logs")
+
+            # Create required directories
+            Path(encode_env["LOG_DIR"]).mkdir(parents=True, exist_ok=True)
+            Path(temp_dir, "encode_data").mkdir(parents=True, exist_ok=True)
+
+            # Run encode script
             try:
-                term_size = os.get_terminal_size()
-                fcntl.ioctl(slave_fd, termios.TIOCSWINSZ, 
-                          struct.pack("HHHH", term_size.lines, term_size.columns, 0, 0))
-            except (OSError, AttributeError):
-                pass
-            
-            # Start the process with the PTY as its controlling terminal
-            process = subprocess.Popen(
-                cmd,
-                cwd=str(self.script_dir),
-                stdin=slave_fd,
-                stdout=slave_fd,
-                stderr=slave_fd,
-                env=env,
-                preexec_fn=os.setsid,  # Create new session
-                close_fds=True
-            )
-            
-            # Close slave fd as we don't need it
-            os.close(slave_fd)
-            
-            # Set master fd to non-blocking mode
-            flags = fcntl.fcntl(master_fd, fcntl.F_GETFL)
-            fcntl.fcntl(master_fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
-            
-            output_error = None
-            try:
-                while True:
-                    try:
-                        rlist, _, _ = select.select([master_fd], [], [], 0.1)
-                        
-                        if master_fd in rlist:
-                            try:
-                                data = os.read(master_fd, 1024)
-                                if data:
-                                    os.write(sys.stdout.fileno(), data)
-                            except (OSError, IOError) as e:
-                                if e.errno != errno.EAGAIN:
-                                    output_error = e
-                                    break
-                        
-                        # Check if process has finished
-                        if process.poll() is not None:
-                            # Get remaining output
-                            try:
-                                while True:
-                                    try:
-                                        data = os.read(master_fd, 1024)
-                                        if not data:
-                                            break
-                                        os.write(sys.stdout.fileno(), data)
-                                    except (OSError, IOError) as e:
-                                        if e.errno != errno.EAGAIN:
-                                            output_error = e
-                                        break
-                            except:
-                                pass
-                            break
-                    except Exception as e:
-                        output_error = e
-                        break
-            finally:
-                # Restore terminal attributes and close file descriptors
-                try:
-                    termios.tcsetattr(master_fd, termios.TCSANOW, old_attr)
-                except:
-                    pass
+                master_fd, slave_fd = pty.openpty()
                 
+                # Set terminal size to avoid line wrapping
+                term_size = struct.pack('HHHH', 24, 80, 0, 0)
+                fcntl.ioctl(slave_fd, termios.TIOCSWINSZ, term_size)
+                
+                process = subprocess.Popen(
+                    [str(self.encode_script), str(input_path), str(output_path)],
+                    env=encode_env,
+                    stdin=slave_fd,
+                    stdout=slave_fd,
+                    stderr=slave_fd,
+                    preexec_fn=os.setsid
+                )
+
+                # Close slave fd as we don't need it
+                os.close(slave_fd)
+                
+                # Set master fd to non-blocking mode
+                flags = fcntl.fcntl(master_fd, fcntl.F_GETFL)
+                fcntl.fcntl(master_fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+                
+                output_error = None
                 try:
-                    os.close(master_fd)
-                except:
-                    pass
-            
-            # Check return code
-            if process.returncode is None:
-                # Process hasn't finished properly, wait for it
-                process.wait()
-            
-            if process.returncode != 0:
-                raise RuntimeError(f"Encode script failed with return code {process.returncode}")
-            elif output_error and not isinstance(output_error, IOError):
-                # Only raise non-I/O errors that occurred during output handling
-                raise output_error
-            
-        except Exception as e:
-            raise
+                    while True:
+                        try:
+                            rlist, _, _ = select.select([master_fd], [], [], 0.1)
+                            
+                            if master_fd in rlist:
+                                try:
+                                    data = os.read(master_fd, 1024)
+                                    if data:
+                                        os.write(sys.stdout.fileno(), data)
+                                except (OSError, IOError) as e:
+                                    if e.errno != errno.EAGAIN:
+                                        output_error = e
+                                        break
+                            
+                            # Check if process has finished
+                            if process.poll() is not None:
+                                # Get remaining output
+                                try:
+                                    while True:
+                                        try:
+                                            data = os.read(master_fd, 1024)
+                                            if not data:
+                                                break
+                                            os.write(sys.stdout.fileno(), data)
+                                        except (OSError, IOError) as e:
+                                            if e.errno != errno.EAGAIN:
+                                                output_error = e
+                                            break
+                                except:
+                                    pass
+                                break
+                        except Exception as e:
+                            output_error = e
+                            break
+                finally:
+                    # Restore terminal attributes and close file descriptors
+                    try:
+                        termios.tcsetattr(master_fd, termios.TCSANOW, old_attr)
+                    except:
+                        pass
+                    
+                    try:
+                        os.close(master_fd)
+                    except:
+                        pass
+                
+                # Check return code
+                if process.returncode is None:
+                    # Process hasn't finished properly, wait for it
+                    process.wait()
+                
+                if process.returncode != 0:
+                    raise RuntimeError(f"Encode script failed with return code {process.returncode}")
+                elif output_error and not isinstance(output_error, IOError):
+                    # Only raise non-I/O errors that occurred during output handling
+                    raise output_error
+                
+            except Exception as e:
+                raise
 
     def encode(self, input_path: Union[str, Path], output_path: Union[str, Path]) -> None:
         """Encode a video file or directory using the configured encoder."""
@@ -174,6 +158,10 @@ class Encoder:
             env["FORCE_COLOR"] = "1"
             env["CLICOLOR"] = "1"
             env["CLICOLOR_FORCE"] = "1"
+            
+            # Add drapto package root to PYTHONPATH
+            drapto_root = str(Path(__file__).parent.parent.parent)
+            env["PYTHONPATH"] = drapto_root + os.pathsep + env.get("PYTHONPATH", "")
             
             # Preserve existing TERM but ensure it indicates color support
             current_term = os.environ.get("TERM", "")
@@ -207,11 +195,30 @@ class Encoder:
                     output_path.mkdir(parents=True, exist_ok=True)
                 
                 # Process each video file in the directory
-                files = list(input_path.glob("*.mkv"))
-                for i, file in enumerate(files):
+                files = [f for f in input_path.glob("*.mkv")]
+                remaining_files = []
+                
+                # First, collect files that need processing
+                for file in files:
                     out_file = output_path / file.name
-                    self._encode_file(file, out_file, env, is_last_file=(i == len(files)-1))
-                    # Clean up only segments and encoded segments
+                    if not out_file.exists() or out_file.stat().st_size == 0:
+                        remaining_files.append(file)
+                    else:
+                        print(f"\nSkipping {file.name} - already processed")
+                
+                # Then process only the files that need it
+                for i, file in enumerate(remaining_files):
+                    out_file = output_path / file.name
+                    # Double check the output file doesn't exist right before processing
+                    # This handles cases where the file was processed in a previous run
+                    # or by another instance
+                    if out_file.exists() and out_file.stat().st_size > 0:
+                        print(f"\nSkipping {file.name} - already processed")
+                        continue
+                        
+                    self._encode_file(file, out_file, env, is_last_file=(i == len(remaining_files)-1))
+                    
+                    # Clean up temporary directories after each file
                     for dir_path in [segments_dir, encoded_segments_dir]:
                         if dir_path.exists():
                             shutil.rmtree(dir_path)

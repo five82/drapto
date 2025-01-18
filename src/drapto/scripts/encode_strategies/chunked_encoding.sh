@@ -12,6 +12,50 @@ source "${SCRIPT_DIR}/common/state_management.sh"
 # Chunked Encoding Strategy
 ###################
 
+# Create a temporary Python script for job creation
+create_job_script() {
+    local tmp_script
+    tmp_script=$(mktemp)
+    cat > "$tmp_script" << 'EOF'
+#!/usr/bin/env python3
+import sys
+from drapto.scripts.common.encoding_state import EncodingState
+
+def main():
+    temp_dir = sys.argv[1]
+    input_file = sys.argv[2]
+    output_file = sys.argv[3]
+    
+    state = EncodingState(temp_dir)
+    job_id = state.create_job(input_file, output_file, "chunked")
+    print(job_id)
+
+if __name__ == "__main__":
+    main()
+EOF
+    echo "$tmp_script"
+}
+
+# Initialize chunked encoding
+# Args:
+#   $1: Input file path
+#   $2: Output file path
+initialize_chunked_encoding() {
+    local input_file="$1"
+    local output_file="$2"
+    
+    # Create job
+    local tmp_script
+    tmp_script=$(create_job_script)
+    chmod +x "$tmp_script"
+    
+    local job_id
+    job_id=$(python3 "$tmp_script" "${TEMP_DATA_DIR}" "${input_file}" "${output_file}")
+    rm "$tmp_script"
+    
+    echo "$job_id"
+}
+
 # Initialize working directories
 # Args:
 #   $1: Output file path
@@ -47,60 +91,6 @@ initialize_working_dirs() {
     fi
 
     print_success "Working directories initialized"
-    return 0
-}
-
-# Initialize chunked encoding
-# Args:
-#   $1: Input file path
-#   $2: Output file path
-#   $3: Options string (optional)
-initialize_encoding() {
-    local input_file="$1"
-    local output_file="$2"
-    
-    print_check "Initializing chunked encoding strategy..."
-    
-    # Initialize working directories
-    if ! initialize_working_dirs "$output_file"; then
-        print_error "Failed to initialize working directories"
-        return 1
-    fi
-
-    # Create a temporary Python script to create the encoding job
-    local tmp_script
-    tmp_script=$(mktemp)
-    cat > "$tmp_script" << 'EOF'
-from drapto.scripts.common.encoding_state import EncodingState
-import sys
-
-temp_dir = sys.argv[1]
-input_file = sys.argv[2]
-output_file = sys.argv[3]
-
-state = EncodingState(temp_dir)
-job_id = state.create_job(input_file, output_file, "chunked")
-print(job_id)
-EOF
-    
-    # Run the Python script
-    local job_id
-    job_id=$(PYTHONPATH="$HOME/projects/encodeworkflow/python/drapto/src" python3 "$tmp_script" "${TEMP_DATA_DIR}" "${input_file}" "${output_file}")
-    local status=$?
-
-    # Clean up temporary script
-    rm "$tmp_script"
-
-    # Check if job creation was successful
-    if [[ $status -ne 0 ]]; then
-        print_error "Failed to create encoding job"
-        return 1
-    fi
-
-    # Export job ID for other functions to use
-    export JOB_ID="$job_id"
-    print_check "Created encoding job: $job_id"
-
     return 0
 }
 
@@ -1230,3 +1220,79 @@ if [[ "${TEST_MODE:-false}" == "true" ]]; then
         exit 1
     fi
 fi
+
+# Update segment status
+# Args:
+#   $1: Job ID
+#   $2: Segment index
+#   $3: Status
+#   $4: Error message (optional)
+update_segment_status() {
+    local job_id="$1"
+    local index="$2"
+    local status="$3"
+    local error="${4:-}"
+    
+    python3 -c "
+from drapto.scripts.common.encoding_state import EncodingState, SegmentStatus
+state = EncodingState(\"${TEMP_DATA_DIR}\")
+state.update_segment_status(\"${job_id}\", ${index}, SegmentStatus.${status}, \"${error}\")
+"
+}
+
+# Update job status
+# Args:
+#   $1: Job ID
+#   $2: Status
+#   $3: Error message (optional)
+update_job_status() {
+    local job_id="$1"
+    local status="$2"
+    local error="${3:-}"
+    
+    python3 -c "
+from drapto.scripts.common.encoding_state import EncodingState, JobStatus
+state = EncodingState(\"${TEMP_DATA_DIR}\")
+state.update_job_status(\"${job_id}\", JobStatus.${status}, \"${error}\")
+"
+}
+
+# Update job progress
+# Args:
+#   $1: Job ID
+#   $2: Current frame
+#   $3: Total frames
+#   $4: FPS (optional)
+update_job_progress() {
+    local job_id="$1"
+    local current_frame="$2"
+    local total_frames="$3"
+    local fps="${4:-0.0}"
+    
+    python3 -c "
+from drapto.scripts.common.encoding_state import EncodingState
+state = EncodingState(\"${TEMP_DATA_DIR}\")
+state.update_job_progress(\"${job_id}\", ${current_frame}, ${total_frames}, ${fps})
+"
+}
+
+# Update segment progress
+# Args:
+#   $1: Job ID
+#   $2: Segment index
+#   $3: Current frame
+#   $4: Total frames
+#   $5: FPS (optional)
+update_segment_progress() {
+    local job_id="$1"
+    local index="$2"
+    local current_frame="$3"
+    local total_frames="$4"
+    local fps="${5:-0.0}"
+    
+    python3 -c "
+from drapto.scripts.common.encoding_state import EncodingState
+state = EncodingState(\"${TEMP_DATA_DIR}\")
+state.update_segment_progress(\"${job_id}\", ${index}, ${current_frame}, ${total_frames}, ${fps})
+"
+}

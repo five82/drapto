@@ -18,7 +18,7 @@ create_encoding_job() {
     local strategy="$3"
     
     local job_id
-    job_id=$(PYTHONPATH="$HOME/projects/encodeworkflow/python/drapto/src" python3 -c "
+    job_id=$(python3 -c "
 from drapto.scripts.common.encoding_state import EncodingState
 state = EncodingState(\"${TEMP_DATA_DIR}\")
 job_id = state.create_job(\"${input_file}\", \"${output_file}\", \"${strategy}\")
@@ -31,8 +31,8 @@ print(job_id)
 # Args:
 #   $1: Job ID
 #   $2: Segment index
-#   $3: Input segment path
-#   $4: Output segment path
+#   $3: Input path
+#   $4: Output path
 #   $5: Start time (optional)
 #   $6: Duration (optional)
 add_segment() {
@@ -43,7 +43,7 @@ add_segment() {
     local start_time="${5:-0.0}"
     local duration="${6:-0.0}"
     
-    PYTHONPATH="$HOME/projects/encodeworkflow/python/drapto/src" python3 -c "
+    python3 -c "
 from drapto.scripts.common.encoding_state import EncodingState
 state = EncodingState(\"${TEMP_DATA_DIR}\")
 state.add_segment(\"${job_id}\", ${index}, \"${input_path}\", \"${output_path}\", ${start_time}, ${duration})
