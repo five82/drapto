@@ -1,181 +1,203 @@
 # Refactoring Plan for State Management and Process Control
 
-## Phase 1: Stabilize Current Process Management
-1. ✅ Remove PTY handling (COMPLETED)
+## Overall Strategy
+- Each phase contains small, atomic changes
+- Every change must be independently testable
+- Each step must maintain working functionality
+- Clear verification points between changes
+- Easy rollback points if issues found
+
+## Phase 1: Foundation (COMPLETED)
+1. ✅ Remove PTY handling
    - ✅ Replace with direct subprocess management
    - ✅ Maintain color output via environment variables
    - ✅ Test with both encoding paths
+   Verification: All process output visible, both encoding paths working
 
-2. Directory Structure Migration (Python Only)
-   - Create new directory structure for Python code as outlined in TARGET_STRUCTURE.md
-   - Move existing Python code to new locations (leave bash scripts in place)
-   - Update Python imports and references
-   - Add placeholder Python modules for planned functionality
-   - Test Python structure with existing functionality
-   - Note: Bash scripts remain untouched until Phase 5
+## Phase 2: Configuration Foundation
+1. Basic Configuration System
+   - Create central config class
+   - Move environment variables to config
+   - Add config validation
+   - Add default handling
+   Verification: All env vars accessed through config, existing functionality unchanged
 
-3. Consolidate Environment Variables
-   - Create central config management in Python
+2. Path Configuration
    - Move hardcoded paths to config
-   - Validate paths before processing
-   - Test path handling
+   - Add path validation
+   - Update path handling code
+   Verification: All paths working through config system
 
-## Phase 2: Simplify State Management 
-1. Create StateManager class
-   - Track file processing state
-   - Handle segment information
-   - Manage encoding progress
-   - Test state transitions
-   - Implement in new `core/state.py`
+## Phase 3: Directory Structure
+1. Create New Structure
+   - Set up new Python package structure
+   - Create placeholder modules
+   - Add __init__.py files
+   Verification: Package importable, no functionality moved yet
 
-2. Consolidate Temporary Directories
-   - Single temp root with clear structure
-   - Consistent cleanup points
-   - Maintain separate dirs for parallel processing
-   - Test cleanup reliability
-   - Follow new temp directory structure from TARGET_STRUCTURE.md
+2. Move Current Python Code
+   - Move existing modules to new structure
+   - Update imports
+   - No functional changes
+   Verification: All existing Python code working in new locations
 
-## Phase 3: Improve Process Control
-1. Add Process Manager class
-   - Handle subprocess lifecycle
-   - Manage cleanup between files
-   - Track child processes
-   - Test process isolation
-   - Implement in new `core/process.py`
+## Phase 4: Core Python Migration
+1. Basic Process Management
+   - Create Python process management class
+   - Add basic subprocess handling
+   - Keep bash scripts as-is temporarily
+   Verification: Python can launch and manage processes
 
-2. Implement Error Boundaries
-   - Clear error states
-   - Proper cleanup on failure
-   - Consistent error reporting
-   - Test error recovery
-   - Use new logging utilities
+2. Analysis Pipeline Migration
+   - Port input file analysis
+   - Port stream analysis
+   - Port path determination logic
+   - Keep both versions temporarily
+   Verification: Python analysis matches bash output exactly
 
-## Phase 4: Streamline Communication
-1. Standardize Data Exchange
-   - JSON schema for state files
-   - Structured logging format
-   - Progress reporting interface
-   - Test data consistency
-   - Implement in new `utils/` modules
+3. First Script Migration
+   - Port smallest bash script to Python
+   - Use new process management
+   - Keep both versions temporarily
+   Verification: Python version produces identical results to bash version
 
-2. Improve Debug Support
-   - Add logging levels
-   - Structured debug output
-   - State inspection tools
-   - Test debugging capabilities
-   - Use new logging module
+4. Encoding Strategy Migration
+   - Create Python encoding strategy class
+   - Port strategy logic from bash
+   - Port resolution-dependent CRF handling
+   - Port VMAF-based quality control
+   - Keep both versions temporarily
+   Verification: Python version matches bash behavior exactly
 
-## Phase 5: Python Migration
-1. Migrate Core Functionality
-   - Port encode.sh to Python
-   - Implement encoding strategies in Python
-   - Add ffmpeg-python integration
-   - Test Python implementations
+5. Standard Encoding Path
+   - Port standard encoding path
+   - Port quality validation
+   - Keep both versions temporarily
+   Verification: Standard encoding identical to bash version
 
-2. Migrate Helper Functions
-   - Port utility scripts to Python modules
-   - Move hardware detection to Python
-   - Move audio/subtitle handling to Python
-   - Test Python implementations
+6. Chunked Encoding Path
+   - Port chunked encoding path
+   - Port VMAF handling
+   - Port segment management
+   - Keep both versions temporarily
+   Verification: Chunked encoding identical to bash version
 
-3. Deprecate Bash Scripts
-   - Mark scripts as deprecated
-   - Add deprecation warnings
-   - Document migration path
-   - Maintain compatibility layer
+7. Output Management
+   - Port output assembly logic
+   - Port cleanup processes
+   - Port error recovery
+   - Keep both versions temporarily
+   Verification: Output handling identical to bash version
 
-4. Remove Bash Scripts
-   - Remove all bash scripts
-   - Clean up legacy code
+8. Core Encode Migration
+   - Port encode.sh core logic to Python
+   - Integrate all migrated components
+   - Keep both versions temporarily
+   Verification: Python version handles all test cases same as bash
+
+## Phase 5: State Management
+1. Basic State Tracking
+   - Create in-memory state manager
+   - Add basic state validation
+   - Migrate first state user
+   Verification: State tracking working for first component
+
+2. Segment Management
+   - Add segment tracking to state manager
+   - Migrate segment handling code
+   - Verify atomic updates
+   Verification: Segment handling working through state manager
+
+3. Progress Tracking
+   - Add progress tracking to state manager
+   - Migrate progress handling code
+   - Add state boundaries
+   Verification: Progress tracking working through state manager
+
+## Phase 6: Process Control
+1. Process Hierarchy
+   - Implement process hierarchy tracking
+   - Add parent-child process management
+   - Add signal handling
+   Verification: Process relationships properly managed
+
+2. Resource Management
+   - Add resource tracking
+   - Implement automatic cleanup
+   - Add cleanup verification
+   Verification: Resources properly tracked and cleaned up
+
+## Phase 7: Communication
+1. Event System
+   - Implement basic event system
+   - Add first event producer
+   - Add first event consumer
+   Verification: Events flowing between components
+
+2. Status Updates
+   - Add status update events
+   - Implement progress streaming
+   - Add process output handling
+   Verification: Status updates working through event system
+
+## Phase 8: Cleanup
+1. Remove Bash Scripts
+   - Remove each verified script
    - Update documentation
-   - Final testing without bash scripts
+   - Clean up tests
+   Verification: System working with no bash scripts
 
-## Testing Strategy
+2. Final Verification
+   - Full system testing
+   - Performance validation
+   - Resource cleanup verification
+   Verification: All functionality working, no regressions
 
-Each phase of the refactoring will be accompanied by appropriate tests to ensure stability and prevent regressions. The project uses pytest as the testing framework with the following structure:
+## Testing Requirements
 
-- Unit tests in `tests/unit/`
-- Integration tests in `tests/integration/`
-- Common fixtures in `tests/conftest.py`
+### Per-Change Testing
+Each atomic change requires:
+- Unit tests for new code
+- Integration tests with existing code
+- Verification of unchanged behavior
+- Resource usage validation
+- Error handling verification
 
-### Phase 1.1 Testing Plan (COMPLETED) ✅
-- Direct subprocess management without PTY
-- Color output preservation
-- Process cleanup
-- Environment variable setup
-- Error handling and logging
-
-### Phase 1.2 Testing Plan
-1. Directory Structure Tests:
-   - Package import tests
-   - Module accessibility tests
-   - Path resolution tests
-   - Placeholder module tests
-
-2. Update existing tests:
-   - Move to new test directory structure
-   - Update import paths
-   - Add new test categories
-   - Maintain coverage
-
-3. Integration tests for:
-   - End-to-end encoding with new structure
-   - Module interactions
-   - Configuration loading
-
-4. Success Criteria:
-   - All tests pass in new structure
-   - Coverage maintained or improved
-   - No regressions in existing functionality
-   - Clear test organization
-
-### Phase 5 Testing Plan
-1. Python Implementation Tests:
-   - Full encoding pipeline tests
-   - Strategy implementation tests
-   - FFmpeg integration tests
-   - Performance comparison tests
-
-2. Migration Tests:
-   - Compatibility layer tests
-   - Deprecation warning tests
-   - Legacy support tests
-   - Clean removal verification
-
-3. Success Criteria:
-   - All functionality preserved
-   - No performance regressions
-   - Clean Python-only operation
-   - Complete documentation
-
-## Testing Strategy for Each Phase
-1. Verify both encoding paths still work
-   - Dolby Vision detection
-   - Chunked encoding with ab-av1
-   - GNU parallel processing
-
-2. Maintain existing functionality
-   - Input/output handling
-   - File processing order
-   - Encoding quality
-   - Performance characteristics
-
-3. Regression testing
-   - Process multiple files
-   - Handle errors gracefully
-   - Cleanup resources properly
-   - Maintain parallel processing
+### Integration Testing
+After each phase:
+- Full end-to-end testing
+- Performance comparison
+- Resource cleanup verification
+- Error recovery validation
 
 ## Success Criteria
-1. No changes to core functionality
-2. Improved stability and error handling
-3. Cleaner state management
-4. Better process control
-5. Easier debugging
-6. Maintained performance
 
-## Rollback Plan
-1. Git branches for each phase
-2. Validation steps between changes
-3. Clear success criteria for each step
-4. Easy rollback points if issues found 
+### Per-Change Success
+- Functionality identical to previous state
+- All tests passing
+- No resource leaks
+- Clear rollback point established
+- Documentation updated
+
+### Phase Success
+- All changes in phase verified
+- Integration tests passing
+- Performance maintained
+- No regressions
+- Clean state achieved
+
+### Final Success
+- Complete Python migration
+- Single source of truth for state
+- Clear process hierarchies
+- Direct communication pathways
+- Proper resource management
+- All tests passing
+- Documentation complete
+
+## Rollback Strategy
+1. Each atomic change has a git branch
+2. Each change has clear verification points
+3. Each change can be independently reverted
+4. Phase branches for larger rollbacks
+5. Main only updated after phase verification 
