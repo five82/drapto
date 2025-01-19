@@ -37,15 +37,39 @@ drapto/
 │       │   └── defaults.py         # Default configuration values
 │       ├── encoding/
 │       │   ├── __init__.py
-│       │   ├── strategies/         # Different encoding strategies
+│       │   ├── strategies/         # Strategy coordination
 │       │   │   ├── __init__.py
-│       │   │   ├── base.py        # Base strategy class
-│       │   │   ├── standard.py    # Standard encoding
-│       │   │   ├── chunked.py     # Chunked encoding
+│       │   │   ├── base.py        # Base strategy interface
+│       │   │   ├── factory.py     # Strategy selection/creation
+│       │   │   ├── standard.py    # Standard strategy implementation
+│       │   │   └── chunked.py     # Chunked strategy implementation
+│       │   ├── base/              # Common encoding components
+│       │   │   ├── __init__.py
+│       │   │   ├── analysis.py    # Input analysis
+│       │   │   ├── hardware.py    # Hardware acceleration
+│       │   │   └── validation.py  # Common validation
+│       │   ├── standard/          # Standard encoding path
+│       │   │   ├── __init__.py
+│       │   │   ├── encoder.py     # Direct FFmpeg encoding
+│       │   │   ├── quality.py     # CRF-based quality control
+│       │   │   └── validation.py  # Standard path validation
+│       │   ├── chunked/           # Chunked encoding path
+│       │   │   ├── __init__.py
+│       │   │   ├── encoder.py     # ab-av1 based encoding
+│       │   │   ├── segments.py    # Segment management
+│       │   │   ├── vmaf.py       # VMAF-based quality control
 │       │   │   └── parallel.py    # Parallel processing
-│       │   ├── video.py           # Video encoding logic
-│       │   ├── audio.py           # Audio encoding logic
-│       │   └── subtitles.py       # Subtitle handling
+│       │   ├── quality/           # Quality control components
+│       │   │   ├── __init__.py
+│       │   │   ├── base.py       # Common quality interfaces
+│       │   │   ├── crf.py        # CRF-based quality control
+│       │   │   └── vmaf/         # VMAF-based quality control
+│       │   │       ├── __init__.py
+│       │   │       ├── targeting.py  # VMAF target management
+│       │   │       ├── sampling.py   # Sample selection
+│       │   │       └── validation.py # VMAF validation
+│       │   ├── audio.py          # Audio encoding
+│       │   └── subtitles.py      # Subtitle handling
 │       ├── types/                 # Type definitions
 │       │   ├── __init__.py
 │       │   ├── process.py         # Process types

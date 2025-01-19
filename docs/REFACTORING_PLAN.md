@@ -10,6 +10,7 @@
 - Type safety enforced in new Python code
 - All directory and file changes must follow TARGET_STRUCTURE.md
 - Any deviations from target structure require documentation and approval
+- Complete migration from bash to Python with no remaining bash dependencies
 
 ## Phase 1: Foundation (COMPLETED)
 1. ✅ Remove PTY handling
@@ -59,13 +60,13 @@
    - Create Python process management class
    - Add basic subprocess handling
    - Add type hints and docstrings
-   - Keep bash scripts as-is temporarily
+   - Keep bash scripts as-is temporarily (will be removed in Phase 8)
    - Update functionality doc process section
    - Create/update unit tests before implementation
    - Migrate relevant existing tests
    - Update test fixtures and mocks
    - Verify test coverage
-   Verification: Python can launch and manage processes
+   Verification: Python can launch and manage processes, preparing for bash removal
 
 2. Analysis Pipeline Migration
    - Port input file analysis
@@ -88,40 +89,53 @@
    - Verify test coverage
    Verification: Python version produces identical results to bash version
 
-4. Encoding Strategy Migration
-   - Create Python encoding strategy class
-   - Port strategy logic from bash
-   - Port resolution-dependent CRF handling
-   - Port VMAF-based quality control
-   - Keep both versions temporarily
+4. Base Encoding Components
+   - Create base encoding directory structure
+   - Implement input analysis
+   - Add hardware acceleration support
+   - Add common validation
    - Create/update unit tests before implementation
-   - Migrate relevant existing tests
-   - Update test fixtures and mocks
-   - Verify test coverage
-   Verification: Python version matches bash behavior exactly
+   - Keep both versions temporarily
+   Verification: Base components working identically to bash version
 
-5. Standard Encoding Path
-   - Port standard encoding path
-   - Port quality validation
-   - Keep both versions temporarily
+5. Quality Control Framework
+   - Create quality control directory structure
+   - Implement base quality interfaces
+   - Add CRF-based quality control
+   - Add VMAF framework
    - Create/update unit tests before implementation
-   - Migrate relevant existing tests
-   - Update test fixtures and mocks
-   - Verify test coverage
+   - Keep both versions temporarily
+   Verification: Quality control working identically to bash version
+
+6. Standard Encoding Path
+   - Create standard encoding directory structure
+   - Implement FFmpeg-based encoder
+   - Add CRF quality integration
+   - Add path-specific validation
+   - Create/update unit tests before implementation
+   - Keep both versions temporarily
    Verification: Standard encoding identical to bash version
 
-6. Chunked Encoding Path
-   - Port chunked encoding path
-   - Port VMAF handling
-   - Port segment management
-   - Keep both versions temporarily
+7. Chunked Encoding Path
+   - Create chunked encoding directory structure
+   - Implement ab-av1 based encoder
+   - Add segment management
+   - Add VMAF quality integration
+   - Add parallel processing
    - Create/update unit tests before implementation
-   - Migrate relevant existing tests
-   - Update test fixtures and mocks
-   - Verify test coverage
+   - Keep both versions temporarily
    Verification: Chunked encoding identical to bash version
 
-7. Output Management
+8. Strategy Layer
+   - Create strategy directory structure
+   - Implement base strategy interface
+   - Add strategy factory
+   - Add concrete strategy implementations
+   - Create/update unit tests before implementation
+   - Keep both versions temporarily
+   Verification: Strategy selection and execution identical to bash version
+
+9. Output Management
    - Port output assembly logic
    - Port cleanup processes
    - Port error recovery
@@ -132,7 +146,7 @@
    - Verify test coverage
    Verification: Output handling identical to bash version
 
-8. Core Encode Migration
+10. Core Encode Migration
    - Port encode.sh core logic to Python
    - Integrate all migrated components
    - Keep both versions temporarily
@@ -142,7 +156,7 @@
    - Verify test coverage
    Verification: Python version handles all test cases same as bash
 
-9. Formatting Utilities Migration
+11. Formatting Utilities Migration
    - Create Python formatting module following target structure
    - Port color support detection
    - Port formatting functions
@@ -229,16 +243,19 @@
    - Verify test coverage
    Verification: Status updates working through event system
 
-## Phase 8: Cleanup
+## Phase 8: Cleanup and Bash Elimination
 1. Remove Bash Scripts
-   - Remove each verified script
-   - Update documentation
+   - Systematically remove each verified bash script
+   - Verify each component is fully migrated to Python
+   - Remove all bash-specific code and dependencies
+   - Update documentation to reflect Python-only implementation
    - Clean up tests
+   - Remove bash-related test fixtures
    - Create/update unit tests before implementation
    - Migrate relevant existing tests
    - Update test fixtures and mocks
    - Verify test coverage
-   Verification: System working with no bash scripts
+   Verification: System working entirely in Python with no bash dependencies or scripts
 
 2. Final Verification
    - Full system testing
@@ -337,7 +354,7 @@ After each phase:
 - Coverage requirements met
 
 ### Final Success
-- Complete Python migration
+- Complete Python migration with no remaining bash code
 - Single source of truth for state
 - Clear process hierarchies
 - Direct communication pathways
