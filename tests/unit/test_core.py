@@ -50,6 +50,44 @@ def test_stream_reader(encoder, mocker):
     assert test_queue.get() == ('test', None)  # EOF marker
     assert mock_stream.close.called
 
+def test_stream_reader_with_errors(encoder, mocker):
+    """Test stream reader error handling."""
+    mock_stream = mocker.MagicMock()
+    mock_stream.readline.side_effect = [
+        IOError("Simulated IO error"),
+        "line after error\n",
+        ""  # EOF
+    ]
+    test_queue = queue.Queue()
+    
+    # Run stream reader
+    encoder._stream_reader(mock_stream, test_queue, 'test')
+    
+    # Check output - should get error message and close
+    assert test_queue.get()[0] == 'error'  # Error message
+    assert test_queue.get() == ('test', None)  # EOF marker
+    assert mock_stream.close.called
+
+def test_stream_reader_with_decode_error(encoder, mocker):
+    """Test stream reader handling of decode errors."""
+    mock_stream = mocker.MagicMock()
+    mock_stream.readline.side_effect = [
+        b'\xff\xff\xff\n',  # Invalid UTF-8
+        "valid line\n",
+        ""  # EOF
+    ]
+    test_queue = queue.Queue()
+    
+    # Run stream reader
+    encoder._stream_reader(mock_stream, test_queue, 'test')
+    
+    # Should get error for invalid UTF-8 and continue
+    error_msg = test_queue.get()
+    assert error_msg[0] == 'error'
+    assert 'decode' in str(error_msg[1]).lower()
+    assert test_queue.get() == ('test', 'valid line')
+    assert test_queue.get() == ('test', None)  # EOF marker
+
 def test_encode_file_environment_setup(encoder, mock_video_file, temp_dir, mocker):
     """Test environment setup for encoding."""
     output_path = temp_dir / "output.mp4"
@@ -156,3 +194,126 @@ def test_encode_file_output_handling(encoder, mock_video_file, temp_dir, mocker)
     # Verify output handling
     assert mock_queue.get.call_count >= 4  # At least 4 queue gets (2 outputs + 2 EOFs)
     assert mock_process.poll.call_count >= 1  # At least one poll check
+
+def test_encode_file_with_mixed_output(encoder, mock_video_file, temp_dir, mocker):
+    """Test handling of mixed stdout/stderr output."""
+    output_path = temp_dir / "output.mp4"
+    env = {"TEMP_DIR": str(temp_dir)}
+
+    # Mock subprocess.Popen
+    mock_process = mocker.MagicMock()
+    mock_process.returncode = None
+    mock_process.stdout = mocker.MagicMock()
+    mock_process.stderr = mocker.MagicMock()
+    mock_process.poll.side_effect = [None, None, 0]
+    mock_process.wait.return_value = 0
+
+    # Mock queue with interleaved stdout/stderr
+    mock_queue = mocker.MagicMock()
+    mock_queue.get.side_effect = [
+        ('stdout', 'Processing started'),
+        ('stderr', 'Warning: something minor'),
+        ('stdout', 'Progress: 50%'),
+        ('stderr', 'Warning: something else'),
+        ('stdout', 'Progress: 100%'),
+        ('stdout', None),  # stdout EOF
+        ('stderr', None),  # stderr EOF
+        queue.Empty(),
+    ]
+
+    mocker.patch("subprocess.Popen", return_value=mock_process)
+    mocker.patch("queue.Queue", return_value=mock_queue)
+    mocker.patch("threading.Thread")
+    mocker.patch("time.sleep")
+
+    # Call encode_file
+    encoder._encode_file(mock_video_file, output_path, env)
+
+    # Verify output handling
+    assert mock_queue.get.call_count >= 7  # All messages plus EOFs
+    assert mock_process.poll.call_count >= 1
+
+def test_encode_file_with_slow_output(encoder, mock_video_file, temp_dir, mocker):
+    """Test handling of slow/delayed output."""
+    output_path = temp_dir / "output.mp4"
+    env = {"TEMP_DIR": str(temp_dir)}
+
+    # Mock subprocess.Popen
+    mock_process = mocker.MagicMock()
+    mock_process.returncode = None
+    mock_process.stdout = mocker.MagicMock()
+    mock_process.stderr = mocker.MagicMock()
+    mock_process.poll.side_effect = [None] * 5 + [0]  # Several None before completion
+    mock_process.wait.return_value = 0
+
+    # Mock queue with delays (Empty exceptions)
+    mock_queue = mocker.MagicMock()
+    mock_queue.get.side_effect = [
+        queue.Empty(),  # Initial delay
+        ('stdout', 'Starting...'),
+        queue.Empty(),  # Delay
+        ('stdout', 'Progress: 50%'),
+        queue.Empty(),  # Delay
+        ('stdout', 'Progress: 100%'),
+        ('stdout', None),  # stdout EOF
+        ('stderr', None),  # stderr EOF
+        queue.Empty(),
+    ]
+
+    mocker.patch("subprocess.Popen", return_value=mock_process)
+    mocker.patch("queue.Queue", return_value=mock_queue)
+    mocker.patch("threading.Thread")
+    mocker.patch("time.sleep")
+
+    # Call encode_file
+    encoder._encode_file(mock_video_file, output_path, env)
+
+    # Verify output handling
+    assert mock_queue.get.call_count >= 8  # All messages plus EOFs plus Empty cases
+    assert mock_process.poll.call_count >= 3  # Multiple polls due to Empty queue
+
+def test_encode_file_process_termination_timeout(encoder, mock_video_file, temp_dir, mocker):
+    """Test process termination with timeout handling."""
+    output_path = temp_dir / "output.mp4"
+    env = {"TEMP_DIR": str(temp_dir)}
+
+    # Mock subprocess.Popen
+    mock_process = mocker.MagicMock()
+    mock_process.returncode = None
+    mock_process.stdout = mocker.MagicMock()
+    mock_process.stderr = mocker.MagicMock()
+    
+    # Set up wait behavior - process resists termination
+    wait_results = [
+        subprocess.TimeoutExpired("cmd", 2),  # Initial wait timeout
+        subprocess.TimeoutExpired("cmd", 2),  # Post-terminate wait timeout
+        subprocess.TimeoutExpired("cmd", 2),  # Post-kill wait timeout
+        0  # Finally succeeds
+    ]
+    mock_process.wait = mocker.MagicMock(side_effect=wait_results)
+    
+    # Process stays alive until killed
+    poll_results = [None] * 3 + [0]
+    mock_process.poll = mocker.MagicMock(side_effect=poll_results)
+
+    # Mock queue with some output
+    mock_queue = mocker.MagicMock()
+    mock_queue.get.side_effect = [
+        ('stdout', 'Starting...'),
+        ('stdout', None),
+        ('stderr', None),
+        queue.Empty(),
+    ]
+
+    mocker.patch("subprocess.Popen", return_value=mock_process)
+    mocker.patch("queue.Queue", return_value=mock_queue)
+    mocker.patch("threading.Thread")
+    mocker.patch("time.sleep")
+
+    # Call encode_file - should handle the timeouts
+    encoder._encode_file(mock_video_file, output_path, env)
+
+    # Verify cleanup sequence
+    assert mock_process.terminate.call_count >= 1  # SIGTERM attempted
+    assert mock_process.kill.call_count >= 1  # SIGKILL used
+    assert mock_process.wait.call_count >= 3  # Multiple waits attempted

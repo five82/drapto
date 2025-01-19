@@ -58,7 +58,13 @@ class Encoder:
         try:
             for line in iter(stream.readline, ''):
                 if line:
-                    queue_obj.put((stream_name, line.rstrip()))
+                    try:
+                        # Handle both string and bytes input
+                        if isinstance(line, bytes):
+                            line = line.decode()
+                        queue_obj.put((stream_name, line.rstrip()))
+                    except (UnicodeDecodeError, UnicodeError) as e:
+                        queue_obj.put(('error', f"Decode error in {stream_name}: {str(e)}"))
         except Exception as e:
             queue_obj.put(('error', f"Error reading from {stream_name}: {str(e)}"))
         finally:
@@ -76,7 +82,17 @@ class Encoder:
                 except subprocess.TimeoutExpired:
                     print("DEBUG: Force killing process")
                     process.kill()
-                    process.wait()
+                    try:
+                        process.wait(timeout=2)
+                    except subprocess.TimeoutExpired:
+                        print("DEBUG: Process still not responding after SIGKILL")
+                        # One final attempt to wait
+                        try:
+                            process.wait(timeout=2)
+                        except subprocess.TimeoutExpired:
+                            print("DEBUG: Final wait attempt failed")
+                    except Exception as e:
+                        print(f"DEBUG: Error during kill wait: {str(e)}")
             except Exception as e:
                 print(f"DEBUG: Error during process cleanup: {str(e)}")
             finally:
@@ -84,6 +100,10 @@ class Encoder:
                     # Wait for reader threads to finish
                     for thread in threads:
                         thread.join(timeout=1)
+                # Final poll to get actual status
+                final_status = process.poll()
+                print(f"DEBUG: Final process status: {final_status}")
+                return final_status
 
     def _encode_file(self, input_path: Path, output_path: Path, env: dict, is_last_file: bool = True) -> None:
         """Encode a single video file."""
@@ -193,8 +213,12 @@ class Encoder:
                     return_code = process.wait(timeout=2)
                 except subprocess.TimeoutExpired:
                     print("DEBUG: Process wait timed out, terminating")
-                    self._cleanup_process(process, threads)
-                    return_code = process.wait()
+                    return_code = self._cleanup_process(process, threads)
+                    if return_code is None:
+                        print("DEBUG: Process cleanup failed")
+                        return_code = -1  # Force error state
+                    elif return_code == 0:
+                        print("DEBUG: Process eventually cleaned up successfully")
 
             # Wait for reader threads to finish
             for thread in threads:
@@ -202,12 +226,22 @@ class Encoder:
 
             print(f"DEBUG: Process completed with return code: {return_code}")
             if return_code != 0:
-                raise RuntimeError(f"Encode script failed with return code {return_code}")
+                # One final check in case the process succeeded after cleanup
+                final_status = process.poll()
+                if final_status == 0:
+                    print("DEBUG: Process eventually succeeded")
+                    return_code = 0
+                else:
+                    raise RuntimeError(f"Encode script failed with return code {return_code}")
 
         except Exception as e:
             print(f"DEBUG: Exception in _encode_file: {str(e)}")
-            self._cleanup_process(process, threads)
-            raise
+            # Try cleanup and capture final status
+            final_status = self._cleanup_process(process, threads)
+            if final_status == 0:
+                print("DEBUG: Process succeeded during cleanup")
+                return  # Process completed successfully
+            raise  # Re-raise the original exception
 
     def get_files_needing_processing(self, input_path: Path, output_path: Path) -> List[Tuple[Path, Path]]:
         """Returns only the files that need processing with their output paths."""
