@@ -12,15 +12,16 @@ drapto is designed to work specifically with MKV video files sourced from DVD, B
 2. [Dolby Vision Detection](#dolby-vision-detection)
 3. [Encoding Paths](#encoding-paths)
 4. [Parallel Processing](#parallel-processing)
-5. [Audio Processing](#audio-processing)
-6. [Crop Detection](#crop-detection)
-7. [Codec Usage](#codec-usage)
-8. [Quality Control](#quality-control)
-9. [Default Settings](#default-settings)
-10. [User Configuration](#user-configuration)
-11. [Hardware Acceleration](#hardware-acceleration)
-12. [Validation Process](#validation-process)
-13. [Error Recovery and Fallback Mechanisms](#error-recovery-and-fallback-mechanisms)
+5. [Muxing Process](#muxing-process)
+6. [Audio Processing](#audio-processing)
+7. [Crop Detection](#crop-detection)
+8. [Codec Usage](#codec-usage)
+9. [Quality Control](#quality-control)
+10. [Default Settings](#default-settings)
+11. [User Configuration](#user-configuration)
+12. [Hardware Acceleration](#hardware-acceleration)
+13. [Validation Process](#validation-process)
+14. [Error Recovery and Fallback Mechanisms](#error-recovery-and-fallback-mechanisms)
 
 ## Input Video Processing Flow
 
@@ -228,6 +229,81 @@ The chunked encoding path utilizes GNU Parallel for efficient parallel processin
    - Maintains frame accuracy at segment boundaries
    - Verifies segment order using numerical prefixes
    - Validates segment integrity before concatenation
+
+## Muxing Process
+
+drapto employs a sophisticated track-by-track muxing system to ensure proper handling of all streams:
+
+1. **Working Directory Structure**
+   ```
+   WORKING_DIR/
+   ├── video.mkv          # Processed video track
+   ├── audio-0.mkv        # First audio track
+   ├── audio-1.mkv        # Second audio track (if present)
+   ├── audio-N.mkv        # Additional audio tracks
+   ├── concat.txt         # Segment list for chunked encoding
+   └── temp/              # Temporary processing files
+   ```
+
+2. **Track Processing Order**
+   1. **Video Track**
+      - Processed first and stored as `video.mkv`
+      - Uses hardware-accelerated decoding if available
+      - Encoded with SVT-AV1 using selected quality settings
+      - Validated before muxing
+
+   2. **Audio Tracks**
+      - Processed individually in sequence
+      - Each track stored as `audio-N.mkv`
+      - Channel layout analysis per track
+      - Opus encoding with track-specific bitrates
+      - Metadata preserved per track
+
+   3. **Subtitle Tracks**
+      - Stream copied without re-encoding
+      - Format and timing preserved
+      - Stored temporarily before final mux
+
+3. **Muxing Command Construction**
+   ```bash
+   ffmpeg -hide_banner -loglevel warning \
+     -i video.mkv \                    # Video input
+     -i audio-0.mkv \                  # First audio
+     -i audio-1.mkv \                  # Second audio
+     -map 0:v:0 \                      # Map video
+     -map 1:a:0 \                      # Map first audio
+     -map 2:a:0 \                      # Map second audio
+     -c copy \                         # Stream copy
+     output.mkv
+   ```
+
+4. **Track Mapping**
+   - Video track mapped from primary input
+   - Audio tracks mapped sequentially
+   - Stream indexes preserved
+   - Track languages maintained
+   - Track metadata retained
+
+5. **Quality Control**
+   - Pre-mux validation of all tracks
+   - Stream presence verification
+   - Codec validation
+   - Duration checks
+   - Size verification
+
+6. **Error Handling**
+   - Individual track failure recovery
+   - Muxing process monitoring
+   - Temporary file cleanup
+   - Detailed error logging
+   - Progress tracking
+
+7. **Cleanup Process**
+   - Temporary tracks removed after successful mux
+   - Working directory cleaned
+   - Logs preserved
+   - Final output validated
+   - Resource cleanup
 
 ## Audio Processing
 
