@@ -11,19 +11,20 @@ drapto is designed to work specifically with MKV video files sourced from DVD, B
 1. [Input Video Processing Flow](#input-video-processing-flow)
 2. [Dolby Vision Detection](#dolby-vision-detection)
 3. [Encoding Paths](#encoding-paths)
-4. [Parallel Processing](#parallel-processing)
-5. [Muxing Process](#muxing-process)
-6. [Audio Processing](#audio-processing)
-7. [Crop Detection](#crop-detection)
-8. [Codec Usage](#codec-usage)
-9. [Quality Control](#quality-control)
-10. [Default Settings](#default-settings)
-11. [User Configuration](#user-configuration)
-12. [Hardware Acceleration](#hardware-acceleration)
-13. [Validation Process](#validation-process)
-14. [Error Recovery and Fallback Mechanisms](#error-recovery-and-fallback-mechanisms)
-15. [Progress Tracking and Logging](#progress-tracking-and-logging)
-16. [Directory Structure](#directory-structure)
+4. [Encoding Strategy System](#encoding-strategy-system)
+5. [Parallel Processing](#parallel-processing)
+6. [Muxing Process](#muxing-process)
+7. [Audio Processing](#audio-processing)
+8. [Crop Detection](#crop-detection)
+9. [Codec Usage](#codec-usage)
+10. [Quality Control](#quality-control)
+11. [Default Settings](#default-settings)
+12. [User Configuration](#user-configuration)
+13. [Hardware Acceleration](#hardware-acceleration)
+14. [Validation Process](#validation-process)
+15. [Error Recovery and Fallback Mechanisms](#error-recovery-and-fallback-mechanisms)
+16. [Progress Tracking and Logging](#progress-tracking-and-logging)
+17. [Directory Structure](#directory-structure)
 
 ## Input Video Processing Flow
 
@@ -131,37 +132,281 @@ Dolby Vision detection is performed using the following process:
 drapto supports two main encoding paths:
 
 ### Standard Path
-- Uses direct FFmpeg encoding with SVT-AV1
-- Quality control through CRF:
-  - SD (≤720p): CRF 25
-  - HD (≤1080p): CRF 25
-  - UHD (>1080p): CRF 29
-- Uses preset 6 by default
-- Direct encoding without segmentation
+1. **Core Characteristics**
+   - Direct FFmpeg encoding with SVT-AV1
+   - Single-pass, CRF-based quality control
+   - No segmentation or chunking
+   - Continuous encoding process
 
-### Chunked Encoding Path
-Activated when `ENABLE_CHUNKED_ENCODING=true`:
-- Uses ab-av1 for encoding
-- Segments video into manageable chunks
-- VMAF-based quality targeting (default target: 93)
-- Three-tier encoding strategy:
-  1. **Default Strategy**
-     - 3 samples of 1 second each
-     - Default VMAF target
-     - Keyframe interval: 10s
-  2. **More Samples Strategy**
-     - 6 samples of 2 seconds each
-     - Same VMAF target
-     - Used if default strategy fails
-  3. **Lower VMAF Strategy**
-     - 6 samples of 2 seconds each
-     - Reduces target VMAF by 2 points
-     - Last resort option
-- VMAF settings:
-  - Subsample rate: 8
-  - Pool method: harmonic mean
-  - Default sample count: 3
-  - Default sample duration: 1s
+2. **Quality Control**
+   - Resolution-dependent CRF values:
+     ```bash
+     # Resolution breakpoints
+     SD  (≤720p):  CRF 25
+     HD  (≤1080p): CRF 25
+     UHD (>1080p): CRF 29
+     ```
+   - SVT-AV1 preset 6 by default
+   - Film grain synthesis disabled
+   - 10-bit depth processing
+
+3. **FFmpeg Command Structure**
+   ```bash
+   ffmpeg -hide_banner -loglevel warning \
+     ${HWACCEL_OPTS} \                     # Hardware decode if available
+     -i "${input_file}" \
+     -map 0:v:0 \                          # Select first video stream
+     -c:v libsvtav1 \                      # SVT-AV1 codec
+     -preset ${PRESET} \                   # Default: 6
+     -crf ${CRF} \                         # Based on resolution
+     -pix_fmt yuv420p10le \               # 10-bit color
+     -svtav1-params \
+       "tune=0:film-grain=0:film-grain-denoise=0" \
+     -y "${output_file}"
+   ```
+
+4. **Performance Characteristics**
+   - Memory usage proportional to resolution
+   - CPU utilization based on preset
+   - Single continuous encoding process
+   - Progress tracking via FFmpeg stats
+
+5. **Use Cases**
+   - Shorter content (< 30 minutes)
+   - Lower resolution content
+   - Quick encoding requirements
+   - Limited system resources
+   - Simple processing needs
+
+6. **Quality Assurance**
+   - Input stream validation
+   - Output codec verification
+   - Duration comparison
+   - File size validation
+   - Stream integrity check
+
+7. **Error Handling**
+   - Hardware decode fallback
+   - Progress monitoring
+   - Resource management
+   - Detailed error logging
+   - Process recovery support
+
+### Chunked Path (VMAF-based)
+1. **Core Characteristics**
+   - Uses ab-av1 for encoding
+   - VMAF-based quality targeting
+   - Multi-tier encoding strategy
+   - Parallel processing of segments
+
+2. **Quality Control**
+   - Target VMAF score: 93 (default)
+   - Three-tier strategy:
+     ```bash
+     # Tier 1: Default Strategy
+     --samples 3 --sample-duration 1s --vmaf-target 93
+     
+     # Tier 2: More Samples
+     --samples 6 --sample-duration 2s --vmaf-target 93
+     
+     # Tier 3: Lower VMAF
+     --samples 6 --sample-duration 2s --vmaf-target 91
+     ```
+   - VMAF settings:
+     - Subsample rate: 8
+     - Pool method: harmonic mean
+
+3. **ab-av1 Command Structure**
+   ```bash
+   # First tier attempt
+   ab-av1 \
+     --input "${input_file}" \
+     --output "${output_file}" \
+     --encoder svtav1 \
+     --preset ${PRESET} \                  # Default: 6
+     --vmaf-target ${TARGET_VMAF} \        # Default: 93
+     --samples ${VMAF_SAMPLE_COUNT} \      # Default: 3
+     --sample-duration "${VMAF_SAMPLE_LENGTH}" \  # Default: 1s
+     --keyint 10s \
+     --pix-fmt yuv420p10le \
+     --svtav1-params \
+       "tune=0:film-grain=0:film-grain-denoise=0" \
+     --vmaf "n_subsample=8:pool=harmonic_mean" \
+     ${vfilter_args} \                     # Crop filter if enabled
+     --quiet
+
+   # Second tier attempt (on failure)
+   ab-av1 \
+     # ... same base options ...
+     --samples 6 \
+     --sample-duration "2s" \
+     --quiet
+
+   # Third tier attempt (on failure)
+   ab-av1 \
+     # ... same base options ...
+     --samples 6 \
+     --sample-duration "2s" \
+     --vmaf-target $((TARGET_VMAF - 2)) \  # Reduce target by 2
+     --quiet
+   ```
+
+4. **Performance Characteristics**
+   - Memory usage controlled per segment
+   - CPU utilization distributed across segments
+   - Parallel processing via GNU Parallel
+   - Progress tracking per segment
+
+5. **Use Cases**
+   - Longer content (> 30 minutes)
+   - High resolution content
+   - Quality-critical encodes
+   - Systems with many CPU cores
+   - Consistent quality requirements
+
+6. **Quality Assurance**
+   - VMAF score validation per segment
+   - Segment integrity verification
+   - Transition smoothness checks
+   - Size and duration validation
+   - Codec compliance verification
+
+7. **Error Handling**
+   - Per-segment retry logic
+   - Multi-tier fallback strategy
+   - Parallel job monitoring
+   - Failed segment tracking
+   - Resource usage monitoring
+
+## Encoding Strategy System
+
+drapto implements a modular strategy system for encoding, allowing different approaches based on content type:
+
+1. **Strategy Architecture**
+   ```
+   encode_strategies/
+   ├── strategy_base.sh      # Base strategy interface
+   ├── chunked_encoding.sh   # Chunked encoding implementation
+   ├── dolby_vision.sh       # Dolby Vision handling
+   └── json_helper.py        # Strategy configuration
+   ```
+
+2. **Base Strategy Interface**
+   Every strategy must implement these core functions:
+   ```bash
+   # Initialize encoding process
+   initialize_encoding() {
+     # Setup working directories
+     # Initialize state tracking
+     # Validate input parameters
+   }
+
+   # Prepare video for encoding
+   prepare_video() {
+     # Segment if needed
+     # Configure encoding options
+     # Setup quality targets
+   }
+
+   # Perform encoding
+   encode_video() {
+     # Execute encoding process
+     # Track progress
+     # Handle failures
+   }
+
+   # Finalize encoding
+   finalize_encoding() {
+     # Concatenate if needed
+     # Cleanup temporary files
+     # Validate output
+   }
+
+   # Validate strategy compatibility
+   can_handle() {
+     # Check if strategy can process input
+     # Verify requirements are met
+   }
+   ```
+
+3. **Strategy Selection**
+   - Automatic selection based on:
+     - Content type (Dolby Vision, HDR, SDR)
+     - User preferences (chunked vs. standard)
+     - Input file characteristics
+     - System capabilities
+   - Selection process:
+     1. Check for Dolby Vision content
+     2. Verify chunked encoding setting
+     3. Load appropriate strategy
+     4. Validate strategy compatibility
+
+4. **Available Strategies**
+   - **Standard Encoding**
+     - Direct FFmpeg processing
+     - CRF-based quality control
+     - No segmentation
+     - Suitable for most content
+
+   - **Chunked Encoding**
+     - Segments video for parallel processing
+     - VMAF-based quality targeting
+     - Multi-tier encoding approach
+     - Better for longer content
+
+   - **Dolby Vision**
+     - Specialized parameters for DV content
+     - HDR metadata preservation
+     - Quality-focused encoding
+     - Strict format compliance
+
+5. **Extending the System**
+   To create a new strategy:
+   1. Create new script in `encode_strategies/`
+   2. Source `strategy_base.sh`
+   3. Implement required functions:
+      ```bash
+      #!/usr/bin/env bash
+      source "${SCRIPT_DIR}/encode_strategies/strategy_base.sh"
+
+      initialize_encoding() {
+          # Your initialization code
+      }
+
+      prepare_video() {
+          # Your preparation code
+      }
+
+      encode_video() {
+          # Your encoding code
+      }
+
+      finalize_encoding() {
+          # Your finalization code
+      }
+
+      can_handle() {
+          # Your validation code
+      }
+      ```
+   4. Add strategy loading in main script
+   5. Update selection logic if needed
+
+6. **Configuration System**
+   - JSON-based configuration
+   - Per-strategy settings
+   - Override capabilities:
+     - Quality parameters
+     - Processing options
+     - Resource allocation
+     - Output preferences
+
+7. **Error Handling**
+   - Strategy-specific error recovery
+   - Fallback mechanisms
+   - Progress preservation
+   - State recovery support
+   - Detailed error logging
 
 ## Parallel Processing
 
