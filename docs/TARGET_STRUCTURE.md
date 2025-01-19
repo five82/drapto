@@ -60,7 +60,12 @@ drapto/
 │           ├── __init__.py
 │           ├── ffmpeg.py         # FFmpeg integration
 │           ├── logging.py        # Logging utilities
-│           └── paths.py          # Path handling utilities
+│           ├── paths.py          # Path handling utilities
+│           └── formatting/       # Output formatting
+│               ├── __init__.py
+│               ├── colors.py     # Color support and detection
+│               ├── terminal.py   # Terminal capability detection
+│               └── styles.py     # Output styling functions
 ├── tests/
 │   ├── unit/                    # Unit tests
 │   │   ├── test_core/

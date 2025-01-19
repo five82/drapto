@@ -9,6 +9,7 @@
 - Use ffmpeg-python for direct ffmpeg integration
 - Implement all process management in Python
 - Maintain clean subprocess management without PTY
+- Port formatting utilities to Python
 
 ### 2. Establish Reliable Communication
 *Addresses Issue #2: Fragile Communication Channels*
@@ -67,6 +68,13 @@
 - Development guidelines
 - Testing documentation
 - Deployment guides
+
+#### Output Formatting System
+- Centralized formatting utilities
+- Color support detection
+- Terminal capability checking
+- Consistent output styling
+- Platform-independent implementation
 
 ## Future Enhancements
 These improvements are outside the scope of the current architectural refactoring:

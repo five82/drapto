@@ -142,6 +142,18 @@
    - Verify test coverage
    Verification: Python version handles all test cases same as bash
 
+9. Formatting Utilities Migration
+   - Create Python formatting module following target structure
+   - Port color support detection
+   - Port formatting functions
+   - Add platform-independent implementations
+   - Add type hints and docstrings
+   - Create/update unit tests before implementation
+   - Add terminal capability detection
+   - Keep both versions temporarily
+   - Update all format usage in existing code
+   Verification: Python formatting identical to bash version
+
 ## Phase 5: State Management
 1. Basic State Tracking
    - Create in-memory state manager with type hints
