@@ -8,6 +8,8 @@
 - Easy rollback points if issues found
 - Documentation updated with each change
 - Type safety enforced in new Python code
+- All directory and file changes must follow TARGET_STRUCTURE.md
+- Any deviations from target structure require documentation and approval
 
 ## Phase 1: Foundation (COMPLETED)
 1. ✅ Remove PTY handling
@@ -24,6 +26,7 @@
    - Add default handling
    - Add configuration documentation
    - Update/create unit tests for config
+   - Follow config/ structure from TARGET_STRUCTURE.md
    Verification: All env vars accessed through config, existing functionality unchanged
 
 2. Path Configuration
@@ -34,12 +37,13 @@
 
 ## Phase 3: Directory Structure
 1. Create New Structure
-   - Set up new Python package structure
+   - Set up new Python package structure exactly as defined in TARGET_STRUCTURE.md
    - Create placeholder modules
    - Add __init__.py files
-   - Set up new test directory structure
+   - Set up new test directory structure per TARGET_STRUCTURE.md
    - Create test utilities and fixtures
-   Verification: Package importable, no functionality moved yet
+   - Verify structure matches target document
+   Verification: Package importable, no functionality moved yet, structure matches target
 
 2. Move Current Python Code
    - Move existing modules to new structure
@@ -47,6 +51,7 @@
    - No functional changes
    - Move and update existing unit tests
    - Update test imports and fixtures
+   - Verify placement follows target structure
    Verification: All existing Python code and tests working in new locations
 
 ## Phase 4: Core Python Migration
@@ -347,3 +352,28 @@ After each phase:
 3. Maintain API documentation coverage
 4. Review documentation at phase boundaries
 5. Verify documentation accuracy in tests 
+
+## Directory Structure Strategy
+1. **Structure Compliance**
+   - All new files must follow TARGET_STRUCTURE.md
+   - All directory creation must match target layout
+   - Component organization must align with target
+   - Test organization must follow target structure
+
+2. **Structure Changes**
+   - Any needed deviations must be documented
+   - Changes require updating TARGET_STRUCTURE.md first
+   - Changes need approval before implementation
+   - Migration plan must be updated for structure changes
+
+3. **Verification Points**
+   - Directory structure matches target
+   - File organization follows target
+   - Component placement aligns with target
+   - Test structure matches target layout
+
+4. **Documentation**
+   - Keep TARGET_STRUCTURE.md updated
+   - Document any temporary deviations
+   - Track structure completion status
+   - Note any implementation challenges 
