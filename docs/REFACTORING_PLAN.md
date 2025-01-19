@@ -64,6 +64,31 @@
    - Test debugging capabilities
    - Use new logging module
 
+## Phase 5: Python Migration
+1. Migrate Core Functionality
+   - Port encode.sh to Python
+   - Implement encoding strategies in Python
+   - Add ffmpeg-python integration
+   - Test Python implementations
+
+2. Migrate Helper Functions
+   - Port utility scripts to Python modules
+   - Move hardware detection to Python
+   - Move audio/subtitle handling to Python
+   - Test Python implementations
+
+3. Deprecate Bash Scripts
+   - Mark scripts as deprecated
+   - Add deprecation warnings
+   - Document migration path
+   - Maintain compatibility layer
+
+4. Remove Bash Scripts
+   - Remove all bash scripts
+   - Clean up legacy code
+   - Update documentation
+   - Final testing without bash scripts
+
 ## Testing Strategy
 
 Each phase of the refactoring will be accompanied by appropriate tests to ensure stability and prevent regressions. The project uses pytest as the testing framework with the following structure:
@@ -102,6 +127,25 @@ Each phase of the refactoring will be accompanied by appropriate tests to ensure
    - Coverage maintained or improved
    - No regressions in existing functionality
    - Clear test organization
+
+### Phase 5 Testing Plan
+1. Python Implementation Tests:
+   - Full encoding pipeline tests
+   - Strategy implementation tests
+   - FFmpeg integration tests
+   - Performance comparison tests
+
+2. Migration Tests:
+   - Compatibility layer tests
+   - Deprecation warning tests
+   - Legacy support tests
+   - Clean removal verification
+
+3. Success Criteria:
+   - All functionality preserved
+   - No performance regressions
+   - Clean Python-only operation
+   - Complete documentation
 
 ## Testing Strategy for Each Phase
 1. Verify both encoding paths still work
