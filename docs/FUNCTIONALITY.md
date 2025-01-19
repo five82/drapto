@@ -22,6 +22,7 @@ drapto is designed to work specifically with MKV video files sourced from DVD, B
 12. [Hardware Acceleration](#hardware-acceleration)
 13. [Validation Process](#validation-process)
 14. [Error Recovery and Fallback Mechanisms](#error-recovery-and-fallback-mechanisms)
+15. [Progress Tracking and Logging](#progress-tracking-and-logging)
 
 ## Input Video Processing Flow
 
@@ -559,3 +560,90 @@ drapto implements a robust error recovery system, particularly focused on hardwa
    - Driver compatibility issues
    - Resource exhaustion
    - Codec support limitations
+
+## Progress Tracking and Logging
+
+drapto maintains comprehensive progress tracking and logging through a structured data file system:
+
+1. **Tracking File Structure**
+   ```
+   TEMP_DIR/encode_data/
+   ├── encoded_files.txt     # List of successfully processed files
+   ├── encoding_times.txt    # Processing duration for each file
+   ├── input_sizes.txt       # Original file sizes
+   ├── output_sizes.txt      # Encoded file sizes
+   ├── segments.json         # Segment tracking for chunked encoding
+   └── encoding.json         # Encoding state and progress
+   ```
+
+2. **File Contents and Format**
+   - **encoded_files.txt**
+     ```
+     /path/to/file1.mkv
+     /path/to/file2.mkv
+     ```
+   - **encoding_times.txt**
+     ```
+     file1.mkv,3600      # Duration in seconds
+     file2.mkv,7200
+     ```
+   - **segments.json**
+     ```json
+     {
+       "total_segments": 120,
+       "total_duration": 3600,
+       "segments": [
+         {
+           "index": 0,
+           "path": "segments/0001.mkv",
+           "size": 15728640,
+           "start_time": 0.0,
+           "duration": 15.0,
+           "created_at": "2024-01-18T00:00:00Z"
+         }
+       ]
+     }
+     ```
+
+3. **Progress Monitoring**
+   - Real-time tracking of:
+     - Overall progress
+     - Current file status
+     - Segment processing status
+     - Encoding performance
+     - Resource utilization
+
+4. **Performance Metrics**
+   - Encoding speed (fps)
+   - Compression ratio
+   - Processing time per file
+   - Size reduction statistics
+   - Resource usage trends
+
+5. **State Management**
+   - Tracks encoding state per file
+   - Maintains segment processing state
+   - Records encoding strategy used
+   - Preserves quality metrics
+   - Stores error conditions
+
+6. **Recovery Support**
+   - Enables resume after interruption
+   - Tracks partially completed files
+   - Maintains segment completion status
+   - Records failed attempts
+   - Preserves encoding parameters
+
+7. **Analysis Features**
+   - Size reduction analysis
+   - Processing time statistics
+   - Quality metrics tracking
+   - Error pattern detection
+   - Performance optimization data
+
+8. **Cleanup Policies**
+   - Preserves logs for debugging
+   - Maintains historical data
+   - Removes temporary files
+   - Archives completed job data
+   - Manages disk space usage
