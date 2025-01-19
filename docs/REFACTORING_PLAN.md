@@ -1,12 +1,19 @@
 # Refactoring Plan for State Management and Process Control
 
 ## Phase 1: Stabilize Current Process Management
-1. Remove PTY handling
+1. ✅ Remove PTY handling (COMPLETED)
    - Replace with direct subprocess management
    - Maintain color output via environment variables
    - Test with both encoding paths
 
-2. Consolidate Environment Variables
+2. Directory Structure Migration
+   - Create new directory structure as outlined in TARGET_STRUCTURE.md
+   - Move existing code to new locations
+   - Update imports and references
+   - Add placeholder files for planned modules
+   - Test structure with existing functionality
+
+3. Consolidate Environment Variables
    - Create central config management in Python
    - Move hardcoded paths to config
    - Validate paths before processing
@@ -18,12 +25,14 @@
    - Handle segment information
    - Manage encoding progress
    - Test state transitions
+   - Implement in new `core/state.py`
 
 2. Consolidate Temporary Directories
    - Single temp root with clear structure
    - Consistent cleanup points
    - Maintain separate dirs for parallel processing
    - Test cleanup reliability
+   - Follow new temp directory structure from TARGET_STRUCTURE.md
 
 ## Phase 3: Improve Process Control
 1. Add Process Manager class
@@ -31,12 +40,14 @@
    - Manage cleanup between files
    - Track child processes
    - Test process isolation
+   - Implement in new `core/process.py`
 
 2. Implement Error Boundaries
    - Clear error states
    - Proper cleanup on failure
    - Consistent error reporting
    - Test error recovery
+   - Use new logging utilities
 
 ## Phase 4: Streamline Communication
 1. Standardize Data Exchange
@@ -44,12 +55,14 @@
    - Structured logging format
    - Progress reporting interface
    - Test data consistency
+   - Implement in new `utils/` modules
 
 2. Improve Debug Support
    - Add logging levels
    - Structured debug output
    - State inspection tools
    - Test debugging capabilities
+   - Use new logging module
 
 ## Testing Strategy
 
@@ -59,31 +72,36 @@ Each phase of the refactoring will be accompanied by appropriate tests to ensure
 - Integration tests in `tests/integration/`
 - Common fixtures in `tests/conftest.py`
 
-### Phase 1.1 Testing Plan
+### Phase 1.1 Testing Plan (COMPLETED) ✅
+- Direct subprocess management without PTY
+- Color output preservation
+- Process cleanup
+- Environment variable setup
+- Error handling and logging
 
-For the PTY removal and subprocess management changes:
-
-1. Add unit tests for:
-   - Direct subprocess management without PTY
-   - Color output preservation
-   - Process cleanup
-   - Environment variable setup
-   - Error handling and logging
+### Phase 1.2 Testing Plan
+1. Directory Structure Tests:
+   - Package import tests
+   - Module accessibility tests
+   - Path resolution tests
+   - Placeholder module tests
 
 2. Update existing tests:
-   - Remove PTY-specific test mocks
-   - Add subprocess pipe handling tests
-   - Update environment variable tests
+   - Move to new test directory structure
+   - Update import paths
+   - Add new test categories
+   - Maintain coverage
 
 3. Integration tests for:
-   - End-to-end encoding with new subprocess management
-   - Color output in real scenarios
-   - Process cleanup in error cases
+   - End-to-end encoding with new structure
+   - Module interactions
+   - Configuration loading
 
 4. Success Criteria:
-   - All tests pass
+   - All tests pass in new structure
    - Coverage maintained or improved
    - No regressions in existing functionality
+   - Clear test organization
 
 ## Testing Strategy for Each Phase
 1. Verify both encoding paths still work
