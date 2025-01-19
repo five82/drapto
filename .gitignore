@@ -28,3 +28,36 @@ wheels/
 htmlcov/
 .mypy_cache/
 .ruff_cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Project specific
+output/
+temp/
+logs/
+*.log
+.env
+.env.*
+!.env.example
+
+# Test artifacts
+.tox/
+coverage.xml
+.coverage.*
+nosetests.xml
+test-output/
+
+# Documentation
+docs/_build/
+site/
+
+# Type checking
+.pytype/
+.pyre/
+.dmypy.json
+dmypy.json
