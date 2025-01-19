@@ -24,7 +24,8 @@ drapto is designed to work specifically with MKV video files sourced from DVD, B
 14. [Validation Process](#validation-process)
 15. [Error Recovery and Fallback Mechanisms](#error-recovery-and-fallback-mechanisms)
 16. [Progress Tracking and Logging](#progress-tracking-and-logging)
-17. [Directory Structure](#directory-structure)
+17. [Temporary File Management](#temporary-file-management)
+18. [Directory Structure](#directory-structure)
 
 ## Input Video Processing Flow
 
@@ -1057,3 +1058,144 @@ drapto maintains comprehensive progress tracking and logging through a structure
    ├── segments.json         # Segment tracking data
    └── encoding.json         # Encoding state and progress
    ```
+
+## Temporary File Management
+
+drapto implements a sophisticated temporary file management system with state tracking and cleanup:
+
+1. **Directory Structure**
+   ```bash
+   TEMP_DIR/
+   ├── logs/              # Processing logs
+   ├── encode_data/       # State tracking
+   │   ├── encoding.json  # Encoding state
+   │   ├── segments.json  # Segment tracking
+   │   └── progress.json  # Progress tracking
+   ├── segments/          # Video segments
+   ├── encoded/           # Encoded segments
+   └── working/          # Active processing
+       ├── video.mkv     # Current video track
+       ├── audio-*.mkv   # Audio tracks
+       └── temp/         # Temporary files
+   ```
+
+2. **Cleanup Process**
+   ```bash
+   # Cleanup sequence
+   1. Remove temporary encode files (*.temp.*, *.log, *.stats)
+   2. Clean subdirectories (segments/, encoded/)
+   3. Preserve segments during encoding if needed
+   4. Clean data directory while preserving state
+   5. Remove working directory if empty
+   ```
+
+3. **State Preservation**
+   - Cleanup state tracked in JSON:
+     ```json
+     {
+       "job_id": "job123",
+       "stage": "encode",
+       "error": "error message",
+       "started_at": "2024-01-18T00:00:00Z",
+       "completed_steps": [
+         "update_status",
+         "remove_temp_file:test.temp.mkv",
+         "remove_dir:encoded"
+       ],
+       "failed_steps": [],
+       "segment_index": 1
+     }
+     ```
+
+4. **Error Recovery**
+   - Cleanup triggered on:
+     - Process interruption
+     - Encoding failures
+     - Resource exhaustion
+     - System errors
+   - State preserved for:
+     - Completed segments
+     - Progress tracking
+     - Error diagnostics
+     - Recovery points
+
+5. **User Expectations**
+   - Space Requirements:
+     * Source file size × 1.5 for temporary files
+     * Additional space for encoded output
+     * Minimal space for logs and tracking
+   - Cleanup Timing:
+     * Automatic cleanup on successful completion
+     * Manual cleanup may be needed after failures
+     * Logs preserved for debugging
+   - Recovery Options:
+     * Resume from last successful segment
+     * Preserve partial progress
+     * Maintain encoding parameters
+
+6. **Cleanup Commands**
+   ```bash
+   # Clean temporary files only
+   rm -rf temp/working/* temp/segments/* temp/encoded/*
+
+   # Preserve logs and tracking data
+   rm -rf temp/working temp/segments temp/encoded
+
+   # Full cleanup (including logs)
+   rm -rf temp/*
+   ```
+
+7. **Storage Management**
+   - Regular cleanup of old log files
+   - Segment file management
+   - Working directory maintenance
+   - State file preservation
+   - Resource monitoring
+
+8. **Safety Measures**
+   - Atomic file operations
+   - State tracking during cleanup
+   - Error logging
+   - Recovery state preservation
+   - Resource verification
+
+## Directory Structure
+
+drapto maintains a structured directory structure for efficient file management:
+
+1. **Working Directory**
+   - Contains active processing files
+   - Subdirectories:
+     - `video.mkv`: Current video track
+     - `audio-*.mkv`: Audio tracks
+     - `temp/`: Temporary files
+
+2. **Segments Directory**
+   - Contains video segments
+   - Subdirectories:
+     - `segments/`: Segment files
+
+3. **Encoded Directory**
+   - Contains processed video segments
+   - Subdirectories:
+     - `encoded/`: Encoded segment files
+
+4. **Logs Directory**
+   - Contains processing logs
+   - Subdirectories:
+     - `logs/`: Log files
+
+5. **State Tracking**
+   - Contains state tracking files
+   - Subdirectories:
+     - `encode_data/`: Encoding state and metadata
+     - `segments.json`: Segment tracking data
+     - `encoding.json`: Encoding state information
+     - `progress.json`: Progress tracking data
+
+6. **Cleanup Process**
+   - Removes temporary segment files
+   - Cleans up working directory
+   - Preserves logs for debugging
+   - Updates tracking files with results
+   - Verifies output file integrity
