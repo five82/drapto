@@ -4,15 +4,12 @@ import sys
 import time
 import tempfile
 import subprocess
-import pty
-import select
-import fcntl
-import termios
-import struct
 from pathlib import Path
 from typing import Optional, Union, List, Tuple
 import errno
 import shutil
+import threading
+import queue
 
 class Encoder:
     """Minimal wrapper for bash encoding scripts."""
@@ -30,9 +27,25 @@ class Encoder:
         if not self.encode_script.exists():
             raise RuntimeError(f"Encode script not found: {self.encode_script}")
             
-        # Set up environment for shell scripts
+        # Set up environment for shell scripts with color support
         self.env = os.environ.copy()
-        self.env["SCRIPT_DIR"] = str(self.script_dir)
+        
+        # Set TERM to support color if needed
+        current_term = os.environ.get("TERM", "")
+        if not any(x in current_term for x in ["color", "xterm", "vt100"]):
+            current_term = "xterm-256color"
+            
+        self.env.update({
+            "SCRIPT_DIR": str(self.script_dir),
+            # Force color output
+            "FORCE_COLOR": "1",
+            "CLICOLOR": "1",
+            "CLICOLOR_FORCE": "1",
+            "NO_COLOR": "0",  # Disable NO_COLOR if set
+            "COLORTERM": "truecolor",  # Indicate full color support
+            "TERM": current_term  # Use determined TERM value
+        })
+        
         # Remove any existing PYTHONPATH to avoid conflicts
         self.env.pop("PYTHONPATH", None)
         
@@ -40,6 +53,38 @@ class Encoder:
         for script in self.script_dir.glob("*.sh"):
             script.chmod(0o755)
     
+    def _stream_reader(self, stream, queue_obj, stream_name):
+        """Read from a stream and put lines into a queue."""
+        try:
+            for line in iter(stream.readline, ''):
+                if line:
+                    queue_obj.put((stream_name, line.rstrip()))
+        except Exception as e:
+            queue_obj.put(('error', f"Error reading from {stream_name}: {str(e)}"))
+        finally:
+            stream.close()
+            queue_obj.put((stream_name, None))  # Signal EOF
+    
+    def _cleanup_process(self, process, threads=None):
+        """Clean up process and threads."""
+        if process is not None:
+            try:
+                print("DEBUG: Cleaning up process")
+                process.terminate()
+                try:
+                    process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    print("DEBUG: Force killing process")
+                    process.kill()
+                    process.wait()
+            except Exception as e:
+                print(f"DEBUG: Error during process cleanup: {str(e)}")
+            finally:
+                if threads:
+                    # Wait for reader threads to finish
+                    for thread in threads:
+                        thread.join(timeout=1)
+
     def _encode_file(self, input_path: Path, output_path: Path, env: dict, is_last_file: bool = True) -> None:
         """Encode a single video file."""
         # Set up environment for this file
@@ -52,9 +97,12 @@ class Encoder:
             "TEMP_DATA_DIR": str(Path(encode_env["TEMP_DIR"]) / "encode_data"),
             "INPUT_FILE": str(input_path.resolve()),
             "OUTPUT_FILE": str(output_path.resolve()),
-            # Force color output
+            # Ensure color output is enabled
             "FORCE_COLOR": "1",
-            "CLICOLOR_FORCE": "1"
+            "CLICOLOR": "1",
+            "CLICOLOR_FORCE": "1",
+            "NO_COLOR": "0",
+            "COLORTERM": "truecolor"
         })
 
         print(f"DEBUG: Environment variables:")
@@ -74,6 +122,9 @@ class Encoder:
             state_file.unlink()
 
         process = None
+        output_queue = queue.Queue()
+        threads = []
+
         try:
             print("DEBUG: Starting encode script process")
             # Start encode script with input and output file arguments
@@ -83,115 +134,58 @@ class Encoder:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                bufsize=0,  # Unbuffered
+                bufsize=1,  # Line buffered
                 preexec_fn=os.setsid
             )
 
+            # Start reader threads
+            stdout_thread = threading.Thread(
+                target=self._stream_reader,
+                args=(process.stdout, output_queue, 'stdout')
+            )
+            stderr_thread = threading.Thread(
+                target=self._stream_reader,
+                args=(process.stderr, output_queue, 'stderr')
+            )
+            threads = [stdout_thread, stderr_thread]
+            stdout_thread.start()
+            stderr_thread.start()
+
             print("DEBUG: Entering process monitoring loop")
-            # Use select for real file descriptors, simple readline for tests
+            stdout_done = stderr_done = False
+
             try:
-                # Check if we can use fileno() - if not, we're in a test
-                if not hasattr(process.stdout, 'fileno') or not hasattr(process.stderr, 'fileno'):
-                    raise AttributeError("Mock objects detected")
-
-                # Try using select (works for real file descriptors)
-                readable = {
-                    process.stdout.fileno(): process.stdout,
-                    process.stderr.fileno(): process.stderr
-                }
-                
-                while readable:
-                    ready, _, _ = select.select(readable.keys(), [], [])
-                    
-                    for fd in ready:
-                        line = readable[fd].readline()
-                        if not line:  # EOF
-                            del readable[fd]
-                            continue
-                            
-                        if fd == process.stdout.fileno():
-                            print(line.rstrip())
+                while not (stdout_done and stderr_done):
+                    try:
+                        stream_name, line = output_queue.get(timeout=0.1)
+                        if stream_name == 'error':
+                            print(f"DEBUG: {line}", file=sys.stderr)
+                        elif line is None:
+                            if stream_name == 'stdout':
+                                stdout_done = True
+                            else:
+                                stderr_done = True
                         else:
-                            print(line.rstrip(), file=sys.stderr)
-                            
-                        sys.stdout.flush()
-                        sys.stderr.flush()
-                    
-                    # Check if process has finished
-                    if process.poll() is not None and not readable:
-                        break
-                        
-            except (TypeError, AttributeError, IOError):
-                # Fallback for tests with mock objects
-                print("DEBUG: Using simple readline for process output")
-                while True:
-                    try:
-                        output = process.stdout.readline()
-                        if output:
-                            if isinstance(output, bytes):
-                                print(output.decode().rstrip())
+                            if stream_name == 'stdout':
+                                print(line)
+                                sys.stdout.flush()
                             else:
-                                print(output.rstrip())
-                    except (StopIteration, EOFError):
-                        break
-                    except KeyboardInterrupt as e:
-                        print(f"DEBUG: KeyboardInterrupt during readline")
-                        # Clean up process before re-raising
-                        if process is not None:
-                            try:
-                                process.terminate()
-                                try:
-                                    process.wait(timeout=2)
-                                except subprocess.TimeoutExpired:
-                                    process.kill()
-                                    process.wait()
-                            finally:
-                                if process.stdout:
-                                    process.stdout.close()
-                                if process.stderr:
-                                    process.stderr.close()
-                        raise
-                    except Exception as e:
-                        print(f"DEBUG: Exception in stdout readline: {str(e)}")
-                        break
+                                print(line, file=sys.stderr)
+                                sys.stderr.flush()
+                    except queue.Empty:
+                        # Check if process has finished
+                        if process.poll() is not None:
+                            break
 
-                    try:
-                        error = process.stderr.readline()
-                        if error:
-                            if isinstance(error, bytes):
-                                print(error.decode().rstrip(), file=sys.stderr)
-                            else:
-                                print(error.rstrip(), file=sys.stderr)
-                    except (StopIteration, EOFError):
-                        break
-                    except KeyboardInterrupt as e:
-                        print(f"DEBUG: KeyboardInterrupt during stderr readline")
-                        # Clean up process before re-raising
-                        if process is not None:
-                            try:
-                                process.terminate()
-                                try:
-                                    process.wait(timeout=2)
-                                except subprocess.TimeoutExpired:
-                                    process.kill()
-                                    process.wait()
-                            finally:
-                                if process.stdout:
-                                    process.stdout.close()
-                                if process.stderr:
-                                    process.stderr.close()
-                        raise
-                    except Exception as e:
-                        print(f"DEBUG: Exception in stderr readline: {str(e)}")
-                        break
+            except KeyboardInterrupt:
+                print("DEBUG: KeyboardInterrupt during process monitoring")
+                self._cleanup_process(process, threads)
+                raise
+            except Exception as e:
+                print(f"DEBUG: Exception during process monitoring: {str(e)}")
+                self._cleanup_process(process, threads)
 
-                    if not output and not error and process.poll() is not None:
-                        break
-
-                    sys.stdout.flush()
-                    sys.stderr.flush()
-
-            # Process has finished, get return code
+            # Wait for process completion
             return_code = process.poll()
             if return_code is None:
                 print("DEBUG: Process still running, waiting for completion")
@@ -199,44 +193,20 @@ class Encoder:
                     return_code = process.wait(timeout=2)
                 except subprocess.TimeoutExpired:
                     print("DEBUG: Process wait timed out, terminating")
-                    process.terminate()
-                    try:
-                        process.wait(timeout=2)
-                    except subprocess.TimeoutExpired:
-                        print("DEBUG: Process termination timed out, killing")
-                        process.kill()
+                    self._cleanup_process(process, threads)
                     return_code = process.wait()
+
+            # Wait for reader threads to finish
+            for thread in threads:
+                thread.join(timeout=1)
 
             print(f"DEBUG: Process completed with return code: {return_code}")
             if return_code != 0:
                 raise RuntimeError(f"Encode script failed with return code {return_code}")
 
-            # Clean up streams in normal execution path
-            if process.stdout:
-                process.stdout.close()
-            if process.stderr:
-                process.stderr.close()
-
         except Exception as e:
             print(f"DEBUG: Exception in _encode_file: {str(e)}")
-            if process is not None:
-                print("DEBUG: Attempting to clean up any remaining processes")
-                try:
-                    print("DEBUG: Cleaning up process")
-                    process.terminate()
-                    try:
-                        process.wait(timeout=2)
-                    except subprocess.TimeoutExpired:
-                        print("DEBUG: Force killing process")
-                        process.kill()
-                        process.wait()
-                except Exception as e:
-                    print(f"DEBUG: Error during process cleanup: {str(e)}")
-                finally:
-                    if process.stdout:
-                        process.stdout.close()
-                    if process.stderr:
-                        process.stderr.close()
+            self._cleanup_process(process, threads)
             raise
 
     def get_files_needing_processing(self, input_path: Path, output_path: Path) -> List[Tuple[Path, Path]]:
@@ -245,12 +215,15 @@ class Encoder:
         work_items = []
         for input_file in input_path.glob("*.mkv"):
             output_file = output_path / input_file.name
-            needs_processing = not output_file.exists() or output_file.stat().st_size == 0
+            # Always process files unless they exist and have a reasonable size
+            needs_processing = not output_file.exists() or output_file.stat().st_size < 1024  # Only skip if file exists and is larger than 1KB
             print(f"DEBUG: File {input_file.name} - exists: {output_file.exists()}, "
                   f"size: {output_file.stat().st_size if output_file.exists() else 0}, "
                   f"needs_processing: {needs_processing}")
             if needs_processing:
                 work_items.append((input_file, output_file))
+            else:
+                print(f"DEBUG: Skipping {input_file.name} - already processed")
         print(f"DEBUG: Found {len(work_items)} files needing processing")
         return work_items
 
@@ -269,26 +242,12 @@ class Encoder:
                 raise FileNotFoundError(f"Input not found: {input_path}")
 
             # Set up environment
-            env = os.environ.copy()
-            env["SCRIPT_DIR"] = str(self.script_dir)
+            env = self.env.copy()  # Use the pre-configured environment with color support
             env["PYTHONUNBUFFERED"] = "1"
-            env["FORCE_COLOR"] = "1"
-            env["CLICOLOR"] = "1"
-            env["CLICOLOR_FORCE"] = "1"
             
             # Add drapto package root to PYTHONPATH
             drapto_root = str(Path(__file__).parent.parent.parent)
             env["PYTHONPATH"] = drapto_root + os.pathsep + env.get("PYTHONPATH", "")
-            
-            # Preserve existing TERM but ensure it indicates color support
-            current_term = os.environ.get("TERM", "")
-            if not any(x in current_term for x in ["color", "xterm", "vt100"]):
-                current_term = "xterm-256color"
-            env["TERM"] = current_term
-            
-            # Additional color forcing for bash scripts
-            env["NO_COLOR"] = "0"  # Disable NO_COLOR if set
-            env["COLORTERM"] = "truecolor"  # Indicate full color support
             
             # Create temp directory for processing
             temp_dir = tempfile.mkdtemp()
