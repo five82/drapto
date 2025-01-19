@@ -1,0 +1,50 @@
+# Cursor Rules for drapto
+# Enforces the migration from bash to Python and maintains code quality
+
+[rules]
+# Prevent creation of new bash scripts
+deny_patterns = [
+    "*.sh",
+    "*.bash"
+]
+
+# Only allow Python files in src/drapto
+allow_patterns = [
+    "src/drapto/**/*.py",
+    "tests/**/*.py",
+    "docs/*",
+    ".git/*",
+    "*.md",
+    ".cursorrules",
+    ".gitignore",
+    "pyproject.toml",
+    "setup.cfg",
+    "requirements.txt",
+    "requirements-dev.txt"
+]
+
+# Enforce Python type hints
+require_type_hints = true
+
+# Enforce docstrings
+require_docstrings = true
+
+# Enforce test coverage
+min_test_coverage = 90
+
+[style]
+# Follow PEP 8
+line_length = 88
+indent = 4
+use_spaces = true
+
+[imports]
+# Prevent importing subprocess directly (use our process management)
+deny_imports = [
+    "subprocess",
+    "os.system"
+]
+
+[documentation]
+# Require documentation updates with code changes
+require_doc_updates = true 
