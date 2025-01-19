@@ -17,7 +17,7 @@ drapto is designed to work specifically with MKV video files sourced from DVD, B
 7. [Audio Processing](#audio-processing)
 8. [Crop Detection](#crop-detection)
 9. [Codec Usage](#codec-usage)
-10. [Quality Control](#quality-control)
+10. [Validation and Quality Control](#validation-and-quality-control)
 11. [Default Settings](#default-settings)
 12. [User Configuration](#user-configuration)
 13. [Hardware Acceleration](#hardware-acceleration)
@@ -709,20 +709,80 @@ drapto employs a strict set of codecs:
    - ab-av1: Chunked encoding path
    - mediainfo: Content analysis
 
-## Quality Control
+## Validation and Quality Control
 
-Quality control varies by encoding path:
+drapto implements comprehensive validation and quality control throughout the encoding process:
 
-### Standard Path (CRF-based)
-- Resolution-dependent CRF:
-  - SD (≤720p): 25
-  - HD (≤1080p): 25
-  - UHD (>1080p): 29
+1. **Output File Validation**
+   ```bash
+   # Core validation checks
+   - File existence and size verification
+   - AV1 video stream presence
+   - Opus audio stream count
+   - Duration comparison (±1 second tolerance)
+   - Stream integrity verification
+   ```
 
-### Chunked Path (VMAF-based)
-- Target VMAF score
-- Multiple encoding attempts with different strategies
-- Quality validation per segment
+2. **Size and Performance Metrics**
+   - Input vs output size comparison
+   - Compression ratio calculation
+   - Processing time tracking
+   - Resource utilization monitoring
+   - Performance statistics:
+     ```bash
+     # Example metrics
+     Input size:  15.7 GiB
+     Output size: 4.2 GiB
+     Reduction:   73.25%
+     Encode time: 02h 15m 30s
+     ```
+
+3. **Segment Validation** (Chunked Mode)
+   - Minimum segment size check (1KB)
+   - Video stream presence in each segment
+   - Segment ordering verification
+   - Concatenation integrity checks
+   - VMAF score validation per segment
+
+4. **Track-Level Validation**
+   - Video track codec verification
+   - Audio track codec and count validation
+   - Stream mapping verification
+   - Metadata preservation checks
+   - Channel layout validation
+
+5. **Quality Metrics**
+   - Resolution-specific CRF validation
+   - VMAF score tracking (chunked mode)
+   - Audio bitrate verification
+   - Frame rate consistency
+   - Color space validation
+
+6. **Error Detection and Recovery**
+   - Hardware acceleration fallback detection
+   - Encoding failure identification
+   - Resource exhaustion monitoring
+   - Stream corruption detection
+   - Process interruption handling
+
+7. **Progress and Results Tracking**
+   ```bash
+   # Tracking data structure
+   TEMP_DIR/encode_data/
+   ├── encoded_files.txt     # Successfully processed files
+   ├── encoding_times.txt    # Processing duration data
+   ├── input_sizes.txt      # Original file sizes
+   ├── output_sizes.txt     # Encoded file sizes
+   ├── segments.json        # Segment tracking data
+   └── encoding.json        # Encoding state information
+   ```
+
+8. **Final Validation Summary**
+   - Overall compression statistics
+   - Processing time analysis
+   - Success/failure ratio
+   - Resource usage summary
+   - Quality metrics report
 
 ## Default Settings
 
