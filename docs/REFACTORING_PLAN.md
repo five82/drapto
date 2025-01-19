@@ -6,12 +6,13 @@
    - ✅ Maintain color output via environment variables
    - ✅ Test with both encoding paths
 
-2. Directory Structure Migration
-   - Create new directory structure as outlined in TARGET_STRUCTURE.md
-   - Move existing code to new locations
-   - Update imports and references
-   - Add placeholder files for planned modules
-   - Test structure with existing functionality
+2. Directory Structure Migration (Python Only)
+   - Create new directory structure for Python code as outlined in TARGET_STRUCTURE.md
+   - Move existing Python code to new locations (leave bash scripts in place)
+   - Update Python imports and references
+   - Add placeholder Python modules for planned functionality
+   - Test Python structure with existing functionality
+   - Note: Bash scripts remain untouched until Phase 5
 
 3. Consolidate Environment Variables
    - Create central config management in Python
