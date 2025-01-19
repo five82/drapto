@@ -484,10 +484,10 @@ main() {
     local files=()
     if [[ -n "${INPUT_FILE}" ]]; then
         # Single file mode
-        if [[ -f "${INPUT_DIR}/${INPUT_FILE}" ]]; then
-            files=("${INPUT_DIR}/${INPUT_FILE}")
+        if [[ -f "${INPUT_FILE}" ]]; then
+            files=("${INPUT_FILE}")
         else
-            print_error "Input file not found: ${INPUT_DIR}/${INPUT_FILE}"
+            print_error "Input file not found: ${INPUT_FILE}"
             exit 1
         fi
     else
