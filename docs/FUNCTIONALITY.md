@@ -299,13 +299,14 @@ Users can customize the following settings:
 ## Hardware Acceleration
 
 1. **Detection**
-   - Automatically checks for supported hardware acceleration
+   - Automatically checks for supported hardware acceleration for decoding
    - Currently supports:
-     - macOS: VideoToolbox
-   - Falls back to software encoding if hardware acceleration fails
+     - macOS: VideoToolbox (decoding only)
+   - Falls back to software decoding if hardware acceleration fails
 
 2. **Implementation**
-   - Applied during video decoding phase
+   - Applied during video decoding phase only
+   - No hardware acceleration for encoding (always uses software SVT-AV1)
    - Automatic fallback to software decoding on failure
    - Can be manually disabled
    - Hardware acceleration status logged during processing
