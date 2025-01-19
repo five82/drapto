@@ -75,7 +75,7 @@ When a video is input to drapto, it undergoes the following analysis steps:
           * Resolution-dependent CRF values
         - **Chunked Path** (when enabled):
           * Segments video into chunks
-          * VMAF-based quality targeting
+          * VMAF-based quality targeting with ab-av1
           * Multi-tier encoding strategy
           * Parallel processing of segments
      4. Quality validation
@@ -367,18 +367,55 @@ Users can customize the following settings:
 
 ## Hardware Acceleration
 
-1. **Detection**
-   - Automatically checks for supported hardware acceleration for decoding
-   - Currently supports:
-     - macOS: VideoToolbox (decoding only)
-   - Falls back to software decoding if hardware acceleration fails
+Hardware acceleration in drapto is specifically focused on video decoding to improve input processing performance:
 
-2. **Implementation**
-   - Applied during video decoding phase only
+1. **Platform Support**
+   - macOS: VideoToolbox (decoding only)
+     ```bash
+     # Detection via FFmpeg
+     ffmpeg -hide_banner -hwaccels | grep -q videotoolbox
+     ```
+   - Other platforms: Currently not supported
+   - Future platforms can be added by extending the detection logic
+
+2. **Detection Process**
+   - Automatic platform detection using `$OSTYPE`
+   - FFmpeg capability check for supported accelerators
+   - Sets `HW_ACCEL` environment variable:
+     - `videotoolbox` for macOS with VideoToolbox support
+     - `none` when no acceleration is available
+   - Logs detection results for debugging
+
+3. **Implementation Details**
+   - Applied only during video decoding phase
    - No hardware acceleration for encoding (always uses software SVT-AV1)
-   - Automatic fallback to software decoding on failure
-   - Can be manually disabled
-   - Hardware acceleration status logged during processing
+   - FFmpeg options set via `HWACCEL_OPTS` variable
+   - Special handling for Dolby Vision content
+   - Can be manually disabled via configuration
+
+4. **Fallback Mechanism**
+   - Primary attempt: Uses configured hardware acceleration
+   - On failure:
+     1. Logs failure with warning message
+     2. Clears hardware acceleration options
+     3. Automatically retries with software decoding
+     4. Maintains all other encoding parameters
+   - Fallback is transparent to the user
+   - Performance impact is logged
+
+5. **Configuration**
+   - Hardware acceleration state tracked in `HWACCEL_OPTS`
+   - Default: Enabled if available
+   - Can be disabled through user configuration
+   - Status logged during initialization
+   - Applied consistently across all processing modes
+
+6. **Logging and Diagnostics**
+   - Hardware support detection logged
+   - Acceleration mode changes tracked
+   - Fallback events recorded
+   - Performance metrics maintained
+   - Error conditions documented in logs
 
 ## Validation Process
 
