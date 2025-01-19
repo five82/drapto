@@ -23,6 +23,7 @@ drapto is designed to work specifically with MKV video files sourced from DVD, B
 13. [Validation Process](#validation-process)
 14. [Error Recovery and Fallback Mechanisms](#error-recovery-and-fallback-mechanisms)
 15. [Progress Tracking and Logging](#progress-tracking-and-logging)
+16. [Directory Structure](#directory-structure)
 
 ## Input Video Processing Flow
 
@@ -647,3 +648,90 @@ drapto maintains comprehensive progress tracking and logging through a structure
    - Removes temporary files
    - Archives completed job data
    - Manages disk space usage
+
+## Directory Structure
+
+drapto uses a structured directory layout to organize processing files and enable effective debugging:
+
+1. **Root Structure**
+   ```
+   $HOME/projects/drapto/
+   ├── input/                  # Source video files
+   ├── output/                 # Encoded output files
+   └── temp/                   # Temporary processing directory
+       ├── logs/              # Processing logs
+       ├── encode_data/       # State tracking
+       ├── segments/          # Video segments
+       ├── encoded/           # Encoded segments
+       └── working/           # Active processing
+   ```
+
+2. **Temporary Directory Contents**
+   - **logs/**
+     - `*.log`: Per-file processing logs
+     - `error_*.log`: Error condition logs
+     - `debug_*.log`: Detailed debug information
+   
+   - **encode_data/**
+     - `encoded_files.txt`: Successfully processed files
+     - `encoding_times.txt`: Processing durations
+     - `input_sizes.txt`: Original file sizes
+     - `output_sizes.txt`: Encoded file sizes
+     - `segments.json`: Segment tracking data
+     - `encoding.json`: Encoding state information
+   
+   - **segments/**
+     - `0001.mkv`, `0002.mkv`, etc.: Raw video segments
+     - Preserved until successful encoding
+     - Used for chunked encoding mode only
+   
+   - **encoded/**
+     - `0001.mkv`, `0002.mkv`, etc.: Encoded segments
+     - Intermediate files before final mux
+     - Validated before concatenation
+   
+   - **working/**
+     - `video.mkv`: Current video track
+     - `audio-*.mkv`: Audio tracks
+     - `concat.txt`: Segment list
+     - `temp/`: Additional temporary files
+
+3. **Debugging Tips**
+   - Check `logs/` for detailed error information
+   - Inspect `encode_data/` for progress tracking
+   - Verify segment integrity in `segments/` and `encoded/`
+   - Monitor active processing in `working/`
+   - Use log files to track encoding decisions
+
+4. **Cleanup Guidelines**
+   - Temporary files auto-cleaned on successful completion
+   - Manual cleanup may be needed after failures:
+     ```bash
+     # Clean temporary files
+     rm -rf temp/working/* temp/segments/* temp/encoded/*
+     
+     # Preserve logs and tracking data
+     rm -rf temp/working temp/segments temp/encoded
+     
+     # Full cleanup (including logs)
+     rm -rf temp/*
+     ```
+   - Preserve logs for debugging failed encodes
+   - Archive important logs before cleanup
+   - Maintain tracking files for analysis
+
+5. **Storage Management**
+   - Monitor disk usage in temporary directories
+   - Regular cleanup of old log files
+   - Segment files can be large
+   - Consider space requirements:
+     - Source file size × 1.5 for temporary files
+     - Additional space for encoded output
+     - Log and tracking data (typically minimal)
+
+6. **Recovery Procedures**
+   - Interrupted jobs: Check `encode_data/` state
+   - Failed segments: Inspect `encoded/` contents
+   - Verify partial progress in tracking files
+   - Resume from last successful segment
+   - Preserve logs for troubleshooting
