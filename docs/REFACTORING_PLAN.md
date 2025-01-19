@@ -2,9 +2,9 @@
 
 ## Phase 1: Stabilize Current Process Management
 1. ✅ Remove PTY handling (COMPLETED)
-   - Replace with direct subprocess management
-   - Maintain color output via environment variables
-   - Test with both encoding paths
+   - ✅ Replace with direct subprocess management
+   - ✅ Maintain color output via environment variables
+   - ✅ Test with both encoding paths
 
 2. Directory Structure Migration
    - Create new directory structure as outlined in TARGET_STRUCTURE.md
