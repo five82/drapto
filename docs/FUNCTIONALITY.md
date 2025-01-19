@@ -399,13 +399,109 @@ drapto implements a modular strategy system for encoding, allowing different app
    5. Update selection logic if needed
 
 6. **Configuration System**
-   - JSON-based configuration
-   - Per-strategy settings
-   - Override capabilities:
-     - Quality parameters
-     - Processing options
-     - Resource allocation
-     - Output preferences
+   The configuration system uses Python-based JSON helpers for robust state management and strategy configuration:
+
+   ```python
+   # Core configuration files
+   TEMP_DIR/encode_data/
+   ├── encoding.json     # Encoding state and retry strategies
+   ├── segments.json     # Segment tracking
+   └── progress.json     # Overall progress tracking
+   ```
+
+   **encoding.json Structure:**
+   ```json
+   {
+     "segments": {},           # Segment processing state
+     "created_at": "",        # Creation timestamp
+     "updated_at": "",        # Last update timestamp
+     "total_attempts": 0,     # Total encoding attempts
+     "failed_segments": 0,    # Number of failed segments
+     "max_attempts": 3,       # Maximum retry attempts
+     "retry_strategies": [    # Available retry strategies
+       {
+         "name": "default",
+         "description": "Default encoding settings",
+         "samples": 4,
+         "sample_duration": 1
+       },
+       {
+         "name": "more_samples",
+         "description": "More samples for better quality estimation",
+         "samples": 6,
+         "sample_duration": 2
+       },
+       {
+         "name": "lower_vmaf",
+         "description": "Lower VMAF target by 2 points",
+         "samples": 6,
+         "sample_duration": 2,
+         "vmaf_reduction": 2
+       }
+     ]
+   }
+   ```
+
+   **segments.json Structure:**
+   ```json
+   {
+     "created_at": "",     # Creation timestamp
+     "updated_at": "",     # Last update timestamp
+     "segments": [         # List of video segments
+       {
+         "index": 0,
+         "path": "segments/0001.mkv",
+         "size": 15728640,
+         "start_time": 0.0,
+         "duration": 15.0,
+         "created_at": "2024-01-18T00:00:00Z"
+       }
+     ]
+   }
+   ```
+
+   **progress.json Structure:**
+   ```json
+   {
+     "created_at": "",           # Creation timestamp
+     "updated_at": "",           # Last update timestamp
+     "current_segment": 0,       # Current processing segment
+     "segments_completed": 0,    # Completed segments count
+     "segments_failed": 0,       # Failed segments count
+     "total_segments": 0        # Total number of segments
+   }
+   ```
+
+   **Configuration Features:**
+   1. **State Management**
+      - Atomic file operations with locking
+      - Retry mechanism for file operations
+      - Default data initialization
+      - Timestamp management
+
+   2. **Segment Tracking**
+      - Individual segment status tracking
+      - Retry strategy management
+      - Progress monitoring
+      - Error tracking
+
+   3. **Progress Monitoring**
+      - Overall progress tracking
+      - Segment completion status
+      - Failure tracking
+      - Performance metrics
+
+   4. **Error Handling**
+      - Detailed error tracking per segment
+      - Strategy attempt history
+      - Failure cause identification
+      - Recovery state preservation
+
+   5. **Performance Metrics**
+      - Processing time tracking
+      - Resource utilization
+      - Compression statistics
+      - Quality measurements
 
 7. **Error Handling**
    - Strategy-specific error recovery
@@ -958,165 +1054,6 @@ drapto maintains comprehensive progress tracking and logging through a structure
    ├── encoding_times.txt    # Processing duration for each file
    ├── input_sizes.txt       # Original file sizes
    ├── output_sizes.txt      # Encoded file sizes
-   ├── segments.json         # Segment tracking for chunked encoding
+   ├── segments.json         # Segment tracking data
    └── encoding.json         # Encoding state and progress
    ```
-
-2. **File Contents and Format**
-   - **encoded_files.txt**
-     ```
-     /path/to/file1.mkv
-     /path/to/file2.mkv
-     ```
-   - **encoding_times.txt**
-     ```
-     file1.mkv,3600      # Duration in seconds
-     file2.mkv,7200
-     ```
-   - **segments.json**
-     ```json
-     {
-       "total_segments": 120,
-       "total_duration": 3600,
-       "segments": [
-         {
-           "index": 0,
-           "path": "segments/0001.mkv",
-           "size": 15728640,
-           "start_time": 0.0,
-           "duration": 15.0,
-           "created_at": "2024-01-18T00:00:00Z"
-         }
-       ]
-     }
-     ```
-
-3. **Progress Monitoring**
-   - Real-time tracking of:
-     - Overall progress
-     - Current file status
-     - Segment processing status
-     - Encoding performance
-     - Resource utilization
-
-4. **Performance Metrics**
-   - Encoding speed (fps)
-   - Compression ratio
-   - Processing time per file
-   - Size reduction statistics
-   - Resource usage trends
-
-5. **State Management**
-   - Tracks encoding state per file
-   - Maintains segment processing state
-   - Records encoding strategy used
-   - Preserves quality metrics
-   - Stores error conditions
-
-6. **Recovery Support**
-   - Enables resume after interruption
-   - Tracks partially completed files
-   - Maintains segment completion status
-   - Records failed attempts
-   - Preserves encoding parameters
-
-7. **Analysis Features**
-   - Size reduction analysis
-   - Processing time statistics
-   - Quality metrics tracking
-   - Error pattern detection
-   - Performance optimization data
-
-8. **Cleanup Policies**
-   - Preserves logs for debugging
-   - Maintains historical data
-   - Removes temporary files
-   - Archives completed job data
-   - Manages disk space usage
-
-## Directory Structure
-
-drapto uses a structured directory layout to organize processing files and enable effective debugging:
-
-1. **Root Structure**
-   ```
-   $HOME/projects/drapto/
-   ├── input/                  # Source video files
-   ├── output/                 # Encoded output files
-   └── temp/                   # Temporary processing directory
-       ├── logs/              # Processing logs
-       ├── encode_data/       # State tracking
-       ├── segments/          # Video segments
-       ├── encoded/           # Encoded segments
-       └── working/           # Active processing
-   ```
-
-2. **Temporary Directory Contents**
-   - **logs/**
-     - `*.log`: Per-file processing logs
-     - `error_*.log`: Error condition logs
-     - `debug_*.log`: Detailed debug information
-   
-   - **encode_data/**
-     - `encoded_files.txt`: Successfully processed files
-     - `encoding_times.txt`: Processing durations
-     - `input_sizes.txt`: Original file sizes
-     - `output_sizes.txt`: Encoded file sizes
-     - `segments.json`: Segment tracking data
-     - `encoding.json`: Encoding state information
-   
-   - **segments/**
-     - `0001.mkv`, `0002.mkv`, etc.: Raw video segments
-     - Preserved until successful encoding
-     - Used for chunked encoding mode only
-   
-   - **encoded/**
-     - `0001.mkv`, `0002.mkv`, etc.: Encoded segments
-     - Intermediate files before final mux
-     - Validated before concatenation
-   
-   - **working/**
-     - `video.mkv`: Current video track
-     - `audio-*.mkv`: Audio tracks
-     - `concat.txt`: Segment list
-     - `temp/`: Additional temporary files
-
-3. **Debugging Tips**
-   - Check `logs/` for detailed error information
-   - Inspect `encode_data/` for progress tracking
-   - Verify segment integrity in `segments/` and `encoded/`
-   - Monitor active processing in `working/`
-   - Use log files to track encoding decisions
-
-4. **Cleanup Guidelines**
-   - Temporary files auto-cleaned on successful completion
-   - Manual cleanup may be needed after failures:
-     ```bash
-     # Clean temporary files
-     rm -rf temp/working/* temp/segments/* temp/encoded/*
-     
-     # Preserve logs and tracking data
-     rm -rf temp/working temp/segments temp/encoded
-     
-     # Full cleanup (including logs)
-     rm -rf temp/*
-     ```
-   - Preserve logs for debugging failed encodes
-   - Archive important logs before cleanup
-   - Maintain tracking files for analysis
-
-5. **Storage Management**
-   - Monitor disk usage in temporary directories
-   - Regular cleanup of old log files
-   - Segment files can be large
-   - Consider space requirements:
-     - Source file size × 1.5 for temporary files
-     - Additional space for encoded output
-     - Log and tracking data (typically minimal)
-
-6. **Recovery Procedures**
-   - Interrupted jobs: Check `encode_data/` state
-   - Failed segments: Inspect `encoded/` contents
-   - Verify partial progress in tracking files
-   - Resume from last successful segment
-   - Preserve logs for troubleshooting
