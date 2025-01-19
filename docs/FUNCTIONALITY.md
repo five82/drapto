@@ -84,10 +84,16 @@ When a video is input to drapto, it undergoes the following analysis steps:
           * Parallel processing of segments
      4. Quality validation
    - **Audio Processing**
-     1. Stream extraction
-     2. Channel layout analysis
-     3. Opus encoding with appropriate bitrate
-     4. Track metadata preservation
+     1. Track discovery and analysis
+     2. Channel detection and bitrate assignment
+     3. Per-track processing
+     4. Failure recovery
+     5. Quality control
+     6. Track management
+     7. Error handling
+     8. Performance optimization
+     9. Recovery procedures
+     10. Logging and diagnostics
    - **Subtitle Processing**
      1. Extract subtitle tracks
      2. Preserve formatting and timing
@@ -554,28 +560,102 @@ drapto employs a sophisticated track-by-track muxing system to ensure proper han
 
 ## Audio Processing
 
-Audio processing is handled with the following approach:
+drapto implements granular audio track processing with individual track handling and failure recovery:
 
-1. **Channel Detection and Bitrate Assignment**
-   | Channels | Layout  | Bitrate |
-   |----------|---------|---------|
-   | 1        | Mono    | 64k     |
-   | 2        | Stereo  | 128k    |
-   | 6        | 5.1     | 256k    |
-   | 8        | 7.1     | 384k    |
-   | Other    | Custom  | 48k/ch  |
+1. **Track Discovery and Analysis**
+   ```bash
+   # Get number of audio tracks
+   audio_stream_count=$("${FFPROBE}" -v error \
+     -select_streams a \
+     -show_entries stream=index \
+     -of csv=p=0 "${input_file}" | wc -l)
+   
+   # For each track, analyze characteristics
+   IFS=$'\n' read -r -d '' -a audio_channels < <("${FFPROBE}" -v error \
+     -select_streams a \
+     -show_entries stream=channels \
+     -of csv=p=0 "${input_file}" && printf '\0')
+   ```
 
-2. **Encoding Settings**
-   - Codec: libopus
-   - Mode: VBR (Variable Bit Rate)
-   - Compression Level: 10
-   - Frame Duration: 20ms
-   - Channel Layout Filter: Standardized to 7.1/5.1/stereo/mono
+2. **Channel Detection and Bitrate Assignment**
+   ```bash
+   # Standardize channel layouts and bitrates
+   case $num_channels in
+       1)  bitrate="64k"; layout="mono" ;;
+       2)  bitrate="128k"; layout="stereo" ;;
+       6)  bitrate="256k"; layout="5.1" ;;
+       8)  bitrate="384k"; layout="7.1" ;;
+       *)  print_warning "Unsupported channel count, defaulting to stereo"
+           num_channels=2
+           bitrate="128k"
+           layout="stereo"
+           ;;
+   esac
+   ```
 
-3. **Multi-track Handling**
-   - Processes each audio track independently
-   - Maintains original track count
-   - Preserves track languages and metadata
+3. **Per-Track Processing**
+   ```bash
+   # Apply consistent audio encoding settings
+   audio_opts+=" -map 0:a:${stream_index}"
+   audio_opts+=" -c:a:${stream_index} libopus"
+   audio_opts+=" -b:a:${stream_index} ${bitrate}"
+   audio_opts+=" -ac:${stream_index} ${num_channels}"
+   
+   # Apply consistent channel layout filter
+   audio_opts+=" -filter:a:${stream_index} aformat=channel_layouts=7.1|5.1|stereo|mono"
+   
+   # Set consistent opus-specific options
+   audio_opts+=" -application:a:${stream_index} audio"
+   audio_opts+=" -frame_duration:a:${stream_index} 20"
+   audio_opts+=" -vbr:a:${stream_index} on"
+   audio_opts+=" -compression_level:a:${stream_index} 10"
+   ```
+
+4. **Track Metadata Preservation**
+   - Language tags
+   - Track titles
+   - Delay information
+   - Channel layout
+   - Stream metadata
+
+5. **Quality Control**
+   - Track integrity verification
+   - Channel count validation
+   - Bitrate confirmation
+   - Duration matching
+   - Sample rate checking
+   - Gap detection
+   - Encoding parameter validation
+
+6. **Error Handling**
+   - Track-specific error codes
+   - Granular error reporting
+   - Track processing status tracking
+   - Failure cause identification
+   - Recovery action logging
+
+7. **Performance Optimization**
+   - Sequential track processing
+   - Resource allocation per track
+   - Progress monitoring
+   - Track-specific timing
+   - Memory usage control
+   - I/O optimization
+
+8. **Recovery Procedures**
+   - Track processing resume
+   - Partial progress preservation
+   - Failed track isolation
+   - Alternative processing paths
+   - Quality compromise options
+
+9. **Logging and Diagnostics**
+   - Per-track log files
+   - Processing statistics
+   - Error condition details
+   - Performance metrics
+   - Quality measurements
+   - Recovery attempts
 
 ## Crop Detection
 
