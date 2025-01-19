@@ -9,103 +9,200 @@ drapto/
 ├── src/
 │   └── drapto/
 │       ├── __init__.py
-│       ├── cli.py               # Command-line interface
+│       ├── cli.py                    # Command-line interface
 │       ├── core/
 │       │   ├── __init__.py
-│       │   ├── encoder.py       # Main encoder class
-│       │   ├── process.py       # Process management
-│       │   └── state.py         # State management
+│       │   ├── encoder.py            # Main encoder class
+│       │   ├── process/              # Process management
+│       │   │   ├── __init__.py
+│       │   │   ├── manager.py        # Process lifecycle management
+│       │   │   ├── hierarchy.py      # Process hierarchy tracking
+│       │   │   ├── resources.py      # Resource tracking and cleanup
+│       │   │   └── signals.py        # Signal handling
+│       │   ├── state/               # State management
+│       │   │   ├── __init__.py
+│       │   │   ├── manager.py       # In-memory state manager
+│       │   │   ├── boundaries.py    # State boundaries
+│       │   │   └── validation.py    # State validation
+│       │   └── events/              # Event system
+│       │       ├── __init__.py
+│       │       ├── dispatcher.py    # Event dispatching
+│       │       ├── handlers.py      # Event handlers
+│       │       └── streams.py       # Progress streaming
 │       ├── config/
 │       │   ├── __init__.py
-│       │   ├── settings.py      # Configuration management
-│       │   └── defaults.py      # Default configuration values
+│       │   ├── settings.py          # Configuration management
+│       │   ├── validation.py        # Config validation
+│       │   ├── types.py            # Config type definitions
+│       │   └── defaults.py         # Default configuration values
 │       ├── encoding/
 │       │   ├── __init__.py
-│       │   ├── strategies/      # Different encoding strategies
+│       │   ├── strategies/         # Different encoding strategies
 │       │   │   ├── __init__.py
-│       │   │   ├── base.py      # Base strategy class
-│       │   │   ├── standard.py  # Standard encoding
-│       │   │   ├── chunked.py   # Chunked encoding
-│       │   │   └── parallel.py  # Parallel processing
-│       │   ├── video.py         # Video encoding logic
-│       │   ├── audio.py         # Audio encoding logic
-│       │   └── subtitles.py     # Subtitle handling
+│       │   │   ├── base.py        # Base strategy class
+│       │   │   ├── standard.py    # Standard encoding
+│       │   │   ├── chunked.py     # Chunked encoding
+│       │   │   └── parallel.py    # Parallel processing
+│       │   ├── video.py           # Video encoding logic
+│       │   ├── audio.py           # Audio encoding logic
+│       │   └── subtitles.py       # Subtitle handling
+│       ├── types/                 # Type definitions
+│       │   ├── __init__.py
+│       │   ├── process.py         # Process types
+│       │   ├── state.py          # State types
+│       │   └── events.py         # Event types
+│       ├── monitoring/           # Monitoring components
+│       │   ├── __init__.py
+│       │   ├── metrics.py        # Performance metrics
+│       │   ├── resources.py      # Resource monitoring
+│       │   └── debug.py         # Debug output
 │       └── utils/
 │           ├── __init__.py
-│           ├── ffmpeg.py        # FFmpeg integration
-│           ├── logging.py       # Logging utilities
-│           └── paths.py         # Path handling utilities
+│           ├── ffmpeg.py         # FFmpeg integration
+│           ├── logging.py        # Logging utilities
+│           └── paths.py          # Path handling utilities
 ├── tests/
 │   ├── unit/                    # Unit tests
 │   │   ├── test_core/
+│   │   │   ├── test_process/
+│   │   │   ├── test_state/
+│   │   │   └── test_events/
 │   │   ├── test_encoding/
 │   │   └── test_utils/
 │   ├── integration/             # Integration tests
 │   │   ├── test_strategies/
 │   │   └── test_end_to_end/
-│   └── conftest.py             # Test fixtures and configuration
+│   ├── fixtures/               # Test fixtures
+│   │   ├── __init__.py
+│   │   ├── process.py
+│   │   ├── state.py
+│   │   └── events.py
+│   ├── utilities/              # Test utilities
+│   │   ├── __init__.py
+│   │   ├── mocks.py
+│   │   └── helpers.py
+│   ├── coverage/              # Coverage reports
+│   ├── type_checking/         # Type validation tests
+│   └── conftest.py           # Test configuration
 ├── docs/
-│   ├── ARCHITECTURE.md         # Architecture documentation
-│   ├── REFACTORING_PLAN.md     # Refactoring plan
-│   └── API.md                  # API documentation
-└── examples/                    # Example scripts and configurations
+│   ├── api/                  # API documentation
+│   │   ├── current/
+│   │   └── migrations/
+│   ├── architecture/
+│   │   ├── OVERVIEW.md
+│   │   ├── PROCESS.md
+│   │   ├── STATE.md
+│   │   └── EVENTS.md
+│   ├── testing/
+│   │   ├── OVERVIEW.md
+│   │   ├── FIXTURES.md
+│   │   └── COVERAGE.md
+│   └── development/
+│       ├── CONTRIBUTING.md
+│       ├── STYLE.md
+│       └── WORKFLOW.md
+└── examples/                 # Example scripts and configurations
     ├── basic_usage.py
     └── advanced_config.py
 ```
-
-## Key Changes from Current Structure
-
-1. Core Components
-   - Move from bash scripts to Python-based encoding logic
-   - Separate process management into dedicated module
-   - Centralize state management
-
-2. Configuration Management
-   - Dedicated config module for all settings
-   - Clear separation of default and user configurations
-   - Environment variable handling in one place
-
-3. Encoding Strategies
-   - Clear separation of different encoding approaches
-   - Common base class for all strategies
-   - Modular approach to adding new strategies
-
-4. Utilities
-   - Dedicated modules for common functionality
-   - Better organization of helper functions
-   - Improved logging and debugging support
 
 ## Temporary Directory Structure
 During encoding operations, the following temporary directory structure will be used:
 ```
 $TEMP_DIR/
-├── state/                 # State files
-│   └── encoding_state.json
-├── segments/             # Video segments for chunked encoding
-├── encoded_segments/     # Encoded video segments
-├── working/             # Working directory for current operations
-└── logs/                # Log files
-    ├── encoder.log
-    ├── ffmpeg.log
-    └── debug.log
+├── working/              # Single working directory for all operations
+│   ├── segments/        # Video segments for chunked encoding
+│   ├── encoded/         # Encoded segments
+│   └── resources/       # Resource tracking
+├── logs/                # Log files
+│   ├── process/         # Process-specific logs
+│   ├── events/          # Event logs
+│   └── debug/           # Debug output
+└── monitoring/          # Monitoring data
+    ├── metrics/         # Performance metrics
+    └── resources/       # Resource usage data
 ```
 
-## Configuration Files
-User configuration will be handled through:
-1. Command-line arguments
-2. Environment variables
-3. Optional configuration file (YAML/JSON)
-4. Default settings
+## Core Components
 
-## Migration Strategy
-The transition from the current structure to the target structure will be gradual:
-1. First, maintain compatibility with existing scripts
-2. Gradually move functionality to Python modules
-3. Deprecate bash scripts as Python replacements are completed
-4. Finally remove bash scripts entirely
+1. **Process Management**
+   - Process lifecycle tracking
+   - Parent-child process relationships
+   - Resource tracking and cleanup
+   - Signal handling and propagation
 
-## Future Considerations
-- Plugin system for custom encoding strategies
-- API for integration with other tools
-- Web interface capabilities
-- Remote encoding support 
+2. **State Management**
+   - In-memory state tracking
+   - Atomic state updates
+   - State boundaries and validation
+   - Recovery mechanisms
+
+3. **Event System**
+   - Event dispatching
+   - Status updates
+   - Progress streaming
+   - Error propagation
+
+4. **Configuration**
+   - Type-safe settings
+   - Validation schemas
+   - Default configurations
+   - User overrides
+
+5. **Monitoring**
+   - Performance metrics
+   - Resource tracking
+   - Debug output
+   - Event logging
+
+## Testing Structure
+
+1. **Unit Tests**
+   - Component-level testing
+   - State validation
+   - Event handling
+   - Process management
+
+2. **Integration Tests**
+   - End-to-end workflows
+   - Strategy testing
+   - Performance validation
+   - Resource management
+
+3. **Test Infrastructure**
+   - Shared fixtures
+   - Mock objects
+   - Helper utilities
+   - Coverage tracking
+
+4. **Type Checking**
+   - Static type validation
+   - Runtime type checking
+   - Interface verification
+   - Type documentation
+
+## Documentation Organization
+
+1. **API Documentation**
+   - Current version
+   - Migration guides
+   - Version history
+   - Breaking changes
+
+2. **Architecture Documentation**
+   - System overview
+   - Component interactions
+   - State management
+   - Process control
+
+3. **Testing Documentation**
+   - Testing strategy
+   - Fixture usage
+   - Coverage requirements
+   - Type checking
+
+4. **Development Guides**
+   - Contributing guidelines
+   - Code style
+   - Workflow procedures
+   - Review process 
