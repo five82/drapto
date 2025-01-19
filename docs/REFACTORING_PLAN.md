@@ -51,6 +51,40 @@
    - State inspection tools
    - Test debugging capabilities
 
+## Testing Strategy
+
+Each phase of the refactoring will be accompanied by appropriate tests to ensure stability and prevent regressions. The project uses pytest as the testing framework with the following structure:
+
+- Unit tests in `tests/unit/`
+- Integration tests in `tests/integration/`
+- Common fixtures in `tests/conftest.py`
+
+### Phase 1.1 Testing Plan
+
+For the PTY removal and subprocess management changes:
+
+1. Add unit tests for:
+   - Direct subprocess management without PTY
+   - Color output preservation
+   - Process cleanup
+   - Environment variable setup
+   - Error handling and logging
+
+2. Update existing tests:
+   - Remove PTY-specific test mocks
+   - Add subprocess pipe handling tests
+   - Update environment variable tests
+
+3. Integration tests for:
+   - End-to-end encoding with new subprocess management
+   - Color output in real scenarios
+   - Process cleanup in error cases
+
+4. Success Criteria:
+   - All tests pass
+   - Coverage maintained or improved
+   - No regressions in existing functionality
+
 ## Testing Strategy for Each Phase
 1. Verify both encoding paths still work
    - Dolby Vision detection

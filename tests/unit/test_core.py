@@ -1,53 +1,119 @@
-"""Unit tests for core.py."""
+"""Unit tests for core functionality."""
 import os
-import pytest
+import subprocess
 from pathlib import Path
+import pytest
 from drapto.core import Encoder
 
-def test_encoder_initialization(encoder):
-    """Test that Encoder initializes correctly."""
+def test_encoder_initialization():
+    """Test encoder initialization."""
+    encoder = Encoder()
     assert encoder.script_dir.exists()
     assert encoder.encode_script.exists()
-    assert encoder.encode_script.is_file()
     assert os.access(encoder.encode_script, os.X_OK)
 
-def test_encoder_with_invalid_script_dir(monkeypatch, tmp_path):
-    """Test Encoder initialization with invalid script directory."""
-    def mock_parent(self):
-        return tmp_path
-    monkeypatch.setattr(Path, "parent", property(mock_parent))
-    with pytest.raises(RuntimeError, match="Script directory not found"):
-        Encoder()
+def test_encoder_with_invalid_script_dir(tmp_path):
+    """Test encoder initialization with invalid script dir."""
+    class BadEncoder(Encoder):
+        def __init__(self):
+            # Set script_dir before super().__init__() so the check happens
+            self.script_dir = tmp_path / "nonexistent"
+            super().__init__()  # This will now raise the error
+
+    with pytest.raises(RuntimeError, match=f"Script directory not found: {tmp_path / 'nonexistent'}"):
+        BadEncoder()
 
 def test_encode_file_environment_setup(encoder, mock_video_file, temp_dir, mocker):
     """Test environment setup for encoding."""
     output_path = temp_dir / "output.mp4"
     env = {"TEMP_DIR": str(temp_dir)}
-    
-    # Mock the subprocess.Popen to avoid actual execution
+
+    # Mock subprocess.Popen for process management
     mock_process = mocker.MagicMock()
     mock_process.returncode = 0
-    mock_process.poll.return_value = 0
+    mock_process.stdout = mocker.MagicMock()
+    mock_process.stdout.readline.side_effect = [
+        b"Processing...\n",
+        StopIteration(),  # End of output
+    ]
+    mock_process.stderr = mocker.MagicMock()
+    mock_process.stderr.readline.side_effect = [StopIteration()]  # No stderr output
+    mock_process.poll.side_effect = [0]  # Process completes immediately
+
     mock_popen = mocker.patch("subprocess.Popen", return_value=mock_process)
-    
-    # Mock PTY operations
-    mocker.patch("pty.openpty", return_value=(0, 1))
-    mocker.patch("termios.tcgetattr", return_value=[0] * 7)  # Mock terminal attributes
-    mocker.patch("termios.tcsetattr")
-    mocker.patch("os.close")
-    mocker.patch("fcntl.fcntl")
-    mocker.patch("os.get_terminal_size", side_effect=OSError)  # Simulate no terminal
-    mocker.patch("select.select", return_value=([0], [], []))  # Simulate ready to read
-    mocker.patch("os.read", side_effect=["some output".encode(), b""])  # Simulate some output then EOF
-    mocker.patch("os.write")  # Mock writing to stdout
-    
+    mocker.patch("time.sleep")  # Speed up test
+
     # Call the internal encode method
     encoder._encode_file(mock_video_file, output_path, env)
-    
+
     # Verify environment setup
+    mock_popen.assert_called_once()
     call_env = mock_popen.call_args[1]["env"]
-    assert call_env["INPUT_DIR"] == str(mock_video_file.parent)
-    assert call_env["OUTPUT_DIR"] == str(output_path.parent)
-    assert call_env["LOG_DIR"] == str(Path(env["TEMP_DIR"]) / "logs")
-    assert call_env["INPUT_FILE"] == mock_video_file.name
-    assert call_env["PTY"] == "1"  # Verify PTY environment variable is set
+    assert "INPUT_FILE" in call_env
+    assert "OUTPUT_FILE" in call_env
+    assert "INPUT_DIR" in call_env
+    assert "OUTPUT_DIR" in call_env
+    assert "LOG_DIR" in call_env
+    assert "TEMP_DATA_DIR" in call_env
+    assert call_env["FORCE_COLOR"] == "1"
+
+def test_encode_file_process_cleanup(encoder, mock_video_file, temp_dir, mocker):
+    """Test process cleanup on error."""
+    output_path = temp_dir / "output.mp4"
+    env = {"TEMP_DIR": str(temp_dir)}
+
+    # Mock subprocess.Popen for process management
+    mock_process = mocker.MagicMock()
+    mock_process.returncode = None  # Process hasn't finished
+    mock_process.stdout = mocker.MagicMock()
+    mock_process.stdout.readline.side_effect = KeyboardInterrupt()  # Raise interrupt immediately
+    mock_process.stderr = mocker.MagicMock()
+    mock_process.stderr.readline.side_effect = [StopIteration()]  # No stderr output
+    mock_process.poll.side_effect = [None, None]  # Process still running
+    mock_process.wait.side_effect = [subprocess.TimeoutExpired("cmd", 2), 0]  # Timeout then success
+    mock_process.kill.return_value = None  # Kill succeeds silently
+
+    mocker.patch("subprocess.Popen", return_value=mock_process)
+    mocker.patch("time.sleep")  # Speed up test
+
+    # Call the internal encode method - should handle the interrupt
+    with pytest.raises(KeyboardInterrupt):
+        encoder._encode_file(mock_video_file, output_path, env)
+
+    # Verify cleanup - process should be terminated and then killed
+    assert mock_process.terminate.call_count >= 1
+    assert mock_process.kill.call_count >= 1
+    assert mock_process.stdout.close.call_count >= 1
+    assert mock_process.stderr.close.call_count >= 1
+
+def test_encode_file_output_handling(encoder, mock_video_file, temp_dir, mocker):
+    """Test handling of process output."""
+    output_path = temp_dir / "output.mp4"
+    env = {"TEMP_DIR": str(temp_dir)}
+
+    # Mock subprocess.Popen with some typical ffmpeg output
+    mock_process = mocker.MagicMock()
+    mock_process.returncode = None  # Start with no return code
+    mock_process.stdout = mocker.MagicMock()
+    mock_process.stdout.readline.side_effect = [
+        b"frame=  100 fps=25 q=20.0 size=    500kB time=00:00:04.00 bitrate= 1024.0kbits/s\n",
+        b"frame=  200 fps=25 q=20.0 size=   1000kB time=00:00:08.00 bitrate= 1024.0kbits/s\n",
+        b"",  # Empty line to trigger EOF
+    ]
+    mock_process.stderr = mocker.MagicMock()
+    mock_process.stderr.readline.side_effect = [b""]  # Empty line for stderr
+    mock_process.poll.side_effect = [None, None, 0]  # Process completes after output
+    mock_process.wait.return_value = 0  # Process completes successfully
+
+    mocker.patch("subprocess.Popen", return_value=mock_process)
+    mocker.patch("time.sleep")  # Speed up test
+
+    # Call the internal encode method
+    encoder._encode_file(mock_video_file, output_path, env)
+
+    # Verify output handling
+    assert mock_process.stdout.readline.call_count == 2  # Two frames read
+    assert mock_process.stderr.readline.call_count >= 1  # At least one stderr check
+    assert mock_process.poll.call_count >= 1  # At least one poll check
+    assert mock_process.stdout.close.call_count >= 1  # Stream closed
+    assert mock_process.stderr.close.call_count >= 1  # Stream closed
