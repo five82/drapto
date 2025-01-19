@@ -868,10 +868,10 @@ drapto implements comprehensive validation and quality control throughout the en
    TEMP_DIR/encode_data/
    ├── encoded_files.txt     # Successfully processed files
    ├── encoding_times.txt    # Processing duration data
-   ├── input_sizes.txt      # Original file sizes
-   ├── output_sizes.txt     # Encoded file sizes
-   ├── segments.json        # Segment tracking data
-   └── encoding.json        # Encoding state information
+   ├── input_sizes.txt       # Original file sizes
+   ├── output_sizes.txt      # Encoded file sizes
+   ├── segments.json         # Segment tracking data
+   └── encoding.json         # Encoding state information
    ```
 
 8. **Final Validation Summary**
@@ -1058,6 +1058,143 @@ drapto maintains comprehensive progress tracking and logging through a structure
    ├── segments.json         # Segment tracking data
    └── encoding.json         # Encoding state and progress
    ```
+
+2. **Progress Reporting**
+   - Real-time console output:
+     ```
+     ========================================
+              Processing video.mkv
+     ========================================
+     
+     ✓ Input analysis complete
+     ✓ Detected 2 audio tracks
+     ⚠ Hardware acceleration not available
+     
+     ----------------------------------------
+     File: video.mkv
+     Input size:  15.7 GiB
+     Output size: 4.2 GiB
+     Reduction:   73.25%
+     ----------------------------------------
+     Encoding time: 02h 15m 30s
+     Finished encode at 2024-01-18 14:30:00
+     ----------------------------------------
+     ```
+
+3. **Log File Structure**
+   - `logs/encode_[timestamp].log`: Main encoding log
+     ```
+     [2024-01-18T14:15:00Z] INFO: Starting encode for video.mkv
+     [2024-01-18T14:15:01Z] INFO: Input analysis complete
+     [2024-01-18T14:15:01Z] INFO: Detected 2 audio tracks
+     [2024-01-18T14:15:02Z] WARN: Hardware acceleration not available
+     [2024-01-18T14:15:03Z] INFO: Starting video encode
+     [2024-01-18T14:30:00Z] INFO: Encode complete
+     ```
+
+4. **State Tracking Files**
+   - `progress.json`: Overall progress tracking
+     ```json
+     {
+       "status": "encoding",
+       "created_at": "2024-01-18T14:15:00Z",
+       "updated_at": "2024-01-18T14:20:00Z",
+       "total_progress": 45.5,
+       "segments_completed": 10,
+       "segments_failed": 0,
+       "current_segment": 11
+     }
+     ```
+   - `segments.json`: Individual segment tracking
+     ```json
+     {
+       "created_at": "2024-01-18T14:15:00Z",
+       "updated_at": "2024-01-18T14:20:00Z",
+       "segments": [
+         {
+           "index": 0,
+           "path": "segments/0001.mkv",
+           "size": 15728640,
+           "start_time": 0.0,
+           "duration": 15.0,
+           "created_at": "2024-01-18T14:15:00Z"
+         }
+       ]
+     }
+     ```
+   - `encoding.json`: Encoding state and retry strategies
+     ```json
+     {
+       "segments": {
+         "1": {
+           "status": "completed",
+           "attempts": 1,
+           "last_attempt": "2024-01-18T14:16:00Z",
+           "error": null
+         }
+       },
+       "created_at": "2024-01-18T14:15:00Z",
+       "updated_at": "2024-01-18T14:16:00Z",
+       "total_attempts": 1,
+       "failed_segments": 0
+     }
+     ```
+
+5. **User-Visible Output**
+   - Status Indicators:
+     * ✓ (green): Success
+     * ⚠ (yellow): Warning
+     * ✗ (red): Error
+   - Progress Updates:
+     * File processing status
+     * Current operation
+     * Time estimates
+     * Size and reduction statistics
+   - Final Summary:
+     ```
+     ========================================
+              Final Encoding Summary
+     ========================================
+     
+     File: video.mkv
+     Input size:  15.7 GiB
+     Output size: 4.2 GiB
+     Reduction:   73.25%
+     Encode time: 02h 15m 30s
+     
+     ----------------------------------------
+     Total files processed: 1
+     Total input size:  15.7 GiB
+     Total output size: 4.2 GiB
+     Total reduction:   73.25%
+     Total execution time: 02h 15m 30s
+     ```
+
+6. **Performance Metrics**
+   - Per-file statistics:
+     * Input/output sizes
+     * Compression ratio
+     * Processing duration
+     * FPS during encoding
+   - Aggregate metrics:
+     * Total files processed
+     * Total size reduction
+     * Average processing speed
+     * Overall execution time
+
+7. **Error Reporting**
+   - Detailed error messages in logs
+   - User-friendly console output
+   - Error state preservation
+   - Recovery attempt tracking
+   - Failure diagnostics
+
+8. **Debug Information**
+   - Command execution logs
+   - System resource usage
+   - Hardware acceleration status
+   - Temporary file operations
+   - Process state changes
 
 ## Temporary File Management
 
