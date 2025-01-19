@@ -26,21 +26,89 @@ drapto is designed to work specifically with MKV video files sourced from DVD, B
 
 When a video is input to drapto, it undergoes the following analysis steps:
 
-1. **Initial Analysis**
+1. **Directory Initialization**
+   - Creates output directory if it doesn't exist
+   - Verifies input directory exists and contains video files
+   - Sets up temporary directory structure:
+     ```
+     TEMP_DIR/
+     ├── logs/           # Processing logs
+     ├── encode_data/    # Encoding state and metadata
+     ├── segments/       # Video segments for chunked encoding
+     ├── encoded/        # Encoded segments
+     └── working/        # Temporary processing files
+     ```
+   - Initializes tracking files:
+     - `encoded_files.txt`: List of processed files
+     - `encoding_times.txt`: Processing duration data
+     - `input_sizes.txt`: Original file sizes
+     - `output_sizes.txt`: Encoded file sizes
+
+2. **Initial Analysis**
    - Checks for Dolby Vision content using `mediainfo`
    - Analyzes video resolution to determine quality settings
    - Detects video and audio codecs
    - Performs crop detection if enabled
+   - Validates input file integrity
 
-2. **Path Determination**
+3. **Path Determination**
    - Selects between standard or Dolby Vision encoding path
    - Determines if chunked encoding should be used
    - Sets up appropriate encoding parameters based on content type
+   - Configures hardware acceleration for decoding
 
-3. **Stream Analysis**
+4. **Stream Analysis**
    - Identifies number and type of audio streams
    - Determines video color space and HDR characteristics
    - Analyzes frame rate and duration
+   - Maps input streams to output configuration
+
+5. **Processing Pipeline**
+   - **Video Processing**
+     1. Decoding phase (hardware-accelerated if available)
+     2. Crop detection and application (if enabled)
+     3. Video encoding with SVT-AV1:
+        - **Standard Path**:
+          * Direct FFmpeg encoding
+          * CRF-based quality control
+          * Single-pass encoding
+          * Resolution-dependent CRF values
+        - **Chunked Path** (when enabled):
+          * Segments video into chunks
+          * VMAF-based quality targeting
+          * Multi-tier encoding strategy
+          * Parallel processing of segments
+     4. Quality validation
+   - **Audio Processing**
+     1. Stream extraction
+     2. Channel layout analysis
+     3. Opus encoding with appropriate bitrate
+     4. Track metadata preservation
+   - **Subtitle Processing**
+     1. Extract subtitle tracks
+     2. Preserve formatting and timing
+     3. Copy to output without re-encoding
+
+6. **Output Assembly**
+   - Muxes encoded video track
+   - Adds processed audio tracks
+   - Includes subtitle tracks
+   - Preserves chapters and metadata
+   - Validates final container structure
+
+7. **Cleanup Process**
+   - Removes temporary segment files
+   - Cleans up working directory
+   - Preserves logs for debugging
+   - Updates tracking files with results
+   - Verifies output file integrity
+
+8. **Error Handling**
+   - Validates each pipeline stage
+   - Retries failed operations when possible
+   - Preserves partial progress on failure
+   - Maintains detailed logs for debugging
+   - Cleans up temporary files on failure
 
 ## Dolby Vision Detection
 
