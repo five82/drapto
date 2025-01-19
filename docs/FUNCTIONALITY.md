@@ -20,6 +20,7 @@ drapto is designed to work specifically with MKV video files sourced from DVD, B
 10. [User Configuration](#user-configuration)
 11. [Hardware Acceleration](#hardware-acceleration)
 12. [Validation Process](#validation-process)
+13. [Error Recovery and Fallback Mechanisms](#error-recovery-and-fallback-mechanisms)
 
 ## Input Video Processing Flow
 
@@ -341,3 +342,39 @@ Users can customize the following settings:
      - Standard content: 24
      - HDR content: Dynamic 128-256 based on black levels
    - Black level analysis for optimal crop detection
+
+## Error Recovery and Fallback Mechanisms
+
+drapto implements a robust error recovery system, particularly focused on hardware-accelerated decoding failures and encoding issues:
+
+1. **Hardware-Accelerated Decoding Fallback**
+   - Automatically detects hardware decoding capabilities
+   - Attempts hardware-accelerated decoding first (e.g., VideoToolbox on macOS)
+   - On failure, gracefully falls back to software decoding
+   - Maintains encoding parameters during fallback (SVT-AV1 software encoding is always used)
+   - Logs hardware acceleration failures for diagnostics
+
+2. **Decoding Recovery Process**
+   - Primary attempt: Hardware-accelerated decoding
+   - Final fallback: Pure software decoding
+   - Encoding always uses software SVT-AV1 regardless of decoding method
+   - Each stage maintains identical quality settings
+
+3. **Error Reporting**
+   - Detailed error logging for hardware decoding failures
+   - Progress tracking during fallback attempts
+   - Clear user feedback on decoding mode changes
+   - Diagnostic information for troubleshooting
+
+4. **Performance Implications**
+   - Hardware-accelerated decoding: Faster input processing
+   - Software decoding: Reduced performance but maximum compatibility
+   - Encoding performance unaffected (always uses software SVT-AV1)
+   - Automatic selection of optimal decoding path based on system capabilities
+
+5. **Recovery Triggers**
+   - Hardware decoder initialization failures
+   - Memory allocation errors
+   - Driver compatibility issues
+   - Resource exhaustion
+   - Codec support limitations
