@@ -1667,11 +1667,11 @@ The system ensures reliable track muxing with:
 
 ## Audio Processing
 
-drapto implements a modern event-driven audio processing system:
+drapto implements a modern event-driven audio processing system with comprehensive error handling and state management:
 
 ```python
 class AudioProcessor:
-    """Modern event-driven audio processing"""
+    """Modern event-driven audio processing with state management"""
     
     # Channel layout and bitrate mapping (preserved exactly)
     CHANNEL_CONFIG = {
@@ -1686,7 +1686,56 @@ class AudioProcessor:
         self.state_manager = StateManager()
         self.event_bus = EventBus()
         self.error_handler = AudioErrorHandler()
+        self.metrics_collector = AudioMetricsCollector()
+        self.retry_manager = RetryManager()
         
+    async def process_tracks(self, input_file: Path) -> Result[List[ProcessedTrack], AudioError]:
+        """Process all audio tracks with state management"""
+        state = AudioState(input_file)
+        
+        try:
+            # Initialize state
+            await self.state_manager.initialize(state)
+            await self.event_bus.emit(AudioEvents.PROCESSING_STARTED, {"file": input_file})
+            
+            # Discover tracks
+            state.tracks = await self._discover_tracks(input_file)
+            await self.event_bus.emit(AudioEvents.TRACKS_DISCOVERED, {
+                "count": len(state.tracks)
+            })
+            
+            # Process each track
+            processed_tracks = []
+            for track in state.tracks:
+                result = await self.retry_manager.execute_with_retry(
+                    track.id,
+                    lambda: self._process_track(track, state)
+                )
+                
+                if result.is_err():
+                    state.errors.append(result.unwrap_err())
+                    continue
+                    
+                processed_tracks.append(result.unwrap())
+                state.processed_tracks = processed_tracks
+                await self.state_manager.update(state)
+            
+            # Validate all tracks
+            if not await self._validate_tracks(processed_tracks):
+                return Err(AudioError("Track validation failed"))
+            
+            await self.event_bus.emit(AudioEvents.ALL_TRACKS_COMPLETE, {
+                "processed": len(processed_tracks),
+                "failed": len(state.errors)
+            })
+            
+            return Ok(processed_tracks)
+            
+        except Exception as e:
+            error = self.error_handler.handle_error(e, state)
+            await self.event_bus.emit(AudioEvents.PROCESSING_ERROR, {"error": error})
+            return Err(error)
+
     async def _process_track(self, track: AudioTrack, state: AudioState) -> Result[ProcessedTrack, AudioError]:
         """Process single audio track with progress tracking"""
         try:
@@ -1733,55 +1782,8 @@ class AudioProcessor:
             metrics.channel_layout == config["layout"]
         )
 
-class AudioState:
-    """Audio processing state"""
-    
-    def __init__(self, input_file: Path):
-        self.input_file = input_file
-        self.tracks: List[AudioTrack] = []
-        self.current_track: Optional[AudioTrack] = None
-        self.processed_tracks: List[ProcessedTrack] = []
-        self.errors: List[AudioError] = []
-        self.stage = AudioStage.INITIALIZING
-        
-    def track_progress(self) -> float:
-        """Calculate overall progress"""
-        if not self.tracks:
-            return 0.0
-        return len(self.processed_tracks) / len(self.tracks)
-
-class AudioErrorHandler:
-    """Audio-specific error handling"""
-    
-    def __init__(self):
-        self.retry_manager = RetryManager()
-        
-    def handle_error(self, error: Exception, state: AudioState) -> AudioError:
-        """Handle audio processing error"""
-        if isinstance(error, FFmpegError):
-            return self._handle_ffmpeg_error(error, state)
-        if isinstance(error, OpusError):
-            return self._handle_opus_error(error, state)
-        return AudioError(str(error))
-        
-    async def _handle_ffmpeg_error(self, error: FFmpegError, state: AudioState) -> AudioError:
-        """Handle FFmpeg-specific errors"""
-        if error.is_decoder_error():
-            return AudioDecoderError(error.message)
-        if error.is_encoder_error():
-            return AudioEncoderError(error.message)
-        return AudioError(error.message)
-
 class AudioConfig:
     """Audio processing configuration"""
-    
-    # Channel layout and bitrate mapping (preserved exactly)
-    CHANNEL_CONFIG = {
-        1: {"bitrate": 64000,   "layout": "mono"},    # Mono
-        2: {"bitrate": 128000,  "layout": "stereo"},  # Stereo
-        6: {"bitrate": 256000,  "layout": "5.1"},     # 5.1
-        8: {"bitrate": 384000,  "layout": "7.1"}      # 7.1
-    }
     
     def __init__(self):
         self.opus_params = OpusParams(
@@ -1794,7 +1796,8 @@ class AudioConfig:
     def get_channel_config(self, num_channels: int) -> Dict[str, Any]:
         """Get channel-specific configuration"""
         # Default to stereo if unsupported channel count
-        return self.CHANNEL_CONFIG.get(num_channels, self.CHANNEL_CONFIG[2])
+        return AudioProcessor.CHANNEL_CONFIG.get(num_channels, 
+               AudioProcessor.CHANNEL_CONFIG[2])
         
     @property
     def ffmpeg_args(self) -> List[str]:
@@ -1817,15 +1820,34 @@ class AudioConfig:
             "-af", "aformat=channel_layouts=7.1|5.1|stereo|mono"
         ]
 
+class AudioState:
+    """Audio processing state"""
+    
+    def __init__(self, input_file: Path):
+        self.input_file = input_file
+        self.tracks: List[AudioTrack] = []
+        self.current_track: Optional[AudioTrack] = None
+        self.processed_tracks: List[ProcessedTrack] = []
+        self.errors: List[AudioError] = []
+        self.stage = AudioStage.INITIALIZING
+        
+    def track_progress(self) -> float:
+        """Calculate overall progress"""
+        if not self.tracks:
+            return 0.0
+        return len(self.processed_tracks) / len(self.tracks)
+
 class AudioEvents(Enum):
     """Audio processing events"""
-    TRACK_DETECTED = "track_detected"
+    PROCESSING_STARTED = "processing_started"
+    TRACKS_DISCOVERED = "tracks_discovered"
     TRACK_PROCESSING_START = "track_processing_start"
     TRACK_PROCESSING_PROGRESS = "track_processing_progress"
     TRACK_PROCESSING_COMPLETE = "track_processing_complete"
     TRACK_PROCESSING_ERROR = "track_processing_error"
     ALL_TRACKS_COMPLETE = "all_tracks_complete"
     TRACK_CONFIG_SELECTED = "track_config_selected"
+    PROCESSING_ERROR = "processing_error"
 
 class RetryManager:
     """Audio processing retry management"""
@@ -1864,27 +1886,38 @@ This modern implementation provides:
    - Real-time event emission for track processing
    - Progress tracking through events
    - State updates via event bus
+   - Comprehensive event types for all stages
 
 2. **State Management**
    - Centralized audio processing state
    - Track-level progress tracking
    - Error state preservation
+   - Atomic state updates
 
 3. **Error Handling**
    - Specialized audio error types
    - Codec-specific error handling
    - Retry mechanisms with backoff
+   - Error context preservation
 
 4. **Configuration**
    - Type-safe audio parameters
    - Opus codec configuration
    - FFmpeg argument generation
+   - Channel-specific settings
+
+5. **Validation**
+   - Track configuration validation
+   - Channel layout verification
+   - Bitrate confirmation
+   - Output quality checks
 
 The system ensures reliable audio processing with:
 - Proper state tracking
 - Comprehensive error handling
 - Event-based progress updates
 - Clean error recovery
+- Type-safe interfaces
 
 ## Crop Detection
 
