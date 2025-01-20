@@ -2114,30 +2114,271 @@ The system ensures reliable crop detection with:
 
 ## Codec Usage
 
-drapto employs a strict set of codecs:
+drapto implements modern Python wrappers around its core codecs with comprehensive error handling and state management:
 
-1. **Video Codec**
-   - SVT-AV1 exclusively
-   - No support for other encoders (x264, x265, etc.)
-   - Supports hardware acceleration for decoding
-   - Maintains 10-bit depth with yuv420p10le
+```python
+class CodecManager:
+    """Modern codec management system"""
+    
+    def __init__(self, config: CodecConfig):
+        self.config = config
+        self.state_manager = StateManager()
+        self.event_bus = EventBus()
+        self.error_handler = CodecErrorHandler()
+        self.validator = CodecValidator()
+        
+        # Initialize codec wrappers
+        self.svtav1 = SVTAV1Wrapper(config.video)
+        self.opus = OpusWrapper(config.audio)
 
-2. **Audio Codec**
-   - libopus exclusively
-   - No support for other codecs (AAC, MP3, etc.)
-   - VBR mode with high compression
-   - Standardized channel layouts
+class SVTAV1Wrapper:
+    """Modern SVT-AV1 codec wrapper"""
+    
+    def __init__(self, config: VideoConfig):
+        self.config = config
+        self.state = CodecState()
+        self.error_handler = SVTAV1ErrorHandler()
+        
+    async def encode_frame(self, frame: VideoFrame) -> Result[EncodedFrame, CodecError]:
+        """Encode single frame with error handling"""
+        try:
+            # Update state
+            self.state.frame_number += 1
+            self.state.last_frame = frame
+            
+            # Validate frame
+            if not self._validate_frame(frame):
+                return Err(CodecError("Invalid frame format"))
+            
+            # Encode with parameters
+            params = self._get_encoding_params()
+            encoded = await self._encode_with_params(frame, params)
+            
+            # Update statistics
+            self.state.update_stats(encoded)
+            
+            return Ok(encoded)
+            
+        except Exception as e:
+            return Err(self.error_handler.handle_error(e, self.state))
+            
+    def _validate_frame(self, frame: VideoFrame) -> bool:
+        """Validate frame format"""
+        return (
+            frame.format == "yuv420p10le" and
+            frame.width % 2 == 0 and
+            frame.height % 2 == 0
+        )
+        
+    def _get_encoding_params(self) -> Dict[str, Any]:
+        """Get current encoding parameters"""
+        return {
+            "preset": self.config.preset,
+            "crf": self.config.get_crf_for_resolution(self.state.resolution),
+            "film-grain": 0,  # Disabled for better compression
+            "film-grain-denoise": 0,
+            "tune": 0  # Visual quality tuning
+        }
 
-3. **Container Format**
-   - MKV exclusively for both input and output
-   - Input sources: DVD, Blu-ray, and 4K UHD Blu-ray rips
-   - Preserves chapter information
-   - Maintains track metadata
+class OpusWrapper:
+    """Modern Opus codec wrapper"""
+    
+    def __init__(self, config: AudioConfig):
+        self.config = config
+        self.state = CodecState()
+        self.error_handler = OpusErrorHandler()
+        
+    async def encode_frame(self, frame: AudioFrame) -> Result[EncodedFrame, CodecError]:
+        """Encode single frame with error handling"""
+        try:
+            # Update state
+            self.state.frame_number += 1
+            self.state.last_frame = frame
+            
+            # Validate frame
+            if not self._validate_frame(frame):
+                return Err(CodecError("Invalid frame format"))
+            
+            # Get channel configuration
+            channel_config = self.config.get_channel_config(frame.channels)
+            
+            # Encode with parameters
+            params = self._get_encoding_params(channel_config)
+            encoded = await self._encode_with_params(frame, params)
+            
+            # Update statistics
+            self.state.update_stats(encoded)
+            
+            return Ok(encoded)
+            
+        except Exception as e:
+            return Err(self.error_handler.handle_error(e, self.state))
+            
+    def _validate_frame(self, frame: AudioFrame) -> bool:
+        """Validate frame format"""
+        return (
+            frame.channels in {1, 2, 6, 8} and  # Supported channel counts
+            frame.sample_rate in {44100, 48000} and  # Supported rates
+            frame.format == "float32"  # Required format
+        )
+        
+    def _get_encoding_params(self, channel_config: Dict[str, Any]) -> Dict[str, Any]:
+        """Get current encoding parameters"""
+        return {
+            "bitrate": channel_config["bitrate"],
+            "vbr": True,  # Variable bitrate
+            "mapping_family": 0,  # Auto channel mapping
+            "application": "audio"  # High quality audio mode
+        }
 
-4. **Processing Tools**
-   - FFmpeg: General processing and muxing
-   - ab-av1: Chunked encoding path
-   - mediainfo: Content analysis
+class CodecState:
+    """Codec state tracking"""
+    
+    def __init__(self):
+        self.frame_number: int = 0
+        self.last_frame: Optional[Union[VideoFrame, AudioFrame]] = None
+        self.resolution: Optional[Resolution] = None
+        self.stats = EncodingStats()
+        self.errors: List[CodecError] = []
+        
+    def update_stats(self, frame: EncodedFrame) -> None:
+        """Update encoding statistics"""
+        self.stats.frames_encoded += 1
+        self.stats.bytes_encoded += len(frame.data)
+        self.stats.encoding_time += frame.encoding_time
+        
+        if isinstance(frame, EncodedVideoFrame):
+            self.stats.update_video_stats(frame)
+        elif isinstance(frame, EncodedAudioFrame):
+            self.stats.update_audio_stats(frame)
+
+class CodecValidator:
+    """Codec validation system"""
+    
+    async def validate_video_params(self, params: Dict[str, Any]) -> Result[None, ValidationError]:
+        """Validate video encoding parameters"""
+        # Verify SVT-AV1 parameters
+        if not self._verify_svtav1_params(params):
+            return Err(ValidationError("Invalid SVT-AV1 parameters"))
+            
+        # Verify resolution constraints
+        if not self._verify_resolution(params):
+            return Err(ValidationError("Invalid resolution"))
+            
+        # Verify bit depth
+        if params.get("bit_depth", 10) != 10:
+            return Err(ValidationError("Only 10-bit depth supported"))
+            
+        return Ok(None)
+        
+    async def validate_audio_params(self, params: Dict[str, Any]) -> Result[None, ValidationError]:
+        """Validate audio encoding parameters"""
+        # Verify Opus parameters
+        if not self._verify_opus_params(params):
+            return Err(ValidationError("Invalid Opus parameters"))
+            
+        # Verify channel configuration
+        if not self._verify_channel_config(params):
+            return Err(ValidationError("Invalid channel configuration"))
+            
+        # Verify bitrate constraints
+        if not self._verify_bitrate(params):
+            return Err(ValidationError("Invalid bitrate"))
+            
+        return Ok(None)
+
+class CodecErrorHandler:
+    """Codec error handling"""
+    
+    def __init__(self):
+        self.retry_manager = RetryManager()
+        
+    def handle_error(self, error: Exception, state: CodecState) -> CodecError:
+        """Handle codec-specific errors"""
+        if isinstance(error, SVTAV1Error):
+            return self._handle_svtav1_error(error, state)
+        if isinstance(error, OpusError):
+            return self._handle_opus_error(error, state)
+        return CodecError(str(error))
+        
+    def _handle_svtav1_error(self, error: SVTAV1Error, state: CodecState) -> CodecError:
+        """Handle SVT-AV1 specific errors"""
+        if "memory allocation" in str(error):
+            return ResourceError("SVT-AV1 memory allocation failed")
+        if "unsupported resolution" in str(error):
+            return FormatError("Unsupported resolution for SVT-AV1")
+        return CodecError(f"SVT-AV1 error: {error}")
+        
+    def _handle_opus_error(self, error: OpusError, state: CodecState) -> CodecError:
+        """Handle Opus specific errors"""
+        if "invalid channel layout" in str(error):
+            return FormatError("Invalid channel layout for Opus")
+        if "bitrate out of range" in str(error):
+            return ConfigError("Invalid bitrate for Opus")
+        return CodecError(f"Opus error: {error}")
+
+class CodecEvents(Enum):
+    """Codec events"""
+    FRAME_START = "frame_encoding_start"
+    FRAME_COMPLETE = "frame_encoding_complete"
+    FRAME_ERROR = "frame_encoding_error"
+    PARAMS_UPDATED = "encoding_params_updated"
+    STATS_UPDATED = "encoding_stats_updated"
+    ERROR_OCCURRED = "codec_error_occurred"
+
+class CodecConfig:
+    """Codec configuration"""
+    
+    def __init__(self):
+        self.video = VideoConfig(
+            preset=6,
+            crf=CRFConfig(sd=25, hd=25, uhd=29),
+            pixel_format="yuv420p10le",
+            svtav1_params="tune=0:film-grain=0:film-grain-denoise=0"
+        )
+        
+        self.audio = AudioConfig(
+            channel_config={
+                1: {"bitrate": 64000,   "layout": "mono"},
+                2: {"bitrate": 128000,  "layout": "stereo"},
+                6: {"bitrate": 256000,  "layout": "5.1"},
+                8: {"bitrate": 384000,  "layout": "7.1"}
+            },
+            opus_params=OpusParams(vbr=True, mapping_family=0)
+        )
+```
+
+This modern implementation provides:
+
+1. **Python Wrappers**
+   - Type-safe codec interfaces
+   - Async frame processing
+   - Clean parameter management
+   - Stateful encoding
+
+2. **Error Handling**
+   - Codec-specific error types
+   - Detailed error context
+   - Retry mechanisms
+   - Resource error handling
+
+3. **State Management**
+   - Frame-level state tracking
+   - Encoding statistics
+   - Parameter management
+   - Progress monitoring
+
+4. **Validation**
+   - Parameter validation
+   - Format verification
+   - Codec constraints
+   - Quality checks
+
+The system ensures reliable codec operation with:
+- Clean Python interfaces
+- Comprehensive error handling
+- Proper state tracking
+- Parameter validation
 
 ## Validation and Quality Control
 
