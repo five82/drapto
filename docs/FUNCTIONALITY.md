@@ -380,154 +380,183 @@ Dolby Vision detection is performed using the following process:
 
 ## Encoding Paths
 
-drapto supports two main encoding paths:
+drapto implements two encoding paths through Python-based wrappers and state management:
 
 ### Standard Path
-1. **Core Characteristics**
-   - Direct FFmpeg encoding with SVT-AV1
-   - Single-pass, CRF-based quality control
-   - No segmentation or chunking
-   - Continuous encoding process
+1. **FFmpeg Integration**
+   ```python
+   class FFmpegWrapper:
+       """FFmpeg wrapper maintaining exact parameters"""
+       def __init__(self, config: Config):
+           self.config = config
+           self.state_manager = StateManager()
+           self.event_bus = EventBus()
+           
+       async def encode(self, input_file: Path, output_file: Path) -> None:
+           """Execute FFmpeg encoding with state tracking"""
+           params = self._build_params()
+           async with FFmpegProcess(params) as process:
+               while True:
+                   progress = await process.get_progress()
+                   if progress.complete:
+                       break
+                   self.state_manager.update_progress(progress)
+                   self.event_bus.emit(ProcessingEvents.PROGRESS_UPDATE, progress)
+
+   class FFmpegParams:
+       """FFmpeg parameter builder with validation"""
+       def __init__(self, config: EncodingConfig):
+           self.config = config
+           self.params: List[str] = []
+
+       def build_command(self) -> List[str]:
+           """Build FFmpeg command with exact parameters"""
+           return [
+               "ffmpeg",
+               "-hide_banner",
+               "-loglevel", "warning",
+               *self._get_hwaccel_opts(),  # Hardware decode if available
+               "-i", str(self.input_file),
+               "-map", "0:v:0",            # Select first video stream
+               "-c:v", "libsvtav1",        # SVT-AV1 codec
+               "-preset", str(self.config.preset),  # Default: 6
+               "-crf", str(self._get_crf()),       # Based on resolution
+               "-pix_fmt", "yuv420p10le",          # 10-bit color
+               "-svtav1-params",
+               "tune=0:film-grain=0:film-grain-denoise=0",
+               "-y",
+               str(self.output_file)
+           ]
+
+       def _get_crf(self) -> int:
+           """Get resolution-appropriate CRF value"""
+           return {
+               Resolution.SD: 25,    # ≤720p
+               Resolution.HD: 25,    # ≤1080p
+               Resolution.UHD: 29,   # >1080p
+           }[self.resolution]
+   ```
 
 2. **Quality Control**
-   - Resolution-dependent CRF values:
-     ```bash
-     # Resolution breakpoints
-     SD  (≤720p):  CRF 25
-     HD  (≤1080p): CRF 25
-     UHD (>1080p): CRF 29
+   - Resolution-dependent CRF values maintained:
+     ```python
+     CRF_VALUES = {
+         "SD":  25,  # ≤720p
+         "HD":  25,  # ≤1080p
+         "UHD": 29,  # >1080p
+     }
      ```
    - SVT-AV1 preset 6 by default
    - Film grain synthesis disabled
    - 10-bit depth processing
 
-3. **FFmpeg Command Structure**
-   ```bash
-   ffmpeg -hide_banner -loglevel warning \
-     ${HWACCEL_OPTS} \                     # Hardware decode if available
-     -i "${input_file}" \
-     -map 0:v:0 \                          # Select first video stream
-     -c:v libsvtav1 \                      # SVT-AV1 codec
-     -preset ${PRESET} \                   # Default: 6
-     -crf ${CRF} \                         # Based on resolution
-     -pix_fmt yuv420p10le \               # 10-bit color
-     -svtav1-params \
-       "tune=0:film-grain=0:film-grain-denoise=0" \
-     -y "${output_file}"
-   ```
-
-4. **Performance Characteristics**
-   - Memory usage proportional to resolution
-   - CPU utilization based on preset
-   - Single continuous encoding process
-   - Progress tracking via FFmpeg stats
-
-5. **Use Cases**
-   - Shorter content (< 30 minutes)
-   - Lower resolution content
-   - Quick encoding requirements
-   - Limited system resources
-   - Simple processing needs
-
-6. **Quality Assurance**
-   - Input stream validation
-   - Output codec verification
-   - Duration comparison
-   - File size validation
-   - Stream integrity check
-
-7. **Error Handling**
-   - Hardware decode fallback
-   - Progress monitoring
-   - Resource management
-   - Detailed error logging
-   - Process recovery support
-
 ### Chunked Path (VMAF-based)
-1. **Core Characteristics**
-   - Uses ab-av1 for encoding
-   - VMAF-based quality targeting
-   - Multi-tier encoding strategy
-   - Parallel processing of segments
+1. **ab-av1 Integration**
+   ```python
+   class AbAv1Wrapper:
+       """ab-av1 wrapper maintaining exact parameters"""
+       def __init__(self, config: Config):
+           self.config = config
+           self.state_manager = StateManager()
+           self.event_bus = EventBus()
+           
+       async def encode_segment(self, segment: VideoSegment) -> None:
+           """Encode single video segment with quality targeting"""
+           for strategy in self.get_vmaf_strategies():
+               try:
+                   return await self._try_encode_segment(segment, strategy)
+               except QualityTargetError:
+                   continue
+           raise EncodingError("Failed to meet quality target")
+
+       def get_vmaf_strategies(self) -> List[VmafStrategy]:
+           """Get ordered list of VMAF strategies with exact parameters"""
+           return [
+               # Tier 1: Default Strategy
+               VmafStrategy(
+                   target=93,
+                   samples=3,
+                   sample_duration=1,
+                   vmaf_params="n_subsample=8:pool=harmonic_mean"
+               ),
+               # Tier 2: More Samples
+               VmafStrategy(
+                   target=93,
+                   samples=6,
+                   sample_duration=2,
+                   vmaf_params="n_subsample=8:pool=harmonic_mean"
+               ),
+               # Tier 3: Lower VMAF
+               VmafStrategy(
+                   target=91,  # Reduced by 2
+                   samples=6,
+                   sample_duration=2,
+                   vmaf_params="n_subsample=8:pool=harmonic_mean"
+               )
+           ]
+
+   class VmafStrategy:
+       """VMAF-based encoding strategy with exact parameters"""
+       def build_command(self) -> List[str]:
+           """Build ab-av1 command with exact parameters"""
+           return [
+               "ab-av1",
+               "--input", str(self.input_file),
+               "--output", str(self.output_file),
+               "--encoder", "svtav1",
+               "--preset", str(self.config.preset),  # Default: 6
+               "--vmaf-target", str(self.target),    # Default: 93
+               "--samples", str(self.samples),       # 3 or 6
+               "--sample-duration", f"{self.sample_duration}s",
+               "--keyint", "10s",
+               "--pix-fmt", "yuv420p10le",
+               "--svtav1-params",
+               "tune=0:film-grain=0:film-grain-denoise=0",
+               "--vmaf", self.vmaf_params,
+               *self._get_vfilter_args(),  # Crop filter if enabled
+               "--quiet"
+           ]
+   ```
 
 2. **Quality Control**
    - Target VMAF score: 93 (default)
-   - Three-tier strategy:
-     ```bash
-     # Tier 1: Default Strategy
-     --samples 3 --sample-duration 1s --vmaf-target 93
-     
-     # Tier 2: More Samples
-     --samples 6 --sample-duration 2s --vmaf-target 93
-     
-     # Tier 3: Lower VMAF
-     --samples 6 --sample-duration 2s --vmaf-target 91
+   - Three-tier strategy with exact parameters:
+     ```python
+     VMAF_STRATEGIES = [
+         # Tier 1: Default Strategy
+         {
+             "target": 93,
+             "samples": 3,
+             "duration": 1,
+             "vmaf_params": "n_subsample=8:pool=harmonic_mean"
+         },
+         # Tier 2: More Samples
+         {
+             "target": 93,
+             "samples": 6,
+             "duration": 2,
+             "vmaf_params": "n_subsample=8:pool=harmonic_mean"
+         },
+         # Tier 3: Lower VMAF
+         {
+             "target": 91,  # Reduced by 2
+             "samples": 6,
+             "duration": 2,
+             "vmaf_params": "n_subsample=8:pool=harmonic_mean"
+         }
+     ]
      ```
-   - VMAF settings:
-     - Subsample rate: 8
-     - Pool method: harmonic mean
 
-3. **ab-av1 Command Structure**
-   ```bash
-   # First tier attempt
-   ab-av1 \
-     --input "${input_file}" \
-     --output "${output_file}" \
-     --encoder svtav1 \
-     --preset ${PRESET} \                  # Default: 6
-     --vmaf-target ${TARGET_VMAF} \        # Default: 93
-     --samples ${VMAF_SAMPLE_COUNT} \      # Default: 3
-     --sample-duration "${VMAF_SAMPLE_LENGTH}" \  # Default: 1s
-     --keyint 10s \
-     --pix-fmt yuv420p10le \
-     --svtav1-params \
-       "tune=0:film-grain=0:film-grain-denoise=0" \
-     --vmaf "n_subsample=8:pool=harmonic_mean" \
-     ${vfilter_args} \                     # Crop filter if enabled
-     --quiet
+This modern implementation provides:
+- Type-safe FFmpeg and ab-av1 integration
+- Comprehensive state tracking and recovery
+- Sophisticated quality validation
+- Parallel processing with proper resource management
+- Clear error handling and retry strategies
+- Event-based progress monitoring
+- Persistent state checkpoints
 
-   # Second tier attempt (on failure)
-   ab-av1 \
-     # ... same base options ...
-     --samples 6 \
-     --sample-duration "2s" \
-     --quiet
-
-   # Third tier attempt (on failure)
-   ab-av1 \
-     # ... same base options ...
-     --samples 6 \
-     --sample-duration "2s" \
-     --vmaf-target $((TARGET_VMAF - 2)) \  # Reduce target by 2
-     --quiet
-   ```
-
-4. **Performance Characteristics**
-   - Memory usage controlled per segment
-   - CPU utilization distributed across segments
-   - Parallel processing via GNU Parallel
-   - Progress tracking per segment
-
-5. **Use Cases**
-   - Longer content (> 30 minutes)
-   - High resolution content
-   - Quality-critical encodes
-   - Systems with many CPU cores
-   - Consistent quality requirements
-
-6. **Quality Assurance**
-   - VMAF score validation per segment
-   - Segment integrity verification
-   - Transition smoothness checks
-   - Size and duration validation
-   - Codec compliance verification
-
-7. **Error Handling**
-   - Per-segment retry logic
-   - Multi-tier fallback strategy
-   - Parallel job monitoring
-   - Failed segment tracking
-   - Resource usage monitoring
+The system maintains encoding state throughout the process, enabling robust error recovery and quality assurance at every stage.
 
 ## Encoding Strategy System
 
@@ -1296,11 +1325,11 @@ drapto maintains comprehensive progress tracking and logging through a structure
    ```
    TEMP_DIR/encode_data/
    ├── encoded_files.txt     # List of successfully processed files
-   ├── encoding_times.txt    # Processing duration for each file
+   ├── encoding_times.txt    # Processing duration data
    ├── input_sizes.txt       # Original file sizes
    ├── output_sizes.txt      # Encoded file sizes
    ├── segments.json         # Segment tracking data
-   └── encoding.json         # Encoding state and progress
+   └── encoding.json         # Encoding state information
    ```
 
 2. **Progress Reporting**
