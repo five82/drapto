@@ -4,46 +4,49 @@
 
 ```
 src/drapto/
-├── core/
+├── core/                  # Core interfaces and base abstractions
 │   ├── __init__.py
-│   ├── encoder.py          # Core encoder interface and base classes
-│   ├── config.py           # Configuration management
-│   └── exceptions.py       # Custom exceptions
-├── encoders/
+│   ├── encoder.py        # Encoder interface and base classes
+│   ├── media.py          # Media handling interfaces
+│   ├── config.py         # Configuration management
+│   ├── exceptions.py     # Custom exceptions
+│   ├── events.py         # Event system interface
+│   ├── status.py         # Status tracking interface
+│   └── temp.py           # Temporary file management interface
+├── encoders/             # Encoder implementations
 │   ├── __init__.py
-│   ├── standard.py         # Standard FFmpeg-based encoder
-│   └── chunked.py          # Chunked VMAF-based encoder
-├── media/
+│   ├── standard.py       # Standard FFmpeg-based encoder
+│   └── chunked.py        # Chunked VMAF-based encoder
+├── media/                # Media handling implementations
 │   ├── __init__.py
-│   ├── video.py           # Video stream analysis
-│   ├── audio.py           # Audio stream handling
-│   └── subtitle.py        # Subtitle processing
-├── processing/
+│   ├── analysis.py       # Media analysis and detection
+│   ├── hdr.py           # HDR/Dolby Vision processing
+│   ├── audio.py          # Audio stream handling
+│   ├── subtitle.py       # Subtitle handling
+│   └── muxer.py          # Stream muxing
+├── processing/           # Processing pipeline implementations
 │   ├── __init__.py
-│   ├── pipeline.py        # Processing pipeline orchestration
-│   ├── analysis.py        # Media analysis (crop, DV, etc.)
-│   └── validation.py      # Input/output validation
-├── state/
+│   ├── pipeline.py       # Pipeline orchestration
+│   ├── worker.py         # Worker process management
+│   └── queue.py          # Job queue management
+├── state/                # State management implementations
 │   ├── __init__.py
-│   ├── job.py            # Job state management
-│   ├── progress.py       # Progress tracking
-│   └── storage.py        # State persistence
-├── system/
+│   ├── manager.py        # State management implementation
+│   └── progress.py       # Progress tracking implementation
+├── system/               # System integration
 │   ├── __init__.py
 │   ├── ffmpeg.py         # FFmpeg wrapper
-│   ├── mediainfo.py      # MediaInfo wrapper
-│   └── process.py        # Process management
-├── utils/
+│   └── mediainfo.py      # MediaInfo wrapper
+├── utils/                # Utility functions and helpers
 │   ├── __init__.py
 │   ├── paths.py          # Path management
-│   ├── logging.py        # Logging configuration
-│   └── temp.py          # Temporary file management
+│   └── logging.py        # Logging configuration
 └── cli.py               # Command line interface
 
 tests/
-├── unit/               # Unit tests matching src structure
-├── integration/        # Integration tests
-└── fixtures/          # Test data and fixtures
+├── unit/                # Unit tests matching src structure
+├── integration/         # Integration tests
+└── fixtures/           # Test data and fixtures
 ```
 
 ## Core Components
@@ -51,7 +54,7 @@ tests/
 ### 1. Encoder Interface
 ```python
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Dict, Any
 
@@ -62,31 +65,61 @@ class EncodingOptions:
     pix_fmt: str = "yuv420p10le"
     crop_filter: Optional[str] = None
     hardware_accel: bool = True
+    crf: Dict[str, int] = field(default_factory=lambda: {
+        "sd": 25,   # ≤720p
+        "hd": 25,   # ≤1080p
+        "uhd": 29   # >1080p
+    })
+    vmaf_target: int = 93  # Only used by ChunkedEncoder
 
 class Encoder(ABC):
     """Base encoder interface"""
     @abstractmethod
     def encode(
-        self, 
+        self,
         input_file: Path,
         output_file: Path,
         options: EncodingOptions
     ) -> bool:
-        """Execute encoding process"""
+        """Encode video file."""
         pass
 
     @abstractmethod
     def can_handle(self, input_file: Path) -> bool:
-        """Check if encoder can handle input"""
+        """Check if encoder can handle input.
+        
+        StandardEncoder: Required for Dolby Vision content
+        ChunkedEncoder: Cannot handle Dolby Vision content
+        """
         pass
 ```
 
 ### 2. Standard Encoder
 ```python
 class StandardEncoder(Encoder):
-    """Direct FFmpeg encoding using SVT-AV1"""
-    def __init__(self, ffmpeg: FFmpeg):
+    """Direct FFmpeg encoding using SVT-AV1.
+    
+    Features:
+    - Direct FFmpeg encoding for Dolby Vision content
+    - SVT-AV1 configuration
+    - Hardware acceleration
+    - HDR/DV metadata preservation
+    - Progress tracking
+    
+    This encoder is required for Dolby Vision content as it preserves
+    DV metadata through direct FFmpeg encoding without chunking.
+    """
+    def __init__(
+        self,
+        ffmpeg: FFmpeg,
+        config: DraptoConfig,
+        status: StatusStream,
+        hdr_handler: HDRHandler
+    ):
         self.ffmpeg = ffmpeg
+        self.config = config
+        self.status = status
+        self.hdr_handler = hdr_handler
         
     def encode(
         self,
@@ -94,24 +127,45 @@ class StandardEncoder(Encoder):
         output_file: Path,
         options: EncodingOptions
     ) -> bool:
-        # Implement existing standard encoding path
-        # Uses direct FFmpeg with SVT-AV1
+        """Execute standard encoding process."""
+        pass
+
+    def can_handle(self, input_file: Path) -> bool:
+        """Check if encoder can handle input.
+        
+        Standard encoder is required for Dolby Vision content and
+        can handle any input that FFmpeg supports.
+        """
         pass
 ```
 
 ### 3. Chunked Encoder
 ```python
 class ChunkedEncoder(Encoder):
-    """VMAF-based chunked encoding using ab-av1"""
+    """VMAF-based chunked encoding using ab-av1.
+    
+    Features:
+    - Segment-based encoding with ab-av1
+    - VMAF quality analysis for optimal bitrate
+    - Quality-targeted encoding
+    - Parallel processing
+    
+    This encoder cannot be used with Dolby Vision content as
+    chunked encoding would break DV metadata preservation.
+    """
     def __init__(
         self,
         ffmpeg: FFmpeg,
-        temp_dir: Path,
-        target_vmaf: float = 93
+        config: DraptoConfig,
+        status: StatusStream,
+        temp: TempManager,
+        hdr_handler: HDRHandler
     ):
         self.ffmpeg = ffmpeg
-        self.temp_dir = temp_dir
-        self.target_vmaf = target_vmaf
+        self.config = config
+        self.status = status
+        self.temp = temp
+        self.hdr_handler = hdr_handler
         
     def encode(
         self,
@@ -119,8 +173,42 @@ class ChunkedEncoder(Encoder):
         output_file: Path,
         options: EncodingOptions
     ) -> bool:
-        # Implement existing chunked encoding path
-        # Preserves all VMAF-based logic
+        """Execute chunked encoding process."""
+        pass
+
+    def can_handle(self, input_file: Path) -> bool:
+        """Check if encoder can handle input.
+        
+        Chunked encoder requires seekable input for segmentation
+        and cannot handle Dolby Vision content.
+        """
+        pass
+```
+
+### 4. Media Interfaces
+```python
+@dataclass
+class HDRMetadata:
+    """HDR metadata container"""
+    format: str  # HDR10, HDR10+, DV
+    color_primaries: str
+    transfer_characteristics: str
+    matrix_coefficients: str
+    max_cll: Optional[int]
+    max_fall: Optional[int]
+    dv_profile: Optional[int]
+    dv_bl_signal_compatibility_id: Optional[int]
+
+class HDRProcessor(ABC):
+    """HDR processing interface"""
+    @abstractmethod
+    def process_hdr(
+        self,
+        input_file: Path,
+        metadata: HDRMetadata,
+        options: EncodingOptions
+    ) -> Dict[str, str]:
+        """Process HDR content and return FFmpeg parameters"""
         pass
 ```
 
@@ -159,568 +247,644 @@ class ChunkedEncoder(Encoder):
    ```
 
 ### Phase 1: Core Infrastructure
-1. Create core interfaces:
-   - `src/drapto/core/encoder.py`: Base encoder interface
+1. Create core interfaces [Status: Complete]:
+   - `src/drapto/core/encoder.py`: Base encoder interface and encoding options
    - `src/drapto/core/media.py`: Media file handling interface
-   - `src/drapto/core/config.py`: Configuration management
-   - `src/drapto/core/errors.py`: Custom exceptions
-   - `src/drapto/core/temp.py`: Temporary file/directory management
    ```python
    @dataclass
-   class ConfigSchema:
-       """Configuration schema with validation"""
-       field_name: str
-       field_type: type
-       required: bool
-       validator: Callable[[Any], bool]
-       default: Any = None
-   
-   class ConfigValidator:
-       """Validate configuration against schema"""
-       def validate(self, config: Any) -> list[str]: ...
-       def apply_defaults(self, config: Any) -> Any: ...
-   
-   @dataclass
-   class DraptoConfig:
-       """Enhanced configuration with validation"""
-       temp_dir: Path
-       parallel_jobs: int
-       log_level: str
-       hardware_accel: bool
-       
-       _schema: ClassVar[dict[str, ConfigSchema]] = {
-           'temp_dir': ConfigSchema(
-               'temp_dir', Path, True,
-               lambda p: p.parent.exists(),
-               Path('/tmp/drapto')
-           ),
-           'parallel_jobs': ConfigSchema(
-               'parallel_jobs', int, True,
-               lambda n: 1 <= n <= cpu_count(),
-               cpu_count() // 2
-           )
-       }
+   class HDRMetadata:
+       """HDR metadata container"""
+       format: str  # HDR10, HDR10+, DV
+       color_primaries: str
+       transfer_characteristics: str
+       matrix_coefficients: str
+       max_cll: Optional[int]
+       max_fall: Optional[int]
+       dv_profile: Optional[int]
+       dv_bl_signal_compatibility_id: Optional[int]
+
+   class HDRProcessor(ABC):
+       """HDR processing interface"""
+       @abstractmethod
+       def process_hdr(
+           self,
+           input_file: Path,
+           metadata: HDRMetadata,
+           options: EncodingOptions
+       ) -> Dict[str, str]:
+           """Process HDR content and return FFmpeg parameters"""
+           pass
    ```
-   - `src/drapto/core/events.py`: Event system
-   ```python
-   class EventEmitter:
-       """Base event system for component communication"""
-       def emit(self, event: str, data: Any) -> None: ...
-       def on(self, event: str, callback: Callable[[Any], None]) -> None: ...
-       def off(self, event: str, callback: Callable[[Any], None]) -> None: ...
-   ```
-   - `src/drapto/core/status.py`: Status streaming
-   ```python
-   class StatusStream:
-       """Real-time status and progress updates"""
-       def update_progress(self, percent: float, message: str) -> None: ...
-       def update_stage(self, stage: str, details: dict) -> None: ...
-       def error(self, error: str, details: dict) -> None: ...
-   ```
-   - `src/drapto/core/errors.py`: Custom exceptions
-   - `src/drapto/core/temp.py`: Temporary file/directory management
-   ```python
-   class TempManager:
-       """Manages temporary files and directories
-       
-       Directory structure:
-       TEMP_DIR/
-       ├── logs/           # Processing logs
-       ├── encode_data/    # Encoding state and metadata
-       ├── segments/       # Video segments for chunked encoding
-       ├── encoded/        # Encoded segments
-       └── working/        # Temporary processing files
-       """
-   ```
+   - `src/drapto/core/config.py`: Configuration management and validation
+   - `src/drapto/core/exceptions.py`: Custom exceptions hierarchy
+   - `src/drapto/core/events.py`: Event system interface
+   - `src/drapto/core/status.py`: Status streaming interface
+   - `src/drapto/core/temp.py`: Temporary file management interface
 
 2. Implement system wrappers:
    - `src/drapto/system/ffmpeg.py`: FFmpeg wrapper
-   - `src/drapto/system/mediainfo.py`: MediaInfo wrapper
-   - `src/drapto/system/process.py`: Process management
-   - `src/drapto/system/signals.py`: Signal handling
-   - `src/drapto/system/abav1.py`: ab-av1 wrapper
-   - `src/drapto/system/validation.py`: Input/output validation
-
-3. Add utility functions:
-   - `src/drapto/utils/logging.py`: Logging setup
-   - `src/drapto/utils/paths.py`: Path handling
-   - `src/drapto/utils/validation.py`: Input validation
-   - `src/drapto/utils/tracking.py`: File tracking and statistics
    ```python
-   class FileTracker:
-       """Tracks processed files and statistics
-       
-       Manages:
-       - encoded_files.txt: List of processed files
-       - encoding_times.txt: Processing duration data
-       - input_sizes.txt: Original file sizes
-       - output_sizes.txt: Encoded file sizes
-       """
-   ```
-   - `src/drapto/utils/terminal.py`: Terminal capabilities
-   ```python
-   class TerminalCapabilities:
-       """Detect and manage terminal capabilities"""
-       def __init__(self):
-           self.colors = self._detect_colors()
-           self.width = self._detect_width()
-           self.interactive = self._is_interactive()
-   
-   class OutputFormatter:
-       """Platform-independent output formatting"""
-       def __init__(self, capabilities: TerminalCapabilities):
-           self.caps = capabilities
-           
-       def format(self, text: str, style: dict) -> str:
-           """Format text based on terminal capabilities"""
-           
-       def progress_bar(self, percent: float, width: int) -> str:
-           """Create progress bar based on terminal width"""
-   ```
-
-### Phase 2: Basic Encoding
-1. Implement standard encoder:
-   - `src/drapto/encoders/standard.py`: Basic encoding implementation
-   - `src/drapto/encoders/options.py`: Encoding options dataclass
-   - `src/drapto/encoders/hardware.py`: Hardware acceleration support
-   - `src/drapto/encoders/dolby.py`: Dolby Vision handling
-   ```python
-   @dataclass
-   class EncodingOptions:
-       """Encoding configuration
-       
-       Resolution-based CRF values:
-       - SD  (≤720p):  CRF 25
-       - HD  (≤1080p): CRF 25
-       - UHD (>1080p): CRF 29
-       """
-       preset: int = 6
-       film_grain: int = 0
-       film_grain_denoise: int = 0
-       tune: int = 0
-       keyint: int = 240  # 10s at 24fps
-   ```
-
-2. Add media analysis:
-   - `src/drapto/media/analysis.py`: Video/audio analysis
-   - `src/drapto/media/metadata.py`: Media metadata handling
-   - `src/drapto/media/dolby.py`: Dolby Vision detection
-   ```python
-   class DolbyVisionDetector:
-       """Detects and validates Dolby Vision content
-       
-       Uses mediainfo to:
-       1. Check for DV metadata
-       2. Validate DV profile
-       3. Extract HDR metadata
-       """
-   ```
-
-### Phase 3: Chunked Encoding
-1. Implement chunked encoder:
-   - `src/drapto/encoders/chunked.py`: VMAF-based chunked encoding
-   - `src/drapto/processing/segmentation.py`: Video segmentation
-   - `src/drapto/processing/vmaf.py`: VMAF calculation and analysis
-
-2. Add parallel processing:
-   - `src/drapto/processing/worker.py`: Worker process management
-   - `src/drapto/processing/queue.py`: Job queue handling
-
-### Phase 4: State Management
-1. Implement centralized state:
-   - `src/drapto/state/types.py`: State data structures
-   ```python
-   @dataclass
-   class EncodingState:
-       """Complete encoding state"""
-       # Core state
-       job_id: str
-       status: EncodingStatus
-       stage: EncodingStage
-       error: Optional[str] = None
-       
-       # Progress state
-       progress: float = 0.0
-       current_segment: Optional[int] = None
-       total_segments: Optional[int] = None
-       eta_seconds: Optional[float] = None
-       
-       # File state
-       input_file: Path
-       output_file: Path
-       temp_files: list[Path] = field(default_factory=list)
-       
-       # Resource state
-       processes: list[int] = field(default_factory=list)  # PIDs
-       memory_usage: Optional[int] = None
-       cpu_usage: Optional[float] = None
-       
-       # Quality metrics
-       vmaf_scores: list[float] = field(default_factory=list)
-       average_vmaf: Optional[float] = None
-   ```
-
-   - `src/drapto/state/manager.py`: State management
-   ```python
-   class StateManager:
-       """Centralized state management
+   class FFmpeg:
+       """FFmpeg process wrapper.
        
        Features:
-       1. Single source of truth
-       2. Thread-safe state updates
-       3. Event emission on state changes
-       4. Automatic persistence
-       5. Recovery from crashes
+       - Process management and lifecycle
+       - Command building and validation
+       - Progress parsing and monitoring
+       - Error handling and recovery
        """
-       def __init__(self, event_emitter: EventEmitter):
-           self._state: dict[str, EncodingState] = {}
-           self._lock = RLock()
-           self._events = event_emitter
-       
-       def create_job(self, input_file: Path, output_file: Path) -> str:
-           """Create new encoding job"""
-           with self._lock:
-               job_id = str(uuid4())
-               state = EncodingState(
-                   job_id=job_id,
-                   status=EncodingStatus.CREATED,
-                   stage=EncodingStage.INIT,
-                   input_file=input_file,
-                   output_file=output_file
-               )
-               self._state[job_id] = state
-               self._events.emit("job_created", job_id)
-               return job_id
-       
-       def update_job(self, job_id: str, **updates) -> None:
-           """Update job state"""
-           with self._lock:
-               if job_id not in self._state:
-                   raise StateError(f"No such job: {job_id}")
-               
-               old_state = self._state[job_id]
-               new_state = replace(old_state, **updates)
-               self._state[job_id] = new_state
-               
-               # Emit specific events based on what changed
-               if old_state.status != new_state.status:
-                   self._events.emit("status_changed", {
-                       "job_id": job_id,
-                       "old": old_state.status,
-                       "new": new_state.status
-                   })
-               if old_state.progress != new_state.progress:
-                   self._events.emit("progress_updated", {
-                       "job_id": job_id,
-                       "progress": new_state.progress
-                   })
-       
-       def get_job(self, job_id: str) -> EncodingState:
-           """Get job state"""
-           with self._lock:
-               if job_id not in self._state:
-                   raise StateError(f"No such job: {job_id}")
-               return self._state[job_id]
-       
-       def persist(self) -> None:
-           """Persist state to disk for recovery"""
-           with self._lock:
-               state_file = Path("/tmp/drapto/state.json")
-               with state_file.open("w") as f:
-                   json.dump(
-                       {id: asdict(state) for id, state in self._state.items()},
-                       f
-                   )
-       
-       @classmethod
-       def recover(cls, event_emitter: EventEmitter) -> "StateManager":
-           """Recover state from disk"""
-           manager = cls(event_emitter)
-           try:
-               state_file = Path("/tmp/drapto/state.json")
-               if state_file.exists():
-                   with state_file.open() as f:
-                       data = json.load(f)
-                       manager._state = {
-                           id: EncodingState(**state)
-                           for id, state in data.items()
-                       }
-           except Exception as e:
-               logger.error(f"Failed to recover state: {e}")
-           return manager
+       def __init__(self, binary_path: Optional[str] = None):
+           self.binary = binary_path or "ffmpeg"
+           
+       def probe(self, input_file: Path) -> Dict[str, Any]:
+           """Get media file information."""
+           pass
+           
+       def encode(
+           self,
+           input_file: Path,
+           output_file: Path,
+           options: Dict[str, Any]
+       ) -> bool:
+           """Execute FFmpeg encoding process."""
+           pass
    ```
-
-   - `src/drapto/state/errors.py`: State-related errors
+   
+   - `src/drapto/system/mediainfo.py`: MediaInfo wrapper
    ```python
-   class StateError(Exception):
-       """Base class for state-related errors"""
-       pass
+   class MediaInfo:
+       """MediaInfo process wrapper.
+       
+       Features:
+       - Process management and lifecycle
+       - Stream information extraction
+       - Format and codec detection
+       - HDR metadata parsing
+       """
+       def analyze(self, input_file: Path) -> Dict[str, Any]:
+           """Get detailed media information."""
+           pass
+   ```
 
-   class StateNotFoundError(StateError):
-       """Job state not found"""
+3. Add utility functions:
+   - `src/drapto/utils/logging.py`: Logging configuration
+   ```python
+   def setup_logging(
+       log_level: str,
+       log_file: Optional[Path] = None
+   ) -> None:
+       """Configure logging system."""
        pass
-
-   class StateUpdateError(StateError):
-       """Failed to update state"""
+   ```
+   
+   - `src/drapto/utils/paths.py`: Path management
+   ```python
+   def ensure_dir(path: Path) -> None:
+       """Ensure directory exists."""
+       pass
+       
+   def safe_path(path: Path) -> Path:
+       """Get safe path for file operations."""
        pass
    ```
 
-2. Add state consumers:
-   - `src/drapto/state/progress.py`: Progress tracking
+### Phase 2: Encoder Implementations
+1. Implement standard encoder:
+   - `src/drapto/encoders/standard.py`: Standard FFmpeg-based encoder
+   ```python
+   class StandardEncoder(Encoder):
+       """Direct FFmpeg encoding using SVT-AV1.
+       
+       Features:
+       - Direct FFmpeg encoding for Dolby Vision content
+       - SVT-AV1 configuration
+       - Hardware acceleration
+       - HDR/DV metadata preservation
+       - Progress tracking
+       
+       This encoder is required for Dolby Vision content as it preserves
+       DV metadata through direct FFmpeg encoding without chunking.
+       """
+       def __init__(
+           self,
+           ffmpeg: FFmpeg,
+           config: DraptoConfig,
+           status: StatusStream,
+           hdr_handler: HDRHandler
+       ):
+           self.ffmpeg = ffmpeg
+           self.config = config
+           self.status = status
+           self.hdr_handler = hdr_handler
+           
+       def encode(
+           self,
+           input_file: Path,
+           output_file: Path,
+           options: EncodingOptions
+       ) -> bool:
+           """Execute standard encoding process."""
+           pass
+
+       def can_handle(self, input_file: Path) -> bool:
+           """Check if encoder can handle input.
+           
+           Standard encoder is required for Dolby Vision content and
+           can handle any input that FFmpeg supports.
+           """
+           pass
+   ```
+   
+   - `src/drapto/encoders/chunked.py`: VMAF-based chunked encoder
+   ```python
+   class ChunkedEncoder(Encoder):
+       """VMAF-based chunked encoding using ab-av1.
+       
+       Features:
+       - Segment-based encoding with ab-av1
+       - VMAF quality analysis for optimal bitrate
+       - Quality-targeted encoding
+       - Parallel processing
+       
+       This encoder cannot be used with Dolby Vision content as
+       chunked encoding would break DV metadata preservation.
+       """
+       def __init__(
+           self,
+           ffmpeg: FFmpeg,
+           config: DraptoConfig,
+           status: StatusStream,
+           temp: TempManager,
+           hdr_handler: HDRHandler
+       ):
+           self.ffmpeg = ffmpeg
+           self.config = config
+           self.status = status
+           self.temp = temp
+           self.hdr_handler = hdr_handler
+           
+       def encode(
+           self,
+           input_file: Path,
+           output_file: Path,
+           options: EncodingOptions
+       ) -> bool:
+           """Execute chunked encoding process."""
+           pass
+
+       def can_handle(self, input_file: Path) -> bool:
+           """Check if encoder can handle input.
+           
+           Chunked encoder requires seekable input for segmentation
+           and cannot handle Dolby Vision content.
+           """
+           pass
+   ```
+
+2. Add encoder selection logic:
+   ```python
+   class EncoderSelector:
+       """Selects appropriate encoder based on content analysis"""
+       
+       def __init__(
+           self,
+           standard: StandardEncoder,
+           chunked: ChunkedEncoder,
+           analyzer: MediaAnalyzer
+       ):
+           self.standard = standard
+           self.chunked = chunked
+           self.analyzer = analyzer
+           
+       async def select_encoder(self, input_file: Path) -> Encoder:
+           """Select encoder based on content analysis.
+           
+           Returns StandardEncoder for Dolby Vision content to preserve metadata.
+           Returns ChunkedEncoder for non-DV content for quality optimization.
+           """
+           metadata = await self.analyzer.analyze(input_file)
+           
+           if metadata.has_dolby_vision:
+               # DV content requires standard encoder to preserve metadata
+               return self.standard
+               
+           # Default to chunked encoder for quality optimization
+           return self.chunked
+   ```
+
+### Phase 3: Processing Pipeline
+1. Implement processing pipeline:
+   - `src/drapto/processing/pipeline.py`: Pipeline orchestration
+   ```python
+   class ProcessingPipeline:
+       """Orchestrates the encoding pipeline.
+       
+       Features:
+       - Pipeline configuration
+       - Stage management
+       - Segmentation control
+       - Resource tracking
+       - Progress monitoring
+       """
+       def __init__(
+           self,
+           config: DraptoConfig,
+           status: StatusStream,
+           events: EventEmitter
+       ):
+           self.config = config
+           self.status = status
+           self.events = events
+           
+       def process(
+           self,
+           input_file: Path,
+           output_file: Path,
+           options: EncodingOptions
+       ) -> bool:
+           """Execute processing pipeline."""
+           pass
+   ```
+   
+   - `src/drapto/processing/worker.py`: Worker management
+   ```python
+   class WorkerPool:
+       """Manages worker processes.
+       
+       Features:
+       - Process pool management
+       - Resource allocation
+       - Load balancing
+       - Error handling
+       """
+       def __init__(
+           self,
+           config: DraptoConfig,
+           status: StatusStream,
+           events: EventEmitter
+       ):
+           self.config = config
+           self.status = status
+           self.events = events
+           self.workers: List[Worker] = []
+           
+       def start(self) -> None:
+           """Start worker pool."""
+           pass
+           
+       def stop(self) -> None:
+           """Stop worker pool."""
+           pass
+   ```
+   
+   - `src/drapto/processing/queue.py`: Job queue management
+   ```python
+   class JobQueue:
+       """Manages encoding job queue.
+       
+       Features:
+       - Job scheduling
+       - Priority management
+       - Resource allocation
+       - State tracking
+       """
+       def __init__(
+           self,
+           config: DraptoConfig,
+           status: StatusStream,
+           events: EventEmitter
+       ):
+           self.config = config
+           self.status = status
+           self.events = events
+           
+       def add_job(
+           self,
+           input_file: Path,
+           output_file: Path,
+           options: EncodingOptions
+       ) -> str:
+           """Add job to queue."""
+           pass
+           
+       def get_next_job(self) -> Optional[Dict[str, Any]]:
+           """Get next job from queue."""
+           pass
+   ```
+
+### Phase 4: State Management
+1. Implement state management:
+   - `src/drapto/state/manager.py`: State management implementation
+   ```python
+   class StateManager:
+       """Centralized state management.
+       
+       Features:
+       - Thread-safe state updates
+       - Event emission and handling
+       - State persistence and recovery
+       - Resource metrics tracking
+       """
+       def __init__(
+           self,
+           config: DraptoConfig,
+           events: EventEmitter,
+           temp: TempManager
+       ):
+           self.config = config
+           self.events = events
+           self.temp = temp
+           self._state: Dict[str, EncodingState] = {}
+           self._lock = RLock()
+           
+       def create_job(
+           self,
+           input_file: Path,
+           output_file: Path,
+           options: EncodingOptions
+       ) -> str:
+           """Create new encoding job."""
+           pass
+           
+       def update_job(self, job_id: str, **updates) -> None:
+           """Update job state."""
+           pass
+           
+       def get_job(self, job_id: str) -> EncodingState:
+           """Get job state."""
+           pass
+           
+       def save_state(self, job_id: str) -> None:
+           """Persist job state to disk."""
+           pass
+           
+       def load_state(self, job_id: str) -> None:
+           """Load job state from disk."""
+           pass
+   ```
+   
+   - `src/drapto/state/progress.py`: Progress tracking implementation
    ```python
    class ProgressTracker:
-       """Tracks encoding progress"""
-       def __init__(self, state_manager: StateManager):
-           self.state = state_manager
-           
-       def on_segment_complete(self, job_id: str, segment: int) -> None:
-           """Update progress when segment completes"""
-           state = self.state.get_job(job_id)
-           if state.total_segments:
-               progress = (segment + 1) / state.total_segments
-               self.state.update_job(job_id, progress=progress)
-   ```
-
-   - `src/drapto/state/metrics.py`: Resource monitoring
-   ```python
-   class ResourceMonitor:
-       """Monitors system resource usage"""
-       def __init__(self, state_manager: StateManager):
-           self.state = state_manager
-           
-       def update_metrics(self, job_id: str) -> None:
-           """Update resource usage metrics"""
-           state = self.state.get_job(job_id)
-           memory, cpu = self._get_resource_usage(state.processes)
-           self.state.update_job(
-               job_id,
-               memory_usage=memory,
-               cpu_usage=cpu
-           )
-   ```
-
-3. Add state producers:
-   - `src/drapto/state/events.py`: Event definitions
-   ```python
-   class StateEvents:
-       """State-related event definitions"""
-       JOB_CREATED = "job_created"
-       JOB_STARTED = "job_started"
-       JOB_COMPLETED = "job_completed"
-       JOB_FAILED = "job_failed"
-       STATUS_CHANGED = "status_changed"
-       PROGRESS_UPDATED = "progress_updated"
-       SEGMENT_COMPLETE = "segment_complete"
-       RESOURCE_UPDATED = "resource_updated"
-   ```
-
-4. Add error recovery:
-   - `src/drapto/core/retry.py`: Retry handling
-   ```python
-   @dataclass
-   class RetryPolicy:
-       """Retry policy configuration"""
-       max_attempts: int
-       backoff_factor: float
-       max_backoff: float
-       retryable_errors: set[type[Exception]]
-
-   class RetryableOperation:
-       """Wrapper for operations that can be retried"""
-       def __init__(self, policy: RetryPolicy):
-           self.policy = policy
-           self._circuit = CircuitBreaker()
+       """Tracks encoding progress.
        
-       async def run(self, operation: Callable, *args, **kwargs):
-           """Run operation with retry policy"""
-           if not self._circuit.allow_request():
-               raise CircuitBreakerOpen()
-               
-           attempt = 0
-           last_error = None
+       Features:
+       - Progress calculation and updates
+       - ETA estimation and metrics
+       - Resource monitoring and limits
+       - Performance statistics
+       """
+       def __init__(
+           self,
+           state: StateManager,
+           events: EventEmitter
+       ):
+           self.state = state
+           self.events = events
            
-           while attempt < self.policy.max_attempts:
-               try:
-                   result = await operation(*args, **kwargs)
-                   self._circuit.record_success()
-                   return result
-               except Exception as e:
-                   if not any(isinstance(e, err) for err in self.policy.retryable_errors):
-                       raise
-                       
-                   last_error = e
-                   attempt += 1
-                   self._circuit.record_failure()
-                   
-                   if attempt < self.policy.max_attempts:
-                       delay = min(
-                           self.policy.backoff_factor * (2 ** attempt),
-                           self.policy.max_backoff
-                       )
-                       await asyncio.sleep(delay)
+       def update_progress(
+           self,
+           job_id: str,
+           progress: float,
+           stage: ProcessingStage
+       ) -> None:
+           """Update job progress."""
+           pass
            
-           raise MaxRetriesExceeded(
-               f"Operation failed after {attempt} attempts",
-               last_error=last_error
-           )
-   ```
-
-   - `src/drapto/core/errors.py`: Enhanced error handling
-   ```python
-   @dataclass
-   class ErrorContext:
-       """Rich error context for debugging"""
-       error: Exception
-       operation: str
-       inputs: dict
-       state: Optional[dict] = None
-       timestamp: datetime = field(default_factory=datetime.now)
-       stack_trace: str = field(default_factory=lambda: traceback.format_exc())
-
-   class EncodingError(Exception):
-       """Base class for encoding errors with context"""
-       def __init__(self, message: str, context: ErrorContext):
-           super().__init__(message)
-           self.context = context
-           
-       def to_dict(self) -> dict:
-           """Convert error to structured format"""
-           return {
-               "error": str(self),
-               "type": self.__class__.__name__,
-               "operation": self.context.operation,
-               "inputs": self.context.inputs,
-               "state": self.context.state,
-               "timestamp": self.context.timestamp.isoformat(),
-               "stack_trace": self.context.stack_trace
-           }
+       def update_resources(
+           self,
+           job_id: str,
+           cpu: float,
+           memory: int,
+           gpu: Optional[float] = None
+       ) -> None:
+           """Update resource usage."""
+           pass
    ```
 
 ### Phase 5: Media Processing
-1. Add media handlers:
-   - `src/drapto/media/audio.py`: Audio stream handling
+1. Implement media handlers:
+   - `src/drapto/media/analysis.py`: Media analysis
    ```python
-   class AudioProcessor:
-       """Handles audio processing
-       
-       Steps:
-       1. Track discovery and analysis
-       2. Channel detection
-       3. Bitrate assignment
-       4. Per-track processing
-       5. Quality control
-       6. Track management
-       7. Error handling
-       """
-   ```
-   - `src/drapto/media/subtitle.py`: Subtitle processing
-   ```python
-   class SubtitleProcessor:
-       """Handles subtitle processing
+   class MediaAnalyzer:
+       """Analyzes media files.
        
        Features:
-       1. Track extraction
-       2. Format preservation
-       3. Timing preservation
-       4. Direct stream copy
+       - Stream detection and analysis
+       - Format and codec detection
+       - HDR/DV metadata detection
+       - Quality assessment
        """
+       def __init__(
+           self,
+           mediainfo: MediaInfo,
+           ffmpeg: FFmpeg
+       ):
+           self.mediainfo = mediainfo
+           self.ffmpeg = ffmpeg
+           
+       def analyze(self, input_file: Path) -> MediaFile:
+           """Analyze media file."""
+           pass
+           
+       def detect_hdr(self, input_file: Path) -> Optional[HDRMetadata]:
+           """Detect and extract HDR metadata."""
+           pass
    ```
+   
+   - `src/drapto/media/hdr.py`: HDR processing
+   ```python
+   class HDRHandler:
+       """Handles HDR/DV processing.
+       
+       Features:
+       - HDR10/HDR10+ handling
+       - Dolby Vision profile handling
+       - Color space conversion
+       - Tone mapping when needed
+       """
+       def __init__(self, ffmpeg: FFmpeg):
+           self.ffmpeg = ffmpeg
+           
+       def get_encoding_params(
+           self,
+           metadata: HDRMetadata,
+           options: EncodingOptions
+       ) -> Dict[str, str]:
+           """Get FFmpeg parameters for HDR encoding."""
+           pass
+           
+       def validate_compatibility(
+           self,
+           metadata: HDRMetadata,
+           options: EncodingOptions
+       ) -> bool:
+           """Check if HDR format is compatible with encoding options."""
+           pass
+   ```
+   
+   - `src/drapto/media/audio.py`: Audio processing
+   ```python
+   class AudioProcessor:
+       """Processes audio streams.
+       
+       Features:
+       - Track selection and mapping
+       - Channel layout handling
+       - Quality control and metrics
+       - Stream optimization
+       """
+       def process_stream(
+           self,
+           stream: AudioStreamInfo,
+           options: EncodingOptions
+       ) -> None:
+           """Process audio stream."""
+           pass
+   ```
+   
+   - `src/drapto/media/subtitle.py`: Subtitle handling
+   ```python
+   class SubtitleHandler:
+       """Handles subtitle streams.
+       
+       Features:
+       - Track selection and mapping
+       - Format preservation
+       - Language detection
+       - Stream optimization
+       """
+       def process_stream(
+           self,
+           stream: StreamInfo,
+           options: EncodingOptions
+       ) -> None:
+           """Process subtitle stream."""
+           pass
+   ```
+   
    - `src/drapto/media/muxer.py`: Stream muxing
    ```python
    class StreamMuxer:
-       """Handles final file assembly
-       
-       Steps:
-       1. Video track muxing
-       2. Audio track addition
-       3. Subtitle inclusion
-       4. Chapter preservation
-       5. Metadata preservation
-       6. Container validation
-       """
-   ```
-   - `src/drapto/media/validator.py`: Media validation
-   ```python
-   class MediaValidator:
-       """Validates media files
-       
-       Checks:
-       1. Stream integrity
-       2. Codec validation
-       3. Duration verification
-       4. Size validation
-       5. Container structure
-       """
-   ```
-   - `src/drapto/media/stream.py`: Stream mapping and track management
-   ```python
-   class StreamManager:
-       """Manages media streams
+       """Handles stream muxing.
        
        Features:
-       1. Stream discovery
-       2. Track mapping
-       3. Stream selection
-       4. Track ordering
-       5. Stream validation
+       - Track ordering and mapping
+       - Container optimization
+       - Metadata preservation
+       - Quality validation
        """
+       def mux_streams(
+           self,
+           input_file: Path,
+           output_file: Path,
+           streams: List[StreamInfo]
+       ) -> bool:
+           """Mux streams into output container."""
+           pass
    ```
 
 ### Phase 6: Testing & Documentation
 1. Add test infrastructure:
-   - `tests/conftest.py`: Test fixtures and mocks
+   - `tests/conftest.py`: Common test fixtures
    ```python
    @pytest.fixture
-   def mock_ffmpeg():
-       """Mock FFmpeg wrapper with recorded outputs"""
-       with MockFFmpeg() as ffmpeg:
-           ffmpeg.add_response(
-               ["ffmpeg", "-i", "input.mkv"],
-               stdout=SAMPLE_MEDIAINFO,
-               stderr=""
-           )
-           yield ffmpeg
-
+   def config() -> DraptoConfig:
+       """Test configuration."""
+       return DraptoConfig(
+           temp_dir=Path("/tmp/drapto_test"),
+           parallel_jobs=2,
+           log_level="DEBUG"
+       )
+   
    @pytest.fixture
-   def mock_state_manager():
-       """Mock state manager with recorded events"""
-       with MockStateManager() as state:
-           yield state
+   def ffmpeg() -> FFmpeg:
+       """FFmpeg wrapper fixture."""
+       return MockFFmpeg()
+           
+   @pytest.fixture
+   def mediainfo() -> MediaInfo:
+       """MediaInfo wrapper fixture."""
+       return MockMediaInfo()
    ```
 
-   - `tests/property/test_encoding.py`: Property-based tests
-   ```python
-   @given(st.integers(min_value=0, max_value=100))
-   def test_vmaf_calculation(mock_ffmpeg, target_vmaf):
-       """Property-based test for VMAF calculations"""
-       encoder = ChunkedEncoder(mock_ffmpeg, target_vmaf=target_vmaf)
-       result = encoder.calculate_vmaf(SAMPLE_VIDEO)
-       assert 0 <= result <= 100
-   ```
+2. Add unit tests:
+   - Core functionality tests
+   - Interface contract tests
+   - Configuration validation
+   - Error handling
 
-   - `tests/performance/test_encoding.py`: Performance tests
+3. Add integration tests:
+   - End-to-end encoding flows
+   - Pipeline orchestration
+   - Resource management
+   - State persistence
+
+4. Add performance tests:
+   - Encoding speed benchmarks
+   - Memory usage profiling
+   - Resource utilization
+
+5. Add property tests:
+   - Configuration validation
+   - State transitions
+   - Resource bounds
+   - Error propagation
+
+### Phase 7: CLI Implementation
+1. Add CLI interface:
+   - `src/drapto/cli.py`: Command line interface
    ```python
-   @pytest.mark.performance
-   def test_encoding_speed(benchmark):
-       """Test encoding performance with thresholds"""
-       def encode():
-           encoder = StandardEncoder()
-           encoder.encode(SAMPLE_VIDEO, OUTPUT_PATH)
+   @click.group()
+   @click.option(
+       "--config",
+       type=click.Path(exists=True),
+       help="Path to config file"
+   )
+   @click.option(
+       "--log-level",
+       type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR"]),
+       default="INFO",
+       help="Logging level"
+   )
+   def cli(config: Optional[str], log_level: str):
+       """drapto video encoder."""
+       setup_logging(log_level)
        
-       result = benchmark(encode)
-       assert result.stats.mean < MAX_ENCODE_TIME
-       assert result.stats.stddev < ENCODE_TIME_STDDEV
+   @cli.command()
+   @click.argument(
+       "input_file",
+       type=click.Path(exists=True)
+   )
+   @click.argument(
+       "output_file",
+       type=click.Path()
+   )
+   def encode(
+       input_file: str,
+       output_file: str
+   ):
+       """Encode video file."""
+       pipeline = ProcessingPipeline(
+           config=load_config(),
+           status=ConsoleStatusStream(),
+           events=EventEmitter()
+       )
+       
+       result = pipeline.process(
+           Path(input_file),
+           Path(output_file),
+           EncodingOptions()
+       )
+       
+       sys.exit(0 if result else 1)
    ```
 
-2. Add test scenarios:
-   - Unit tests for each component
-   - Integration tests for encoding workflows
-   - System tests for CLI functionality
-   - Performance tests with thresholds
-   - Property-based tests for encoding logic
-   - Mocking strategies for external dependencies
-   - Test fixtures for common scenarios
-   - Test data generation
+2. Add CLI tests:
+   - Command validation
+   - Error handling
+   - Integration flows
+   - Configuration loading
 
 ## Key Improvements
 
@@ -730,47 +894,7 @@ class ChunkedEncoder(Encoder):
 - Proper error types
 - Interface contracts
 
-### 2. State Management
-```python
-@dataclass
-class JobState:
-    """Encoding job state"""
-    job_id: str
-    status: str
-    progress: float
-    current_segment: Optional[int]
-    error: Optional[str]
-    
-class StateManager:
-    """Manages job state persistence"""
-    def save_state(self, state: JobState) -> None:
-        pass
-    
-    def load_state(self, job_id: str) -> JobState:
-        pass
-```
-
-### 3. Process Management
-```python
-class ProcessManager:
-    """Manages external processes"""
-    def run(
-        self,
-        cmd: list[str],
-        timeout: Optional[float] = None,
-        capture_output: bool = True
-    ) -> ProcessResult:
-        pass
-    
-    def run_with_progress(
-        self,
-        cmd: list[str],
-        progress_callback: Callable[[float], None]
-    ) -> ProcessResult:
-        pass
-```
-
-### 4. Error Handling
+### 2. Error Handling
 ```python
 class EncodingError(Exception):
     """Base class for encoding errors"""
@@ -778,10 +902,6 @@ class EncodingError(Exception):
 
 class ValidationError(EncodingError):
     """Input/output validation errors"""
-    pass
-
-class ProcessError(EncodingError):
-    """External process errors"""
     pass
 ```
 

@@ -42,97 +42,78 @@ drapto is organized as a Python package with modular components:
 src/drapto/
 ├── core/              # Core infrastructure
 │   ├── encoder.py     # Base encoder interface
-│   ├── config/        # Configuration management
+│   ├── config.py      # Configuration management and validation
 │   ├── events.py      # Event system
 │   ├── status.py      # Status streaming
-│   ├── errors.py      # Error handling
+│   ├── exceptions.py  # Error handling and exceptions
 │   └── temp.py        # Temporary file management
 │
 ├── encoders/          # Encoding implementations
 │   ├── standard.py    # Standard encoding path
-│   ├── chunked.py     # VMAF-based chunked encoding
-│   ├── options.py     # Encoding options/config
-│   ├── hardware.py    # Hardware acceleration
-│   └── dolby.py       # Dolby Vision handling
+│   └── chunked.py     # VMAF-based chunked encoding
 │
 ├── media/             # Media handling
-│   ├── analysis.py    # Video/audio analysis
-│   ├── metadata.py    # Media metadata
+│   ├── analysis.py    # Video/audio analysis and metadata
 │   ├── audio.py       # Audio processing
 │   ├── subtitle.py    # Subtitle handling
 │   └── muxer.py       # Stream muxing
 │
 ├── processing/        # Processing logic
-│   ├── segmentation.py # Video segmentation
-│   ├── vmaf.py        # VMAF calculations
+│   ├── pipeline.py    # Pipeline orchestration and segmentation
 │   ├── worker.py      # Worker management
 │   └── queue.py       # Job queue
 │
 ├── state/            # State management
 │   ├── manager.py    # State coordination
-│   ├── types.py      # State data structures
-│   ├── progress.py   # Progress tracking
-│   └── metrics.py    # Resource monitoring
+│   └── progress.py   # Progress tracking and metrics
 │
 ├── system/           # System integration
 │   ├── ffmpeg.py     # FFmpeg wrapper
-│   ├── mediainfo.py  # MediaInfo wrapper
-│   ├── process.py    # Process management
-│   └── signals.py    # Signal handling
+│   └── mediainfo.py  # MediaInfo wrapper
 │
 └── utils/            # Utilities
     ├── logging.py    # Logging setup
     ├── paths.py      # Path handling
-    ├── validation.py # Input validation
-    └── terminal.py   # Terminal handling
+    └── validation.py # Input validation and terminal output
 ```
 
 ### Module Responsibilities
 
 #### Core (`core/`)
-- **Configuration Management**: Schema-based configuration with validation
+- **Configuration Management**: Configuration loading, validation, and schema
 - **Event System**: Event-driven communication between components
-- **Error Handling**: Structured error handling with context
+- **Error Handling**: Centralized exception hierarchy and error handling
 - **Base Interfaces**: Core interfaces for encoders and media handling
 - **Temporary Files**: Managed temporary file and directory lifecycle
 
 #### Encoders (`encoders/`)
 - **Standard Encoder**: Direct FFmpeg-based encoding with CRF control
 - **Chunked Encoder**: VMAF-based encoding with segmentation
-- **Hardware Support**: GPU acceleration and hardware detection
-- **Options Management**: Encoding parameters and validation
-- **Dolby Vision**: HDR and Dolby Vision content handling
+- Hardware acceleration and HDR handling integrated into each encoder
 
 #### Media (`media/`)
-- **Analysis**: Video and audio stream analysis
-- **Metadata**: Media information extraction and validation
+- **Analysis**: Video/audio stream analysis and metadata extraction
 - **Audio Processing**: Audio track management and encoding
 - **Subtitle Handling**: Subtitle track preservation
 - **Stream Muxing**: Final container assembly
 
 #### Processing (`processing/`)
-- **Segmentation**: Video chunk management
-- **VMAF Analysis**: Quality metric calculations
+- **Pipeline**: Video processing orchestration and segmentation
 - **Worker Management**: Parallel processing control
 - **Queue Management**: Job scheduling and coordination
 
 #### State (`state/`)
-- **State Management**: Centralized state tracking
-- **Progress Monitoring**: Real-time progress updates
-- **Resource Metrics**: System resource tracking
-- **State Persistence**: Crash recovery and state restoration
+- **State Management**: Centralized state tracking and persistence
+- **Progress Tracking**: Real-time progress updates and resource metrics
 
 #### System (`system/`)
 - **External Tools**: FFmpeg and MediaInfo integration
-- **Process Control**: Process lifecycle management
-- **Signal Handling**: Clean process termination
-- **Resource Management**: System resource allocation
+- Process management integrated into each wrapper
 
 #### Utilities (`utils/`)
 - **Logging**: Structured logging configuration
 - **Path Management**: File and directory path handling
-- **Input Validation**: Data validation utilities
-- **Terminal Output**: Progress display and formatting
+- **Validation**: Input validation and terminal output formatting
 
 ### Runtime Directory Structure
 
@@ -573,6 +554,29 @@ This implementation preserves MediaInfo's reliable Dolby Vision detection while 
 The system provides reliable Dolby Vision detection through MediaInfo while adding modern features for robustness and maintainability.
 
 ## Encoding Paths
+
+drapto uses two distinct encoding paths based on input content:
+
+1. **Direct FFmpeg Encoding (Standard Path)**
+   - Used for Dolby Vision content to preserve DV metadata
+   - Direct FFmpeg encoding without chunking
+   - SVT-AV1 encoder with HDR/DV metadata preservation
+   - Hardware acceleration support
+   - Fixed CRF-based quality control
+   - CRF values:
+     * SD (≤720p): 25
+     * HD (≤1080p): 25
+     * UHD (>1080p): 29
+   - Required for Dolby Vision content to preserve metadata
+
+2. **Chunked ab-av1 Encoding (Quality-Optimized Path)**
+   - Used for non-DV content where quality optimization is desired
+   - Segment-based encoding with ab-av1
+   - VMAF-based quality analysis for optimal bitrate
+   - Parallel processing support
+   - VMAF target: 93
+   - Cannot be used with Dolby Vision content (chunking breaks DV metadata)
+   - Default path for non-DV content
 
 The encoding system uses a modern Python-based architecture with comprehensive wrappers, retry strategies, and quality control:
 
@@ -2111,39 +2115,44 @@ class CropEvents(Enum):
     VALIDATION_START = "crop_validation_start"
     VALIDATION_COMPLETE = "crop_validation_complete"
     VALIDATION_ERROR = "crop_validation_error"
+
+## HDR and Dolby Vision Handling
+
+The system handles HDR content through a clear separation of detection and processing:
+
+### Detection
+- Located in `media/analysis.py`
+- Uses MediaInfo for initial metadata extraction
+- Detects HDR10, HDR10+, and Dolby Vision content
+- Extracts full HDR metadata including color space info
+- Returns structured HDRMetadata for processing
+
+### Processing
+- Located in `media/hdr.py`
+- Centralizes all HDR/DV processing logic
+- Handles color space conversion
+- Manages tone mapping when needed
+- Provides FFmpeg parameters for encoding
+- Validates format compatibility
+
+### Integration
+- Encoders use HDRHandler for consistent processing
+- Pipeline ensures HDR metadata flows correctly
+- Proper handling of different HDR formats:
+  - HDR10: Direct passthrough
+  - HDR10+: Dynamic metadata preservation
+  - Dolby Vision: Profile-aware processing
+
+### Configuration
+```python
+@dataclass
+class HDRConfig:
+    """HDR processing configuration"""
+    preserve_hdr: bool = True
+    allowed_formats: List[str] = ["HDR10", "HDR10+", "DV"]
+    dv_profile: Optional[int] = None
+    tone_map_hdr: bool = False
 ```
-
-This modern implementation provides:
-
-1. **HDR-Aware Detection**
-   - Dynamic threshold adjustment for HDR
-   - Content type detection
-   - Color space analysis
-   - Black level analysis
-
-2. **Content-Based Thresholds**
-   - SDR: Base threshold of 24
-   - HDR: Dynamic range 128-256
-   - Configurable multiplier
-   - Black level analysis
-
-3. **HDR Detection**
-   - Color transfer characteristics
-   - Color primaries
-   - Color space information
-   - HDR format detection
-
-4. **Validation System**
-   - Content-aware validation
-   - HDR-specific checks
-   - Confidence thresholds
-   - Aspect ratio preservation
-
-The system ensures reliable crop detection with:
-- Proper HDR content handling
-- Dynamic threshold adjustment
-- Comprehensive validation
-- Clean error recovery
 
 ## Codec Usage
 
