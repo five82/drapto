@@ -167,97 +167,203 @@ All directories are managed by the `TempManager` which ensures proper cleanup on
 
 ## Input Video Processing Flow
 
-When a video is input to drapto, it undergoes the following analysis steps:
+The input processing system uses a modern event-driven architecture with centralized configuration and state management:
 
-1. **Directory Initialization**
-   - Creates output directory if it doesn't exist
-   - Verifies input directory exists and contains video files
-   - Sets up temporary directory structure:
+1. **Configuration Management**
+   ```python
+   # Core configuration structure
+   config/
+   ├── default.py      # Default configuration
+   ├── schema.py       # Configuration schema
+   └── validator.py    # Schema validation
+   ```
+
+   - **Configuration Loading**
+     ```python
+     {
+       "input": {
+         "source_dir": str,
+         "file_pattern": str,
+         "min_size": int,
+         "max_size": int
+       },
+       "processing": {
+         "chunk_size": int,
+         "parallel_jobs": int,
+         "temp_dir": str
+       },
+       "encoding": {
+         "preset": int,
+         "crf": {
+           "sd": int,
+           "hd": int,
+           "uhd": int
+         }
+       }
+     }
      ```
-     TEMP_DIR/
-     ├── logs/           # Processing logs
-     ├── encode_data/    # Encoding state and metadata
-     ├── segments/       # Video segments for chunked encoding
-     ├── encoded/        # Encoded segments
-     └── working/        # Temporary processing files
+
+2. **Event-Based Status Updates**
+   - Core events:
+     ```python
+     class ProcessingEvents(Enum):
+         FILE_DISCOVERED = "file_discovered"
+         ANALYSIS_STARTED = "analysis_started"
+         ANALYSIS_COMPLETE = "analysis_complete"
+         ENCODING_STARTED = "encoding_started"
+         SEGMENT_COMPLETE = "segment_complete"
+         ENCODING_COMPLETE = "encoding_complete"
+         ERROR_OCCURRED = "error_occurred"
      ```
-   - Initializes tracking files:
-     - `encoded_files.txt`: List of processed files
-     - `encoding_times.txt`: Processing duration data
-     - `input_sizes.txt`: Original file sizes
-     - `output_sizes.txt`: Encoded file sizes
+   - Event payload structure:
+     ```python
+     {
+         "event": ProcessingEvents,
+         "timestamp": datetime,
+         "file": str,
+         "data": Dict[str, Any],
+         "status": ProcessingStatus
+     }
+     ```
 
-2. **Initial Analysis**
-   - Checks for Dolby Vision content using `mediainfo`
-   - Analyzes video resolution to determine quality settings
-   - Detects video and audio codecs
-   - Performs crop detection if enabled
-   - Validates input file integrity
+3. **State Management Flow**
+   ```python
+   class ProcessingState:
+       def __init__(self):
+           self.current_file: Optional[str] = None
+           self.stage: ProcessingStage = ProcessingStage.INIT
+           self.progress: float = 0.0
+           self.errors: List[Error] = []
+           self.stats: Dict[str, Any] = {}
 
-3. **Path Determination**
-   - Selects between standard or Dolby Vision encoding path
-   - Determines if chunked encoding should be used
-   - Sets up appropriate encoding parameters based on content type
-   - Configures hardware acceleration for decoding
+   class StateManager:
+       def update_state(self, event: ProcessingEvent) -> None:
+           """Update processing state based on event"""
+           
+       def get_current_state(self) -> ProcessingState:
+           """Get current processing state"""
+           
+       def save_checkpoint(self) -> None:
+           """Save state checkpoint for recovery"""
+   ```
 
-4. **Stream Analysis**
-   - Identifies number and type of audio streams
-   - Determines video color space and HDR characteristics
-   - Analyzes frame rate and duration
-   - Maps input streams to output configuration
+4. **Directory Management**
+   ```python
+   class TempManager:
+       def __init__(self, config: Config):
+           self.base_dir = config.processing.temp_dir
+           self.paths = self._initialize_paths()
+           
+       def _initialize_paths(self) -> Dict[str, Path]:
+           """Initialize directory structure"""
+           return {
+               "working": self.base_dir / "working",
+               "segments": self.base_dir / "segments",
+               "encoded": self.base_dir / "encoded",
+               "logs": self.base_dir / "logs",
+               "state": self.base_dir / "state"
+           }
+           
+       def setup(self) -> None:
+           """Create directory structure"""
+           for path in self.paths.values():
+               path.mkdir(parents=True, exist_ok=True)
+               
+       def cleanup(self, keep_logs: bool = True) -> None:
+           """Clean temporary directories"""
+   ```
 
 5. **Processing Pipeline**
-   - **Video Processing**
-     1. Decoding phase (hardware-accelerated if available)
-     2. Crop detection and application (if enabled)
-     3. Video encoding with SVT-AV1:
-        - **Standard Path**:
-          * Direct FFmpeg encoding
-          * CRF-based quality control
-          * Single-pass encoding
-          * Resolution-dependent CRF values
-        - **Chunked Path** (when enabled):
-          * Segments video into chunks
-          * VMAF-based quality targeting with ab-av1
-          * Multi-tier encoding strategy
-          * Parallel processing of segments
-     4. Quality validation
-   - **Audio Processing**
-     1. Track discovery and analysis
-     2. Channel detection and bitrate assignment
-     3. Per-track processing
-     4. Failure recovery
-     5. Quality control
-     6. Track management
-     7. Error handling
-     8. Performance optimization
-     9. Recovery procedures
-     10. Logging and diagnostics
-   - **Subtitle Processing**
-     1. Extract subtitle tracks
-     2. Preserve formatting and timing
-     3. Copy to output without re-encoding
+   ```python
+   class ProcessingPipeline:
+       def __init__(self, config: Config):
+           self.config = config
+           self.state_manager = StateManager()
+           self.temp_manager = TempManager(config)
+           self.event_bus = EventBus()
+           
+       async def process_file(self, input_file: Path) -> None:
+           """Process single input file"""
+           try:
+               # Initialize processing
+               self.temp_manager.setup()
+               self.state_manager.start_file(input_file)
+               
+               # Analysis phase
+               await self._analyze_file(input_file)
+               
+               # Encoding phase
+               await self._encode_file(input_file)
+               
+               # Finalization
+               await self._finalize_output()
+               
+           except ProcessingError as e:
+               self.event_bus.emit(
+                   ProcessingEvents.ERROR_OCCURRED,
+                   {"error": str(e)}
+               )
+               raise
+               
+           finally:
+               self.temp_manager.cleanup()
+   ```
 
-6. **Output Assembly**
-   - Muxes encoded video track
-   - Adds processed audio tracks
-   - Includes subtitle tracks
-   - Preserves chapters and metadata
-   - Validates final container structure
+6. **Error Recovery**
+   - State-based recovery system:
+     ```python
+     class RecoveryManager:
+         def can_recover(self, state: ProcessingState) -> bool:
+             """Check if processing can be recovered"""
+             
+         def get_recovery_point(self) -> Optional[CheckPoint]:
+             """Get last valid checkpoint"""
+             
+         async def recover_processing(self, checkpoint: CheckPoint) -> None:
+             """Resume processing from checkpoint"""
+     ```
 
-7. **Cleanup Process**
-   - Removes temporary segment files
-   - Cleans up working directory
-   - Preserves logs for debugging
-   - Updates tracking files with results
-   - Verifies output file integrity
+7. **Progress Tracking**
+   - Event-based progress updates:
+     ```python
+     class ProgressTracker:
+         def __init__(self):
+             self.start_time: Optional[datetime] = None
+             self.progress: float = 0.0
+             self.stats: Dict[str, Any] = {}
+             
+         def update(self, event: ProcessingEvent) -> None:
+             """Update progress based on event"""
+             
+         def get_eta(self) -> Optional[timedelta]:
+             """Calculate estimated time remaining"""
+     ```
 
-8. **Error Handling**
-   - Validates each pipeline stage
-   - Retries failed operations when possible
-   - Preserves partial progress on failure
-   - Maintains detailed logs for debugging
-   - Cleans up temporary files on failure
+8. **Resource Management**
+   - Managed cleanup through context managers:
+     ```python
+     class ResourceManager:
+         def __init__(self, temp_manager: TempManager):
+             self.temp_manager = temp_manager
+             
+         async def __aenter__(self) -> 'ResourceManager':
+             await self.setup_resources()
+             return self
+             
+         async def __aexit__(self, *args) -> None:
+             await self.cleanup_resources()
+     ```
+
+This modern architecture provides several advantages:
+- Centralized configuration management
+- Real-time status updates via events
+- Robust state tracking and recovery
+- Clean temporary file management
+- Structured error handling
+- Progress monitoring
+- Resource cleanup guarantees
+
+The system maintains a clear separation of concerns while providing comprehensive monitoring and control over the processing pipeline.
 
 ## Dolby Vision Detection
 
