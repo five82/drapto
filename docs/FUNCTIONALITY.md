@@ -372,16 +372,205 @@ The system maintains a clear separation of concerns while providing comprehensiv
 
 ## Dolby Vision Detection
 
-Dolby Vision detection is performed using the following process:
+drapto uses MediaInfo for Dolby Vision detection, wrapped in a modern event-driven system:
 
-1. **Detection Method**
-   - Uses `mediainfo` to check for Dolby Vision metadata
-   - Sets internal flag `IS_DOLBY_VISION=true` when detected
+```python
+class DolbyVisionDetector:
+    """Modern wrapper around MediaInfo for Dolby Vision detection"""
+    
+    def __init__(self, config: DolbyConfig):
+        self.config = config
+        self.state_manager = StateManager()
+        self.event_bus = EventBus()
+        self.error_handler = DolbyErrorHandler()
+        self.validator = DolbyValidator()
+        self.mediainfo = MediaInfoWrapper()  # Wrapper for mediainfo CLI
+        
+    async def detect(self, input_file: Path) -> Result[DolbyMetadata, DolbyError]:
+        """Detect Dolby Vision using MediaInfo with state management"""
+        try:
+            # Initialize detection state
+            state = await self.state_manager.create_dolby_state(input_file)
+            
+            # Emit detection start
+            await self.event_bus.emit(DolbyEvents.DETECTION_START, {
+                "file": str(input_file),
+                "timestamp": datetime.now()
+            })
+            
+            # Run MediaInfo detection
+            mediainfo_data = await self.mediainfo.get_metadata(input_file)
+            if mediainfo_data.is_err():
+                return Err(mediainfo_data.unwrap_err())
+                
+            # Parse MediaInfo output for Dolby Vision data
+            metadata = DolbyMetadata(mediainfo_data.unwrap())
+            
+            # Validate Dolby Vision metadata
+            validation = await self.validator.validate_metadata(metadata)
+            if validation.is_err():
+                return Err(validation.unwrap_err())
+                
+            # Update state with results
+            state.metadata = metadata
+            await self.state_manager.update(state)
+            
+            # Emit detection complete
+            await self.event_bus.emit(DolbyEvents.DETECTION_COMPLETE, {
+                "file": str(input_file),
+                "has_dolby": metadata.has_dolby_vision,
+                "profile": metadata.profile
+            })
+            
+            return Ok(metadata)
+            
+        except Exception as e:
+            error = self.error_handler.handle_error(e, state)
+            await self.event_bus.emit(DolbyEvents.DETECTION_ERROR, {
+                "file": str(input_file),
+                "error": str(error)
+            })
+            return Err(error)
 
-2. **Special Handling**
-   - Activates Dolby Vision-specific encoding path
-   - Uses specialized SVT-AV1 parameters for DV content
-   - Maintains HDR metadata throughout the encoding process
+class MediaInfoWrapper:
+    """Modern wrapper for mediainfo CLI"""
+    
+    async def get_metadata(self, input_file: Path) -> Result[Dict[str, Any], MediaInfoError]:
+        """Get metadata using mediainfo CLI with JSON output"""
+        try:
+            # Run mediainfo with JSON output format for reliable parsing
+            process = await asyncio.create_subprocess_exec(
+                "mediainfo",
+                "--Output=JSON",
+                str(input_file),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await process.communicate()
+            
+            if process.returncode != 0:
+                return Err(MediaInfoError(f"MediaInfo failed: {stderr.decode()}"))
+                
+            # Parse JSON output
+            return Ok(json.loads(stdout))
+            
+        except Exception as e:
+            return Err(MediaInfoError(f"MediaInfo error: {e}"))
+
+class DolbyMetadata:
+    """Dolby Vision metadata from MediaInfo"""
+    
+    def __init__(self, mediainfo_data: Dict[str, Any]):
+        self.has_dolby_vision: bool = False
+        self.profile: Optional[int] = None
+        self.level: Optional[int] = None
+        self.rpu_present: bool = False
+        self.bl_present: bool = False
+        self.el_present: bool = False
+        self.parse_metadata(mediainfo_data)
+        
+    def parse_metadata(self, data: Dict[str, Any]) -> None:
+        """Parse mediainfo JSON output for Dolby Vision"""
+        if dv_data := data.get("DolbyVision"):
+            self.has_dolby_vision = True
+            self.profile = dv_data.get("dv_profile")
+            self.level = dv_data.get("dv_level")
+            self.rpu_present = dv_data.get("rpu_present", False)
+            self.bl_present = dv_data.get("bl_present", False)
+            self.el_present = dv_data.get("el_present", False)
+
+class DolbyValidator:
+    """Dolby Vision validation system"""
+    
+    async def validate_metadata(self, metadata: DolbyMetadata) -> Result[None, ValidationError]:
+        """Validate Dolby Vision metadata"""
+        # Verify profile is supported
+        if metadata.has_dolby_vision and metadata.profile not in {5, 7, 8}:
+            return Err(ValidationError(f"Unsupported Dolby Vision profile: {metadata.profile}"))
+            
+        # Verify required layers
+        if metadata.has_dolby_vision:
+            if not metadata.bl_present:
+                return Err(ValidationError("Missing base layer"))
+            if metadata.profile in {7, 8} and not metadata.el_present:
+                return Err(ValidationError("Missing enhancement layer"))
+            if not metadata.rpu_present:
+                return Err(ValidationError("Missing RPU data"))
+                
+        return Ok(None)
+
+class DolbyErrorHandler:
+    """Dolby Vision error handling"""
+    
+    def __init__(self):
+        self.retry_manager = RetryManager()
+        
+    def handle_error(self, error: Exception, state: DolbyState) -> DolbyError:
+        """Handle detection errors"""
+        if isinstance(error, MediaInfoError):
+            return self._handle_mediainfo_error(error)
+        if isinstance(error, ValidationError):
+            return self._handle_validation_error(error)
+        return DolbyError(str(error))
+        
+    def _handle_mediainfo_error(self, error: MediaInfoError) -> DolbyError:
+        """Handle MediaInfo-specific errors"""
+        if "no such file" in str(error).lower():
+            return DolbyError("Input file not found")
+        if "invalid data" in str(error).lower():
+            return DolbyError("Invalid video data")
+        return DolbyError(f"MediaInfo error: {error}")
+
+class DolbyEvents(Enum):
+    """Dolby Vision detection events"""
+    DETECTION_START = "dolby_detection_start"
+    DETECTION_PROGRESS = "dolby_detection_progress"
+    DETECTION_COMPLETE = "dolby_detection_complete"
+    DETECTION_ERROR = "dolby_detection_error"
+    VALIDATION_START = "dolby_validation_start"
+    VALIDATION_COMPLETE = "dolby_validation_complete"
+    VALIDATION_ERROR = "dolby_validation_error"
+
+class DolbyConfig:
+    """Dolby Vision configuration"""
+    
+    def __init__(self):
+        self.supported_profiles = {5, 7, 8}  # MEL, BL+EL, BL+EL with dynamic reshaping
+        self.validation_timeout = 30.0  # seconds
+        self.max_retries = 3
+        self.retry_delay = 1.0
+```
+
+This implementation preserves MediaInfo's reliable Dolby Vision detection while adding modern improvements:
+
+1. **MediaInfo Integration**
+   - Uses MediaInfo's JSON output for reliable parsing
+   - Proper async execution of MediaInfo CLI
+   - Structured error handling for MediaInfo failures
+   - Type-safe metadata parsing
+
+2. **Enhanced Detection**
+   - Extracts detailed Dolby Vision information:
+     * Profile number
+     * Level information
+     * RPU presence
+     * Base/Enhancement layer presence
+   - Validates supported profiles (5, 7, 8)
+   - Verifies required layer presence
+
+3. **Error Handling**
+   - Specialized MediaInfo error types
+   - Proper process execution handling
+   - JSON parsing error recovery
+   - Invalid metadata handling
+
+4. **State Management**
+   - Tracks detection progress
+   - Preserves metadata state
+   - Enables recovery on failures
+   - Maintains validation history
+
+The system provides reliable Dolby Vision detection through MediaInfo while adding modern features for robustness and maintainability.
 
 ## Encoding Paths
 
