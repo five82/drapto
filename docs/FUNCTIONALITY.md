@@ -27,6 +27,7 @@ drapto is designed to work specifically with MKV video files sourced from DVD, B
 17. [Progress Tracking and Logging](#progress-tracking-and-logging)
 18. [Process Management](#process-management)
 19. [Temporary File Management](#temporary-file-management)
+20. [State Management](#state-management)
 
 ## Directory Structure and Organization
 
@@ -1685,24 +1686,6 @@ drapto implements a sophisticated temporary file management system with state tr
    ```
 
 3. **State Preservation**
-   - Cleanup state tracked in JSON:
-     ```json
-     {
-       "job_id": "job123",
-       "stage": "encode",
-       "error": "error message",
-       "started_at": "2024-01-18T00:00:00Z",
-       "completed_steps": [
-         "update_status",
-         "remove_temp_file:test.temp.mkv",
-         "remove_dir:encoded"
-       ],
-       "failed_steps": [],
-       "segment_index": 1
-     }
-     ```
-
-4. **Error Recovery**
    - Cleanup triggered on:
      - Process interruption
      - Encoding failures
@@ -1714,7 +1697,7 @@ drapto implements a sophisticated temporary file management system with state tr
      - Error diagnostics
      - Recovery points
 
-5. **User Expectations**
+4. **User Expectations**
    - Space Requirements:
      * Source file size × 1.5 for temporary files
      * Additional space for encoded output
@@ -1728,7 +1711,7 @@ drapto implements a sophisticated temporary file management system with state tr
      * Preserve partial progress
      * Maintain encoding parameters
 
-6. **Cleanup Commands**
+5. **Cleanup Commands**
    ```bash
    # Clean temporary files only
    rm -rf temp/working/* temp/segments/* temp/encoded/*
@@ -1740,57 +1723,234 @@ drapto implements a sophisticated temporary file management system with state tr
    rm -rf temp/*
    ```
 
-7. **Storage Management**
+6. **Storage Management**
    - Regular cleanup of old log files
    - Segment file management
    - Working directory maintenance
    - State file preservation
    - Resource monitoring
 
-8. **Safety Measures**
+7. **Safety Measures**
    - Atomic file operations
    - State tracking during cleanup
    - Error logging
    - Recovery state preservation
    - Resource verification
 
-## Directory Structure
+## State Management
 
-drapto maintains a structured directory structure for efficient file management:
+drapto implements a centralized state management system with event-driven updates and robust persistence:
 
-1. **Working Directory**
-   - Contains active processing files
-   - Subdirectories:
-     - `video.mkv`: Current video track
-     - `audio-*.mkv`: Audio tracks
-     - `temp/`: Temporary files
+1. **Core State System**
+   ```python
+   class StateManager:
+       """Centralized state management"""
+       def __init__(self):
+           self.state = GlobalState()
+           self.event_bus = EventBus()
+           self.persistence = StatePersistence()
+           self.recovery = StateRecovery()
+           
+       async def update(self, event: StateEvent) -> None:
+           """Process state update event"""
+           async with self.state.lock:
+               self.state.apply_event(event)
+               await self.persistence.save_checkpoint()
+               self.event_bus.emit(StateEvents.STATE_UPDATED, self.state)
 
-2. **Segments Directory**
-   - Contains video segments
-   - Subdirectories:
-     - `segments/`: Segment files
+   class GlobalState:
+       """Global application state"""
+       def __init__(self):
+           self.lock = asyncio.Lock()
+           self.encoding: Optional[EncodingState] = None
+           self.resources: ResourceState = ResourceState()
+           self.processes: Dict[str, ProcessState] = {}
+           self.errors: List[ErrorState] = []
+           
+       def apply_event(self, event: StateEvent) -> None:
+           """Apply state mutation event"""
+           if isinstance(event, EncodingEvent):
+               self._update_encoding(event)
+           elif isinstance(event, ResourceEvent):
+               self._update_resources(event)
+           elif isinstance(event, ProcessEvent):
+               self._update_process(event)
+   ```
 
-3. **Encoded Directory**
-   - Contains processed video segments
-   - Subdirectories:
-     - `encoded/`: Encoded segment files
+2. **Event System**
+   ```python
+   class EventBus:
+       """Event distribution system"""
+       def __init__(self):
+           self.subscribers: Dict[StateEvents, List[Callable]] = defaultdict(list)
+           self.history = deque(maxlen=1000)  # Last 1000 events
+           
+       def subscribe(self, event_type: StateEvents, handler: Callable) -> None:
+           """Register event handler"""
+           self.subscribers[event_type].append(handler)
+           
+       def emit(self, event_type: StateEvents, data: Any) -> None:
+           """Emit state event"""
+           event = StateEvent(event_type, data, datetime.now())
+           self.history.append(event)
+           for handler in self.subscribers[event_type]:
+               asyncio.create_task(handler(event))
 
-4. **Logs Directory**
-   - Contains processing logs
-   - Subdirectories:
-     - `logs/`: Log files
+   class StateEvents(Enum):
+       """Core state events"""
+       STATE_UPDATED = "state_updated"
+       ENCODING_STARTED = "encoding_started"
+       ENCODING_PROGRESS = "encoding_progress"
+       ENCODING_COMPLETE = "encoding_complete"
+       RESOURCE_UPDATED = "resource_updated"
+       PROCESS_STARTED = "process_started"
+       PROCESS_ENDED = "process_ended"
+       ERROR_OCCURRED = "error_occurred"
+       RECOVERY_STARTED = "recovery_started"
+       RECOVERY_COMPLETE = "recovery_complete"
+   ```
 
-5. **State Tracking**
-   - Contains state tracking files
-   - Subdirectories:
-     - `encode_data/`: Encoding state and metadata
-     - `segments.json`: Segment tracking data
-     - `encoding.json`: Encoding state information
-     - `progress.json`: Progress tracking data
+3. **Persistence Strategy**
+   ```python
+   class StatePersistence:
+       """State persistence management"""
+       def __init__(self, state_dir: Path):
+           self.state_dir = state_dir
+           self.state_file = state_dir / "state.json"
+           self.checkpoint_dir = state_dir / "checkpoints"
+           self.max_checkpoints = 5
+           
+       async def save_checkpoint(self, state: GlobalState) -> None:
+           """Save state checkpoint"""
+           checkpoint = StateCheckpoint(
+               state=state,
+               timestamp=datetime.now(),
+               version=STATE_VERSION
+           )
+           
+           # Atomic state save
+           async with aiofiles.open(self.state_file.with_suffix('.tmp'), 'w') as f:
+               await f.write(checkpoint.to_json())
+           self.state_file.with_suffix('.tmp').rename(self.state_file)
+           
+           # Maintain checkpoint history
+           await self._maintain_checkpoints(checkpoint)
+           
+       async def load_latest(self) -> Optional[GlobalState]:
+           """Load most recent valid state"""
+           try:
+               async with aiofiles.open(self.state_file, 'r') as f:
+                   data = await f.read()
+               return GlobalState.from_json(data)
+           except FileNotFoundError:
+               return None
+   ```
 
-6. **Cleanup Process**
-   - Removes temporary segment files
-   - Cleans up working directory
-   - Preserves logs for debugging
-   - Updates tracking files with results
-   - Verifies output file integrity
+4. **Recovery Procedures**
+   ```python
+   class StateRecovery:
+       """State recovery management"""
+       def __init__(self, state_manager: StateManager):
+           self.state_manager = state_manager
+           self.recovery_strategies = self._load_strategies()
+           
+       async def recover(self) -> None:
+           """Execute state recovery"""
+           # Notify recovery start
+           self.state_manager.event_bus.emit(
+               StateEvents.RECOVERY_STARTED,
+               {"timestamp": datetime.now()}
+           )
+           
+           try:
+               # Load latest valid state
+               state = await self.state_manager.persistence.load_latest()
+               if not state:
+                   return
+                   
+               # Validate state consistency
+               if not await self._validate_state(state):
+                   state = await self._find_last_valid_checkpoint()
+                   
+               # Apply recovery strategies
+               for strategy in self.recovery_strategies:
+                   await strategy.apply(state)
+                   
+               # Restore state
+               await self.state_manager.restore(state)
+               
+           finally:
+               # Notify recovery completion
+               self.state_manager.event_bus.emit(
+                   StateEvents.RECOVERY_COMPLETE,
+                   {"timestamp": datetime.now()}
+               )
+
+   class RecoveryStrategy:
+       """Base recovery strategy"""
+       async def apply(self, state: GlobalState) -> None:
+           """Apply recovery actions"""
+           raise NotImplementedError()
+
+   class EncodingRecovery(RecoveryStrategy):
+       """Encoding state recovery"""
+       async def apply(self, state: GlobalState) -> None:
+           if not state.encoding:
+               return
+               
+           # Verify segment files
+           for segment in state.encoding.segments:
+               if not segment.path.exists():
+                   state.encoding.segments.remove(segment)
+                   
+           # Adjust progress
+           state.encoding.progress = len(state.encoding.completed_segments) / state.encoding.total_segments
+   ```
+
+5. **State Validation**
+   ```python
+   class StateValidator:
+       """State validation system"""
+       def __init__(self):
+           self.validators: List[Validator] = [
+               FileSystemValidator(),
+               ProcessValidator(),
+               ResourceValidator()
+           ]
+           
+       async def validate(self, state: GlobalState) -> ValidationResult:
+           """Validate state consistency"""
+           results = []
+           for validator in self.validators:
+               result = await validator.validate(state)
+               results.append(result)
+               if result.is_critical_failure():
+                   return ValidationResult(False, results)
+           return ValidationResult(True, results)
+
+   class FileSystemValidator(Validator):
+       """Validate file system state"""
+       async def validate(self, state: GlobalState) -> ValidationResult:
+           # Verify all referenced files exist
+           # Check file permissions
+           # Validate directory structure
+
+   class ProcessValidator(Validator):
+       """Validate process state"""
+       async def validate(self, state: GlobalState) -> ValidationResult:
+           # Verify process existence
+           # Check process resources
+           # Validate process hierarchy
+   ```
+
+This state management system provides:
+- Centralized state control
+- Event-driven updates
+- Atomic state persistence
+- Robust recovery procedures
+- State validation
+- Checkpoint management
+- Error tracking
+- Process state coordination
+
+The system ensures reliable state tracking and recovery while maintaining data consistency throughout the encoding process.
