@@ -29,6 +29,7 @@ drapto is designed to work specifically with MKV video files sourced from DVD, B
 19. [Temporary File Management](#temporary-file-management)
 20. [State Management](#state-management)
 21. [Error Handling](#error-handling)
+22. [Configuration](#configuration)
 
 ## Directory Structure and Organization
 
@@ -1927,215 +1928,6 @@ drapto implements a centralized state management system with event-driven update
                if result.is_critical_failure():
                    return ValidationResult(False, results)
            return ValidationResult(True, results)
-
-   class FileSystemValidator(Validator):
-       """Validate file system state"""
-       async def validate(self, state: GlobalState) -> ValidationResult:
-           # Verify all referenced files exist
-           # Check file permissions
-           # Validate directory structure
-
-   class ProcessValidator(Validator):
-       """Validate process state"""
-       async def validate(self, state: GlobalState) -> ValidationResult:
-           # Verify process existence
-           # Check process resources
-           # Validate process hierarchy
-   ```
-
-This state management system provides:
-- Centralized state control
-- Event-driven updates
-- Atomic state persistence
-- Robust recovery procedures
-- State validation
-- Checkpoint management
-- Error tracking
-- Process state coordination
-
-The system ensures reliable state tracking and recovery while maintaining data consistency throughout the encoding process.
-
-## Error Handling
-
-drapto implements a comprehensive error handling system with structured error context and recovery strategies:
-
-1. **Error Context System**
-   ```python
-   class ErrorContext:
-       """Rich error context container"""
-       def __init__(self, error: Exception, **kwargs):
-           self.error = error
-           self.timestamp = datetime.now()
-           self.stage = kwargs.get('stage')
-           self.file = kwargs.get('file')
-           self.process_id = kwargs.get('process_id')
-           self.state_snapshot = kwargs.get('state_snapshot')
-           self.recovery_attempts = 0
-           
-       def to_dict(self) -> Dict[str, Any]:
-           """Serialize error context"""
-           return {
-               "error_type": self.error.__class__.__name__,
-               "message": str(self.error),
-               "timestamp": self.timestamp.isoformat(),
-               "stage": self.stage,
-               "file": str(self.file) if self.file else None,
-               "process_id": self.process_id,
-               "recovery_attempts": self.recovery_attempts,
-               "stacktrace": self._get_formatted_traceback()
-           }
-
-   class ErrorManager:
-       """Error handling coordinator"""
-       def __init__(self):
-           self.error_bus = ErrorEventBus()
-           self.retry_policies = RetryPolicyRegistry()
-           self.recovery_strategies = RecoveryStrategyRegistry()
-           self.error_history = ErrorHistory()
-           
-       async def handle_error(self, context: ErrorContext) -> None:
-           """Handle error with appropriate strategy"""
-           self.error_history.record(context)
-           self.error_bus.emit(ErrorEvents.ERROR_OCCURRED, context)
-           
-           if await self._should_retry(context):
-               await self._execute_retry(context)
-           else:
-               await self._execute_recovery(context)
-   ```
-
-2. **Retry Policies**
-   ```python
-   class RetryPolicy:
-       """Base retry policy"""
-       def __init__(self, max_attempts: int, backoff: BackoffStrategy):
-           self.max_attempts = max_attempts
-           self.backoff = backoff
-           
-       async def should_retry(self, context: ErrorContext) -> bool:
-           """Determine if retry should be attempted"""
-           return (
-               context.recovery_attempts < self.max_attempts and
-               self._is_retryable_error(context.error)
-           )
-           
-       async def get_retry_delay(self, attempt: int) -> float:
-           """Get delay before next retry"""
-           return self.backoff.get_delay(attempt)
-
-   class ExponentialBackoff(BackoffStrategy):
-       """Exponential backoff with jitter"""
-       def __init__(self, base_delay: float = 1.0, max_delay: float = 60.0):
-           self.base_delay = base_delay
-           self.max_delay = max_delay
-           
-       def get_delay(self, attempt: int) -> float:
-           """Calculate retry delay with jitter"""
-           delay = min(
-               self.base_delay * (2 ** attempt),
-               self.max_delay
-           )
-           return delay * (0.5 + random.random())
-
-   class RetryPolicyRegistry:
-       """Retry policy manager"""
-       def __init__(self):
-           self.policies: Dict[Type[Exception], RetryPolicy] = {
-               ProcessError: RetryPolicy(3, ExponentialBackoff()),
-               IOError: RetryPolicy(5, ExponentialBackoff(2.0)),
-               ResourceError: RetryPolicy(2, ExponentialBackoff(5.0)),
-               EncodingError: RetryPolicy(3, ExponentialBackoff(1.0))
-           }
-   ```
-
-3. **Recovery Strategies**
-   ```python
-   class RecoveryStrategy:
-       """Base recovery strategy"""
-       async def can_recover(self, context: ErrorContext) -> bool:
-           """Check if strategy can handle error"""
-           raise NotImplementedError()
-           
-       async def execute(self, context: ErrorContext) -> None:
-           """Execute recovery actions"""
-           raise NotImplementedError()
-
-   class EncodingRecoveryStrategy(RecoveryStrategy):
-       """Encoding error recovery"""
-       async def can_recover(self, context: ErrorContext) -> bool:
-           return isinstance(context.error, EncodingError)
-           
-       async def execute(self, context: ErrorContext) -> None:
-           # Verify segment integrity
-           # Rollback to last good state
-           # Adjust encoding parameters
-           # Resume from last checkpoint
-
-   class ProcessRecoveryStrategy(RecoveryStrategy):
-       """Process failure recovery"""
-       async def execute(self, context: ErrorContext) -> None:
-           # Clean up failed process
-           # Release resources
-           # Restore process state
-           # Restart if necessary
-   ```
-
-4. **Validation Procedures**
-   ```python
-   class ErrorValidator:
-       """Error validation system"""
-       def __init__(self):
-           self.validators: List[Validator] = [
-               StateValidator(),
-               ResourceValidator(),
-               ProcessValidator(),
-               FileSystemValidator()
-           ]
-           
-       async def validate_recovery(self, context: ErrorContext) -> ValidationResult:
-           """Validate system state after error"""
-           results = []
-           for validator in self.validators:
-               result = await validator.validate(context)
-               results.append(result)
-               if result.is_critical_failure():
-                   return ValidationResult(False, results)
-           return ValidationResult(True, results)
-   ```
-
-5. **Error History and Analysis**
-   ```python
-   class ErrorHistory:
-       """Error history tracking"""
-       def __init__(self, max_size: int = 1000):
-           self.errors: Deque[ErrorContext] = deque(maxlen=max_size)
-           self.patterns: Dict[str, ErrorPattern] = {}
-           
-       def record(self, context: ErrorContext) -> None:
-           """Record error occurrence"""
-           self.errors.append(context)
-           self._update_patterns(context)
-           
-       def _update_patterns(self, context: ErrorContext) -> None:
-           """Update error pattern analysis"""
-           pattern_key = self._get_pattern_key(context)
-           if pattern_key not in self.patterns:
-               self.patterns[pattern_key] = ErrorPattern()
-           self.patterns[pattern_key].update(context)
-
-   class ErrorPattern:
-       """Error pattern analysis"""
-       def __init__(self):
-           self.occurrences = 0
-           self.first_seen = datetime.now()
-           self.last_seen = datetime.now()
-           self.recovery_success = 0
-           self.recovery_failure = 0
-           
-       def update(self, context: ErrorContext) -> None:
-           """Update pattern statistics"""
-           self.occurrences += 1
-           self.last_seen = context.timestamp
    ```
 
 6. **Error Reporting**
@@ -2172,3 +1964,212 @@ This error handling system provides:
 - Detailed reporting
 
 The system ensures errors are handled systematically while maintaining system stability and providing insights for prevention.
+
+## Configuration
+
+drapto implements a schema-based configuration system with environment variable mapping and validation:
+
+1. **Schema Definition**
+   ```python
+   class ConfigSchema:
+       """Configuration schema with validation"""
+       class Encoding(BaseModel):
+           preset: int = Field(6, ge=0, le=13)
+           crf: Dict[str, int] = Field({
+               "sd": 25,
+               "hd": 25,
+               "uhd": 29
+           })
+           vmaf_target: int = Field(93, ge=70, le=99)
+           film_grain: bool = Field(False)
+           
+       class Processing(BaseModel):
+           chunk_size: int = Field(15, ge=1, le=300)
+           parallel_jobs: int = Field(4, ge=1, le=32)
+           temp_dir: Path = Field("/tmp/drapto")
+           
+       class Resources(BaseModel):
+           max_memory: int = Field(8 * 1024 * 1024 * 1024)  # 8GB
+           max_cpu: float = Field(95.0, ge=0, le=100)
+           max_disk_io: int = Field(100 * 1024 * 1024)  # 100MB/s
+           
+       encoding: Encoding
+       processing: Processing
+       resources: Resources
+   ```
+
+2. **Environment Variable Mapping**
+   ```python
+   class EnvMapping:
+       """Environment variable configuration mapping"""
+       def __init__(self):
+           self.mappings = {
+               # Encoding settings
+               "DRAPTO_PRESET": ("encoding.preset", int),
+               "DRAPTO_CRF_SD": ("encoding.crf.sd", int),
+               "DRAPTO_CRF_HD": ("encoding.crf.hd", int),
+               "DRAPTO_CRF_UHD": ("encoding.crf.uhd", int),
+               "DRAPTO_VMAF_TARGET": ("encoding.vmaf_target", int),
+               "DRAPTO_FILM_GRAIN": ("encoding.film_grain", bool),
+               
+               # Processing settings
+               "DRAPTO_CHUNK_SIZE": ("processing.chunk_size", int),
+               "DRAPTO_PARALLEL_JOBS": ("processing.parallel_jobs", int),
+               "DRAPTO_TEMP_DIR": ("processing.temp_dir", Path),
+               
+               # Resource limits
+               "DRAPTO_MAX_MEMORY": ("resources.max_memory", int),
+               "DRAPTO_MAX_CPU": ("resources.max_cpu", float),
+               "DRAPTO_MAX_DISK_IO": ("resources.max_disk_io", int)
+           }
+           
+       def load_from_env(self) -> Dict[str, Any]:
+           """Load configuration from environment"""
+           config = {}
+           for env_var, (path, type_) in self.mappings.items():
+               if env_var in os.environ:
+                   self._set_nested(config, path, type_(os.environ[env_var]))
+           return config
+   ```
+
+3. **Validation Rules**
+   ```python
+   class ConfigValidator:
+       """Configuration validation system"""
+       def __init__(self, schema: Type[ConfigSchema]):
+           self.schema = schema
+           self.validators = {
+               "encoding": self._validate_encoding,
+               "processing": self._validate_processing,
+               "resources": self._validate_resources
+           }
+           
+       async def validate(self, config: Dict[str, Any]) -> None:
+           """Validate configuration against schema"""
+           try:
+               # Basic schema validation
+               validated = self.schema(**config)
+               
+               # Custom validation rules
+               for section, validator in self.validators.items():
+                   await validator(getattr(validated, section))
+                   
+           except ValidationError as e:
+               raise ConfigError(f"Configuration validation failed: {e}")
+               
+       async def _validate_encoding(self, config: ConfigSchema.Encoding) -> None:
+           """Validate encoding configuration"""
+           # Verify CRF values are appropriate for quality targets
+           if config.vmaf_target > 95 and any(crf > 20 for crf in config.crf.values()):
+               raise ValidationError("CRF values too high for VMAF target")
+               
+           # Check preset compatibility
+           if config.film_grain and config.preset > 8:
+               raise ValidationError("Film grain synthesis requires preset ≤ 8")
+   ```
+
+4. **Version Migration**
+   ```python
+   class ConfigMigration:
+       """Configuration version migration"""
+       def __init__(self):
+           self.migrations = {
+               1: self._migrate_v1_to_v2,
+               2: self._migrate_v2_to_v3
+           }
+           
+       async def migrate(self, config: Dict[str, Any], from_version: int) -> Dict[str, Any]:
+           """Migrate configuration to latest version"""
+           current_version = from_version
+           current_config = config.copy()
+           
+           while current_version < LATEST_CONFIG_VERSION:
+               migration = self.migrations[current_version]
+               current_config = await migration(current_config)
+               current_version += 1
+               
+           return current_config
+           
+       async def _migrate_v1_to_v2(self, config: Dict[str, Any]) -> Dict[str, Any]:
+           """Migrate from v1 to v2 format"""
+           # Convert old CRF format
+           if "crf" in config:
+               config["encoding"] = {
+                   "crf": {
+                       "sd": config.pop("crf"),
+                       "hd": config.pop("crf"),
+                       "uhd": config.pop("crf_uhd", config["crf"] + 4)
+                   }
+               }
+           return config
+   ```
+
+5. **Configuration Loading**
+   ```python
+   class ConfigLoader:
+       """Configuration loading system"""
+       def __init__(self):
+           self.schema = ConfigSchema
+           self.validator = ConfigValidator(self.schema)
+           self.env_mapping = EnvMapping()
+           self.migration = ConfigMigration()
+           
+       async def load(self, config_file: Path) -> ConfigSchema:
+           """Load and validate configuration"""
+           # Load base configuration
+           config = await self._load_file(config_file)
+           
+           # Load environment overrides
+           env_config = self.env_mapping.load_from_env()
+           config = self._merge_configs(config, env_config)
+           
+           # Migrate if needed
+           if config.get("version", 1) < LATEST_CONFIG_VERSION:
+               config = await self.migration.migrate(
+                   config,
+                   config.get("version", 1)
+               )
+           
+           # Validate final configuration
+           await self.validator.validate(config)
+           
+           return self.schema(**config)
+   ```
+
+6. **Default Configuration**
+   ```python
+   DEFAULT_CONFIG = {
+       "version": 3,
+       "encoding": {
+           "preset": 6,
+           "crf": {
+               "sd": 25,
+               "hd": 25,
+               "uhd": 29
+           },
+           "vmaf_target": 93,
+           "film_grain": False
+       },
+       "processing": {
+           "chunk_size": 15,
+           "parallel_jobs": 4,
+           "temp_dir": "/tmp/drapto"
+       },
+       "resources": {
+           "max_memory": 8 * 1024 * 1024 * 1024,  # 8GB
+           "max_cpu": 95.0,
+           "max_disk_io": 100 * 1024 * 1024  # 100MB/s
+       }
+   }
+   ```
+
+This configuration system provides:
+- Schema-based configuration validation
+- Environment variable overrides
+- Version migration support
+- Nested configuration structure
+- Type safety
+- Default values
+- Custom validation rules
+
+The system ensures configuration consistency while providing flexibility through environment variables and maintaining backward compatibility through migrations.
