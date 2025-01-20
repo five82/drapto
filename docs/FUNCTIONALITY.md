@@ -385,183 +385,409 @@ Dolby Vision detection is performed using the following process:
 
 ## Encoding Paths
 
-drapto implements two encoding paths through Python-based wrappers and state management:
+The encoding system uses a modern Python-based architecture with comprehensive wrappers, retry strategies, and quality control:
 
-### Standard Path
-1. **FFmpeg Integration**
-   ```python
-   class FFmpegWrapper:
-       """FFmpeg wrapper maintaining exact parameters"""
-       def __init__(self, config: Config):
-           self.config = config
-           self.state_manager = StateManager()
-           self.event_bus = EventBus()
-           
-       async def encode(self, input_file: Path, output_file: Path) -> None:
-           """Execute FFmpeg encoding with state tracking"""
-           params = self._build_params()
-           async with FFmpegProcess(params) as process:
-               while True:
-                   progress = await process.get_progress()
-                   if progress.complete:
-                       break
-                   self.state_manager.update_progress(progress)
-                   self.event_bus.emit(ProcessingEvents.PROGRESS_UPDATE, progress)
+### FFmpeg Integration
 
-   class FFmpegParams:
-       """FFmpeg parameter builder with validation"""
-       def __init__(self, config: EncodingConfig):
-           self.config = config
-           self.params: List[str] = []
+```python
+class FFmpegWrapper:
+    """FFmpeg wrapper maintaining exact parameters"""
+    
+    def __init__(self, config: FFmpegConfig):
+        self.config = config
+        self.state_manager = StateManager()
+        self.event_bus = EventBus()
+        
+    async def encode(self, input_file: Path, output_file: Path) -> None:
+        """Execute FFmpeg encoding with state tracking"""
+        params = self._build_params(input_file, output_file)
+        async with FFmpegProcess(params) as process:
+            while True:
+                progress = await process.get_progress()
+                if progress.complete:
+                    break
+                self.state_manager.update_progress(progress)
+                self.event_bus.emit(ProcessingEvents.PROGRESS_UPDATE, progress)
 
-       def build_command(self) -> List[str]:
-           """Build FFmpeg command with exact parameters"""
-           return [
-               "ffmpeg",
-               "-hide_banner",
-               "-loglevel", "warning",
-               *self._get_hwaccel_opts(),  # Hardware decode if available
-               "-i", str(self.input_file),
-               "-map", "0:v:0",            # Select first video stream
-               "-c:v", "libsvtav1",        # SVT-AV1 codec
-               "-preset", str(self.config.preset),  # Default: 6
-               "-crf", str(self._get_crf()),       # Based on resolution
-               "-pix_fmt", "yuv420p10le",          # 10-bit color
-               "-svtav1-params",
-               "tune=0:film-grain=0:film-grain-denoise=0",
-               "-y",
-               str(self.output_file)
-           ]
+class AbAv1Wrapper:
+    """ab-av1 wrapper maintaining exact parameters"""
+    
+    def __init__(self, config: AbAv1Config):
+        self.config = config
+        self.state_manager = StateManager()
+        self.event_bus = EventBus()
+        
+    async def encode_segment(self, segment: VideoSegment) -> None:
+        """Encode single video segment with quality targeting"""
+        params = self._build_params(segment)
+        async with AbAv1Process(params) as process:
+            while True:
+                progress = await process.get_progress()
+                if progress.complete:
+                    break
+                self.state_manager.update_progress(progress)
+                self.event_bus.emit(ProcessingEvents.PROGRESS_UPDATE, progress)
+```
 
-       def _get_crf(self) -> int:
-           """Get resolution-appropriate CRF value"""
-           return {
-               Resolution.SD: 25,    # ≤720p
-               Resolution.HD: 25,    # ≤1080p
-               Resolution.UHD: 29,   # >1080p
-           }[self.resolution]
-   ```
+This modern implementation preserves:
+- Exact FFmpeg parameters (CRF values, preset, pixel format, SVT-AV1 params)
+- Exact ab-av1 parameters (VMAF target, samples, duration, keyint)
+- Separate configuration for each encoding path
+- Clean process management without interfering with encoding parameters
 
-2. **Quality Control**
-   - Resolution-dependent CRF values maintained:
-     ```python
-     CRF_VALUES = {
-         "SD":  25,  # ≤720p
-         "HD":  25,  # ≤1080p
-         "UHD": 29,  # >1080p
-     }
-     ```
-   - SVT-AV1 preset 6 by default
-   - Film grain synthesis disabled
-   - 10-bit depth processing
+### Encoding Parameters
 
-### Chunked Path (VMAF-based)
-1. **ab-av1 Integration**
-   ```python
-   class AbAv1Wrapper:
-       """ab-av1 wrapper maintaining exact parameters"""
-       def __init__(self, config: Config):
-           self.config = config
-           self.state_manager = StateManager()
-           self.event_bus = EventBus()
-           
-       async def encode_segment(self, segment: VideoSegment) -> None:
-           """Encode single video segment with quality targeting"""
-           for strategy in self.get_vmaf_strategies():
-               try:
-                   return await self._try_encode_segment(segment, strategy)
-               except QualityTargetError:
-                   continue
-           raise EncodingError("Failed to meet quality target")
+Parameters are managed through type-safe configuration with separate FFmpeg and ab-av1 paths:
 
-       def get_vmaf_strategies(self) -> List[VmafStrategy]:
-           """Get ordered list of VMAF strategies with exact parameters"""
-           return [
-               # Tier 1: Default Strategy
-               VmafStrategy(
-                   target=93,
-                   samples=3,
-                   sample_duration=1,
-                   vmaf_params="n_subsample=8:pool=harmonic_mean"
-               ),
-               # Tier 2: More Samples
-               VmafStrategy(
-                   target=93,
-                   samples=6,
-                   sample_duration=2,
-                   vmaf_params="n_subsample=8:pool=harmonic_mean"
-               ),
-               # Tier 3: Lower VMAF
-               VmafStrategy(
-                   target=91,  # Reduced by 2
-                   samples=6,
-                   sample_duration=2,
-                   vmaf_params="n_subsample=8:pool=harmonic_mean"
-               )
-           ]
+```python
+@dataclass
+class FFmpegConfig:
+    """FFmpeg encoding configuration"""
+    
+    # Core parameters (preserved exactly)
+    preset: int = 6
+    crf: CRFConfig = CRFConfig(
+        sd=25,   # ≤720p
+        hd=25,   # ≤1080p
+        uhd=29   # >1080p
+    )
+    pixel_format: str = "yuv420p10le"
+    svtav1_params: str = "tune=0:film-grain=0:film-grain-denoise=0"
+    
+    @property
+    def ffmpeg_args(self) -> List[str]:
+        """Generates FFmpeg arguments preserving exact parameters"""
+        return [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel", "warning",
+            *self._get_hwaccel_opts(),  # Hardware decode if available
+            "-i", str(self.input_file),
+            "-map", "0:v:0",            # Select first video stream
+            "-c:v", "libsvtav1",        # SVT-AV1 codec
+            "-preset", str(self.preset),
+            "-crf", str(self.crf.get_for_resolution(self.resolution)),
+            "-pix_fmt", self.pixel_format,
+            "-svtav1-params", self.svtav1_params,
+            "-y",
+            str(self.output_file)
+        ]
 
-   class VmafStrategy:
-       """VMAF-based encoding strategy with exact parameters"""
-       def build_command(self) -> List[str]:
-           """Build ab-av1 command with exact parameters"""
-           return [
-               "ab-av1",
-               "--input", str(self.input_file),
-               "--output", str(self.output_file),
-               "--encoder", "svtav1",
-               "--preset", str(self.config.preset),  # Default: 6
-               "--vmaf-target", str(self.target),    # Default: 93
-               "--samples", str(self.samples),       # 3 or 6
-               "--sample-duration", f"{self.sample_duration}s",
-               "--keyint", "10s",
-               "--pix-fmt", "yuv420p10le",
-               "--svtav1-params",
-               "tune=0:film-grain=0:film-grain-denoise=0",
-               "--vmaf", self.vmaf_params,
-               *self._get_vfilter_args(),  # Crop filter if enabled
-               "--quiet"
-           ]
-   ```
+@dataclass
+class AbAv1Config:
+    """ab-av1 encoding configuration"""
+    
+    # Core parameters (preserved exactly)
+    preset: int = 6
+    vmaf_target: int = 93
+    samples: int = 3
+    sample_duration: int = 1
+    keyint: str = "10s"
+    pixel_format: str = "yuv420p10le"
+    svtav1_params: str = "tune=0:film-grain=0:film-grain-denoise=0"
+    vmaf_params: str = "n_subsample=8:pool=harmonic_mean"
+    
+    @property
+    def abav1_args(self) -> List[str]:
+        """Generates ab-av1 arguments preserving exact parameters"""
+        return [
+            "ab-av1",
+            "--input", str(self.input_file),
+            "--output", str(self.output_file),
+            "--encoder", "svtav1",
+            "--preset", str(self.preset),
+            "--vmaf-target", str(self.vmaf_target),
+            "--samples", str(self.samples),
+            "--sample-duration", f"{self.sample_duration}s",
+            "--keyint", self.keyint,
+            "--pix-fmt", self.pixel_format,
+            "--svtav1-params", self.svtav1_params,
+            "--vmaf", self.vmaf_params,
+            *self._get_vfilter_args(),  # Crop filter if enabled
+            "--quiet"
+        ]
 
-2. **Quality Control**
-   - Target VMAF score: 93 (default)
-   - Three-tier strategy with exact parameters:
-     ```python
-     VMAF_STRATEGIES = [
-         # Tier 1: Default Strategy
-         {
-             "target": 93,
-             "samples": 3,
-             "duration": 1,
-             "vmaf_params": "n_subsample=8:pool=harmonic_mean"
-         },
-         # Tier 2: More Samples
-         {
-             "target": 93,
-             "samples": 6,
-             "duration": 2,
-             "vmaf_params": "n_subsample=8:pool=harmonic_mean"
-         },
-         # Tier 3: Lower VMAF
-         {
-             "target": 91,  # Reduced by 2
-             "samples": 6,
-             "duration": 2,
-             "vmaf_params": "n_subsample=8:pool=harmonic_mean"
-         }
-     ]
-     ```
+@dataclass
+class EncodingConfig:
+    """Top-level encoding configuration"""
+    ffmpeg: FFmpegConfig
+    abav1: AbAv1Config
+    
+    # System resource management (optional, for process management)
+    process_limits: Optional[ResourceLimits] = None
+```
+
+### Retry and Recovery Strategy
+
+Comprehensive retry handling with state preservation:
+
+```python
+class EncodingRetryStrategy:
+    """Manages encoding retries with state preservation"""
+    
+    def __init__(self, max_retries: int = 3):
+        self.max_retries = max_retries
+        self.state_manager = StateManager()
+        
+    async def execute_with_retry(
+        self, 
+        segment: VideoSegment,
+        encoder: FFmpegWrapper
+    ) -> Result[EncodedSegment, FatalEncodingError]:
+        """Executes encoding with retry logic"""
+        
+        for attempt in range(self.max_retries):
+            # Load previous state if exists
+            state = await self.state_manager.load_segment_state(segment.id)
+            
+            # Attempt encoding
+            result = await encoder.encode_segment(segment)
+            
+            if result.is_ok():
+                return result
+                
+            # Handle specific error types
+            error = result.unwrap_err()
+            if isinstance(error, ResourceExhaustedError):
+                await self._handle_resource_error(error)
+                continue
+                
+            if isinstance(error, QualityError):
+                await self._adjust_quality_parameters(error)
+                continue
+                
+            if error.is_fatal():
+                return Err(FatalEncodingError(error))
+                
+        return Err(MaxRetriesExceededError())
+        
+    async def _handle_resource_error(self, error: ResourceExhaustedError):
+        """Adjusts resource allocation based on error"""
+        await self.state_manager.reduce_resource_limits()
+        
+    async def _adjust_quality_parameters(self, error: QualityError):
+        """Adjusts encoding parameters for quality issues"""
+        await self.state_manager.adjust_quality_parameters()
+```
+
+### Quality Control System
+
+Quality control is path-specific:
+
+```python
+class FFmpegQualityControl:
+    """FFmpeg path quality control (CRF-based)"""
+    
+    def __init__(self, config: FFmpegConfig):
+        self.config = config
+        self.metrics_collector = MetricsCollector()
+        
+    async def validate_output(self, output: Path) -> Result[QualityMetrics, QualityError]:
+        """Validates encoded output quality"""
+        
+        # Basic output validation
+        if not output.exists():
+            return Err(QualityError("Output file missing"))
+            
+        # Collect format metrics
+        metrics = await self.metrics_collector.collect_format(output)
+        
+        # Verify resolution-appropriate CRF was used
+        crf_used = metrics.get_video_param("crf")
+        resolution = metrics.get_resolution()
+        expected_crf = self.config.crf.get_for_resolution(resolution)
+        
+        if crf_used != expected_crf:
+            return Err(QualityError(f"Incorrect CRF value: {crf_used} != {expected_crf}"))
+            
+        # Verify SVT-AV1 parameters
+        svtav1_params = metrics.get_video_param("svtav1-params")
+        if svtav1_params != self.config.svtav1_params:
+            return Err(QualityError("Incorrect SVT-AV1 parameters"))
+            
+        return Ok(metrics)
+
+class AbAv1QualityControl:
+    """ab-av1 path quality control (VMAF-based)"""
+    
+    VMAF_STRATEGIES = [
+        # Tier 1: Default Strategy
+        {
+            "target": 93,
+            "samples": 3,
+            "duration": 1,
+            "vmaf_params": "n_subsample=8:pool=harmonic_mean"
+        },
+        # Tier 2: More Samples
+        {
+            "target": 93,
+            "samples": 6,
+            "duration": 2,
+            "vmaf_params": "n_subsample=8:pool=harmonic_mean"
+        },
+        # Tier 3: Lower VMAF
+        {
+            "target": 91,  # Reduced by 2
+            "samples": 6,
+            "duration": 2,
+            "vmaf_params": "n_subsample=8:pool=harmonic_mean"
+        }
+    ]
+    
+    def __init__(self, config: AbAv1Config):
+        self.config = config
+        self.vmaf_analyzer = VMAFAnalyzer()
+        self.metrics_collector = MetricsCollector()
+        self.current_strategy_index = 0
+        
+    async def validate_segment(self, segment: EncodedSegment) -> Result[QualityMetrics, QualityError]:
+        """Validates encoded segment quality with retry strategies"""
+        
+        for strategy_index in range(len(self.VMAF_STRATEGIES)):
+            self.current_strategy_index = strategy_index
+            strategy = self.VMAF_STRATEGIES[strategy_index]
+            
+            # Configure VMAF analysis
+            vmaf_scores = await self.vmaf_analyzer.analyze(
+                original=segment.source_path,
+                encoded=segment.output_path,
+                vmaf_params=strategy["vmaf_params"],
+                samples=strategy["samples"],
+                sample_duration=strategy["duration"]
+            )
+            
+            # Check if current strategy's target is met
+            if vmaf_scores.mean >= strategy["target"]:
+                return Ok(QualityMetrics(
+                    vmaf_scores=vmaf_scores,
+                    format_metrics=await self.metrics_collector.collect(segment.output_path),
+                    strategy_used=strategy
+                ))
+            
+            # Try next strategy if available
+            if strategy_index < len(self.VMAF_STRATEGIES) - 1:
+                continue
+                
+            # All strategies exhausted
+            return Err(QualityError(
+                f"Failed to meet VMAF target after all strategies. Best score: {vmaf_scores.mean}"
+            ))
+    
+    def get_current_strategy(self) -> Dict[str, Any]:
+        """Get current VMAF strategy parameters"""
+        return self.VMAF_STRATEGIES[self.current_strategy_index]
+    
+    def has_next_strategy(self) -> bool:
+        """Check if there are more strategies to try"""
+        return self.current_strategy_index < len(self.VMAF_STRATEGIES) - 1
+
+class AbAv1RetryStrategy:
+    """Segment retry strategy for ab-av1 path"""
+    
+    def __init__(self, quality_control: AbAv1QualityControl):
+        self.quality_control = quality_control
+        self.state_manager = StateManager()
+        
+    async def encode_with_retry(self, segment: VideoSegment, encoder: AbAv1Wrapper) -> Result[EncodedSegment, EncodingError]:
+        """Execute encoding with VMAF-based retry strategy"""
+        
+        while True:
+            # Get current strategy
+            strategy = self.quality_control.get_current_strategy()
+            
+            # Attempt encoding with current strategy
+            result = await encoder.encode_segment(segment, strategy)
+            if result.is_err():
+                return result
+                
+            # Validate quality
+            encoded_segment = result.unwrap()
+            quality_result = await self.quality_control.validate_segment(encoded_segment)
+            
+            if quality_result.is_ok():
+                return Ok(encoded_segment)
+                
+            # Try next strategy if available
+            if self.quality_control.has_next_strategy():
+                continue
+                
+            # All strategies exhausted
+            return Err(QualityError("Failed to meet quality targets with all strategies"))
+
+@dataclass
+class CRFConfig:
+    """Resolution-dependent CRF values"""
+    sd: int = 25   # ≤720p
+    hd: int = 25   # ≤1080p
+    uhd: int = 29  # >1080p
+    
+    def get_for_resolution(self, resolution: Resolution) -> int:
+        """Get appropriate CRF for resolution"""
+        return {
+            Resolution.SD: self.sd,   # ≤720p
+            Resolution.HD: self.hd,   # ≤1080p
+            Resolution.UHD: self.uhd  # >1080p
+        }[resolution]
+```
+
+This implementation maintains:
+- **FFmpeg Path**:
+  - Resolution-dependent CRF values (25 for SD/HD, 29 for UHD)
+  - SVT-AV1 parameter validation
+  - Format and codec parameter verification
+  - No VMAF checks
+
+- **ab-av1 Path**:
+  - VMAF target validation (93)
+  - Sample-based quality analysis
+  - Preset verification
+  - Parameter validation
+
+### Progress Monitoring
+
+Real-time encoding progress tracking:
+
+```python
+class EncodingProgress:
+    """Tracks encoding progress with detailed metrics"""
+    
+    def __init__(self):
+        self.event_bus = EventBus()
+        self.metrics_store = MetricsStore()
+        
+    async def track_progress(self, process: FFmpegProcess):
+        """Tracks encoding progress and emits events"""
+        
+        async for progress in process.stream_progress():
+            # Update progress metrics
+            await self.metrics_store.update(progress)
+            
+            # Emit progress event
+            await self.event_bus.emit(
+                ProgressEvent(
+                    timestamp=datetime.now(),
+                    frames_encoded=progress.frames,
+                    estimated_remaining=progress.eta,
+                    current_speed=progress.speed,
+                    quality_metrics=progress.quality
+                )
+            )
+            
+            # Check resource usage
+            if await self._should_adjust_resources(progress):
+                await self._optimize_resource_usage()
+```
 
 This modern implementation provides:
-- Type-safe FFmpeg and ab-av1 integration
-- Comprehensive state tracking and recovery
-- Sophisticated quality validation
-- Parallel processing with proper resource management
-- Clear error handling and retry strategies
-- Event-based progress monitoring
-- Persistent state checkpoints
-
-The system maintains encoding state throughout the process, enabling robust error recovery and quality assurance at every stage.
+- Full async/await support for efficient processing
+- Type-safe configuration management
+- Comprehensive error handling and recovery
+- Real-time quality monitoring
+- Resource-aware processing
+- Event-driven progress updates
+- State preservation and recovery
+- HDR content validation
+- Audio synchronization checks
 
 ## Encoding Strategy System
 
