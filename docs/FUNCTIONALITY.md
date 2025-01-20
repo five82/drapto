@@ -8,24 +8,162 @@ drapto is designed to work specifically with MKV video files sourced from DVD, B
 - Audio is always encoded using Opus
 
 ## Table of Contents
-1. [Input Video Processing Flow](#input-video-processing-flow)
-2. [Dolby Vision Detection](#dolby-vision-detection)
-3. [Encoding Paths](#encoding-paths)
-4. [Encoding Strategy System](#encoding-strategy-system)
-5. [Parallel Processing](#parallel-processing)
-6. [Muxing Process](#muxing-process)
-7. [Audio Processing](#audio-processing)
-8. [Crop Detection](#crop-detection)
-9. [Codec Usage](#codec-usage)
-10. [Validation and Quality Control](#validation-and-quality-control)
-11. [Default Settings](#default-settings)
-12. [User Configuration](#user-configuration)
-13. [Hardware Acceleration](#hardware-acceleration)
-14. [Validation Process](#validation-process)
-15. [Error Recovery and Fallback Mechanisms](#error-recovery-and-fallback-mechanisms)
-16. [Progress Tracking and Logging](#progress-tracking-and-logging)
-17. [Temporary File Management](#temporary-file-management)
-18. [Directory Structure](#directory-structure)
+1. [Directory Structure and Organization](#directory-structure-and-organization)
+2. [Input Video Processing Flow](#input-video-processing-flow)
+3. [Dolby Vision Detection](#dolby-vision-detection)
+4. [Encoding Paths](#encoding-paths)
+5. [Encoding Strategy System](#encoding-strategy-system)
+6. [Parallel Processing](#parallel-processing)
+7. [Muxing Process](#muxing-process)
+8. [Audio Processing](#audio-processing)
+9. [Crop Detection](#crop-detection)
+10. [Codec Usage](#codec-usage)
+11. [Validation and Quality Control](#validation-and-quality-control)
+12. [Default Settings](#default-settings)
+13. [User Configuration](#user-configuration)
+14. [Hardware Acceleration](#hardware-acceleration)
+15. [Validation Process](#validation-process)
+16. [Error Recovery and Fallback Mechanisms](#error-recovery-and-fallback-mechanisms)
+17. [Progress Tracking and Logging](#progress-tracking-and-logging)
+18. [Temporary File Management](#temporary-file-management)
+
+## Directory Structure and Organization
+
+### Package Structure
+
+drapto is organized as a Python package with modular components:
+
+```python
+src/drapto/
+├── core/              # Core infrastructure
+│   ├── encoder.py     # Base encoder interface
+│   ├── config/        # Configuration management
+│   ├── events.py      # Event system
+│   ├── status.py      # Status streaming
+│   ├── errors.py      # Error handling
+│   └── temp.py        # Temporary file management
+│
+├── encoders/          # Encoding implementations
+│   ├── standard.py    # Standard encoding path
+│   ├── chunked.py     # VMAF-based chunked encoding
+│   ├── options.py     # Encoding options/config
+│   ├── hardware.py    # Hardware acceleration
+│   └── dolby.py       # Dolby Vision handling
+│
+├── media/             # Media handling
+│   ├── analysis.py    # Video/audio analysis
+│   ├── metadata.py    # Media metadata
+│   ├── audio.py       # Audio processing
+│   ├── subtitle.py    # Subtitle handling
+│   └── muxer.py       # Stream muxing
+│
+├── processing/        # Processing logic
+│   ├── segmentation.py # Video segmentation
+│   ├── vmaf.py        # VMAF calculations
+│   ├── worker.py      # Worker management
+│   └── queue.py       # Job queue
+│
+├── state/            # State management
+│   ├── manager.py    # State coordination
+│   ├── types.py      # State data structures
+│   ├── progress.py   # Progress tracking
+│   └── metrics.py    # Resource monitoring
+│
+├── system/           # System integration
+│   ├── ffmpeg.py     # FFmpeg wrapper
+│   ├── mediainfo.py  # MediaInfo wrapper
+│   ├── process.py    # Process management
+│   └── signals.py    # Signal handling
+│
+└── utils/            # Utilities
+    ├── logging.py    # Logging setup
+    ├── paths.py      # Path handling
+    ├── validation.py # Input validation
+    └── terminal.py   # Terminal handling
+```
+
+### Module Responsibilities
+
+#### Core (`core/`)
+- **Configuration Management**: Schema-based configuration with validation
+- **Event System**: Event-driven communication between components
+- **Error Handling**: Structured error handling with context
+- **Base Interfaces**: Core interfaces for encoders and media handling
+- **Temporary Files**: Managed temporary file and directory lifecycle
+
+#### Encoders (`encoders/`)
+- **Standard Encoder**: Direct FFmpeg-based encoding with CRF control
+- **Chunked Encoder**: VMAF-based encoding with segmentation
+- **Hardware Support**: GPU acceleration and hardware detection
+- **Options Management**: Encoding parameters and validation
+- **Dolby Vision**: HDR and Dolby Vision content handling
+
+#### Media (`media/`)
+- **Analysis**: Video and audio stream analysis
+- **Metadata**: Media information extraction and validation
+- **Audio Processing**: Audio track management and encoding
+- **Subtitle Handling**: Subtitle track preservation
+- **Stream Muxing**: Final container assembly
+
+#### Processing (`processing/`)
+- **Segmentation**: Video chunk management
+- **VMAF Analysis**: Quality metric calculations
+- **Worker Management**: Parallel processing control
+- **Queue Management**: Job scheduling and coordination
+
+#### State (`state/`)
+- **State Management**: Centralized state tracking
+- **Progress Monitoring**: Real-time progress updates
+- **Resource Metrics**: System resource tracking
+- **State Persistence**: Crash recovery and state restoration
+
+#### System (`system/`)
+- **External Tools**: FFmpeg and MediaInfo integration
+- **Process Control**: Process lifecycle management
+- **Signal Handling**: Clean process termination
+- **Resource Management**: System resource allocation
+
+#### Utilities (`utils/`)
+- **Logging**: Structured logging configuration
+- **Path Management**: File and directory path handling
+- **Input Validation**: Data validation utilities
+- **Terminal Output**: Progress display and formatting
+
+### Runtime Directory Structure
+
+During operation, drapto maintains the following directory structure:
+
+```
+/tmp/drapto/
+├── logs/           # Application logs
+│   ├── app.log     # Main application log
+│   └── debug.log   # Debug information
+│
+├── state/          # State persistence
+│   ├── jobs/       # Per-job state files
+│   └── metrics/    # Resource metrics data
+│
+├── segments/       # Video segments
+│   ├── raw/       # Original segments
+│   └── encoded/   # Encoded segments
+│
+├── encoded/        # Encoded outputs
+│   └── temp/      # Temporary encoded files
+│
+└── working/        # Temporary processing
+    ├── vmaf/      # VMAF analysis files
+    └── mux/       # Muxing workspace
+```
+
+#### Directory Purposes
+
+- **logs/**: Contains application logs and debug information
+- **state/**: Persisted state for crash recovery
+- **segments/**: Video chunks for parallel processing
+- **encoded/**: Completed encoded files
+- **working/**: Temporary processing workspace
+
+All directories are managed by the `TempManager` which ensures proper cleanup on completion or failure.
 
 ## Input Video Processing Flow
 
