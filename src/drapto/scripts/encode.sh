@@ -1,37 +1,36 @@
 #!/usr/bin/env bash
 
-# Force unbuffered output
-exec 1> >(stdbuf -oL cat)
-exec 2> >(stdbuf -oL cat >&2)
+# Set up environment
+export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$PATH"
+export LD_LIBRARY_PATH="/home/linuxbrew/.linuxbrew/lib:"
 
-# Add cargo bin to PATH
-export PATH="$HOME/.cargo/bin:${PATH}"
+# Get script directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Add near the top of the script, after the shebang
-export LD_LIBRARY_PATH="/home/linuxbrew/.linuxbrew/lib:${LD_LIBRARY_PATH}"
+# Validate script directory
+[[ -z "$SCRIPT_DIR" ]] && { echo "Error: Could not determine script directory"; exit 1; }
+[[ ! -d "$SCRIPT_DIR" ]] && { echo "Error: Script directory not found: $SCRIPT_DIR"; exit 1; }
 
-# Determine the script directory
-if [[ "$OSTYPE" == "darwin"* ]]; then
-    # macOS
-    SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-else
-    # Linux and others
-    SCRIPT_DIR="$( cd "$( dirname "$(readlink -f "${BASH_SOURCE[0]}")" )" && pwd )"
-fi
+echo "Debug: Using script directory: $SCRIPT_DIR"
+echo "Debug: Script files:"
+ls -la "$SCRIPT_DIR"
+echo "Debug: Common files:"
+ls -la "$SCRIPT_DIR/common"
 
-# Source configuration and function files with consistent naming
-source "${SCRIPT_DIR}/common/config.sh"
-source "${SCRIPT_DIR}/encode_utilities.sh"
-source "${SCRIPT_DIR}/encode_video_functions.sh"
-source "${SCRIPT_DIR}/common/audio_processing.sh"
-source "${SCRIPT_DIR}/encode_subtitle_functions.sh"
-source "${SCRIPT_DIR}/encode_hardware_acceleration.sh"
-source "${SCRIPT_DIR}/encode_validation.sh"
-source "${SCRIPT_DIR}/encode_processing.sh"
+# Source required files
+source "$SCRIPT_DIR/common/config.sh"
 
-###################
-# Main Processing
-###################
+# Initialize base directories first
+source "$SCRIPT_DIR/encode_utilities.sh"
+initialize_base_directories
 
-# Start the encoding process
+# Source remaining files
+source "$SCRIPT_DIR/encode_video_functions.sh"
+source "$SCRIPT_DIR/common/audio_processing.sh"
+source "$SCRIPT_DIR/encode_subtitle_functions.sh"
+source "$SCRIPT_DIR/encode_hardware_acceleration.sh"
+source "$SCRIPT_DIR/encode_validation.sh"
+source "$SCRIPT_DIR/encode_processing.sh"
+
+# Run main processing function
 main

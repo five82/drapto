@@ -54,10 +54,8 @@ class Settings:
 
     def get_environment(self) -> dict[str, str]:
         """Get environment variables for subprocess execution."""
-        env = os.environ.copy()
-
-        # Remove any existing PYTHONPATH to avoid conflicts
-        env.pop("PYTHONPATH", None)
+        # Start with a clean environment
+        env = {}
 
         # Add color configuration
         env.update({
@@ -70,6 +68,11 @@ class Settings:
         if self.color.term:
             env["TERM"] = self.color.term
 
+        # Add essential environment variables
+        for var in ["PATH", "HOME", "USER", "SHELL"]:
+            if var in os.environ:
+                env[var] = os.environ[var]
+
         return env
 
     def get_encode_environment(self, input_path: Path, output_path: Path) -> dict[str, str]:
@@ -81,7 +84,11 @@ class Settings:
             "INPUT_DIR": str(input_path.parent.resolve()),
             "OUTPUT_DIR": str(output_path.parent.resolve()),
             "LOG_DIR": str(self.paths.log_dir.resolve()),
+            "TEMP_DIR": str(self.paths.temp_dir.resolve()),
             "TEMP_DATA_DIR": str(self.paths.temp_data_dir.resolve()),
+            "SEGMENTS_DIR": str(self.paths.segments_dir.resolve()),
+            "ENCODED_SEGMENTS_DIR": str(self.paths.encoded_segments_dir.resolve()),
+            "WORKING_DIR": str(self.paths.working_dir.resolve()),
             "INPUT_FILE": str(input_path.resolve()),
             "OUTPUT_FILE": str(output_path.resolve()),
         })

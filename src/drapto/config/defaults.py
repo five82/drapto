@@ -8,8 +8,9 @@ from .types import ColorConfig, PathConfig, ProcessConfig
 
 def get_default_color_config() -> ColorConfig:
     """Get default color configuration."""
-    current_term = os.environ.get("TERM", "")
-    if not any(x in current_term for x in ["color", "xterm", "vt100"]):
+    current_term = os.environ.get("TERM")
+    # Only set a default term if the current one exists but doesn't support color
+    if current_term and not any(x in current_term for x in ["color", "xterm", "vt100"]):
         current_term = "xterm-256color"
         
     return ColorConfig(
@@ -24,13 +25,16 @@ def get_default_color_config() -> ColorConfig:
 
 def get_default_path_config() -> PathConfig:
     """Get default path configuration."""
+    # Use package scripts directory
     script_dir = Path(__file__).parent.parent / "scripts"
+    
+    # Use system temp directory for drapto
     temp_dir = Path(tempfile.gettempdir()) / "drapto"
     
     return PathConfig(
         script_dir=script_dir,
         temp_dir=temp_dir,
-        input_extensions=("mkv",)
+        input_extensions=("mkv",)  # Only MKV files are supported
     )
 
 

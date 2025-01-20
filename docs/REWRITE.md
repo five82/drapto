@@ -127,12 +127,7 @@ class ChunkedEncoder(Encoder):
 ## Migration Plan
 
 ### Phase 0: Repository Preparation
-1. Create new branch:
-   ```bash
-   git checkout -b rewrite
-   ```
-
-2. Clean repository:
+1. Clean repository:
    ```bash
    # First move files we want to keep to a temporary location
    mkdir -p tmp_preserve
@@ -154,7 +149,7 @@ class ChunkedEncoder(Encoder):
    rm -rf tmp_preserve
    ```
 
-3. Create directory structure:
+2. Create directory structure:
    ```bash
    # Create package directories
    mkdir -p src/drapto/{core,encoders,media,processing,state,system,utils}
@@ -857,7 +852,7 @@ def encode(
 When implementing changes according to this rewrite plan, maintain strict synchronization with `FUNCTIONALITY.md`:
 
 1. **Documentation First**
-   - Update `FUNCTIONALITY.md` to reflect planned changes before implementation
+   - Update `FUNCTIONALITY.md` to reflect any requiredplanned changes before implementation
    - Use the documentation as a design spec for implementation
    - Ensure all architectural decisions are documented
 

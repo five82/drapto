@@ -4,6 +4,11 @@
 # Utility Functions
 ###################
 
+# Print error message in red
+print_error() {
+    echo -e "\033[31mError: $1\033[0m" >&2
+}
+
 # Check for required dependencies
 check_dependencies() {
     # Check that ffmpeg/ffprobe exist and are executable
@@ -25,9 +30,73 @@ check_dependencies() {
     return 0
 }
 
-# Initialize required directories
-initialize_directories() {
-    mkdir -p "${SCRIPT_DIR}/videos" "${INPUT_DIR}" "${OUTPUT_DIR}" "${LOG_DIR}"
+# Initialize base directories and create if needed
+initialize_base_directories() {
+    local base_dirs=(
+        "${SCRIPT_DIR}/videos"
+        "${LOG_DIR}"
+        "${TEMP_DIR}"
+        "${TEMP_DATA_DIR}"
+        "${SEGMENTS_DIR}"
+        "${ENCODED_SEGMENTS_DIR}"
+    )
+
+    for dir in "${base_dirs[@]}"; do
+        if [[ ! -d "$dir" ]]; then
+            mkdir -p "$dir" || {
+                print_error "Failed to create directory: $dir"
+                return 1
+            }
+            chmod 775 "$dir" || {
+                print_error "Failed to set permissions on directory: $dir"
+                return 1
+            }
+        fi
+    done
+
+    # Initialize JSON tracking files if they don't exist
+    local segments_json="${TEMP_DATA_DIR}/segments.json"
+    local encoding_json="${TEMP_DATA_DIR}/encoding.json"
+
+    if [[ ! -f "$segments_json" ]]; then
+        echo '{"segments":[],"total_segments":0,"total_duration":0.0,"created_at":null,"updated_at":null}' > "$segments_json" || {
+            print_error "Failed to create segments.json"
+            return 1
+        }
+        chmod 664 "$segments_json"
+    fi
+
+    if [[ ! -f "$encoding_json" ]]; then
+        echo '{"segments":{},"created_at":null,"updated_at":null}' > "$encoding_json" || {
+            print_error "Failed to create encoding.json"
+            return 1
+        }
+        chmod 664 "$encoding_json"
+    fi
+
+    # Update timestamps in tracking files
+    local current_time
+    current_time=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    
+    # Set up Python environment
+    local parent_dir
+    parent_dir="$(cd "$(dirname "${SCRIPT_DIR}")" && pwd)"
+    export PYTHONPATH="${parent_dir}:${PYTHONPATH:-}"
+    
+    # Debug output
+    echo "Debug: SCRIPT_DIR = ${SCRIPT_DIR}"
+    echo "Debug: Parent dir = ${parent_dir}"
+    echo "Debug: Using PYTHONPATH = ${PYTHONPATH}"
+    echo "Debug: Running json_helper.py from ${SCRIPT_DIR}/encode_strategies/json_helper.py"
+    
+    # Update timestamps in tracking files using direct script execution with full path
+    cd "${SCRIPT_DIR}/encode_strategies" && \
+    python3 ./json_helper.py update_timestamps "${TEMP_DATA_DIR}" "${current_time}" || {
+        print_error "Failed to update timestamps in tracking files"
+        return 1
+    }
+
+    return 0
 }
 
 # Get file size in bytes

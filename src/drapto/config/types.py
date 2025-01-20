@@ -22,6 +22,9 @@ class PathConfig:
     temp_dir: Path
     log_dir: Optional[Path] = None
     temp_data_dir: Optional[Path] = None
+    segments_dir: Optional[Path] = None
+    encoded_segments_dir: Optional[Path] = None
+    working_dir: Optional[Path] = None
     input_extensions: tuple[str, ...] = ("mkv",)
 
     def __post_init__(self) -> None:
@@ -42,6 +45,22 @@ class PathConfig:
             self.temp_data_dir = self.temp_dir / "encode_data"
         elif isinstance(self.temp_data_dir, str):
             self.temp_data_dir = Path(self.temp_data_dir)
+
+        # Set additional computed paths
+        if self.segments_dir is None:
+            self.segments_dir = self.temp_dir / "segments"
+        elif isinstance(self.segments_dir, str):
+            self.segments_dir = Path(self.segments_dir)
+
+        if self.encoded_segments_dir is None:
+            self.encoded_segments_dir = self.temp_dir / "encoded_segments"
+        elif isinstance(self.encoded_segments_dir, str):
+            self.encoded_segments_dir = Path(self.encoded_segments_dir)
+
+        if self.working_dir is None:
+            self.working_dir = self.temp_dir / "working"
+        elif isinstance(self.working_dir, str):
+            self.working_dir = Path(self.working_dir)
 
 
 @dataclass

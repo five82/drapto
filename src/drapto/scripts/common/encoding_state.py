@@ -19,6 +19,15 @@ from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from ...config import Settings
+from ...utils.paths import (
+    ensure_directory,
+    normalize_path,
+    get_relative_path,
+    get_temp_path
+)
+from ...monitoring.paths import path_monitor
+
 class JobStatus(Enum):
     """Status of an encoding job"""
     PENDING = "pending"
@@ -64,8 +73,8 @@ class EncodingStats:
 class Segment:
     """Represents a video segment"""
     index: int
-    input_path: str
-    output_path: str
+    input_path: Path
+    output_path: Path
     status: SegmentStatus = SegmentStatus.PENDING
     start_time: float = 0.0
     duration: float = 0.0
@@ -77,8 +86,8 @@ class Segment:
 class EncodingJob:
     """Represents a single encoding job"""
     job_id: str
-    input_file: str
-    output_file: str
+    input_file: Path
+    output_file: Path
     status: JobStatus
     strategy: str
     stats: EncodingStats
@@ -87,59 +96,104 @@ class EncodingJob:
     error_message: Optional[str] = None
 
 class EncodingState:
-    """Manages state for all encoding jobs"""
+    """Manages encoding state for multiple jobs."""
     
-    def __init__(self, state_dir: str):
-        """Initialize encoding state manager
+    def __init__(self, settings: Optional[Settings] = None):
+        """Initialize encoding state manager.
         
         Args:
-            state_dir: Directory to store state files
+            settings: Optional settings object. If not provided, settings will be loaded
+                    from environment variables.
         """
-        self.state_dir = Path(state_dir)
-        self.state_dir.mkdir(parents=True, exist_ok=True)
+        # Initialize settings
+        self.settings = settings or Settings.from_environment()
+        
+        # Ensure state directory exists
+        self.state_dir = ensure_directory(self.settings.paths.temp_data_dir / "state")
+        path_monitor.track_path(self.state_dir)
+        
+        # Initialize state
         self.jobs: Dict[str, EncodingJob] = {}
         self._load_state()
     
-    def create_job(self, input_file: str, output_file: str, strategy: str) -> str:
-        """Create a new encoding job
+    def create_job(self, input_file: Path | str, output_file: Path | str, strategy: str) -> str:
+        """Create a new encoding job.
         
         Args:
-            input_file: Path to input video file
-            output_file: Path to output video file
-            strategy: Name of encoding strategy to use
+            input_file: Path to input file
+            output_file: Path to output file
+            strategy: Encoding strategy to use
             
         Returns:
-            job_id: Unique identifier for the job
+            Job ID
+            
+        Raises:
+            ValueError: If input file doesn't exist or output path is invalid
         """
-        job_id = str(int(time.time()))
+        # Normalize paths
+        input_file = normalize_path(input_file)
+        output_file = normalize_path(output_file)
+        
+        # Track paths
+        path_monitor.track_path(input_file)
+        path_monitor.track_path(output_file)
+        
+        # Validate input file
+        if not input_file.exists():
+            raise ValueError(f"Input file does not exist: {input_file}")
+        if not input_file.is_file():
+            raise ValueError(f"Input path is not a file: {input_file}")
+        
+        # Create job ID
+        job_id = f"job_{int(time.time())}_{os.urandom(4).hex()}"
+        
+        # Create job
         job = EncodingJob(
             job_id=job_id,
             input_file=input_file,
             output_file=output_file,
             status=JobStatus.PENDING,
             strategy=strategy,
-            stats=EncodingStats(start_time=time.time())
+            stats=EncodingStats(
+                input_size=input_file.stat().st_size,
+                start_time=time.time()
+            )
         )
+        
+        # Add job to state
         self.jobs[job_id] = job
         self._save_state()
+        
         return job_id
     
-    def add_segment(self, job_id: str, index: int, input_path: str, output_path: str,
-                   start_time: float = 0.0, duration: float = 0.0) -> None:
-        """Add a new segment to a job
+    def add_segment(self, job_id: str, index: int, input_path: Path | str,
+                   output_path: Path | str, start_time: float = 0.0,
+                   duration: float = 0.0) -> None:
+        """Add a segment to a job.
         
         Args:
-            job_id: Job identifier
+            job_id: Job ID
             index: Segment index
-            input_path: Path to input segment file
-            output_path: Path to output segment file
-            start_time: Start time of segment in seconds
-            duration: Duration of segment in seconds
+            input_path: Path to input segment
+            output_path: Path to output segment
+            start_time: Segment start time in seconds
+            duration: Segment duration in seconds
+            
+        Raises:
+            ValueError: If job doesn't exist or paths are invalid
         """
-        if job_id not in self.jobs:
-            raise KeyError(f"Job {job_id} not found")
+        # Get job
+        job = self.get_job(job_id)
         
-        job = self.jobs[job_id]
+        # Normalize paths
+        input_path = normalize_path(input_path)
+        output_path = normalize_path(output_path)
+        
+        # Track paths
+        path_monitor.track_path(input_path)
+        path_monitor.track_path(output_path)
+        
+        # Create segment
         segment = Segment(
             index=index,
             input_path=input_path,
@@ -147,305 +201,318 @@ class EncodingState:
             start_time=start_time,
             duration=duration
         )
+        
+        # Add segment to job
         job.segments[index] = segment
         job.stats.segment_count = len(job.segments)
         self._save_state()
     
-    def update_segment_status(self, job_id: str, index: int, status: SegmentStatus,
-                            error: str = None) -> None:
-        """Update status of a segment
+    def update_segment_status(self, job_id: str, index: int,
+                            status: SegmentStatus, error: str = None) -> None:
+        """Update segment status.
         
         Args:
-            job_id: Job identifier
+            job_id: Job ID
             index: Segment index
             status: New segment status
-            error: Optional error message if segment failed
+            error: Optional error message
+            
+        Raises:
+            ValueError: If job or segment doesn't exist
         """
-        if job_id not in self.jobs:
-            raise KeyError(f"Job {job_id} not found")
+        # Get segment
+        segment = self.get_segment(job_id, index)
         
-        job = self.jobs[job_id]
-        if index not in job.segments:
-            raise KeyError(f"Segment {index} not found in job {job_id}")
-        
-        segment = job.segments[index]
+        # Update status
         segment.status = status
-        if error:
-            segment.error_message = error
+        segment.error_message = error
         
-        # Update completed segment count
+        # Update job stats
+        job = self.get_job(job_id)
         job.stats.completed_segments = sum(
             1 for s in job.segments.values()
             if s.status == SegmentStatus.COMPLETED
         )
+        
+        # Record path status
+        if status == SegmentStatus.COMPLETED:
+            path_monitor.record_access(segment.output_path)
+        elif status == SegmentStatus.FAILED and error:
+            path_monitor.record_error(segment.input_path, error)
+        
         self._save_state()
     
     def get_segments(self, job_id: str) -> List[Segment]:
-        """Get all segments for a job
+        """Get all segments for a job.
         
         Args:
-            job_id: Job identifier
+            job_id: Job ID
             
         Returns:
-            List[Segment]: List of all segments
+            List of segments sorted by index
+            
+        Raises:
+            ValueError: If job doesn't exist
         """
-        if job_id not in self.jobs:
-            raise KeyError(f"Job {job_id} not found")
-        
-        return list(self.jobs[job_id].segments.values())
+        job = self.get_job(job_id)
+        return sorted(job.segments.values(), key=lambda s: s.index)
     
     def get_segment(self, job_id: str, index: int) -> Segment:
-        """Get a specific segment
+        """Get a specific segment.
         
         Args:
-            job_id: Job identifier
+            job_id: Job ID
             index: Segment index
             
         Returns:
-            Segment: Segment information
+            Segment object
+            
+        Raises:
+            ValueError: If job or segment doesn't exist
         """
-        if job_id not in self.jobs:
-            raise KeyError(f"Job {job_id} not found")
-        
-        job = self.jobs[job_id]
+        job = self.get_job(job_id)
         if index not in job.segments:
-            raise KeyError(f"Segment {index} not found in job {job_id}")
-        
+            raise ValueError(f"Segment {index} not found in job {job_id}")
         return job.segments[index]
-
-    def update_job_status(self, job_id: str, status: JobStatus, error: str = None) -> None:
-        """Update status of an encoding job
+    
+    def update_job_status(self, job_id: str, status: JobStatus,
+                         error: str = None) -> None:
+        """Update job status.
         
         Args:
-            job_id: Job identifier
+            job_id: Job ID
             status: New job status
-            error: Optional error message if job failed
+            error: Optional error message
+            
+        Raises:
+            ValueError: If job doesn't exist
         """
-        if job_id not in self.jobs:
-            raise KeyError(f"Job {job_id} not found")
+        # Get job
+        job = self.get_job(job_id)
         
-        job = self.jobs[job_id]
+        # Update status
         job.status = status
-        if error:
-            job.error_message = error
+        job.error_message = error
+        
+        # Update stats
         if status == JobStatus.COMPLETED:
             job.stats.end_time = time.time()
+            if job.output_file.exists():
+                job.stats.output_size = job.output_file.stat().st_size
+                path_monitor.record_access(job.output_file)
+        elif status == JobStatus.FAILED and error:
+            path_monitor.record_error(job.input_file, error)
+        
         self._save_state()
     
     def update_job_stats(self, job_id: str, **kwargs) -> None:
-        """Update statistics for an encoding job
+        """Update job statistics.
         
         Args:
-            job_id: Job identifier
-            **kwargs: Statistics to update (input_size, output_size, vmaf_score)
+            job_id: Job ID
+            **kwargs: Statistics to update
+            
+        Raises:
+            ValueError: If job doesn't exist
         """
-        if job_id not in self.jobs:
-            raise KeyError(f"Job {job_id} not found")
-        
-        job = self.jobs[job_id]
+        job = self.get_job(job_id)
         for key, value in kwargs.items():
             if hasattr(job.stats, key):
                 setattr(job.stats, key, value)
         self._save_state()
     
-    def update_job_progress(self, job_id: str, current_frame: int, total_frames: int,
-                          fps: float = 0.0) -> None:
-        """Update progress of an encoding job
+    def update_job_progress(self, job_id: str, current_frame: int,
+                          total_frames: int, fps: float = 0.0) -> None:
+        """Update job progress.
         
         Args:
-            job_id: Job identifier
-            current_frame: Current frame being encoded
-            total_frames: Total frames to encode
-            fps: Current encoding speed in frames per second
+            job_id: Job ID
+            current_frame: Current frame number
+            total_frames: Total number of frames
+            fps: Current frames per second
+            
+        Raises:
+            ValueError: If job doesn't exist
         """
-        if job_id not in self.jobs:
-            raise KeyError(f"Job {job_id} not found")
+        job = self.get_job(job_id)
         
-        job = self.jobs[job_id]
-        now = time.time()
+        # Initialize progress if needed
+        if job.progress.started_at == 0:
+            job.progress.started_at = time.time()
+            job.stats.total_frames = total_frames
         
-        # Update job progress
-        if job.progress.started_at == 0.0:
-            job.progress.started_at = now
-        
+        # Update progress
         job.progress.current_frame = current_frame
         job.progress.total_frames = total_frames
         job.progress.fps = fps
-        job.progress.updated_at = now
+        job.progress.updated_at = time.time()
         
-        # Calculate overall progress
+        # Calculate percentage and ETA
         if total_frames > 0:
             job.progress.percent = (current_frame / total_frames) * 100
-            
-            # Calculate ETA
             if fps > 0:
-                remaining_frames = total_frames - current_frame
-                job.progress.eta_seconds = remaining_frames / fps
+                frames_remaining = total_frames - current_frame
+                job.progress.eta_seconds = frames_remaining / fps
         
-        # Update job stats
-        job.stats.total_frames = total_frames
+        # Update stats
         job.stats.encoded_frames = current_frame
         
         self._save_state()
     
-    def update_segment_progress(self, job_id: str, index: int, current_frame: int,
-                              total_frames: int, fps: float = 0.0) -> None:
-        """Update progress of a segment
+    def update_segment_progress(self, job_id: str, index: int,
+                              current_frame: int, total_frames: int,
+                              fps: float = 0.0) -> None:
+        """Update segment progress.
         
         Args:
-            job_id: Job identifier
+            job_id: Job ID
             index: Segment index
-            current_frame: Current frame being encoded
-            total_frames: Total frames to encode
-            fps: Current encoding speed in frames per second
+            current_frame: Current frame number
+            total_frames: Total number of frames
+            fps: Current frames per second
+            
+        Raises:
+            ValueError: If job or segment doesn't exist
         """
-        if job_id not in self.jobs:
-            raise KeyError(f"Job {job_id} not found")
+        segment = self.get_segment(job_id, index)
         
-        job = self.jobs[job_id]
-        if index not in job.segments:
-            raise KeyError(f"Segment {index} not found in job {job_id}")
+        # Initialize progress if needed
+        if segment.progress.started_at == 0:
+            segment.progress.started_at = time.time()
+            segment.total_frames = total_frames
         
-        segment = job.segments[index]
-        now = time.time()
-        
-        # Update segment progress
-        if segment.progress.started_at == 0.0:
-            segment.progress.started_at = now
-        
+        # Update progress
         segment.progress.current_frame = current_frame
         segment.progress.total_frames = total_frames
         segment.progress.fps = fps
-        segment.progress.updated_at = now
+        segment.progress.updated_at = time.time()
         
-        # Calculate segment progress
+        # Calculate percentage and ETA
         if total_frames > 0:
             segment.progress.percent = (current_frame / total_frames) * 100
-            
-            # Calculate ETA
             if fps > 0:
-                remaining_frames = total_frames - current_frame
-                segment.progress.eta_seconds = remaining_frames / fps
+                frames_remaining = total_frames - current_frame
+                segment.progress.eta_seconds = frames_remaining / fps
         
-        # Update segment total frames
-        segment.total_frames = total_frames
-        
-        # Update overall job progress
-        total_job_frames = sum(s.total_frames for s in job.segments.values())
-        encoded_frames = sum(s.progress.current_frame for s in job.segments.values())
-        self.update_job_progress(job_id, encoded_frames, total_job_frames, fps)
+        self._save_state()
     
     def get_progress(self, job_id: str) -> Progress:
-        """Get progress information for a job
+        """Get job progress.
         
         Args:
-            job_id: Job identifier
+            job_id: Job ID
             
         Returns:
-            Progress: Job progress information
+            Progress object
+            
+        Raises:
+            ValueError: If job doesn't exist
         """
-        if job_id not in self.jobs:
-            raise KeyError(f"Job {job_id} not found")
-        
-        return self.jobs[job_id].progress
+        job = self.get_job(job_id)
+        return job.progress
     
     def get_segment_progress(self, job_id: str, index: int) -> Progress:
-        """Get progress information for a segment
+        """Get segment progress.
         
         Args:
-            job_id: Job identifier
+            job_id: Job ID
             index: Segment index
             
         Returns:
-            Progress: Segment progress information
+            Progress object
+            
+        Raises:
+            ValueError: If job or segment doesn't exist
         """
-        if job_id not in self.jobs:
-            raise KeyError(f"Job {job_id} not found")
-        
-        job = self.jobs[job_id]
-        if index not in job.segments:
-            raise KeyError(f"Segment {index} not found in job {job_id}")
-        
-        return job.segments[index].progress
+        segment = self.get_segment(job_id, index)
+        return segment.progress
     
     def get_job(self, job_id: str) -> EncodingJob:
-        """Get information about an encoding job
+        """Get a job by ID.
         
         Args:
-            job_id: Job identifier
+            job_id: Job ID
             
         Returns:
-            EncodingJob: Job information
+            EncodingJob object
+            
+        Raises:
+            ValueError: If job doesn't exist
         """
         if job_id not in self.jobs:
-            raise KeyError(f"Job {job_id} not found")
+            raise ValueError(f"Job not found: {job_id}")
         return self.jobs[job_id]
     
     def get_all_jobs(self) -> List[EncodingJob]:
-        """Get information about all encoding jobs
+        """Get all jobs.
         
         Returns:
-            List[EncodingJob]: List of all jobs
+            List of all jobs
         """
         return list(self.jobs.values())
     
     def _save_state(self) -> None:
-        """Save state to disk"""
+        """Save state to disk."""
         state_file = self.state_dir / "state.json"
+        path_monitor.track_path(state_file)
         
-        # Convert jobs to dict for serialization
-        jobs_dict = {}
-        for job_id, job in self.jobs.items():
-            job_dict = asdict(job)
-            
-            # Convert enums to strings
-            job_dict["status"] = job.status.value
-            
-            # Convert segments
-            segments_dict = {}
-            for idx, segment in job.segments.items():
-                segment_dict = asdict(segment)
-                segment_dict["status"] = segment.status.value
-                segments_dict[idx] = segment_dict
-            job_dict["segments"] = segments_dict
-            
-            jobs_dict[job_id] = job_dict
+        # Convert state to JSON-serializable format
+        state = {
+            job_id: {
+                **asdict(job),
+                "input_file": str(job.input_file),
+                "output_file": str(job.output_file),
+                "segments": {
+                    str(idx): {
+                        **asdict(segment),
+                        "input_path": str(segment.input_path),
+                        "output_path": str(segment.output_path)
+                    }
+                    for idx, segment in job.segments.items()
+                }
+            }
+            for job_id, job in self.jobs.items()
+        }
         
-        with open(state_file, "w") as f:
-            json.dump(jobs_dict, f, indent=2)
+        # Save state
+        try:
+            with state_file.open("w") as f:
+                json.dump(state, f, indent=2)
+            path_monitor.record_access(state_file)
+        except Exception as e:
+            path_monitor.record_error(state_file, str(e))
+            raise
     
     def _load_state(self) -> None:
-        """Load state from disk"""
+        """Load state from disk."""
         state_file = self.state_dir / "state.json"
+        path_monitor.track_path(state_file)
+        
         if not state_file.exists():
             return
         
-        with open(state_file) as f:
-            jobs_dict = json.load(f)
-        
-        # Convert dict back to jobs
-        for job_id, job_dict in jobs_dict.items():
-            # Convert status string back to enum
-            job_dict["status"] = JobStatus(job_dict["status"])
+        try:
+            with state_file.open("r") as f:
+                state = json.load(f)
             
-            # Convert segments
-            segments = {}
-            for idx, segment_dict in job_dict["segments"].items():
-                # Convert segment status string back to enum
-                segment_dict["status"] = SegmentStatus(segment_dict["status"])
+            # Convert JSON data back to objects
+            for job_id, job_data in state.items():
+                # Convert paths
+                job_data["input_file"] = Path(job_data["input_file"])
+                job_data["output_file"] = Path(job_data["output_file"])
                 
-                # Convert progress dict to Progress object
-                segment_dict["progress"] = Progress(**segment_dict["progress"])
+                # Convert segments
+                segments = {}
+                for idx, segment_data in job_data["segments"].items():
+                    segment_data["input_path"] = Path(segment_data["input_path"])
+                    segment_data["output_path"] = Path(segment_data["output_path"])
+                    segments[int(idx)] = Segment(**segment_data)
+                job_data["segments"] = segments
                 
-                # Create Segment object
-                segments[int(idx)] = Segment(**segment_dict)
-            job_dict["segments"] = segments
+                # Create job object
+                self.jobs[job_id] = EncodingJob(**job_data)
             
-            # Convert progress dict to Progress object
-            job_dict["progress"] = Progress(**job_dict["progress"])
-            
-            # Convert stats dict to EncodingStats object
-            job_dict["stats"] = EncodingStats(**job_dict["stats"])
-            
-            # Create EncodingJob object
-            self.jobs[job_id] = EncodingJob(**job_dict)
+            path_monitor.record_access(state_file)
+        except Exception as e:
+            path_monitor.record_error(state_file, str(e))
+            raise

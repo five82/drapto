@@ -13,34 +13,54 @@ source "${SCRIPT_DIR}/encode_strategies/chunked_encoding.sh"
 source "${SCRIPT_DIR}/encode_strategies/dolby_vision.sh"
 
 # Initialize directories and create if needed
-initialize_directories() {
+initialize_processing_directories() {
+    # Get input/output directories from file paths
+    INPUT_DIR="$(dirname "${DRAPTO_INPUT_FILE}")"
+    OUTPUT_DIR="$(dirname "${DRAPTO_OUTPUT_FILE}")"
+    
     # Create output directory if it doesn't exist
     if [[ ! -d "$OUTPUT_DIR" ]]; then
-        mkdir -p "$OUTPUT_DIR"
+        mkdir -p "$OUTPUT_DIR" || {
+            print_error "Failed to create output directory: $OUTPUT_DIR"
+            exit 1
+        }
+        chmod 775 "$OUTPUT_DIR" || {
+            print_error "Failed to set permissions on output directory: $OUTPUT_DIR"
+            exit 1
+        }
     fi
     
-    # Verify input directory exists and contains video files
+    # Verify input directory exists
     if [[ ! -d "$INPUT_DIR" ]]; then
         print_error "Input directory not found: $INPUT_DIR"
         exit 1
     fi
 
     # Create encode data directory and initialize files
-    mkdir -p "${TEMP_DATA_DIR}"
+    for dir in "${TEMP_DATA_DIR}" "${SEGMENTS_DIR}" "${ENCODED_SEGMENTS_DIR}" "${WORKING_DIR}"; do
+        mkdir -p "$dir" || {
+            print_error "Failed to create directory: $dir"
+            exit 1
+        }
+        chmod 775 "$dir" || {
+            print_error "Failed to set permissions on directory: $dir"
+            exit 1
+        }
+    done
     
     # Create empty files if they don't exist
-    if [[ ! -f "${ENCODED_FILES_DATA}" ]]; then
-        touch "${ENCODED_FILES_DATA}"
-    fi
-    if [[ ! -f "${ENCODING_TIMES_DATA}" ]]; then
-        touch "${ENCODING_TIMES_DATA}"
-    fi
-    if [[ ! -f "${INPUT_SIZES_DATA}" ]]; then
-        touch "${INPUT_SIZES_DATA}"
-    fi
-    if [[ ! -f "${OUTPUT_SIZES_DATA}" ]]; then
-        touch "${OUTPUT_SIZES_DATA}"
-    fi
+    for file in "${ENCODED_FILES_DATA}" "${ENCODING_TIMES_DATA}" "${INPUT_SIZES_DATA}" "${OUTPUT_SIZES_DATA}"; do
+        if [[ ! -f "$file" ]]; then
+            touch "$file" || {
+                print_error "Failed to create file: $file"
+                exit 1
+            }
+            chmod 664 "$file" || {
+                print_error "Failed to set permissions on file: $file"
+                exit 1
+            }
+        fi
+    done
 }
 
 # Clean up temporary files
@@ -462,7 +482,7 @@ main() {
         exit 1
     fi
 
-    initialize_directories
+    initialize_processing_directories
 
     # Check for local ffmpeg/ffprobe
     if [[ -f "$HOME/ffmpeg/ffmpeg" ]] && [[ -f "$HOME/ffmpeg/ffprobe" ]]; then
@@ -560,4 +580,27 @@ process_video() {
     
     print_success "Video processing completed successfully"
     return 0
+}
+
+# Update timestamps in tracking files
+# Args:
+#   None
+update_tracking_timestamps() {
+    local current_time
+    current_time=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+    # Set up Python environment
+    local parent_dir
+    parent_dir="$(cd "$(dirname "${SCRIPT_DIR}")" && pwd)"
+    export PYTHONPATH="${parent_dir}:${PYTHONPATH:-}"
+    
+    # Debug output
+    echo "Debug: SCRIPT_DIR = ${SCRIPT_DIR}"
+    echo "Debug: Parent dir = ${parent_dir}"
+    echo "Debug: Using PYTHONPATH = ${PYTHONPATH}"
+    echo "Debug: Running json_helper.py from ${SCRIPT_DIR}/encode_strategies/json_helper.py"
+    
+    # Update timestamps in tracking files using direct script execution with full path
+    cd "${SCRIPT_DIR}/encode_strategies" && \
+    python3 ./json_helper.py update_timestamps "${TEMP_DATA_DIR}" "${current_time}"
 }

@@ -1,4 +1,4 @@
-"""Minimal wrapper for bash encoding scripts."""
+"""Core encoding functionality."""
 import os
 import sys
 import time
@@ -12,26 +12,70 @@ import threading
 import queue
 
 from .config import Settings
+from .utils.paths import (
+    ensure_directory,
+    normalize_path,
+    get_temp_path,
+    get_relative_path
+)
+from .monitoring.paths import path_monitor
+
 
 class Encoder:
-    """Minimal wrapper for bash encoding scripts."""
+    """Core encoding functionality."""
     
     def __init__(self, settings: Optional[Settings] = None):
-        """Initialize encoder with optional settings."""
+        """Initialize encoder with optional settings.
+        
+        Args:
+            settings: Optional settings object. If not provided, settings will be loaded
+                    from environment variables.
+        
+        Raises:
+            RuntimeError: If encode script is not found
+        """
         # Initialize settings
         self.settings = settings or Settings.from_environment()
+        
+        print(f"Debug: Using script directory: {self.settings.paths.script_dir}")
         
         # Main encode script
         self.encode_script = self.settings.paths.script_dir / "encode.sh"
         if not self.encode_script.exists():
             raise RuntimeError(f"Encode script not found: {self.encode_script}")
             
-        # Make scripts executable
+        # Make scripts executable and track them
         for script in self.settings.paths.script_dir.glob("*.sh"):
             script.chmod(0o755)
+            path_monitor.track_path(script)
+            path_monitor.record_access(script)
+        
+        print(f"Debug: Using temp directory: {self.settings.paths.temp_dir}")
+        
+        # Ensure temp directories exist
+        ensure_directory(self.settings.paths.temp_dir)
+        ensure_directory(self.settings.paths.log_dir)
+        ensure_directory(self.settings.paths.temp_data_dir)
+        ensure_directory(self.settings.paths.segments_dir)
+        ensure_directory(self.settings.paths.encoded_segments_dir)
+        ensure_directory(self.settings.paths.working_dir)
+        
+        # Track temp directories
+        path_monitor.track_path(self.settings.paths.temp_dir)
+        path_monitor.track_path(self.settings.paths.log_dir)
+        path_monitor.track_path(self.settings.paths.temp_data_dir)
+        path_monitor.track_path(self.settings.paths.segments_dir)
+        path_monitor.track_path(self.settings.paths.encoded_segments_dir)
+        path_monitor.track_path(self.settings.paths.working_dir)
     
     def _stream_reader(self, stream, queue_obj, stream_name):
-        """Read from a stream and put lines into a queue."""
+        """Read from a stream and put lines into a queue.
+        
+        Args:
+            stream: The stream to read from
+            queue_obj: Queue to put lines into
+            stream_name: Name of the stream for identification
+        """
         try:
             for line in iter(stream.readline, ''):
                 if line:
@@ -49,78 +93,167 @@ class Encoder:
             queue_obj.put((stream_name, None))  # Signal EOF
     
     def _cleanup_process(self, process, threads=None):
-        """Clean up process and threads."""
-        if process is not None:
+        """Clean up a process and its threads.
+        
+        Args:
+            process: The process to clean up
+            threads: Optional list of threads to clean up
+        """
+        if process:
             try:
-                print("DEBUG: Cleaning up process")
                 process.terminate()
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+            except Exception:
+                pass
+        
+        if threads:
+            for thread in threads:
                 try:
-                    process.wait(timeout=self.settings.process.process_timeout)
-                except subprocess.TimeoutExpired:
-                    print("DEBUG: Force killing process")
-                    process.kill()
-                    try:
-                        process.wait(timeout=self.settings.process.process_timeout)
-                    except subprocess.TimeoutExpired:
-                        print("DEBUG: Process still not responding after SIGKILL")
-                        # One final attempt to wait
-                        try:
-                            process.wait(timeout=self.settings.process.process_timeout)
-                        except subprocess.TimeoutExpired:
-                            print("DEBUG: Final wait attempt failed")
-                    except Exception as e:
-                        print(f"DEBUG: Error during kill wait: {str(e)}")
-            except Exception as e:
-                print(f"DEBUG: Error during process cleanup: {str(e)}")
-            finally:
-                if threads:
-                    # Wait for reader threads to finish
-                    for thread in threads:
-                        thread.join(timeout=self.settings.process.thread_timeout)
-                # Final poll to get actual status
-                final_status = process.poll()
-                print(f"DEBUG: Final process status: {final_status}")
-                return final_status
-
+                    thread.join(timeout=1)
+                except Exception:
+                    pass
+    
+    def get_files_needing_processing(self, input_path: Path, output_path: Path) -> List[Tuple[Path, Path]]:
+        """Get list of files that need to be encoded.
+        
+        Args:
+            input_path: Input path (file or directory)
+            output_path: Output path (file or directory)
+        
+        Returns:
+            List of (input_path, output_path) tuples
+        
+        Raises:
+            ValueError: If paths are invalid
+        """
+        # Convert to absolute paths
+        input_path = normalize_path(input_path).resolve()
+        output_path = normalize_path(output_path).resolve()
+        
+        # Track paths
+        path_monitor.track_path(input_path)
+        path_monitor.track_path(output_path)
+        
+        if input_path.is_file():
+            # Single file mode
+            if not any(input_path.name.endswith(f".{ext}") for ext in self.settings.paths.input_extensions):
+                raise ValueError(f"Input file must have one of these extensions: {', '.join(self.settings.paths.input_extensions)}")
+            return [(input_path, output_path)]
+        
+        # Directory mode
+        if not input_path.is_dir():
+            raise ValueError(f"Input directory not found: {input_path}")
+        if not output_path.is_dir() and not output_path.parent.exists():
+            raise ValueError(f"Output directory does not exist: {output_path.parent}")
+        
+        # Create output directory if needed
+        if not output_path.exists():
+            ensure_directory(output_path)
+        
+        # Find all input files
+        result = []
+        for ext in self.settings.paths.input_extensions:
+            for in_file in input_path.rglob(f"*.{ext}"):
+                try:
+                    # Get relative path from input directory
+                    rel_path = get_relative_path(in_file, input_path)
+                    out_file = output_path / rel_path.with_suffix(".mkv")
+                    
+                    # Create output directory if needed
+                    if not out_file.parent.exists():
+                        ensure_directory(out_file.parent)
+                    
+                    result.append((in_file, out_file))
+                except Exception as e:
+                    path_monitor.record_error(in_file, str(e))
+        
+        if not result:
+            raise ValueError(f"No files found to process in {input_path}")
+        
+        return result
+    
+    def encode(self, input_path: Union[str, Path], output_path: Union[str, Path]) -> None:
+        """Encode video files.
+        
+        Args:
+            input_path: Input path (file or directory)
+            output_path: Output path (file or directory)
+        
+        Raises:
+            ValueError: If paths are invalid
+            RuntimeError: If encoding fails
+        """
+        # Get files to process
+        files = self.get_files_needing_processing(input_path, output_path)
+        
+        # Process files
+        for i, (in_file, out_file) in enumerate(files):
+            is_last = i == len(files) - 1
+            self._encode_file(in_file, out_file, is_last)
+    
     def _encode_file(self, input_path: Path, output_path: Path, is_last_file: bool = True) -> None:
-        """Encode a single video file."""
-        # Get environment for encoding
-        encode_env = self.settings.get_encode_environment(input_path, output_path)
-
-        print(f"DEBUG: Environment variables:")
-        print(f"DEBUG: INPUT_DIR: {encode_env['INPUT_DIR']}")
-        print(f"DEBUG: OUTPUT_DIR: {encode_env['OUTPUT_DIR']}")
-        print(f"DEBUG: LOG_DIR: {encode_env['LOG_DIR']}")
-        print(f"DEBUG: TEMP_DATA_DIR: {encode_env['TEMP_DATA_DIR']}")
-        print(f"DEBUG: INPUT_FILE: {encode_env['INPUT_FILE']}")
-        print(f"DEBUG: OUTPUT_FILE: {encode_env['OUTPUT_FILE']}")
-
-        # Create required directories
-        Path(encode_env["LOG_DIR"]).mkdir(parents=True, exist_ok=True)
-        Path(encode_env["TEMP_DATA_DIR"]).mkdir(parents=True, exist_ok=True)
-
-        # Clean up any existing state files
-        for state_file in Path(encode_env["TEMP_DATA_DIR"]).glob("*.json"):
-            state_file.unlink()
-
-        process = None
-        output_queue = queue.Queue()
-        threads = []
-
+        """Encode a single file.
+        
+        Args:
+            input_path: Path to input file
+            output_path: Path to output file
+            is_last_file: Whether this is the last file to encode
+        
+        Raises:
+            RuntimeError: If encoding fails
+        """
+        # Track input and output paths
+        path_monitor.track_path(input_path)
+        path_monitor.track_path(output_path)
+        path_monitor.record_access(input_path)
+        
+        print(f"Debug: Processing file: {input_path} -> {output_path}")
+        
+        # Create unique working directory for this file
+        work_dir = get_temp_path(
+            self.settings.paths.working_dir,
+            prefix=f"encode_{input_path.stem}_"
+        )
+        ensure_directory(work_dir)
+        path_monitor.track_path(work_dir)
+        
+        print(f"Debug: Using working directory: {work_dir}")
+        
         try:
-            print("DEBUG: Starting encode script process")
-            # Start encode script with input and output file arguments
+            # Prepare environment
+            env = os.environ.copy()
+            env_vars = {
+                "DRAPTO_TEMP_DIR": str(self.settings.paths.temp_dir),
+                "DRAPTO_LOG_DIR": str(self.settings.paths.log_dir),
+                "DRAPTO_TEMP_DATA_DIR": str(self.settings.paths.temp_data_dir),
+                "DRAPTO_SEGMENTS_DIR": str(self.settings.paths.segments_dir),
+                "DRAPTO_ENCODED_SEGMENTS_DIR": str(self.settings.paths.encoded_segments_dir),
+                "DRAPTO_WORKING_DIR": str(work_dir),
+                "DRAPTO_INPUT_FILE": str(input_path),
+                "DRAPTO_OUTPUT_FILE": str(output_path),
+                "DRAPTO_IS_LAST_FILE": "1" if is_last_file else "0",
+                "DRAPTO_SCRIPT_DIR": str(self.settings.paths.script_dir)
+            }
+            env.update(env_vars)
+            
+            print("Debug: Environment variables:")
+            for key, value in env_vars.items():
+                print(f"  {key}={value}")
+            
+            # Start encoding process
             process = subprocess.Popen(
-                [str(self.encode_script), str(input_path.resolve()), str(output_path.resolve())],
-                env=encode_env,
+                [str(self.encode_script)],
+                env=env,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True,
-                bufsize=self.settings.process.buffer_size,
-                preexec_fn=os.setsid
+                bufsize=1,
+                universal_newlines=True
             )
-
-            # Start reader threads
+            
+            # Set up output handling
+            output_queue = queue.Queue()
             stdout_thread = threading.Thread(
                 target=self._stream_reader,
                 args=(process.stdout, output_queue, 'stdout')
@@ -130,232 +263,53 @@ class Encoder:
                 args=(process.stderr, output_queue, 'stderr')
             )
             threads = [stdout_thread, stderr_thread]
-            stdout_thread.start()
-            stderr_thread.start()
-
-            print("DEBUG: Entering process monitoring loop")
-            stdout_done = stderr_done = False
-
-            try:
-                while not (stdout_done and stderr_done):
-                    try:
-                        stream_name, line = output_queue.get(timeout=0.1)
-                        if stream_name == 'error':
-                            print(f"DEBUG: {line}", file=sys.stderr)
-                        elif line is None:
-                            if stream_name == 'stdout':
-                                stdout_done = True
-                            else:
-                                stderr_done = True
-                        else:
-                            if stream_name == 'stdout':
-                                print(line)
-                                sys.stdout.flush()
-                            else:
-                                print(line, file=sys.stderr)
-                                sys.stderr.flush()
-                    except queue.Empty:
-                        # Check if process has finished
-                        if process.poll() is not None:
-                            break
-
-            except KeyboardInterrupt:
-                print("DEBUG: KeyboardInterrupt during process monitoring")
-                self._cleanup_process(process, threads)
-                raise
-            except Exception as e:
-                print(f"DEBUG: Exception during process monitoring: {str(e)}")
-                self._cleanup_process(process, threads)
-
-            # Wait for process completion
-            return_code = process.poll()
-            if return_code is None:
-                print("DEBUG: Process still running, waiting for completion")
-                try:
-                    return_code = process.wait(timeout=self.settings.process.process_timeout)
-                except subprocess.TimeoutExpired:
-                    print("DEBUG: Process wait timed out, terminating")
-                    return_code = self._cleanup_process(process, threads)
-                    if return_code is None:
-                        print("DEBUG: Process cleanup failed")
-                        return_code = -1  # Force error state
-                    elif return_code == 0:
-                        print("DEBUG: Process eventually cleaned up successfully")
-
-            # Wait for reader threads to finish
+            
+            # Start output threads
             for thread in threads:
-                thread.join(timeout=self.settings.process.thread_timeout)
-
-            print(f"DEBUG: Process completed with return code: {return_code}")
-            if return_code != 0:
-                # One final check in case the process succeeded after cleanup
-                final_status = process.poll()
-                if final_status == 0:
-                    print("DEBUG: Process eventually succeeded")
-                    return_code = 0
-                else:
-                    raise RuntimeError(f"Encode script failed with return code {return_code}")
-
-        except Exception as e:
-            print(f"DEBUG: Exception in _encode_file: {str(e)}")
-            # Try cleanup and capture final status
-            final_status = self._cleanup_process(process, threads)
-            if final_status == 0:
-                print("DEBUG: Process succeeded during cleanup")
-                return  # Process completed successfully
-            raise  # Re-raise the original exception
-
-    def get_files_needing_processing(self, input_path: Path, output_path: Path) -> List[Tuple[Path, Path]]:
-        """Returns only the files that need processing with their output paths."""
-        print("\nDEBUG: Scanning for files needing processing...")
-        work_items = []
-        
-        # Use configured input extensions
-        patterns = [f"*.{ext}" for ext in self.settings.paths.input_extensions]
-        for pattern in patterns:
-            for input_file in input_path.glob(pattern):
-                relative_path = input_file.relative_to(input_path)
-                output_file = output_path / relative_path.with_suffix(".mkv")
-                
-                # Skip if output exists and is newer
-                if not output_file.exists() or input_file.stat().st_mtime > output_file.stat().st_mtime:
-                    work_items.append((input_file, output_file))
-                    
-        return work_items
-
-    def encode(self, input_path: Union[str, Path], output_path: Union[str, Path]) -> None:
-        """Encode a video file or directory using the configured encoder."""
-        try:
-            # Process and validate paths
-            input_path = Path(input_path).resolve()
-            output_path = Path(output_path).resolve()
+                thread.daemon = True
+                thread.start()
             
-            print(f"\nDEBUG: Starting encode process")
-            print(f"DEBUG: Input path: {input_path}")
-            print(f"DEBUG: Output path: {output_path}")
+            # Process output
+            error_lines = []
+            eof_count = 0
+            while eof_count < len(threads):
+                try:
+                    stream_name, line = output_queue.get(timeout=0.1)
+                    if line is None:
+                        eof_count += 1
+                    elif stream_name == 'error':
+                        error_lines.append(line)
+                    elif stream_name == 'stderr':
+                        print(line, file=sys.stderr)
+                    else:
+                        print(line)
+                except queue.Empty:
+                    # Check if process is still alive
+                    if process.poll() is not None:
+                        break
             
-            if not input_path.exists():
-                raise FileNotFoundError(f"Input not found: {input_path}")
-
-            # Set up environment
-            env = self.settings.get_encode_environment(input_path, output_path)
-            env["PYTHONUNBUFFERED"] = "1"
-            
-            # Add drapto package root to PYTHONPATH
-            drapto_root = str(Path(__file__).parent.parent.parent)
-            env["PYTHONPATH"] = drapto_root + os.pathsep + env.get("PYTHONPATH", "")
-            
-            # Create temp directory for processing
-            temp_dir = tempfile.mkdtemp()
-            env["TEMP_DIR"] = temp_dir
-            print(f"DEBUG: Created temp directory: {temp_dir}")
-            
+            # Wait for process to finish
             try:
-                # Handle directory vs file
-                if input_path.is_dir():
-                    if not output_path.is_dir():
-                        output_path.mkdir(parents=True, exist_ok=True)
-                    
-                    # Get work queue of files needing processing
-                    work_queue = self.get_files_needing_processing(input_path, output_path)
-                    total_files = len(work_queue)
-                    
-                    if total_files == 0:
-                        print("\nNo files need processing")
-                        return
-                    
-                    print(f"\nFound {total_files} file(s) to process")
-                    
-                    # Create all required directories once
-                    segments_dir = Path(temp_dir) / "segments"
-                    encoded_segments_dir = Path(temp_dir) / "encoded_segments"
-                    working_dir = Path(temp_dir) / "working"
-                    log_dir = Path(temp_dir) / "logs"
-                    encode_data_dir = Path(temp_dir) / "encode_data"
-                    
-                    # Create all directories
-                    for dir_path in [segments_dir, encoded_segments_dir, working_dir, log_dir, encode_data_dir]:
-                        dir_path.mkdir(parents=True, exist_ok=True)
-                        print(f"DEBUG: Created directory: {dir_path}")
-                    
-                    # Process each file exactly once
-                    for i, (input_file, output_file) in enumerate(work_queue):
-                        print(f"\nDEBUG: ==================== Starting file {i+1}/{total_files} ====================")
-                        print(f"DEBUG: Current file: {input_file.name}")
-                        print(f"DEBUG: Next file: {work_queue[i+1][0].name if i < total_files-1 else 'None'}")
-                        print(f"DEBUG: Input file exists: {input_file.exists()}")
-                        print(f"DEBUG: Output file exists: {output_file.exists()}")
-                        if output_file.exists():
-                            print(f"DEBUG: Output file size: {output_file.stat().st_size}")
-                        
-                        # Clean up working directories but preserve logs
-                        for dir_path in [segments_dir, encoded_segments_dir, working_dir, encode_data_dir]:
-                            if dir_path.exists():
-                                print(f"DEBUG: Cleaning up directory: {dir_path}")
-                                shutil.rmtree(dir_path)
-                            dir_path.mkdir(parents=True, exist_ok=True)
-                            print(f"DEBUG: Recreated directory: {dir_path}")
-                        
-                        print(f"\nProcessing file {i+1} of {total_files}: {input_file.name}")
-                        try:
-                            print(f"DEBUG: Starting encode_file for {input_file.name}")
-                            self._encode_file(input_file, output_file, is_last_file=(i == total_files-1))
-                            print(f"DEBUG: Finished encode_file for {input_file.name}")
-                        except Exception as e:
-                            print(f"DEBUG: Error during encode_file for {input_file.name}: {str(e)}")
-                            raise
-                        
-                        # Verify file was processed
-                        if output_file.exists():
-                            print(f"DEBUG: After processing - Output file exists with size: {output_file.stat().st_size}")
-                        else:
-                            print(f"DEBUG: After processing - Output file does not exist")
-                        
-                        print(f"DEBUG: ==================== Completed file {i+1}/{total_files} ====================")
-                        print(f"DEBUG: Moving to next file...")
-                        
-                        # Force flush stdout to ensure we see all debug messages
-                        sys.stdout.flush()
-                        
-                        # Ensure process cleanup
-                        print("DEBUG: Waiting for any remaining processes to complete...")
-                        time.sleep(2)  # Give processes time to clean up
-                        
-                        # Kill any lingering processes from the previous session
-                        try:
-                            subprocess.run(["pkill", "-f", f"SESSION_ID=encode_session_{i}"], 
-                                         stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-                        except Exception as e:
-                            print(f"DEBUG: Error during process cleanup: {str(e)}")
-                        
-                        print(f"DEBUG: Ready to process next file")
-                else:
-                    if output_path.is_dir():
-                        output_path = output_path / input_path.name
-                    
-                    print(f"DEBUG: Processing single file: {input_path}")
-                    
-                    # Create directories for single file processing
-                    segments_dir = Path(temp_dir) / "segments"
-                    encoded_segments_dir = Path(temp_dir) / "encoded_segments"
-                    working_dir = Path(temp_dir) / "working"
-                    log_dir = Path(temp_dir) / "logs"
-                    encode_data_dir = Path(temp_dir) / "encode_data"
-                    
-                    # Create all directories
-                    for dir_path in [segments_dir, encoded_segments_dir, working_dir, log_dir, encode_data_dir]:
-                        dir_path.mkdir(parents=True, exist_ok=True)
-                        print(f"DEBUG: Created directory: {dir_path}")
-                    
-                    self._encode_file(input_path, output_path, is_last_file=True)
-            finally:
-                # Clean up temp directory
-                print(f"DEBUG: Cleaning up temp directory: {temp_dir}")
-                if Path(temp_dir).exists():
-                    shutil.rmtree(temp_dir)
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self._cleanup_process(process, threads)
+                raise RuntimeError("Encoding process timed out")
+            
+            # Check for errors
+            if process.returncode != 0:
+                if error_lines:
+                    raise RuntimeError("\n".join(error_lines))
+                raise RuntimeError(f"Encoding failed with return code {process.returncode}")
+            
+            # Record successful output
+            path_monitor.record_access(output_path)
+            
         except Exception as e:
-            # Clean up temp directory on error
-            if 'temp_dir' in locals() and temp_dir and Path(temp_dir).exists():
-                print(f"DEBUG: Cleaning up temp directory after error: {temp_dir}")
-                shutil.rmtree(temp_dir)
+            path_monitor.record_error(input_path, str(e))
             raise
+        finally:
+            # Clean up working directory
+            try:
+                shutil.rmtree(work_dir)
+            except Exception as e:
+                path_monitor.record_error(work_dir, f"Failed to clean up: {e}")

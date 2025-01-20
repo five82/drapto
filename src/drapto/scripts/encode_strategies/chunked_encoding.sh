@@ -513,8 +513,6 @@ cleanup_on_error() {
     echo '{"job_id": "'$job_id'", "stage": "'$stage'", "error": "'$error_msg'", "started_at": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'", "completed_steps": [], "failed_steps": [], "segment_index": '${segment_index:-null}'}' > "$cleanup_state_file"
     ls -la "$cleanup_state_file"
 
-
-
     # Function to update cleanup state
     update_cleanup_state() {
         local step="$1"
@@ -1228,16 +1226,21 @@ fi
 #   $3: Status
 #   $4: Error message (optional)
 update_segment_status() {
-    local job_id="$1"
-    local index="$2"
-    local status="$3"
-    local error="${4:-}"
+    local index="$1"
+    local status="$2"
+    local error="$3"
+    local strategy="$4"
+    local current_time
+    current_time=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
     
-    python3 -c "
-from drapto.scripts.common.encoding_state import EncodingState, SegmentStatus
-state = EncodingState(\"${TEMP_DATA_DIR}\")
-state.update_segment_status(\"${job_id}\", ${index}, SegmentStatus.${status}, \"${error}\")
-"
+    # Set up Python environment
+    local parent_dir
+    parent_dir="$(cd "$(dirname "${SCRIPT_DIR}")" && pwd)"
+    export PYTHONPATH="${parent_dir}:${PYTHONPATH:-}"
+    
+    # Update status using direct script execution
+    cd "${SCRIPT_DIR}/encode_strategies" && \
+    python3 ./json_helper.py update_segment_status "${TEMP_DATA_DIR}/encoding.json" "${index}" "${status}" "${error}" "${strategy}"
 }
 
 # Update job status
@@ -1295,4 +1298,33 @@ from drapto.scripts.common.encoding_state import EncodingState
 state = EncodingState(\"${TEMP_DATA_DIR}\")
 state.update_segment_progress(\"${job_id}\", ${index}, ${current_frame}, ${total_frames}, ${fps})
 "
+}
+
+# Get segment data from JSON file
+get_segment_data() {
+    local segment_index="$1"
+    
+    # Set up Python environment
+    local parent_dir
+    parent_dir="$(cd "$(dirname "${SCRIPT_DIR}")" && pwd)"
+    export PYTHONPATH="${parent_dir}:${PYTHONPATH:-}"
+    
+    # Get data using direct script execution
+    cd "${SCRIPT_DIR}/encode_strategies" && \
+    python3 ./json_helper.py get_segment_data "${TEMP_DATA_DIR}/encoding.json" "${segment_index}"
+}
+
+# Update timestamps in tracking files
+update_timestamps() {
+    local current_time
+    current_time=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    
+    # Set up Python environment
+    local parent_dir
+    parent_dir="$(cd "$(dirname "${SCRIPT_DIR}")" && pwd)"
+    export PYTHONPATH="${parent_dir}:${PYTHONPATH:-}"
+    
+    # Update timestamps using direct script execution
+    cd "${SCRIPT_DIR}/encode_strategies" && \
+    python3 ./json_helper.py update_timestamps "${TEMP_DATA_DIR}" "${current_time}"
 }
