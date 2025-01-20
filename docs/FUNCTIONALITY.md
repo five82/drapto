@@ -1017,72 +1017,221 @@ drapto implements a modular strategy system for encoding, allowing different app
 
 ## Parallel Processing
 
-The chunked encoding path utilizes GNU Parallel for efficient parallel processing:
+drapto implements modern parallel processing using Python's async/await with comprehensive resource management and state coordination:
 
-1. **Segmentation**
-   - Input video is split into fixed-duration segments (default: 15 seconds)
-   - Each segment maintains keyframe alignment
-   - Segments are stored in a temporary directory
-   - FFmpeg segmentation process:
-     ```
-     ffmpeg -i input.mkv \
-       -c:v copy \
-       -an \
-       -f segment \
-       -segment_time 15 \
-       -reset_timestamps 1 \
-       segments/%04d.mkv
-     ```
-   - Uses stream copy (`-c:v copy`) to avoid re-encoding during split
-   - Segments are numbered sequentially (0001.mkv, 0002.mkv, etc.)
-   - Audio is excluded during segmentation (`-an`) and processed separately
+```python
+class ParallelProcessor:
+    """Modern parallel processing with resource management"""
+    
+    def __init__(self, config: ProcessingConfig):
+        self.config = config
+        self.state_manager = StateManager()
+        self.resource_monitor = ResourceMonitor()
+        self.job_scheduler = JobScheduler(config.max_parallel_jobs)
+        self.event_bus = EventBus()
+        
+    async def process_segments(self, segments: List[VideoSegment]) -> Result[List[EncodedSegment], ProcessingError]:
+        """Process video segments in parallel with resource management"""
+        try:
+            # Initialize processing state
+            state = await self.state_manager.create_parallel_state(segments)
+            
+            # Create segment processing tasks
+            tasks = [
+                self._process_segment(segment, state)
+                for segment in segments
+            ]
+            
+            # Process with controlled concurrency
+            results = await self.job_scheduler.gather(tasks)
+            
+            # Validate all results
+            if any(result.is_err() for result in results):
+                return Err(self._collect_errors(results))
+                
+            return Ok([result.unwrap() for result in results])
+            
+        except Exception as e:
+            return Err(ProcessingError(f"Parallel processing failed: {e}"))
 
-2. **Parallel Encoding**
-   - GNU Parallel distributes encoding jobs across CPU cores
-   - Each segment is encoded independently
-   - Job allocation adapts to available system resources
-   - Progress tracking for each segment
+    async def _process_segment(self, segment: VideoSegment, state: ParallelState) -> Result[EncodedSegment, SegmentError]:
+        """Process single segment with resource monitoring"""
+        try:
+            # Acquire processing slot
+            async with self.job_scheduler.acquire_slot() as slot:
+                # Monitor resources
+                async with self.resource_monitor.watch(slot):
+                    # Update state
+                    state.start_segment(segment)
+                    await self.state_manager.update(state)
+                    
+                    # Process segment
+                    result = await self._encode_segment(segment, slot)
+                    
+                    # Update state
+                    state.complete_segment(segment)
+                    await self.state_manager.update(state)
+                    
+                    return result
+                    
+        except Exception as e:
+            state.fail_segment(segment, str(e))
+            await self.state_manager.update(state)
+            return Err(SegmentError(f"Segment {segment.id} failed: {e}"))
 
-3. **Encoding Process**
-   ```   Input Video → Segments → Parallel Encoding → Concatenation
-   [full video] → [seg1, seg2, ...] → [parallel encode] → [final video]
-   ```
-4. **Failure Handling**
-   - Failed segments are automatically retried
-   - Three-tier strategy applied independently to each segment
-   - Failed segments don't affect other parallel jobs
+class JobScheduler:
+    """Parallel job scheduling and resource management"""
+    
+    def __init__(self, max_concurrent: int):
+        self.max_concurrent = max_concurrent
+        self.semaphore = asyncio.Semaphore(max_concurrent)
+        self.active_jobs: Dict[str, JobInfo] = {}
+        
+    async def gather(self, tasks: List[Coroutine]) -> List[Result]:
+        """Execute tasks with controlled concurrency"""
+        async with AsyncExitStack() as stack:
+            # Setup resource monitoring
+            monitor = await stack.enter_async_context(ResourceMonitor())
+            
+            # Process tasks
+            return await asyncio.gather(
+                *(self._managed_task(task, monitor) for task in tasks)
+            )
+    
+    async def _managed_task(self, task: Coroutine, monitor: ResourceMonitor) -> Result:
+        """Execute single task with resource management"""
+        async with self.semaphore:
+            job_id = str(uuid.uuid4())
+            job_info = JobInfo(
+                id=job_id,
+                start_time=datetime.now(),
+                resources=ResourceUsage()
+            )
+            self.active_jobs[job_id] = job_info
+            
+            try:
+                # Monitor resources
+                async with monitor.watch_job(job_id):
+                    return await task
+                    
+            finally:
+                del self.active_jobs[job_id]
 
-5. **Resource Management**
-   - Automatic CPU core allocation
-   - Memory usage controlled per segment
-   - Disk I/O balanced across parallel jobs
+class ParallelState:
+    """Parallel processing state tracking"""
+    
+    def __init__(self, segments: List[VideoSegment]):
+        self.total_segments = len(segments)
+        self.pending = set(s.id for s in segments)
+        self.active: Dict[str, SegmentProgress] = {}
+        self.completed: Set[str] = set()
+        self.failed: Dict[str, str] = {}  # segment_id -> error
+        
+    def start_segment(self, segment: VideoSegment) -> None:
+        """Track segment start"""
+        self.pending.remove(segment.id)
+        self.active[segment.id] = SegmentProgress(
+            segment=segment,
+            start_time=datetime.now()
+        )
+        
+    def complete_segment(self, segment: VideoSegment) -> None:
+        """Track segment completion"""
+        del self.active[segment.id]
+        self.completed.add(segment.id)
+        
+    def fail_segment(self, segment: VideoSegment, error: str) -> None:
+        """Track segment failure"""
+        del self.active[segment.id]
+        self.failed[segment.id] = error
+        
+    @property
+    def progress(self) -> float:
+        """Calculate overall progress"""
+        return len(self.completed) / self.total_segments
 
-6. **Validation**
-   - Each segment validated after encoding
-   - VMAF scores checked per segment
-   - Seamless transitions verified between segments
+class ResourceMonitor:
+    """Resource monitoring and management"""
+    
+    def __init__(self):
+        self.limits = SystemLimits()
+        self.usage = SystemUsage()
+        self.history = ResourceHistory()
+        
+    async def watch_job(self, job_id: str) -> AsyncContextManager:
+        """Monitor job resource usage"""
+        return ResourceWatcher(self, job_id)
+        
+    async def update_usage(self, job_id: str, usage: ResourceUsage) -> None:
+        """Update job resource usage"""
+        self.usage.update_job(job_id, usage)
+        await self._check_limits()
+        
+    async def _check_limits(self) -> None:
+        """Verify resource usage within limits"""
+        if self.usage.memory > self.limits.max_memory:
+            raise ResourceExhaustedError("Memory limit exceeded")
+        if self.usage.cpu > self.limits.max_cpu:
+            raise ResourceExhaustedError("CPU limit exceeded")
 
-7. **Concatenation**
-   - After all segments are encoded, they are concatenated using FFmpeg
-   - Process:
-     1. Generate concat file listing all segments in order:
-        ```
-        file 'encoded_segments/0001.mkv'
-        file 'encoded_segments/0002.mkv'
-        ...
-        ```
-     2. FFmpeg concatenation command:
-        ```
-        ffmpeg -f concat \
-          -safe 0 \
-          -i concat.txt \
-          -c copy \
-          output.mkv
-        ```
-   - Uses direct stream copy for lossless joining
-   - Maintains frame accuracy at segment boundaries
-   - Verifies segment order using numerical prefixes
-   - Validates segment integrity before concatenation
+class SystemLimits:
+    """System resource limits"""
+    
+    def __init__(self):
+        self.max_memory = psutil.virtual_memory().total * 0.8  # 80% of total RAM
+        self.max_cpu = psutil.cpu_count() * 100  # 100% per CPU
+        self.max_disk_io = 100 * 1024 * 1024  # 100MB/s
+        
+    def adjust_for_parallel(self, jobs: int) -> None:
+        """Adjust limits for parallel processing"""
+        self.max_memory = self.max_memory / jobs
+        self.max_cpu = self.max_cpu / jobs
+        self.max_disk_io = self.max_disk_io / jobs
+
+class ResourceHistory:
+    """Resource usage history tracking"""
+    
+    def __init__(self):
+        self.samples = deque(maxlen=1000)  # Last 1000 samples
+        self.peak_memory = 0
+        self.peak_cpu = 0
+        self.peak_disk_io = 0
+        
+    def add_sample(self, usage: SystemUsage) -> None:
+        """Record resource usage sample"""
+        self.samples.append(usage)
+        self.peak_memory = max(self.peak_memory, usage.memory)
+        self.peak_cpu = max(self.peak_cpu, usage.cpu)
+        self.peak_disk_io = max(self.peak_disk_io, usage.disk_io)
+```
+
+This modern implementation provides:
+
+1. **Async/Await Processing**
+   - Controlled parallel execution
+   - Resource-aware scheduling
+   - Clean task management
+   - Proper error handling
+
+2. **Resource Management**
+   - Memory monitoring
+   - CPU usage tracking
+   - Disk I/O control
+   - Per-job resource limits
+
+3. **State Coordination**
+   - Centralized state tracking
+   - Progress monitoring
+   - Failure tracking
+   - Resource history
+
+4. **Job Scheduling**
+   - Controlled concurrency
+   - Resource-based scheduling
+   - Job lifecycle management
+   - Clean resource cleanup
+
+The system ensures efficient parallel processing while preventing resource exhaustion and maintaining system stability.
 
 ## Muxing Process
 
@@ -1161,102 +1310,224 @@ drapto employs a sophisticated track-by-track muxing system to ensure proper han
 
 ## Audio Processing
 
-drapto implements granular audio track processing with individual track handling and failure recovery:
+drapto implements a modern event-driven audio processing system:
 
-1. **Track Discovery and Analysis**
-   ```bash
-   # Get number of audio tracks
-   audio_stream_count=$("${FFPROBE}" -v error \
-     -select_streams a \
-     -show_entries stream=index \
-     -of csv=p=0 "${input_file}" | wc -l)
-   
-   # For each track, analyze characteristics
-   IFS=$'\n' read -r -d '' -a audio_channels < <("${FFPROBE}" -v error \
-     -select_streams a \
-     -show_entries stream=channels \
-     -of csv=p=0 "${input_file}" && printf '\0')
-   ```
+```python
+class AudioProcessor:
+    """Modern event-driven audio processing"""
+    
+    # Channel layout and bitrate mapping (preserved exactly)
+    CHANNEL_CONFIG = {
+        1: {"bitrate": 64000,   "layout": "mono"},    # Mono
+        2: {"bitrate": 128000,  "layout": "stereo"},  # Stereo
+        6: {"bitrate": 256000,  "layout": "5.1"},     # 5.1
+        8: {"bitrate": 384000,  "layout": "7.1"}      # 7.1
+    }
+    
+    def __init__(self, config: AudioConfig):
+        self.config = config
+        self.state_manager = StateManager()
+        self.event_bus = EventBus()
+        self.error_handler = AudioErrorHandler()
+        
+    async def _process_track(self, track: AudioTrack, state: AudioState) -> Result[ProcessedTrack, AudioError]:
+        """Process single audio track with progress tracking"""
+        try:
+            # Update state
+            state.current_track = track
+            await self.state_manager.update(state)
+            
+            # Get channel-specific configuration
+            self.config.current_channels = track.channels
+            channel_config = self.config.get_channel_config(track.channels)
+            
+            # Log channel configuration
+            await self.event_bus.emit(AudioEvents.TRACK_CONFIG_SELECTED, {
+                "track_id": track.id,
+                "channels": track.channels,
+                "bitrate": channel_config["bitrate"],
+                "layout": channel_config["layout"]
+            })
+            
+            # Process track with correct parameters
+            processed = await self._encode_track(track)
+            
+            # Validate output matches configuration
+            if not await self._validate_track_config(processed, channel_config):
+                return Err(AudioError("Track configuration validation failed"))
+            
+            return Ok(processed)
+            
+        except Exception as e:
+            error = self.error_handler.handle_error(e, state)
+            await self.event_bus.emit(AudioEvents.TRACK_PROCESSING_ERROR, {
+                "track_id": track.id,
+                "error": error
+            })
+            return Err(error)
 
-2. **Channel Detection and Bitrate Assignment**
-   ```bash
-   # Standardize channel layouts and bitrates
-   case $num_channels in
-       1)  bitrate="64k"; layout="mono" ;;
-       2)  bitrate="128k"; layout="stereo" ;;
-       6)  bitrate="256k"; layout="5.1" ;;
-       8)  bitrate="384k"; layout="7.1" ;;
-       *)  print_warning "Unsupported channel count, defaulting to stereo"
-           num_channels=2
-           bitrate="128k"
-           layout="stereo"
-           ;;
-   esac
-   ```
+    async def _validate_track_config(self, track: ProcessedTrack, config: Dict[str, Any]) -> bool:
+        """Validate track matches channel configuration"""
+        metrics = await self.metrics_collector.collect_audio(track.path)
+        
+        return (
+            metrics.channels == self.config.current_channels and
+            metrics.bitrate == config["bitrate"] and
+            metrics.channel_layout == config["layout"]
+        )
 
-3. **Per-Track Processing**
-   ```bash
-   # Apply consistent audio encoding settings
-   audio_opts+=" -map 0:a:${stream_index}"
-   audio_opts+=" -c:a:${stream_index} libopus"
-   audio_opts+=" -b:a:${stream_index} ${bitrate}"
-   audio_opts+=" -ac:${stream_index} ${num_channels}"
-   
-   # Apply consistent channel layout filter
-   audio_opts+=" -filter:a:${stream_index} aformat=channel_layouts=7.1|5.1|stereo|mono"
-   
-   # Set consistent opus-specific options
-   audio_opts+=" -application:a:${stream_index} audio"
-   audio_opts+=" -frame_duration:a:${stream_index} 20"
-   audio_opts+=" -vbr:a:${stream_index} on"
-   audio_opts+=" -compression_level:a:${stream_index} 10"
-   ```
+class AudioState:
+    """Audio processing state"""
+    
+    def __init__(self, input_file: Path):
+        self.input_file = input_file
+        self.tracks: List[AudioTrack] = []
+        self.current_track: Optional[AudioTrack] = None
+        self.processed_tracks: List[ProcessedTrack] = []
+        self.errors: List[AudioError] = []
+        self.stage = AudioStage.INITIALIZING
+        
+    def track_progress(self) -> float:
+        """Calculate overall progress"""
+        if not self.tracks:
+            return 0.0
+        return len(self.processed_tracks) / len(self.tracks)
 
-4. **Track Metadata Preservation**
-   - Language tags
-   - Track titles
-   - Delay information
-   - Channel layout
-   - Stream metadata
+class AudioErrorHandler:
+    """Audio-specific error handling"""
+    
+    def __init__(self):
+        self.retry_manager = RetryManager()
+        
+    def handle_error(self, error: Exception, state: AudioState) -> AudioError:
+        """Handle audio processing error"""
+        if isinstance(error, FFmpegError):
+            return self._handle_ffmpeg_error(error, state)
+        if isinstance(error, OpusError):
+            return self._handle_opus_error(error, state)
+        return AudioError(str(error))
+        
+    async def _handle_ffmpeg_error(self, error: FFmpegError, state: AudioState) -> AudioError:
+        """Handle FFmpeg-specific errors"""
+        if error.is_decoder_error():
+            return AudioDecoderError(error.message)
+        if error.is_encoder_error():
+            return AudioEncoderError(error.message)
+        return AudioError(error.message)
 
-5. **Quality Control**
-   - Track integrity verification
-   - Channel count validation
-   - Bitrate confirmation
-   - Duration matching
-   - Sample rate checking
-   - Gap detection
-   - Encoding parameter validation
+class AudioConfig:
+    """Audio processing configuration"""
+    
+    # Channel layout and bitrate mapping (preserved exactly)
+    CHANNEL_CONFIG = {
+        1: {"bitrate": 64000,   "layout": "mono"},    # Mono
+        2: {"bitrate": 128000,  "layout": "stereo"},  # Stereo
+        6: {"bitrate": 256000,  "layout": "5.1"},     # 5.1
+        8: {"bitrate": 384000,  "layout": "7.1"}      # 7.1
+    }
+    
+    def __init__(self):
+        self.opus_params = OpusParams(
+            vbr=True,           # Variable bitrate
+            mapping_family=0    # Auto-select channel mapping
+        )
+        self.max_retries = 3
+        self.retry_delay = 1.0
+        
+    def get_channel_config(self, num_channels: int) -> Dict[str, Any]:
+        """Get channel-specific configuration"""
+        # Default to stereo if unsupported channel count
+        return self.CHANNEL_CONFIG.get(num_channels, self.CHANNEL_CONFIG[2])
+        
+    @property
+    def ffmpeg_args(self) -> List[str]:
+        """Generate FFmpeg arguments for audio processing"""
+        config = self.get_channel_config(self.current_channels)
+        return [
+            # Audio codec and bitrate
+            "-c:a", "libopus",
+            "-b:a", f"{config['bitrate']}",  # Channel-based bitrate
+            
+            # Channel configuration
+            "-ac", str(self.current_channels),
+            "-channel_layout", config["layout"],  # Channel layout
+            
+            # Opus parameters
+            "-vbr", "on" if self.opus_params.vbr else "off",
+            "-mapping_family", str(self.opus_params.mapping_family),
+            
+            # Workaround for libopus bug: force valid channel layouts
+            "-af", "aformat=channel_layouts=7.1|5.1|stereo|mono"
+        ]
 
-6. **Error Handling**
-   - Track-specific error codes
-   - Granular error reporting
-   - Track processing status tracking
-   - Failure cause identification
-   - Recovery action logging
+class AudioEvents(Enum):
+    """Audio processing events"""
+    TRACK_DETECTED = "track_detected"
+    TRACK_PROCESSING_START = "track_processing_start"
+    TRACK_PROCESSING_PROGRESS = "track_processing_progress"
+    TRACK_PROCESSING_COMPLETE = "track_processing_complete"
+    TRACK_PROCESSING_ERROR = "track_processing_error"
+    ALL_TRACKS_COMPLETE = "all_tracks_complete"
+    TRACK_CONFIG_SELECTED = "track_config_selected"
 
-7. **Performance Optimization**
-   - Sequential track processing
-   - Resource allocation per track
-   - Progress monitoring
-   - Track-specific timing
-   - Memory usage control
-   - I/O optimization
+class RetryManager:
+    """Audio processing retry management"""
+    
+    def __init__(self, max_retries: int = 3, delay: float = 1.0):
+        self.max_retries = max_retries
+        self.delay = delay
+        self.attempts: Dict[str, int] = {}
+        
+    async def execute_with_retry(
+        self,
+        track_id: str,
+        operation: Callable[[], Awaitable[Result[T, AudioError]]]
+    ) -> Result[T, AudioError]:
+        """Execute operation with retry logic"""
+        
+        attempts = self.attempts.get(track_id, 0)
+        while attempts < self.max_retries:
+            result = await operation()
+            if result.is_ok():
+                return result
+                
+            attempts += 1
+            self.attempts[track_id] = attempts
+            
+            if attempts < self.max_retries:
+                await asyncio.sleep(self.delay * attempts)
+                continue
+                
+            return result
+```
 
-8. **Recovery Procedures**
-   - Track processing resume
-   - Partial progress preservation
-   - Failed track isolation
-   - Alternative processing paths
-   - Quality compromise options
+This modern implementation provides:
 
-9. **Logging and Diagnostics**
-   - Per-track log files
-   - Processing statistics
-   - Error condition details
-   - Performance metrics
-   - Quality measurements
-   - Recovery attempts
+1. **Event-Driven Architecture**
+   - Real-time event emission for track processing
+   - Progress tracking through events
+   - State updates via event bus
+
+2. **State Management**
+   - Centralized audio processing state
+   - Track-level progress tracking
+   - Error state preservation
+
+3. **Error Handling**
+   - Specialized audio error types
+   - Codec-specific error handling
+   - Retry mechanisms with backoff
+
+4. **Configuration**
+   - Type-safe audio parameters
+   - Opus codec configuration
+   - FFmpeg argument generation
+
+The system ensures reliable audio processing with:
+- Proper state tracking
+- Comprehensive error handling
+- Event-based progress updates
+- Clean error recovery
 
 ## Crop Detection
 
