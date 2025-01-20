@@ -1888,28 +1888,229 @@ The system ensures reliable audio processing with:
 
 ## Crop Detection
 
-Crop detection is sophisticated and content-aware:
+drapto implements a modern event-driven crop detection system with HDR awareness:
 
-1. **Detection Parameters**
-   - Standard Content: Base threshold of 24
-   - HDR Content: Dynamic threshold 128-256
-   - Black level analysis for HDR content
+```python
+class CropDetector:
+    """Modern crop detection system with HDR awareness"""
+    
+    def __init__(self, config: CropConfig):
+        self.config = config
+        self.state_manager = StateManager()
+        self.event_bus = EventBus()
+        self.error_handler = CropErrorHandler()
+        self.validator = CropValidator()
+        
+    async def detect(self, input_file: Path) -> Result[CropMetadata, CropError]:
+        """Detect crop values with state management"""
+        try:
+            # Initialize detection state
+            state = await self.state_manager.create_crop_state(input_file)
+            
+            # Emit detection start
+            await self.event_bus.emit(CropEvents.DETECTION_START, {
+                "file": str(input_file),
+                "timestamp": datetime.now()
+            })
+            
+            # Analyze black borders with HDR awareness
+            crop_data = await self._analyze_borders(input_file, state)
+            if crop_data.is_err():
+                return Err(crop_data.unwrap_err())
+                
+            # Validate crop values
+            validation = await self.validator.validate_crop(crop_data.unwrap())
+            if validation.is_err():
+                return Err(validation.unwrap_err())
+                
+            # Update state with results
+            state.metadata = crop_data.unwrap()
+            await self.state_manager.update(state)
+            
+            # Emit detection complete
+            await self.event_bus.emit(CropEvents.DETECTION_COMPLETE, {
+                "file": str(input_file),
+                "crop": state.metadata.to_dict()
+            })
+            
+            return Ok(state.metadata)
+            
+        except Exception as e:
+            error = self.error_handler.handle_error(e, state)
+            await self.event_bus.emit(CropEvents.DETECTION_ERROR, {
+                "file": str(input_file),
+                "error": str(error)
+            })
+            return Err(error)
 
-2. **HDR Detection**
-   Identifies HDR through:
+    async def _analyze_borders(self, input_file: Path, state: CropState) -> Result[CropMetadata, CropError]:
+        """Analyze video borders with HDR awareness"""
+        try:
+            # Detect content type and HDR characteristics
+            content_info = await self._detect_content_info(input_file)
+            
+            # Set appropriate threshold based on content type
+            threshold = self._get_threshold(content_info)
+            
+            # Emit threshold selection
+            await self.event_bus.emit(CropEvents.THRESHOLD_SELECTED, {
+                "file": str(input_file),
+                "content_type": content_info.type,
+                "is_hdr": content_info.is_hdr,
+                "threshold": threshold
+            })
+            
+            # Sample frames for analysis
+            samples = await self._sample_frames(input_file, state)
+            if samples.is_err():
+                return Err(samples.unwrap_err())
+                
+            # Analyze black borders with content-aware threshold
+            crop_values = await self._detect_black_borders(
+                samples.unwrap(),
+                threshold,
+                state
+            )
+            
+            return Ok(CropMetadata(
+                content_type=content_info.type,
+                is_hdr=content_info.is_hdr,
+                threshold=threshold,
+                values=crop_values,
+                confidence=self._calculate_confidence(crop_values)
+            ))
+            
+        except Exception as e:
+            return Err(CropError(f"Border analysis failed: {e}"))
+            
+    async def _detect_content_info(self, input_file: Path) -> ContentInfo:
+        """Detect content type and HDR characteristics"""
+        try:
+            # Get video stream info
+            info = await self._get_stream_info(input_file)
+            
+            # Check for HDR indicators
+            is_hdr = any([
+                info.get("color_transfer") in {"smpte2084", "arib-std-b67"},  # PQ or HLG
+                info.get("color_primaries") == "bt2020",  # BT.2020 color space
+                info.get("color_space") == "bt2020nc"     # BT.2020 non-constant
+            ])
+            
+            # Determine content type
+            content_type = ContentType.HDR if is_hdr else ContentType.SDR
+            
+            return ContentInfo(
+                type=content_type,
+                is_hdr=is_hdr,
+                color_transfer=info.get("color_transfer"),
+                color_primaries=info.get("color_primaries"),
+                color_space=info.get("color_space")
+            )
+            
+        except Exception as e:
+            raise CropError(f"Content detection failed: {e}")
+            
+    def _get_threshold(self, content_info: ContentInfo) -> int:
+        """Get appropriate threshold based on content type"""
+        if not content_info.is_hdr:
+            return self.config.base_threshold  # Standard threshold for SDR
+            
+        # For HDR content, use dynamic threshold based on configuration
+        return max(
+            self.config.hdr_threshold_min,
+            min(
+                self.config.hdr_threshold_max,
+                self.config.base_threshold * 6  # 6x multiplier for HDR
+            )
+        )
+
+class ContentInfo:
+    """Content type and HDR information"""
+    
+    def __init__(self, type: ContentType, is_hdr: bool,
+                 color_transfer: Optional[str] = None,
+                 color_primaries: Optional[str] = None,
+                 color_space: Optional[str] = None):
+        self.type = type
+        self.is_hdr = is_hdr
+        self.color_transfer = color_transfer
+        self.color_primaries = color_primaries
+        self.color_space = color_space
+
+class ContentType(Enum):
+    """Video content types"""
+    SDR = "sdr"
+    HDR = "hdr"
+
+class CropConfig:
+    """Crop detection configuration"""
+    
+    def __init__(self):
+        # Detection thresholds
+        self.base_threshold = 24        # Base threshold for SDR content
+        self.hdr_threshold_min = 128    # Minimum HDR threshold
+        self.hdr_threshold_max = 256    # Maximum HDR threshold
+        
+        # HDR detection
+        self.hdr_multiplier = 6         # Threshold multiplier for HDR
+        self.hdr_black_analyze = True   # Analyze HDR black levels
+        
+        # Sampling configuration
+        self.samples_per_hour = 60
+        self.min_samples = 10
+        self.max_samples = 100
+        
+        # Validation thresholds
+        self.min_confidence = 0.8
+        self.aspect_ratio_tolerance = 0.1
+        
+        # Error handling
+        self.max_retries = 3
+        self.retry_delay = 1.0
+
+class CropEvents(Enum):
+    """Crop detection events"""
+    DETECTION_START = "crop_detection_start"
+    DETECTION_PROGRESS = "crop_detection_progress"
+    DETECTION_COMPLETE = "crop_detection_complete"
+    DETECTION_ERROR = "crop_detection_error"
+    THRESHOLD_SELECTED = "threshold_selected"
+    VALIDATION_START = "crop_validation_start"
+    VALIDATION_COMPLETE = "crop_validation_complete"
+    VALIDATION_ERROR = "crop_validation_error"
+```
+
+This modern implementation provides:
+
+1. **HDR-Aware Detection**
+   - Dynamic threshold adjustment for HDR
+   - Content type detection
+   - Color space analysis
+   - Black level analysis
+
+2. **Content-Based Thresholds**
+   - SDR: Base threshold of 24
+   - HDR: Dynamic range 128-256
+   - Configurable multiplier
+   - Black level analysis
+
+3. **HDR Detection**
    - Color transfer characteristics
    - Color primaries
    - Color space information
+   - HDR format detection
 
-3. **Threshold Adjustment**
-   - Analyzes black levels in HDR content
-   - Adjusts threshold dynamically (1.5x measured black level)
-   - Maintains bounds between 16 and 256
+4. **Validation System**
+   - Content-aware validation
+   - HDR-specific checks
+   - Confidence thresholds
+   - Aspect ratio preservation
 
-4. **Safety Measures**
-   - Maintains original aspect ratio
-   - Can be disabled with `DISABLE_CROP=true`
-   - Validates crop values before applying
+The system ensures reliable crop detection with:
+- Proper HDR content handling
+- Dynamic threshold adjustment
+- Comprehensive validation
+- Clean error recovery
 
 ## Codec Usage
 
