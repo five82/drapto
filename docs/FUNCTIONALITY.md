@@ -1235,78 +1235,246 @@ The system ensures efficient parallel processing while preventing resource exhau
 
 ## Muxing Process
 
-drapto employs a sophisticated track-by-track muxing system to ensure proper handling of all streams:
+drapto implements a modern event-driven muxing system with comprehensive state management:
 
-1. **Working Directory Structure**
-   ```
-   WORKING_DIR/
-   ├── video.mkv          # Processed video track
-   ├── audio-0.mkv        # First audio track
-   ├── audio-1.mkv        # Second audio track (if present)
-   ├── audio-N.mkv        # Additional audio tracks
-   ├── concat.txt         # Segment list for chunked encoding
-   └── temp/              # Temporary processing files
-   ```
+```python
+class MuxingManager:
+    """Modern event-driven muxing system"""
+    
+    def __init__(self, config: MuxConfig):
+        self.config = config
+        self.state_manager = StateManager()
+        self.event_bus = EventBus()
+        self.error_handler = MuxErrorHandler()
+        
+    async def mux_tracks(self, tracks: List[MediaTrack]) -> Result[MuxedOutput, MuxError]:
+        """Mux tracks with state management"""
+        try:
+            # Initialize muxing state
+            state = await self.state_manager.create_mux_state(tracks)
+            
+            # Process tracks in sequence
+            for track in tracks:
+                result = await self._process_track(track, state)
+                if result.is_err():
+                    return Err(result.unwrap_err())
+                    
+            # Perform final muxing
+            return await self._finalize_mux(state)
+            
+        except Exception as e:
+            return Err(self.error_handler.handle_error(e, state))
 
-2. **Track Processing Order**
-   1. **Video Track**
-      - Processed first and stored as `video.mkv`
-      - Uses hardware-accelerated decoding if available
-      - Encoded with SVT-AV1 using selected quality settings
-      - Validated before muxing
+    async def _process_track(self, track: MediaTrack, state: MuxState) -> Result[ProcessedTrack, MuxError]:
+        """Process single track with state tracking"""
+        try:
+            # Update state
+            state.current_track = track
+            await self.state_manager.update(state)
+            
+            # Emit track processing start
+            await self.event_bus.emit(MuxEvents.TRACK_PROCESSING_START, {
+                "track_id": track.id,
+                "track_type": track.type,
+                "metadata": track.metadata
+            })
+            
+            # Process track
+            processed = await self._prepare_track(track)
+            
+            # Update state with processed track
+            state.add_processed_track(processed)
+            await self.state_manager.update(state)
+            
+            # Emit completion
+            await self.event_bus.emit(MuxEvents.TRACK_PROCESSING_COMPLETE, {
+                "track_id": track.id,
+                "output_path": processed.path
+            })
+            
+            return Ok(processed)
+            
+        except Exception as e:
+            error = self.error_handler.handle_error(e, state)
+            await self.event_bus.emit(MuxEvents.TRACK_PROCESSING_ERROR, {
+                "track_id": track.id,
+                "error": error
+            })
+            return Err(error)
 
-   2. **Audio Tracks**
-      - Processed individually in sequence
-      - Each track stored as `audio-N.mkv`
-      - Channel layout analysis per track
-      - Opus encoding with track-specific bitrates
-      - Metadata preserved per track
+class MuxState:
+    """Muxing process state"""
+    
+    def __init__(self, tracks: List[MediaTrack]):
+        self.tracks = tracks
+        self.current_track: Optional[MediaTrack] = None
+        self.processed_tracks: Dict[str, ProcessedTrack] = {}
+        self.errors: List[MuxError] = []
+        self.stage = MuxStage.INITIALIZING
+        
+    def add_processed_track(self, track: ProcessedTrack) -> None:
+        """Add processed track to state"""
+        self.processed_tracks[track.id] = track
+        
+    @property
+    def progress(self) -> float:
+        """Calculate overall progress"""
+        return len(self.processed_tracks) / len(self.tracks)
 
-   3. **Subtitle Tracks**
-      - Stream copied without re-encoding
-      - Format and timing preserved
-      - Stored temporarily before final mux
+class MuxErrorHandler:
+    """Muxing-specific error handling"""
+    
+    def __init__(self):
+        self.retry_manager = RetryManager()
+        
+    def handle_error(self, error: Exception, state: MuxState) -> MuxError:
+        """Handle muxing error"""
+        if isinstance(error, FFmpegError):
+            return self._handle_ffmpeg_error(error, state)
+        if isinstance(error, TrackError):
+            return self._handle_track_error(error, state)
+        return MuxError(str(error))
 
-3. **Muxing Command Construction**
-   ```bash
-   ffmpeg -hide_banner -loglevel warning \
-     -i video.mkv \                    # Video input
-     -i audio-0.mkv \                  # First audio
-     -i audio-1.mkv \                  # Second audio
-     -map 0:v:0 \                      # Map video
-     -map 1:a:0 \                      # Map first audio
-     -map 2:a:0 \                      # Map second audio
-     -c copy \                         # Stream copy
-     output.mkv
-   ```
+class MuxConfig:
+    """Muxing configuration"""
+    
+    def __init__(self):
+        self.output_format = "matroska"
+        self.max_retries = 3
+        self.retry_delay = 1.0
+        
+    @property
+    def ffmpeg_args(self) -> List[str]:
+        """Generate FFmpeg muxing arguments"""
+        return [
+            "-f", self.output_format,
+            "-max_interleave_delta", "0",
+            "-map_metadata", "0",
+            "-map_chapters", "0"
+        ]
 
-4. **Track Mapping**
-   - Video track mapped from primary input
-   - Audio tracks mapped sequentially
-   - Stream indexes preserved
-   - Track languages maintained
-   - Track metadata retained
+class MuxEvents(Enum):
+    """Muxing process events"""
+    TRACK_DETECTED = "track_detected"
+    TRACK_PROCESSING_START = "track_processing_start"
+    TRACK_PROCESSING_PROGRESS = "track_processing_progress"
+    TRACK_PROCESSING_COMPLETE = "track_processing_complete"
+    TRACK_PROCESSING_ERROR = "track_processing_error"
+    MUXING_START = "muxing_start"
+    MUXING_PROGRESS = "muxing_progress"
+    MUXING_COMPLETE = "muxing_complete"
+    MUXING_ERROR = "muxing_error"
 
-5. **Quality Control**
-   - Pre-mux validation of all tracks
-   - Stream presence verification
-   - Codec validation
-   - Duration checks
-   - Size verification
+class TrackValidator:
+    """Track validation system"""
+    
+    async def validate_track(self, track: ProcessedTrack) -> Result[None, ValidationError]:
+        """Validate processed track"""
+        # Verify track exists
+        if not track.path.exists():
+            return Err(ValidationError("Track file missing"))
+            
+        # Verify track integrity
+        integrity = await self._check_integrity(track)
+        if not integrity.is_ok():
+            return Err(ValidationError(f"Track integrity check failed: {integrity.unwrap_err()}"))
+            
+        # Verify track metadata
+        metadata = await self._check_metadata(track)
+        if not metadata.is_ok():
+            return Err(ValidationError(f"Track metadata invalid: {metadata.unwrap_err()}"))
+            
+        return Ok(None)
 
-6. **Error Handling**
-   - Individual track failure recovery
-   - Muxing process monitoring
-   - Temporary file cleanup
-   - Detailed error logging
-   - Progress tracking
+class MuxingPipeline:
+    """Track muxing pipeline"""
+    
+    def __init__(self, config: MuxConfig):
+        self.config = config
+        self.mux_manager = MuxingManager(config)
+        self.validator = TrackValidator()
+        self.temp_manager = TempManager()
+        
+    async def mux_file(self, input_file: Path) -> Result[Path, MuxError]:
+        """Process complete muxing pipeline"""
+        try:
+            # Extract tracks
+            tracks = await self._extract_tracks(input_file)
+            
+            # Process and validate tracks
+            processed = await self.mux_manager.mux_tracks(tracks)
+            if processed.is_err():
+                return Err(processed.unwrap_err())
+                
+            # Validate output
+            validation = await self.validator.validate_track(processed.unwrap())
+            if validation.is_err():
+                return Err(MuxError(f"Output validation failed: {validation.unwrap_err()}"))
+                
+            return Ok(processed.unwrap().path)
+            
+        finally:
+            # Cleanup temporary files
+            await self.temp_manager.cleanup()
 
-7. **Cleanup Process**
-   - Temporary tracks removed after successful mux
-   - Working directory cleaned
-   - Logs preserved
-   - Final output validated
-   - Resource cleanup
+class RetryManager:
+    """Muxing retry management"""
+    
+    def __init__(self, max_retries: int = 3, delay: float = 1.0):
+        self.max_retries = max_retries
+        self.delay = delay
+        self.attempts: Dict[str, int] = {}
+        
+    async def execute_with_retry(
+        self,
+        track_id: str,
+        operation: Callable[[], Awaitable[Result[T, MuxError]]]
+    ) -> Result[T, MuxError]:
+        """Execute operation with retry logic"""
+        
+        attempts = self.attempts.get(track_id, 0)
+        while attempts < self.max_retries:
+            result = await operation()
+            if result.is_ok():
+                return result
+                
+            attempts += 1
+            self.attempts[track_id] = attempts
+            
+            if attempts < self.max_retries:
+                await asyncio.sleep(self.delay * attempts)
+                continue
+                
+            return result
+```
+
+This modern implementation provides:
+
+1. **Event-Driven Architecture**
+   - Real-time event emission for track processing
+   - Progress tracking through events
+   - State updates via event bus
+
+2. **State Management**
+   - Centralized muxing state
+   - Track-level progress tracking
+   - Error state preservation
+
+3. **Error Handling**
+   - Specialized muxing error types
+   - Track-specific error handling
+   - Retry mechanisms with backoff
+
+4. **Track Validation**
+   - Comprehensive track validation
+   - Metadata verification
+   - Integrity checking
+
+The system ensures reliable track muxing with:
+- Proper state tracking
+- Comprehensive error handling
+- Event-based progress updates
+- Clean error recovery
 
 ## Audio Processing
 
