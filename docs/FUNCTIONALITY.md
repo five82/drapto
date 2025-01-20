@@ -25,7 +25,8 @@ drapto is designed to work specifically with MKV video files sourced from DVD, B
 15. [Validation Process](#validation-process)
 16. [Error Recovery and Fallback Mechanisms](#error-recovery-and-fallback-mechanisms)
 17. [Progress Tracking and Logging](#progress-tracking-and-logging)
-18. [Temporary File Management](#temporary-file-management)
+18. [Process Management](#process-management)
+19. [Temporary File Management](#temporary-file-management)
 
 ## Directory Structure and Organization
 
@@ -1468,6 +1469,190 @@ drapto maintains comprehensive progress tracking and logging through a structure
    - Hardware acceleration status
    - Temporary file operations
    - Process state changes
+
+## Process Management
+
+drapto implements a sophisticated process management system with hierarchical control and resource monitoring:
+
+1. **Process Hierarchy**
+   ```python
+   class ProcessManager:
+       """Manages process lifecycle and hierarchy"""
+       def __init__(self):
+           self.processes: Dict[str, ManagedProcess] = {}
+           self.resource_monitor = ResourceMonitor()
+           self.circuit_breaker = CircuitBreaker()
+           
+       async def spawn_process(self, cmd: List[str], **kwargs) -> ManagedProcess:
+           """Spawn new managed process"""
+           process = ManagedProcess(cmd, **kwargs)
+           self.processes[process.id] = process
+           await self._setup_monitoring(process)
+           return process
+
+   class ManagedProcess:
+       """Individual process with monitoring"""
+       def __init__(self, cmd: List[str], **kwargs):
+           self.id = str(uuid.uuid4())
+           self.cmd = cmd
+           self.start_time = datetime.now()
+           self.resource_usage = ResourceUsage()
+           self.status = ProcessStatus.STARTING
+           
+       async def __aenter__(self) -> 'ManagedProcess':
+           """Setup process context"""
+           await self.start()
+           return self
+           
+       async def __aexit__(self, *args) -> None:
+           """Cleanup on context exit"""
+           await self.terminate(timeout=5.0)
+   ```
+
+2. **Signal Handling**
+   ```python
+   class SignalHandler:
+       """Graceful process termination"""
+       def __init__(self, process_manager: ProcessManager):
+           self.process_manager = process_manager
+           self.shutdown_event = asyncio.Event()
+           
+       def setup(self) -> None:
+           """Register signal handlers"""
+           for sig in (signal.SIGINT, signal.SIGTERM):
+               signal.signal(sig, self._handle_shutdown)
+               
+       async def _handle_shutdown(self, sig: int, frame: Any) -> None:
+           """Handle shutdown signals"""
+           logger.info(f"Received signal {sig}, initiating shutdown")
+           self.shutdown_event.set()
+           await self._graceful_shutdown()
+           
+       async def _graceful_shutdown(self) -> None:
+           """Gracefully terminate all processes"""
+           for process in self.process_manager.processes.values():
+               await process.terminate(timeout=5.0)
+   ```
+
+3. **Resource Tracking**
+   ```python
+   class ResourceMonitor:
+       """System resource monitoring"""
+       def __init__(self, limits: ResourceLimits):
+           self.limits = limits
+           self.measurements = deque(maxlen=100)
+           
+       async def monitor_process(self, process: ManagedProcess) -> None:
+           """Monitor process resource usage"""
+           while process.is_running():
+               usage = await self._get_resource_usage(process)
+               self.measurements.append(usage)
+               if self._exceeds_limits(usage):
+                   await self._handle_resource_violation(process)
+               await asyncio.sleep(1.0)
+               
+       def _exceeds_limits(self, usage: ResourceUsage) -> bool:
+           """Check if usage exceeds limits"""
+           return (
+               usage.memory > self.limits.max_memory or
+               usage.cpu > self.limits.max_cpu or
+               usage.disk_io > self.limits.max_disk_io
+           )
+
+   class ResourceLimits:
+       """Resource limit configuration"""
+       def __init__(self):
+           self.max_memory = 8 * 1024 * 1024 * 1024  # 8GB
+           self.max_cpu = 95.0  # 95% CPU
+           self.max_disk_io = 100 * 1024 * 1024  # 100MB/s
+           self.max_processes = 4
+   ```
+
+4. **Circuit Breaker Patterns**
+   ```python
+   class CircuitBreaker:
+       """Process failure protection"""
+       def __init__(self, threshold: int = 3, reset_time: float = 300.0):
+           self.failures = 0
+           self.threshold = threshold
+           self.reset_time = reset_time
+           self.state = CircuitState.CLOSED
+           self.last_failure = None
+           
+       async def execute(self, process: ManagedProcess) -> None:
+           """Execute with circuit breaker protection"""
+           if not self._can_execute():
+               raise CircuitOpenError()
+               
+           try:
+               await process.run()
+               self._handle_success()
+           except ProcessError as e:
+               self._handle_failure()
+               raise
+
+       def _can_execute(self) -> bool:
+           """Check if execution is allowed"""
+           if self.state == CircuitState.OPEN:
+               if self._should_reset():
+                   self.state = CircuitState.HALF_OPEN
+               else:
+                   return False
+           return True
+   ```
+
+5. **Process Recovery**
+   ```python
+   class ProcessRecovery:
+       """Process failure recovery"""
+       def __init__(self, max_retries: int = 3):
+           self.max_retries = max_retries
+           self.retry_count = 0
+           
+       async def run_with_recovery(self, process: ManagedProcess) -> None:
+           """Run process with automatic recovery"""
+           while self.retry_count < self.max_retries:
+               try:
+                   await process.run()
+                   break
+               except ProcessError as e:
+                   self.retry_count += 1
+                   if self.retry_count >= self.max_retries:
+                       raise MaxRetriesExceeded(e)
+                   await self._prepare_retry(process)
+   ```
+
+6. **Resource Cleanup**
+   ```python
+   class ResourceCleanup:
+       """Process resource cleanup"""
+       def __init__(self, process_manager: ProcessManager):
+           self.process_manager = process_manager
+           
+       async def cleanup_process(self, process: ManagedProcess) -> None:
+           """Clean up process resources"""
+           # Stop monitoring
+           await self.process_manager.resource_monitor.stop_monitoring(process)
+           
+           # Release system resources
+           await process.terminate(timeout=5.0)
+           
+           # Clean up temp files
+           await self._cleanup_temp_files(process)
+           
+           # Update process registry
+           del self.process_manager.processes[process.id]
+   ```
+
+This modern process management system provides:
+- Hierarchical process control
+- Graceful signal handling
+- Comprehensive resource monitoring
+- Circuit breaker protection
+- Automatic process recovery
+- Resource cleanup guarantees
+
+The system ensures reliable process execution while preventing resource exhaustion and handling failures gracefully.
 
 ## Temporary File Management
 
