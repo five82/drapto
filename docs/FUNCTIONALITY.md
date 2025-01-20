@@ -30,6 +30,7 @@ drapto is designed to work specifically with MKV video files sourced from DVD, B
 20. [State Management](#state-management)
 21. [Error Handling](#error-handling)
 22. [Configuration](#configuration)
+23. [Testing](#testing)
 
 ## Directory Structure and Organization
 
@@ -2173,3 +2174,278 @@ This configuration system provides:
 - Custom validation rules
 
 The system ensures configuration consistency while providing flexibility through environment variables and maintaining backward compatibility through migrations.
+
+## Testing
+
+drapto implements a comprehensive testing infrastructure with mocking, performance testing, and test data management:
+
+1. **Test Infrastructure**
+   ```python
+   class TestInfrastructure:
+       """Test infrastructure management"""
+       def __init__(self):
+           self.test_root = Path("tests")
+           self.fixtures = self.test_root / "fixtures"
+           self.mocks = self.test_root / "mocks"
+           self.performance = self.test_root / "performance"
+           self.results = self.test_root / "results"
+           
+       async def setup(self) -> None:
+           """Initialize test environment"""
+           # Create directory structure
+           for path in [self.fixtures, self.mocks, self.performance, self.results]:
+               path.mkdir(parents=True, exist_ok=True)
+               
+           # Setup test data
+           await self._setup_test_data()
+           
+           # Initialize mocks
+           await self._setup_mocks()
+           
+           # Configure performance monitoring
+           await self._setup_performance_monitoring()
+
+   class TestRunner:
+       """Test execution management"""
+       def __init__(self, infrastructure: TestInfrastructure):
+           self.infrastructure = infrastructure
+           self.collectors = [
+               UnitTestCollector(),
+               IntegrationTestCollector(),
+               PerformanceTestCollector()
+           ]
+           
+       async def run_suite(self, suite_name: str) -> TestResults:
+           """Run test suite with full instrumentation"""
+           suite = await self._load_suite(suite_name)
+           results = TestResults()
+           
+           for test in suite.tests:
+               # Setup test environment
+               async with TestEnvironment(test) as env:
+                   # Run test with monitoring
+                   result = await self._run_test(test, env)
+                   results.add_result(result)
+                   
+           return results
+   ```
+
+2. **Mocking Strategies**
+   ```python
+   class MockRegistry:
+       """Mock management system"""
+       def __init__(self):
+           self.mocks: Dict[str, BaseMock] = {}
+           self.patches: List[MockPatch] = []
+           
+       async def register_mock(self, target: str, mock: BaseMock) -> None:
+           """Register mock implementation"""
+           self.mocks[target] = mock
+           
+       async def apply_mocks(self) -> AsyncContextManager[None]:
+           """Apply all registered mocks"""
+           return AsyncMockContext(self._apply_all_mocks())
+
+   class ProcessMock(BaseMock):
+       """Process execution mocking"""
+       def __init__(self):
+           self.commands: List[str] = []
+           self.responses: Dict[str, MockResponse] = {}
+           
+       async def execute(self, cmd: List[str]) -> MockResponse:
+           """Mock process execution"""
+           self.commands.append(" ".join(cmd))
+           return self.responses.get(
+               self._match_command(cmd),
+               MockResponse(returncode=0, stdout="", stderr="")
+           )
+
+   class FFmpegMock(ProcessMock):
+       """FFmpeg-specific mocking"""
+       def __init__(self):
+           super().__init__()
+           self.default_responses = {
+               "version": MockResponse(
+                   returncode=0,
+                   stdout="ffmpeg version 4.4",
+                   stderr=""
+               ),
+               "probe": MockResponse(
+                   returncode=0,
+                   stdout=json.dumps(SAMPLE_PROBE_DATA),
+                   stderr=""
+               )
+           }
+   ```
+
+3. **Performance Testing**
+   ```python
+   class PerformanceTest:
+       """Performance test base"""
+       def __init__(self):
+           self.metrics = PerformanceMetrics()
+           self.thresholds = PerformanceThresholds()
+           
+       async def run_benchmark(self, scenario: str) -> BenchmarkResult:
+           """Run performance benchmark"""
+           results = []
+           for _ in range(self.iterations):
+               # Setup clean environment
+               async with BenchmarkEnvironment() as env:
+                   # Run scenario with metrics
+                   result = await self._run_scenario(scenario, env)
+                   results.append(result)
+                   
+           return BenchmarkResult(results)
+
+   class EncodingPerformanceTest(PerformanceTest):
+       """Encoding performance testing"""
+       async def test_encoding_speed(self) -> None:
+           """Test encoding performance"""
+           result = await self.run_benchmark("standard_encode")
+           
+           # Verify encoding speed
+           assert result.fps_avg >= self.thresholds.min_fps
+           assert result.memory_max <= self.thresholds.max_memory
+           assert result.cpu_avg <= self.thresholds.max_cpu
+
+   class ResourceMonitoringTest(PerformanceTest):
+       """Resource usage testing"""
+       async def test_resource_limits(self) -> None:
+           """Test resource monitoring"""
+           async with ResourceMonitor() as monitor:
+               result = await self.run_benchmark("parallel_encode")
+               
+           # Verify resource constraints
+           assert monitor.peak_memory <= self.limits.max_memory
+           assert monitor.peak_cpu <= self.limits.max_cpu
+           assert monitor.peak_disk_io <= self.limits.max_disk_io
+   ```
+
+4. **Test Data Management**
+   ```python
+   class TestDataManager:
+       """Test data lifecycle management"""
+       def __init__(self, root: Path):
+           self.root = root
+           self.cache = TestDataCache()
+           self.generator = TestDataGenerator()
+           
+       async def get_test_file(self, profile: str) -> Path:
+           """Get or generate test file"""
+           if cached := await self.cache.get(profile):
+               return cached
+               
+           generated = await self.generator.create(profile)
+           await self.cache.store(profile, generated)
+           return generated
+
+   class TestDataGenerator:
+       """Test data generation"""
+       async def create(self, profile: str) -> Path:
+           """Generate test video file"""
+           params = TEST_PROFILES[profile]
+           
+           # Generate synthetic video
+           video = await self._generate_video(
+               duration=params.duration,
+               resolution=params.resolution,
+               framerate=params.framerate
+           )
+           
+           # Add test patterns
+           await self._add_test_patterns(video, params.patterns)
+           
+           # Add audio tracks
+           await self._add_audio_tracks(video, params.audio)
+           
+           return video
+
+   class TestDataCache:
+       """Test data caching"""
+       def __init__(self):
+           self.cache_dir = Path("tests/cache")
+           self.manifest = self.cache_dir / "manifest.json"
+           self.max_size = 50 * 1024 * 1024 * 1024  # 50GB
+           
+       async def get(self, profile: str) -> Optional[Path]:
+           """Get cached test file"""
+           manifest = await self._load_manifest()
+           if entry := manifest.get(profile):
+               path = self.cache_dir / entry["filename"]
+               if await self._validate_file(path, entry["hash"]):
+                   return path
+           return None
+   ```
+
+5. **Test Profiles**
+   ```python
+   TEST_PROFILES = {
+       "sd_short": {
+           "duration": 30,
+           "resolution": (720, 480),
+           "framerate": 24,
+           "patterns": ["color_bars", "motion"],
+           "audio": ["stereo"]
+       },
+       "hd_medium": {
+           "duration": 300,
+           "resolution": (1920, 1080),
+           "framerate": 30,
+           "patterns": ["color_bars", "motion", "text"],
+           "audio": ["stereo", "5.1"]
+       },
+       "uhd_long": {
+           "duration": 3600,
+           "resolution": (3840, 2160),
+           "framerate": 60,
+           "patterns": ["color_bars", "motion", "text", "hdr"],
+           "audio": ["stereo", "5.1", "7.1"]
+       }
+   }
+   ```
+
+6. **Integration Testing**
+   ```python
+   class IntegrationTest:
+       """Integration test base class"""
+       async def setup_test_env(self) -> None:
+           """Setup integration test environment"""
+           # Create isolated environment
+           self.temp_dir = TemporaryDirectory()
+           self.config = TestConfig(self.temp_dir.name)
+           
+           # Initialize components
+           self.state_manager = StateManager()
+           self.process_manager = ProcessManager()
+           self.event_bus = EventBus()
+           
+           # Setup test data
+           self.test_file = await self.data_manager.get_test_file("hd_medium")
+
+   class EncodingIntegrationTest(IntegrationTest):
+       """End-to-end encoding tests"""
+       async def test_full_encode(self) -> None:
+           """Test complete encoding process"""
+           # Initialize pipeline
+           pipeline = ProcessingPipeline(self.config)
+           
+           # Process test file
+           result = await pipeline.process_file(self.test_file)
+           
+           # Verify output
+           assert result.success
+           assert await self._verify_output(result.output_file)
+           assert await self._verify_metadata(result.output_file)
+   ```
+
+This testing infrastructure provides:
+- Comprehensive test suite organization
+- Flexible mocking system
+- Performance benchmarking
+- Test data generation and caching
+- Integration testing support
+- Resource usage validation
+- Automated verification
+
+The system ensures reliable testing while providing tools for performance optimization and regression prevention.
