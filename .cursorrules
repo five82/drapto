@@ -1,24 +1,28 @@
 # Cursor Rules for drapto
-# Enforces the migration from bash to Python and maintains code quality
+# Enforces modern Python practices and maintains code quality
 
 [rules]
-# Prevent creation of new bash scripts
+# Prevent creation of non-Python files
 deny_patterns = [
     "*.sh",
-    "*.bash"
+    "*.bash",
+    "*.js",
+    "*.cpp",
+    "*.c"
 ]
 
-# Only allow Python files in src/drapto
+# Only allow Python files in specific directories
 allow_patterns = [
-    "src/drapto/**/*.py",
-    "tests/**/*.py",
+    "src/drapto/{core,encoders,media,processing,state,system,utils}/**/*.py",
+    "src/drapto/cli.py",
+    "tests/{unit,integration,performance,property}/**/*.py",
     "docs/*",
     ".git/*",
     "*.md",
     ".cursorrules",
     ".gitignore",
     "pyproject.toml",
-    "setup.cfg",
+    "pytest.ini",
     "requirements.txt",
     "requirements-dev.txt"
 ]
@@ -30,21 +34,34 @@ require_type_hints = true
 require_docstrings = true
 
 # Enforce test coverage
-min_test_coverage = 90
+min_test_coverage = 95
 
 [style]
-# Follow PEP 8
+# Follow PEP 8 with Black formatting
 line_length = 88
 indent = 4
 use_spaces = true
 
 [imports]
-# Prevent importing subprocess directly (use our process management)
+# Prevent direct system calls (use our wrappers)
 deny_imports = [
     "subprocess",
-    "os.system"
+    "os.system",
+    "os.popen",
+    "commands"
 ]
+
+# Enforce clean imports
+require_absolute_imports = true
+require_type_annotations = true
 
 [documentation]
 # Require documentation updates with code changes
-require_doc_updates = true 
+require_doc_updates = true
+
+[testing]
+# Enforce test requirements
+require_unit_tests = true
+require_integration_tests = true
+require_performance_tests = true
+require_property_tests = true 
