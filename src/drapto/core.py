@@ -11,46 +11,23 @@ import shutil
 import threading
 import queue
 
+from .config import Settings
+
 class Encoder:
     """Minimal wrapper for bash encoding scripts."""
     
-    def __init__(self):
-        if not hasattr(self, 'script_dir'):
-            self.script_dir = Path(__file__).parent / "scripts"
+    def __init__(self, settings: Optional[Settings] = None):
+        """Initialize encoder with optional settings."""
+        # Initialize settings
+        self.settings = settings or Settings.from_environment()
         
-        # Ensure script directory exists
-        if not self.script_dir.exists():
-            raise RuntimeError(f"Script directory not found: {self.script_dir}")
-            
         # Main encode script
-        self.encode_script = self.script_dir / "encode.sh"
+        self.encode_script = self.settings.paths.script_dir / "encode.sh"
         if not self.encode_script.exists():
             raise RuntimeError(f"Encode script not found: {self.encode_script}")
             
-        # Set up environment for shell scripts with color support
-        self.env = os.environ.copy()
-        
-        # Set TERM to support color if needed
-        current_term = os.environ.get("TERM", "")
-        if not any(x in current_term for x in ["color", "xterm", "vt100"]):
-            current_term = "xterm-256color"
-            
-        self.env.update({
-            "SCRIPT_DIR": str(self.script_dir),
-            # Force color output
-            "FORCE_COLOR": "1",
-            "CLICOLOR": "1",
-            "CLICOLOR_FORCE": "1",
-            "NO_COLOR": "0",  # Disable NO_COLOR if set
-            "COLORTERM": "truecolor",  # Indicate full color support
-            "TERM": current_term  # Use determined TERM value
-        })
-        
-        # Remove any existing PYTHONPATH to avoid conflicts
-        self.env.pop("PYTHONPATH", None)
-        
         # Make scripts executable
-        for script in self.script_dir.glob("*.sh"):
+        for script in self.settings.paths.script_dir.glob("*.sh"):
             script.chmod(0o755)
     
     def _stream_reader(self, stream, queue_obj, stream_name):
@@ -78,17 +55,17 @@ class Encoder:
                 print("DEBUG: Cleaning up process")
                 process.terminate()
                 try:
-                    process.wait(timeout=2)
+                    process.wait(timeout=self.settings.process.process_timeout)
                 except subprocess.TimeoutExpired:
                     print("DEBUG: Force killing process")
                     process.kill()
                     try:
-                        process.wait(timeout=2)
+                        process.wait(timeout=self.settings.process.process_timeout)
                     except subprocess.TimeoutExpired:
                         print("DEBUG: Process still not responding after SIGKILL")
                         # One final attempt to wait
                         try:
-                            process.wait(timeout=2)
+                            process.wait(timeout=self.settings.process.process_timeout)
                         except subprocess.TimeoutExpired:
                             print("DEBUG: Final wait attempt failed")
                     except Exception as e:
@@ -99,31 +76,16 @@ class Encoder:
                 if threads:
                     # Wait for reader threads to finish
                     for thread in threads:
-                        thread.join(timeout=1)
+                        thread.join(timeout=self.settings.process.thread_timeout)
                 # Final poll to get actual status
                 final_status = process.poll()
                 print(f"DEBUG: Final process status: {final_status}")
                 return final_status
 
-    def _encode_file(self, input_path: Path, output_path: Path, env: dict, is_last_file: bool = True) -> None:
+    def _encode_file(self, input_path: Path, output_path: Path, is_last_file: bool = True) -> None:
         """Encode a single video file."""
-        # Set up environment for this file
-        encode_env = env.copy()
-        encode_env.update({
-            # Set all required paths in environment
-            "INPUT_DIR": str(input_path.parent.resolve()),
-            "OUTPUT_DIR": str(output_path.parent.resolve()),
-            "LOG_DIR": str(Path(encode_env["TEMP_DIR"]) / "logs"),
-            "TEMP_DATA_DIR": str(Path(encode_env["TEMP_DIR"]) / "encode_data"),
-            "INPUT_FILE": str(input_path.resolve()),
-            "OUTPUT_FILE": str(output_path.resolve()),
-            # Ensure color output is enabled
-            "FORCE_COLOR": "1",
-            "CLICOLOR": "1",
-            "CLICOLOR_FORCE": "1",
-            "NO_COLOR": "0",
-            "COLORTERM": "truecolor"
-        })
+        # Get environment for encoding
+        encode_env = self.settings.get_encode_environment(input_path, output_path)
 
         print(f"DEBUG: Environment variables:")
         print(f"DEBUG: INPUT_DIR: {encode_env['INPUT_DIR']}")
@@ -154,7 +116,7 @@ class Encoder:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                bufsize=1,  # Line buffered
+                bufsize=self.settings.process.buffer_size,
                 preexec_fn=os.setsid
             )
 
@@ -210,7 +172,7 @@ class Encoder:
             if return_code is None:
                 print("DEBUG: Process still running, waiting for completion")
                 try:
-                    return_code = process.wait(timeout=2)
+                    return_code = process.wait(timeout=self.settings.process.process_timeout)
                 except subprocess.TimeoutExpired:
                     print("DEBUG: Process wait timed out, terminating")
                     return_code = self._cleanup_process(process, threads)
@@ -222,7 +184,7 @@ class Encoder:
 
             # Wait for reader threads to finish
             for thread in threads:
-                thread.join(timeout=1)
+                thread.join(timeout=self.settings.process.thread_timeout)
 
             print(f"DEBUG: Process completed with return code: {return_code}")
             if return_code != 0:
@@ -247,18 +209,18 @@ class Encoder:
         """Returns only the files that need processing with their output paths."""
         print("\nDEBUG: Scanning for files needing processing...")
         work_items = []
-        for input_file in input_path.glob("*.mkv"):
-            output_file = output_path / input_file.name
-            # Always process files unless they exist and have a reasonable size
-            needs_processing = not output_file.exists() or output_file.stat().st_size < 1024  # Only skip if file exists and is larger than 1KB
-            print(f"DEBUG: File {input_file.name} - exists: {output_file.exists()}, "
-                  f"size: {output_file.stat().st_size if output_file.exists() else 0}, "
-                  f"needs_processing: {needs_processing}")
-            if needs_processing:
-                work_items.append((input_file, output_file))
-            else:
-                print(f"DEBUG: Skipping {input_file.name} - already processed")
-        print(f"DEBUG: Found {len(work_items)} files needing processing")
+        
+        # Use configured input extensions
+        patterns = [f"*.{ext}" for ext in self.settings.paths.input_extensions]
+        for pattern in patterns:
+            for input_file in input_path.glob(pattern):
+                relative_path = input_file.relative_to(input_path)
+                output_file = output_path / relative_path.with_suffix(".mkv")
+                
+                # Skip if output exists and is newer
+                if not output_file.exists() or input_file.stat().st_mtime > output_file.stat().st_mtime:
+                    work_items.append((input_file, output_file))
+                    
         return work_items
 
     def encode(self, input_path: Union[str, Path], output_path: Union[str, Path]) -> None:
@@ -276,7 +238,7 @@ class Encoder:
                 raise FileNotFoundError(f"Input not found: {input_path}")
 
             # Set up environment
-            env = self.env.copy()  # Use the pre-configured environment with color support
+            env = self.settings.get_encode_environment(input_path, output_path)
             env["PYTHONUNBUFFERED"] = "1"
             
             # Add drapto package root to PYTHONPATH
@@ -337,10 +299,7 @@ class Encoder:
                         print(f"\nProcessing file {i+1} of {total_files}: {input_file.name}")
                         try:
                             print(f"DEBUG: Starting encode_file for {input_file.name}")
-                            # Create a new session for each file
-                            session_env = env.copy()
-                            session_env["SESSION_ID"] = f"encode_session_{i}"
-                            self._encode_file(input_file, output_file, session_env, is_last_file=(i == total_files-1))
+                            self._encode_file(input_file, output_file, is_last_file=(i == total_files-1))
                             print(f"DEBUG: Finished encode_file for {input_file.name}")
                         except Exception as e:
                             print(f"DEBUG: Error during encode_file for {input_file.name}: {str(e)}")
@@ -388,7 +347,7 @@ class Encoder:
                         dir_path.mkdir(parents=True, exist_ok=True)
                         print(f"DEBUG: Created directory: {dir_path}")
                     
-                    self._encode_file(input_path, output_path, env)
+                    self._encode_file(input_path, output_path, is_last_file=True)
             finally:
                 # Clean up temp directory
                 print(f"DEBUG: Cleaning up temp directory: {temp_dir}")
