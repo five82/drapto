@@ -30,7 +30,7 @@ def process_file(input_file: Path, output_file: Path) -> Optional[Path]:
     timestamp = get_timestamp()
     log_file = LOG_DIR / f"{input_file.stem}_{timestamp}.log"
 
-    log.info("Starting encode for: %s", filename)
+    log.info("Starting encode for: %s", input_file.name)
     log.info("Output file: %s", output_file)
     
     # Detect Dolby Vision
@@ -75,7 +75,7 @@ def process_file(input_file: Path, output_file: Path) -> Optional[Path]:
         return output_file
         
     except Exception as e:
-        log.exception("Error processing %s: %s", filename, e)
+        log.exception("Error processing %s: %s", input_file.name, e)
         return None
 
 def process_directory(input_dir: Path = INPUT_DIR) -> bool:
