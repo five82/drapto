@@ -1,6 +1,7 @@
 """Video segmentation and parallel encoding functions"""
 
 import logging
+import os
 import shutil
 import tempfile
 from pathlib import Path
@@ -98,6 +99,7 @@ def encode_segments(crop_filter: Optional[str] = None) -> bool:
             script_file.write(" ".join(cmd) + "\n")
             
         script_file.close()
+        os.chmod(script_file.name, 0o755)
         
         # Run encoding jobs in parallel
         cmd = [
