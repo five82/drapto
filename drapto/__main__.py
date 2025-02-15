@@ -61,7 +61,7 @@ def main():
         if args.input.is_file():
             if args.output.suffix:
                 # Single file mode
-                if process_file(args.input):
+                if process_file(args.input, args.output):
                     log.info("Successfully encoded %s", args.input.name)
                     return 0
             else:

@@ -45,5 +45,5 @@ def detect_crop(input_file: Path, disable_crop: bool = False) -> Optional[str]:
         log.info("Crop detection disabled")
         return None
         
-    # TODO: Port crop detection from shell script
+    log.info("Crop detection not implemented, skipping crop filter")
     return None

@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 def run_cmd(cmd: List[str], capture_output: bool = True, 
             check: bool = True) -> subprocess.CompletedProcess:
     """Run a command and handle errors"""
+    logger.info("Running command: %s", " ".join(cmd))
     try:
         result = subprocess.run(
             cmd,
@@ -23,10 +24,14 @@ def run_cmd(cmd: List[str], capture_output: bool = True,
             check=check,
             text=True
         )
+        if result.stdout:
+            logger.debug("Command stdout: %s", result.stdout)
+        if result.stderr:
+            logger.debug("Command stderr: %s", result.stderr)
         return result
     except subprocess.CalledProcessError as e:
-        logger.error(f"Command failed: {' '.join(cmd)}")
-        logger.error(f"Error output: {e.stderr}")
+        logger.error("Command failed: %s", " ".join(cmd))
+        logger.error("Error output: %s", e.stderr)
         raise
 
 def get_file_size(path: Union[str, Path]) -> int:

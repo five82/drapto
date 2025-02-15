@@ -16,18 +16,17 @@ from .utils import get_timestamp, format_size, get_file_size
 
 log = logging.getLogger(__name__)
 
-def process_file(input_file: Path) -> Optional[Path]:
+def process_file(input_file: Path, output_file: Path) -> Optional[Path]:
     """
     Process a single input file through the encoding pipeline
     
     Args:
         input_file: Path to input video file
+        output_file: Path to output file
         
     Returns:
         Optional[Path]: Path to output file if successful
     """
-    filename = input_file.name
-    output_file = OUTPUT_DIR / filename
     timestamp = get_timestamp()
     log_file = LOG_DIR / f"{input_file.stem}_{timestamp}.log"
 
