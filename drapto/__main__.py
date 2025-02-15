@@ -9,6 +9,8 @@ from pathlib import Path
 from rich.logging import RichHandler
 
 from . import __version__
+from .pipeline import process_directory, process_file
+from .utils import check_dependencies
 
 def setup_logging():
     """Configure logging with rich output"""
@@ -30,14 +32,14 @@ def parse_args():
         version=f"%(prog)s {__version__}"
     )
     parser.add_argument(
-        "-i", "--input-dir",
+        "input",
         type=Path,
-        help="Input directory containing video files"
+        help="Input file or directory"
     )
     parser.add_argument(
-        "-o", "--output-dir", 
+        "output",
         type=Path,
-        help="Output directory for encoded files"
+        help="Output file (if input is file) or directory (if input is directory)"
     )
     return parser.parse_args()
 
@@ -49,9 +51,43 @@ def main():
     log = logging.getLogger("drapto")
     log.info("Starting drapto video encoder v%s", __version__)
     
-    # TODO: Implement pipeline stages
-    
-    return 0
+    # Check dependencies
+    if not check_dependencies():
+        log.error("Missing required dependencies")
+        return 1
+        
+    # Process input
+    try:
+        if args.input.is_file():
+            if args.output.suffix:
+                # Single file mode
+                if process_file(args.input):
+                    log.info("Successfully encoded %s", args.input.name)
+                    return 0
+            else:
+                log.error("Output must be a file when input is a file")
+                return 1
+        elif args.input.is_dir():
+            if not args.output.suffix:
+                # Directory mode
+                if process_directory(args.input):
+                    log.info("Successfully processed directory %s", args.input)
+                    return 0
+            else:
+                log.error("Output must be a directory when input is a directory")
+                return 1
+        else:
+            log.error("Input %s does not exist", args.input)
+            return 1
+    except KeyboardInterrupt:
+        log.warning("Encoding interrupted by user")
+        return 130
+    except Exception as e:
+        log.exception("Encoding failed: %s", e)
+        return 1
+        
+    log.error("Encoding failed")
+    return 1
 
 if __name__ == "__main__":
     sys.exit(main())
