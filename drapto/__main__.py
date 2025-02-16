@@ -80,8 +80,8 @@ def main():
                 return 0
         elif args.input.is_dir():
             if not args.output.suffix:
-                # Directory mode
-                if process_directory(args.input):
+                # Directory mode: pass both input and output directories to process_directory
+                if process_directory(args.input, args.output):
                     log.info("Successfully processed directory %s", args.input)
                     return 0
             else:
