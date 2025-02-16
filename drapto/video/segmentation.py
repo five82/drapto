@@ -157,7 +157,7 @@ def validate_segments(input_file: Path, segment_length: int, variable_segmentati
                 merged_name = f"merged_{prev_segment.stem}_{segment.stem}.mkv"
                 merged_path = segment.parent / merged_name
                 
-                if merge_segments(prev_segment, segment, merged_path):
+                if merge_segments([prev_segment, segment], merged_path):
                     log.info("Merged short segment %.2fs with previous segment", duration)
                     # Update the previous segment entry with merged segment
                     merged_duration = prev_duration + duration
