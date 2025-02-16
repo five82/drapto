@@ -79,7 +79,6 @@ def encode_dolby_vision(input_file: Path) -> Optional[Path]:
         "-svtav1-params", SVT_PARAMS,
         "-pix_fmt", "yuv420p10le",
         "-dolbyvision", "true",
-        "-max_muxing_queue_size", "1024",
         "-y", str(output_file)
     ])
     
