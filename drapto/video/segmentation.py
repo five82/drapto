@@ -456,10 +456,13 @@ def encode_segments(crop_filter: Optional[str] = None) -> bool:
             total_size = sum(s['size_mb'] for s in segment_stats)
             avg_bitrate = sum(s['bitrate_kbps'] for s in segment_stats) / len(segment_stats)
             avg_speed = sum(s['speed_factor'] for s in segment_stats) / len(segment_stats)
-            if all('vmaf_score' in s for s in segment_stats):
-                avg_vmaf = sum(s['vmaf_score'] for s in segment_stats) / len(segment_stats)
-                min_vmaf = min(s['vmaf_min'] for s in segment_stats)
-                max_vmaf = max(s['vmaf_max'] for s in segment_stats)
+            
+            # Handle VMAF statistics safely
+            vmaf_stats = [s for s in segment_stats if s.get('vmaf_score') is not None]
+            if vmaf_stats:
+                avg_vmaf = sum(s['vmaf_score'] or 0 for s in vmaf_stats) / len(vmaf_stats)
+                min_vmaf = min(s['vmaf_min'] or float('inf') for s in vmaf_stats)
+                max_vmaf = max(s['vmaf_max'] or 0 for s in vmaf_stats)
                 
             log.info("Encoding Summary:")
             log.info("  Total Duration: %.2f seconds", total_duration)
