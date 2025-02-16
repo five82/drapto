@@ -9,7 +9,7 @@ from ..config import (
     PRESET, CRF_SD, CRF_HD, CRF_UHD, SVT_PARAMS,
     WORKING_DIR
 )
-from ..utils import run_cmd
+from ..utils import run_cmd, run_cmd_interactive
 from .hardware import get_hwaccel_options
 from .detection import detect_crop
 from .segmentation import (
