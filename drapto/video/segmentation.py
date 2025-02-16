@@ -396,7 +396,8 @@ def encode_segments(crop_filter: Optional[str] = None) -> bool:
         log.error("Parallel encoding failed: %s", e)
         return False
     finally:
-        Path(script_file.name).unlink()
+        # Cleanup handled by the calling function
+        pass
 
 def validate_encoded_segments(segments_dir: Path) -> bool:
     """
