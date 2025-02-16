@@ -53,7 +53,7 @@ def segment_video(input_file: Path) -> bool:
             "-segment_time", str(SEGMENT_LENGTH),
             "-reset_timestamps", "1",
             str(segments_dir / "%04d.mkv")
-        ]
+        ])
         run_cmd(cmd)
         
         # Validate segments
