@@ -51,6 +51,7 @@ def main():
     
     log = logging.getLogger("drapto")
     print_header(f"Starting drapto video encoder v{__version__}")
+    print_info("Processing input...")
     
     # Check dependencies
     if not check_dependencies():
@@ -75,7 +76,7 @@ def main():
                     out_file = args.output
 
             if process_file(args.input, out_file):
-                log.info("Successfully encoded %s", args.input.name)
+                print_success(f"Successfully encoded {args.input.name}")
                 return 0
         elif args.input.is_dir():
             if not args.output.suffix:

@@ -32,7 +32,7 @@ def run_cmd_with_progress(cmd: List[str], total_duration: Optional[float] = None
 
     # Append the progress flag so that ffmpeg writes progress information to stdout
     cmd_with_progress = cmd + ["-progress", "pipe:1"]
-    logger.info("Running ffmpeg command with progress:\n%s", " \\\n    ".join(cmd_with_progress))
+    logger.debug("Running ffmpeg command with progress:\n%s", " \\\n    ".join(cmd_with_progress))
     
     process = subprocess.Popen(cmd_with_progress, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     
@@ -83,14 +83,14 @@ def run_cmd_with_progress(cmd: List[str], total_duration: Optional[float] = None
 def run_cmd_interactive(cmd: List[str]) -> int:
     """Run a command interactively so that its output (including progress bar)
     is printed directly to the console."""
-    logger.info("Running interactive command: %s", " ".join(cmd))
+    logger.debug("Running interactive command: %s", " ".join(cmd))
     process = subprocess.Popen(cmd, stdout=sys.stdout, stderr=sys.stderr)
     return process.wait()
 
 def run_cmd(cmd: List[str], capture_output: bool = True, 
             check: bool = True) -> subprocess.CompletedProcess:
     """Run a command and handle errors"""
-    logger.info("Running command: %s", " ".join(cmd))
+    logger.debug("Running command: %s", " ".join(cmd))
     try:
         result = subprocess.run(
             cmd,
