@@ -56,14 +56,15 @@ def validate_output(input_file: Path, output_file: Path) -> bool:
     error |= not validate_quality_metrics(input_file, output_file, validation_report)
     
     # Output validation report
-    print_header("Validation Report")
-    for entry in validation_report:
-        if entry.startswith("ERROR"):
-            print_error(entry[7:])  # Skip "ERROR: " prefix
-        else:
-            print_check(entry)
+    try:
+        print_header("Validation Report")
+        for entry in validation_report:
+            if entry.startswith("ERROR"):
+                print_error(entry[7:])  # Skip "ERROR: " prefix
+            else:
+                print_check(entry)
     except Exception as e:
-        log.error("Failed to check video stream: %s", e)
+        log.error("Failed to output validation report: %s", e)
         error = True
         
     # Check audio streams
