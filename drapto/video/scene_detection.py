@@ -82,10 +82,10 @@ def detect_scenes(input_file: Path) -> List[float]:
 
             # Add additional timestamps to ensure no segment is too long
             max_gap = TARGET_SEGMENT_LENGTH * 1.5  # Allow 50% overrun
-        final_timestamps = []
-        last_time = 0.0
-        
-        for time in timestamps:
+            final_timestamps = []
+            last_time = 0.0
+            
+            for time in timestamps:
             # If gap is too large, add intermediate points
             if time - last_time > max_gap:
                 # Add timestamps at TARGET_SEGMENT_LENGTH intervals
@@ -96,25 +96,25 @@ def detect_scenes(input_file: Path) -> List[float]:
             final_timestamps.append(time)
             last_time = time
             
-        # Add final segments if needed
-        try:
-            duration = float(run_cmd([
-                "ffprobe", "-v", "error",
-                "-show_entries", "format=duration",
-                "-of", "default=noprint_wrappers=1:nokey=1",
-                str(input_file)
-            ]).stdout.strip())
-            
-            while duration - last_time > max_gap:
-                last_time += TARGET_SEGMENT_LENGTH
-                final_timestamps.append(last_time)
-        except Exception as e:
-            log.warning("Could not get video duration: %s", e)
-        
-        log.info("Detected %d scene changes, optimized to %d segments",
-                len(timestamps), len(final_timestamps))
-        return final_timestamps
-        
+            # Add final segments if needed
+            try:
+                duration = float(run_cmd([
+                    "ffprobe", "-v", "error",
+                    "-show_entries", "format=duration",
+                    "-of", "default=noprint_wrappers=1:nokey=1",
+                    str(input_file)
+                ]).stdout.strip())
+                    
+                while duration - last_time > max_gap:
+                    last_time += TARGET_SEGMENT_LENGTH
+                    final_timestamps.append(last_time)
+            except Exception as e:
+                log.warning("Could not get video duration: %s", e)
+                
+            log.info("Detected %d scene changes, optimized to %d segments",
+                    len(timestamps), len(final_timestamps))
+            return final_timestamps
+                
     except Exception as e:
         log.error("Scene detection failed: %s", e)
         return []
