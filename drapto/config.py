@@ -9,12 +9,16 @@ SCRIPT_DIR = Path(__file__).parent.resolve()
 # Working root directory in /tmp
 WORKING_ROOT = Path(os.environ.get("DRAPTO_WORKDIR", "/tmp/drapto"))
 
-# Paths
+# Paths for binaries
 FFMPEG = SCRIPT_DIR / "ffmpeg"
 FFPROBE = SCRIPT_DIR / "ffprobe"
-INPUT_DIR = SCRIPT_DIR / "videos" / "input"
-OUTPUT_DIR = SCRIPT_DIR / "videos" / "output"
-LOG_DIR = SCRIPT_DIR / "videos" / "logs"
+
+# INPUT_DIR and OUTPUT_DIR are provided via command line
+INPUT_DIR = None
+OUTPUT_DIR = None
+
+# LOG_DIR: user definable with default of "$HOME/drapto_logs"
+LOG_DIR = Path(os.environ.get("DRAPTO_LOG_DIR", str(Path.home() / "drapto_logs")))
 
 # Encoding settings
 PRESET = 6
@@ -45,6 +49,5 @@ SEGMENTS_DIR = WORKING_ROOT / "segments"
 ENCODED_SEGMENTS_DIR = WORKING_ROOT / "encoded_segments" 
 WORKING_DIR = WORKING_ROOT / "working"
 
-# Create required directories
-for directory in [INPUT_DIR, OUTPUT_DIR, LOG_DIR]:
-    directory.mkdir(parents=True, exist_ok=True)
+# Create log directory
+LOG_DIR.mkdir(parents=True, exist_ok=True)
