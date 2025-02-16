@@ -24,7 +24,7 @@ def setup_logging(log_level: str = None):
         level=numeric_level,
         format="%(message)s",
         datefmt="[%X]",
-        handlers=[RichHandler(rich_tracebacks=True)]
+        handlers=[RichHandler(rich_tracebacks=True, show_path=False)]
     )
     # No explicit debug level for scene detection; use global level
 
