@@ -39,8 +39,8 @@ def detect_scenes(input_file: Path) -> List[float]:
         # Convert scene list to timestamps
         timestamps = []
         for scene in scenes:
-            # Get start time of each scene in seconds
-            start_time = float(scene[0].get_seconds())
+            # Get start time of each scene in seconds using attribute access
+            start_time = scene.start_time.get_seconds()
             # Skip very early scenes (less than 1 second)
             if start_time > 1.0:
                 timestamps.append(start_time)
