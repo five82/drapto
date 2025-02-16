@@ -46,6 +46,7 @@ VMAF_SAMPLE_LENGTH = 1
 
 # Scene detection settings
 SCENE_THRESHOLD = 40.0  # Content detection threshold (higher = less sensitive)
+MIN_SCENE_INTERVAL = 5.0  # Minimum time between scene changes (seconds)
 CLUSTER_WINDOW = 2.0  # Window size in seconds for clustering nearby scene changes
 TARGET_SEGMENT_LENGTH = 15.0  # Target segment duration in seconds
 MAX_SEGMENT_LENGTH = 30.0  # Maximum segment length before forcing a split
