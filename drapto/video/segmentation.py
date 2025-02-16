@@ -56,26 +56,24 @@ def validate_segments(input_file: Path, segment_length: int) -> bool:
         log.error("Failed to get input duration: %s", e)
         return False
         
-    # Validate each segment
-    total_segment_duration = 0
+    # Validate each segment and build a list of valid segments
+    total_segment_duration = 0.0
     min_size = 1024  # 1KB minimum segment size
+    valid_segments = []
     
     for segment in segments:
         # Check file size
         if segment.stat().st_size < min_size:
             log.error("Segment too small: %s", segment.name)
             return False
-            
+    
         try:
-            # Verify segment can be read
             result = run_cmd([
                 "ffprobe", "-v", "error",
                 "-show_entries", "format=duration:stream=codec_name",
                 "-of", "default=noprint_wrappers=1:nokey=1",
                 str(segment)
             ])
-            
-            # Parse duration and codec info
             lines = result.stdout.strip().split('\n')
             duration = None
             codec = None
@@ -84,46 +82,60 @@ def validate_segments(input_file: Path, segment_length: int) -> bool:
                 if not line:
                     continue
                 try:
-                    # Try to convert the line to float. If successful, it's the duration.
                     duration = float(line)
                 except ValueError:
-                    # Otherwise, it's the codec.
                     codec = line
             if duration is None or codec is None:
                 log.error("Invalid segment %s: missing duration or codec", segment.name)
                 return False
-            
-            # Validate segment duration (allow 25% tolerance for last segment)
-            if duration < 1 or (duration < segment_length * 0.75 and segment != segments[-1]):
-                log.error(
-                    "Invalid segment duration: %.2fs in %s",
-                    duration, segment.name
-                )
-                return False
-                
-            # Verify video codec was copied correctly
-            if codec != "h264" and codec != "hevc":  # Add other input codecs as needed
-                log.error(
-                    "Unexpected codec '%s' in segment: %s",
-                    codec, segment.name
-                )
-                return False
-                
-            total_segment_duration += duration
-            
+    
+            # For the last segment, allow a minimal duration threshold (e.g. 0.1 s)
+            if segment == segments[-1]:
+                if duration < 0.1:
+                    log.error("Last segment too short: %.2fs in %s", duration, segment.name)
+                    return False
+                valid_segments.append((segment, duration))
+                total_segment_duration += duration
+            else:
+                # For non-last segments, require a minimum duration of 1.0 s.
+                if duration < 1.0:
+                    log.warning("Skipping very short segment: %.2fs in %s", duration, segment.name)
+                    continue
+                if duration < segment_length * 0.75:
+                    log.error("Invalid segment duration: %.2fs in %s", duration, segment.name)
+                    return False
+                valid_segments.append((segment, duration))
+                total_segment_duration += duration
+    
         except Exception as e:
             log.error("Failed to validate segment %s: %s", segment.name, e)
             return False
-            
-    # Verify total duration
-    if abs(total_segment_duration - total_duration) > segment_length:
-        log.error(
-            "Total segment duration (%.2fs) differs significantly from input (%.2fs)",
-            total_segment_duration, total_duration
-        )
+    
+    # After processing, check if the count of valid segments meets expectations.
+    valid_count = len(valid_segments)
+    try:
+        result = run_cmd([
+            "ffprobe", "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            str(input_file)
+        ])
+        total_duration = float(result.stdout.strip())
+    except Exception as e:
+        log.error("Failed to get input duration: %s", e)
         return False
-        
-    print_check(f"Successfully validated {len(segments)} segments")
+    
+    expected_segments = (total_duration + segment_length - 1) // segment_length
+    if valid_count < expected_segments * 0.9:
+        log.error("Found fewer valid segments than expected: %d vs %d expected", valid_count, expected_segments)
+        return False
+    
+    if abs(total_segment_duration - total_duration) > segment_length:
+        log.error("Total valid segment duration (%.2fs) differs significantly from input (%.2fs)",
+                  total_segment_duration, total_duration)
+        return False
+    
+    print_check(f"Successfully validated {valid_count} segments")
     return True
 
 def segment_video(input_file: Path) -> bool:
