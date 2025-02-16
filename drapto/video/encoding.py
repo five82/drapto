@@ -94,14 +94,14 @@ def encode_dolby_vision(input_file: Path) -> Optional[Path]:
     log.info("Dolby Vision encoding command:\n%s", formatted_cmd)
     
     try:
-        run_cmd(cmd)
+        run_cmd(cmd, capture_output=False)
         return output_file
     except Exception as e:
         log.error("Failed to encode Dolby Vision content: %s", e)
         log.info("Retrying without hardware acceleration")
         try:
             # Retry is not really needed now because we already removed hwaccel options.
-            run_cmd(cmd)
+            run_cmd(cmd, capture_output=False)
             return output_file
         except Exception as e:
             log.error("Software fallback failed: %s", e)
