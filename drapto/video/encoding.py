@@ -33,6 +33,10 @@ def encode_dolby_vision(input_file: Path) -> Optional[Path]:
     # Ensure the working directory exists
     WORKING_DIR.mkdir(parents=True, exist_ok=True)
     output_file = WORKING_DIR / "video.mkv"
+
+    # Remove any pre-existing output file
+    if output_file.exists():
+        output_file.unlink()
     
     # Get video width for CRF selection
     try:
@@ -97,6 +101,10 @@ def encode_standard(input_file: Path) -> Optional[Path]:
     # Ensure the working directory exists
     WORKING_DIR.mkdir(parents=True, exist_ok=True)
     output_file = WORKING_DIR / "video.mkv"
+
+    # Remove any pre-existing output file
+    if output_file.exists():
+        output_file.unlink()
     
     # Detect crop values
     crop_filter = detect_crop(input_file)
