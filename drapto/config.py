@@ -45,9 +45,9 @@ VMAF_SAMPLE_COUNT = 3
 VMAF_SAMPLE_LENGTH = 1
 
 # Scene detection settings
-SCENE_THRESHOLD = 35.0  # Content detection threshold (lower = more sensitive)
-MIN_SCENE_INTERVAL = 5.0  # Minimum seconds between scene changes
-TARGET_SEGMENT_LENGTH = 10.0  # Target segment duration in seconds
+SCENE_THRESHOLD = 40.0  # Content detection threshold (higher = less sensitive)
+MIN_SCENE_INTERVAL = 10.0  # Minimum seconds between scene changes
+TARGET_SEGMENT_LENGTH = 12.0  # Target segment duration in seconds
 
 # Temporary directories for chunked encoding
 SEGMENTS_DIR = WORKING_ROOT / "segments"
