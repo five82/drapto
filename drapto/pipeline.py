@@ -85,12 +85,6 @@ def process_file(input_file: Path, output_file: Path) -> Optional[dict]:
         output_size = get_file_size(output_file)
         reduction = ((input_size - output_size) / input_size) * 100
         
-        print_header("Encoding Complete")
-        print_success(f"Input size:  {format_size(input_size)}")
-        print_success(f"Output size: {format_size(output_size)}")
-        print_success(f"Reduction:   {reduction:.2f}%")
-        print_separator()
-        
         # Clean up temporary working directories and files in /tmp after successful encode
         from .utils import cleanup_working_dirs
         cleanup_working_dirs()
