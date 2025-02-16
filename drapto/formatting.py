@@ -40,12 +40,6 @@ def print_separator() -> None:
     console.print("-" * 40, style="blue")
 
 def print_info(message: str) -> None:
-    """Print an important INFO line inside a styled panel."""
-    panel = Panel(
-        message,
-        title="INFO",
-        title_align="left",
-        style="bold bright_white on blue",
-        border_style="bright_blue"
-    )
-    console.print(panel)
+    """Print an informational message in a subtle style."""
+    text = Text("ℹ ", style="bold blue") + Text(message, style="blue")
+    console.print(text)
