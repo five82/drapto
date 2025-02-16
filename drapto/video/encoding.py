@@ -5,6 +5,8 @@ import shutil
 from pathlib import Path
 from typing import Optional
 
+logger = logging.getLogger(__name__)
+
 from ..config import (
     PRESET, CRF_SD, CRF_HD, CRF_UHD, SVT_PARAMS,
     WORKING_DIR
