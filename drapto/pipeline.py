@@ -35,8 +35,8 @@ def process_file(input_file: Path, output_file: Path) -> Optional[Path]:
     log_file = LOG_DIR / f"{input_file.stem}_{timestamp}.log"
 
     print_header("Starting Encode")
-    print_check(f"Input file:  {input_file.name}")
-    print_check(f"Output file: {output_file}")
+    print_check(f"Input file:  {input_file.resolve()}")
+    print_check(f"Output file: {output_file.resolve()}")
     print_separator()
     
     # Ensure output directory exists
