@@ -59,6 +59,9 @@ def encode_dolby_vision(input_file: Path) -> Optional[Path]:
         crf = CRF_HD
     else:
         crf = CRF_SD
+
+    # Crop detection for both Dolby Vision and standard encoding
+    crop_filter = detect_crop(input_file)
         
     # For Dolby Vision content:
     # 1. Force software decoding
@@ -69,6 +72,10 @@ def encode_dolby_vision(input_file: Path) -> Optional[Path]:
         "-hwaccel", "none",
         "-i", str(input_file)
     ]
+
+    # If a crop filter was detected, add it to the command
+    if crop_filter:
+        cmd.extend(["-vf", crop_filter])
     
     # Add encoding options
     cmd.extend([
