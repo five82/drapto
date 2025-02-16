@@ -46,7 +46,6 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
         "--sample-duration", f"{VMAF_SAMPLE_LENGTH}s",
         "--vmaf", "n_subsample=8:pool=harmonic_mean",
         "--pix-format", "yuv420p10le",
-        "--report-json", str(output_segment) + ".json",
     ]
     if crop_filter:
         cmd.extend(["--vfilter", crop_filter])
@@ -70,20 +69,6 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
     bitrate_kbps = (output_size * 8) / (output_duration * 1000)
     speed_factor = input_duration / encoding_time
     
-    # Parse VMAF results from JSON report
-    import json
-    vmaf_stats = {}
-    try:
-        with open(str(output_segment) + ".json") as f:
-            vmaf_data = json.load(f)
-            vmaf_stats = {
-                'vmaf_score': vmaf_data.get('vmaf', {}).get('mean', 0),
-                'vmaf_min': vmaf_data.get('vmaf', {}).get('min', 0),
-                'vmaf_max': vmaf_data.get('vmaf', {}).get('max', 0),
-            }
-    except Exception as e:
-        log.warning("Could not read VMAF stats: %s", e)
-    
     # Compile segment statistics
     stats = {
         'segment': segment.name,
@@ -94,8 +79,7 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
         'speed_factor': speed_factor,
         'resolution': f"{output_info[1]}x{output_info[2]}",
         'framerate': output_info[3],
-        'crop_filter': crop_filter or "none",
-        **vmaf_stats
+        'crop_filter': crop_filter or "none"
     }
     
     # Log detailed segment info
@@ -110,12 +94,6 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
         log.info("  VMAF Score: %.2f (min: %.2f, max: %.2f)",
                  stats['vmaf_score'], stats['vmaf_min'], stats['vmaf_max'])
     
-    # Cleanup JSON report
-    try:
-        Path(str(output_segment) + ".json").unlink()
-    except Exception:
-        pass
-        
     return stats
 from ..utils import run_cmd, check_dependencies
 from ..formatting import print_info, print_check
