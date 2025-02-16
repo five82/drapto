@@ -30,8 +30,8 @@ def detect_scenes(input_file: Path) -> List[float]:
         try:
             log.debug("Starting scene detection on %s", input_file)
             scenes = detect(str(input_file),
-                          ContentDetector(threshold=SCENE_THRESHOLD,
-                                        min_scene_len=MIN_SCENE_INTERVAL))
+                          ContentDetector(threshold=float(SCENE_THRESHOLD),
+                                        min_scene_len=int(MIN_SCENE_INTERVAL)))
             log.debug("Raw scenes detected: %r", scenes)
         except Exception as e:
             log.error("Scene detection failed during detect() call: %s", e)
