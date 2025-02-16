@@ -1,6 +1,7 @@
 """High-level pipeline orchestration for video encoding"""
 
 import logging
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -21,7 +22,7 @@ from .utils import get_timestamp, format_size, get_file_size
 
 log = logging.getLogger(__name__)
 
-def process_file(input_file: Path, output_file: Path) -> Optional[Path]:
+def process_file(input_file: Path, output_file: Path) -> Optional[dict]:
     """
     Process a single input file through the encoding pipeline
     
@@ -30,11 +31,13 @@ def process_file(input_file: Path, output_file: Path) -> Optional[Path]:
         output_file: Path to output file
         
     Returns:
-        Optional[Path]: Path to output file if successful
+        Optional[dict]: Dictionary containing encoding summary if successful
     """
     timestamp = get_timestamp()
     log_file = LOG_DIR / f"{input_file.stem}_{timestamp}.log"
 
+    start_time = time.time()
+    
     print_header("Starting Encode")
     print_info(f"Processing file: {input_file.name}")
     print_check(f"Input path:  {input_file.resolve()}")
@@ -92,7 +95,31 @@ def process_file(input_file: Path, output_file: Path) -> Optional[Path]:
         from .utils import cleanup_working_dirs
         cleanup_working_dirs()
         
-        return output_file
+        end_time = time.time()
+        elapsed = end_time - start_time
+        hours = int(elapsed // 3600)
+        minutes = int((elapsed % 3600) // 60)
+        seconds = int(elapsed % 60)
+        finished_time = time.strftime("%a %b %d %H:%M:%S %Z %Y", time.localtime(end_time))
+        
+        print_header("Encoding Summary")
+        print_success(f"Input size:  {format_size(input_size)}")
+        print_success(f"Output size: {format_size(output_size)}")
+        print_success(f"Reduction:   {reduction:.2f}%")
+        print_check(f"Completed: {input_file.name}")
+        print_check(f"Encoding time: {hours:02d}h {minutes:02d}m {seconds:02d}s")
+        print_check(f"Finished encode at {finished_time}")
+        print_separator()
+        
+        # Return summary info as a dict for final summary
+        return {
+            "output_file": output_file,
+            "filename": input_file.name,
+            "input_size": input_size,
+            "output_size": output_size,
+            "reduction": reduction,
+            "encoding_time": elapsed
+        }
         
     except Exception as e:
         log.exception("Error processing %s: %s", input_file.name, e)
@@ -116,9 +143,35 @@ def process_directory(input_dir: Path, output_dir: Path) -> bool:
         return False
         
     success = True
+    summaries = []
+    dir_start_time = time.time()
     for input_file in video_files:
         out_file = output_dir / input_file.name
-        if not process_file(input_file, out_file):
+        summary = process_file(input_file, out_file)
+        if summary:
+            summaries.append(summary)
+        else:
             success = False
-            
+
+    # Final overall summary after processing all files
+    total_elapsed = time.time() - dir_start_time
+    total_hours = int(total_elapsed // 3600)
+    total_minutes = int((total_elapsed % 3600) // 60)
+    total_seconds = int(total_elapsed % 60)
+
+    print_header("Final Encoding Summary")
+    for s in summaries:
+        print_separator()
+        print_check(f"File: {s['filename']}")
+        print_success(f"Input size:  {format_size(s['input_size'])}")
+        print_success(f"Output size: {format_size(s['output_size'])}")
+        print_success(f"Reduction:   {s['reduction']:.2f}%")
+        enc_time = s['encoding_time']
+        h = int(enc_time // 3600)
+        m = int((enc_time % 3600) // 60)
+        sec = int(enc_time % 60)
+        print_check(f"Encode time: {h:02d}h {m:02d}m {sec:02d}s")
+    print_separator()
+    print_success(f"Total execution time: {total_hours:02d}h {total_minutes:02d}m {total_seconds:02d}s")
+    
     return success
