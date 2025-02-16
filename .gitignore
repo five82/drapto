@@ -61,3 +61,4 @@ site/
 .pyre/
 .dmypy.json
 dmypy.json
+.aider*
