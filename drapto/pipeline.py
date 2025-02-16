@@ -33,6 +33,9 @@ def process_file(input_file: Path, output_file: Path) -> Optional[Path]:
     log.info("Starting encode for: %s", input_file.name)
     log.info("Output file: %s", output_file)
     
+    # Ensure output directory exists
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    
     # Detect Dolby Vision
     is_dolby_vision = detect_dolby_vision(input_file)
     
