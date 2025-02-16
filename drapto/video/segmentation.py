@@ -77,12 +77,21 @@ def validate_segments(input_file: Path, segment_length: int) -> bool:
             
             # Parse duration and codec info
             lines = result.stdout.strip().split('\n')
-            if len(lines) < 2:
-                log.error("Invalid segment  %s", segment.name)
+            duration = None
+            codec = None
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    # Try to convert the line to float. If successful, it's the duration.
+                    duration = float(line)
+                except ValueError:
+                    # Otherwise, it's the codec.
+                    codec = line
+            if duration is None or codec is None:
+                log.error("Invalid segment %s: missing duration or codec", segment.name)
                 return False
-                
-            duration = float(lines[0])
-            codec = lines[1]
             
             # Validate segment duration (allow 25% tolerance for last segment)
             if duration < 1 or (duration < segment_length * 0.75 and segment != segments[-1]):
