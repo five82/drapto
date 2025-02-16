@@ -2,6 +2,7 @@
 
 from rich.console import Console
 from rich.text import Text
+from rich.panel import Panel
 
 console = Console()
 
@@ -37,3 +38,14 @@ def print_header(title: str, width: int = 80) -> None:
 def print_separator() -> None:
     """Print a separator line."""
     console.print("-" * 40, style="blue")
+
+def print_info(message: str) -> None:
+    """Print an important INFO line inside a styled panel."""
+    panel = Panel(
+        message,
+        title="INFO",
+        title_align="left",
+        style="bold bright_white on blue",
+        border_style="bright_blue"
+    )
+    console.print(panel)
