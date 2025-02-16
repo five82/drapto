@@ -10,7 +10,8 @@ from .config import (
 )
 from .formatting import (
     print_header, print_check, print_warning,
-    print_error, print_success, print_separator
+    print_error, print_success, print_separator,
+    print_info
 )
 from .video.detection import detect_dolby_vision
 from .video.encoding import encode_dolby_vision, encode_standard

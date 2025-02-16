@@ -13,6 +13,7 @@ from ..config import (
     WORKING_DIR
 )
 from ..utils import run_cmd, check_dependencies
+from ..formatting import print_info
 
 log = logging.getLogger(__name__)
 
