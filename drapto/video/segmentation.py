@@ -5,7 +5,7 @@ import os
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 from ..config import (
     SEGMENT_LENGTH, TARGET_VMAF, VMAF_SAMPLE_COUNT,
