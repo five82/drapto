@@ -108,36 +108,40 @@ def validate_segments(input_file: Path, segment_length: int, variable_segmentati
                 
             log.info("Segment %s: duration=%.2fs, codec=%s", segment.name, duration, codec)
     
-            # For the last segment, if duration is extremely short, check for scene alignment
-            if segment == segments[-1]:
-                if duration < 0.1:
-                    from .scene_detection import detect_scenes
-                    scenes = detect_scenes(input_file)
-                    cumulative_duration = sum(d for _, d in valid_segments)
-                    segment_end = cumulative_duration + duration
-                    tolerance = 0.5  # seconds
-                    aligned = any(abs(scene - segment_end) <= tolerance for scene in scenes)
-                    if not aligned:
-                        log.error("Last segment too short: %.2fs in %s and not aligned with scene changes", duration, segment.name)
-                        return False
-                    else:
-                        log.info("Last segment %.2fs in %s aligns with scene change", duration, segment.name)
-                valid_segments.append((segment, duration))
-                total_segment_duration += duration
-            else:
-                if variable_segmentation:
-                    # For variable segmentation, only require non-last segments to be at least 1.0 s.
-                    if duration < 1.0:
-                        log.warning("Skipping very short segment: %.2fs in %s", duration, segment.name)
-                        continue
+            # Check if segment duration is short
+            if duration < 1.0:
+                # For any short segment, check scene alignment
+                from .scene_detection import detect_scenes
+                scenes = detect_scenes(input_file)
+                cumulative_duration = sum(d for _, d in valid_segments)
+                segment_end = cumulative_duration + duration
+                tolerance = 0.5  # seconds
+                aligned = any(abs(scene - segment_end) <= tolerance for scene in scenes)
+                
+                if aligned:
+                    log.info("Short segment %.2fs in %s aligns with scene change", duration, segment.name)
+                    valid_segments.append((segment, duration))
+                    total_segment_duration += duration
                 else:
-                    # For fixed segmentation, require a minimum duration of 1.0 s and at least 75% of segment_length.
-                    if duration < 1.0:
-                        log.warning("Skipping very short segment: %.2fs in %s", duration, segment.name)
-                        continue
-                    if duration < segment_length * 0.75:
-                        log.error("Invalid segment duration: %.2fs in %s", duration, segment.name)
-                        return False
+                    # For non-scene-aligned short segments:
+                    if segment == segments[-1]:
+                        # Last segment can be shorter
+                        if duration < 0.1:
+                            log.error("Last segment too short: %.2fs in %s", duration, segment.name)
+                            return False
+                        valid_segments.append((segment, duration))
+                        total_segment_duration += duration
+                    else:
+                        # Non-last segments must meet minimum requirements
+                        if variable_segmentation:
+                            log.warning("Skipping short non-scene-aligned segment: %.2fs in %s", duration, segment.name)
+                            continue
+                        else:
+                            if duration < segment_length * 0.75:
+                                log.error("Invalid segment duration: %.2fs in %s", duration, segment.name)
+                                return False
+            else:
+                # Normal duration segment
                 valid_segments.append((segment, duration))
                 total_segment_duration += duration
     
