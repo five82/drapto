@@ -56,8 +56,8 @@ def encode_dolby_vision(input_file: Path) -> Optional[Path]:
     else:
         crf = CRF_SD
         
-    # For Dolby Vision, disable hardware acceleration (it can cause conflicts)
-    cmd = ["ffmpeg", "-hide_banner", "-loglevel", "warning"]
+    # For Dolby Vision, force software decoding by adding '-hwaccel none'
+    cmd = ["ffmpeg", "-hide_banner", "-loglevel", "warning", "-hwaccel", "none"]
     cmd.extend([
         "-i", str(input_file),
         "-map", "0:v:0",
