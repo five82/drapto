@@ -8,6 +8,10 @@ from .config import (
     INPUT_DIR, OUTPUT_DIR, LOG_DIR,
     ENABLE_CHUNKED_ENCODING
 )
+from .formatting import (
+    print_header, print_check, print_warning,
+    print_error, print_success, print_separator
+)
 from .video.detection import detect_dolby_vision
 from .video.encoding import encode_dolby_vision, encode_standard
 from .audio.encoding import encode_audio_tracks
@@ -30,8 +34,10 @@ def process_file(input_file: Path, output_file: Path) -> Optional[Path]:
     timestamp = get_timestamp()
     log_file = LOG_DIR / f"{input_file.stem}_{timestamp}.log"
 
-    log.info("Starting encode for: %s", input_file.name)
-    log.info("Output file: %s", output_file)
+    print_header("Starting Encode")
+    print_check(f"Input file:  {input_file.name}")
+    print_check(f"Output file: {output_file}")
+    print_separator()
     
     # Ensure output directory exists
     output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -70,10 +76,11 @@ def process_file(input_file: Path, output_file: Path) -> Optional[Path]:
         output_size = get_file_size(output_file)
         reduction = ((input_size - output_size) / input_size) * 100
         
-        log.info("Encoding complete:")
-        log.info("Input size:  %s", format_size(input_size))
-        log.info("Output size: %s", format_size(output_size))
-        log.info("Reduction:   %.2f%%", reduction)
+        print_header("Encoding Complete")
+        print_success(f"Input size:  {format_size(input_size)}")
+        print_success(f"Output size: {format_size(output_size)}")
+        print_success(f"Reduction:   {reduction:.2f}%")
+        print_separator()
         
         # Clean up temporary working directories and files in /tmp after successful encode
         from .utils import cleanup_working_dirs

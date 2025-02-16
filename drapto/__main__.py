@@ -9,6 +9,7 @@ from pathlib import Path
 from rich.logging import RichHandler
 
 from . import __version__
+from .formatting import print_header, print_error
 from .pipeline import process_directory, process_file
 from .utils import check_dependencies
 
@@ -49,7 +50,7 @@ def main():
     args = parse_args()
     
     log = logging.getLogger("drapto")
-    log.info("Starting drapto video encoder v%s", __version__)
+    print_header(f"Starting drapto video encoder v{__version__}")
     
     # Check dependencies
     if not check_dependencies():
