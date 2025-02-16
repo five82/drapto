@@ -79,7 +79,9 @@ def encode_segments(crop_filter: Optional[str] = None) -> bool:
     Returns:
         bool: True if all segments encoded successfully
     """
-    if not check_dependencies():
+    from ..validation import validate_ab_av1
+    
+    if not check_dependencies() or not validate_ab_av1():
         return False
         
     segments_dir = WORKING_DIR / "segments"

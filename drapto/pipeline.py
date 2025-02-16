@@ -80,7 +80,12 @@ def process_file(input_file: Path, output_file: Path) -> Optional[dict]:
             log.error("Muxing failed")
             return None
             
-        # Log completion info
+        # Validate the output
+        from .validation import validate_output
+        if not validate_output(input_file, output_file):
+            return None
+            
+        # Get size info for summary
         input_size = get_file_size(input_file)
         output_size = get_file_size(output_file)
         reduction = ((input_size - output_size) / input_size) * 100
