@@ -86,15 +86,15 @@ def detect_scenes(input_file: Path) -> List[float]:
             last_time = 0.0
             
             for time in timestamps:
-            # If gap is too large, add intermediate points
-            if time - last_time > max_gap:
-                # Add timestamps at TARGET_SEGMENT_LENGTH intervals
-                current = last_time + TARGET_SEGMENT_LENGTH
-                while current < time:
-                    final_timestamps.append(current)
-                    current += TARGET_SEGMENT_LENGTH
-            final_timestamps.append(time)
-            last_time = time
+                # If gap is too large, add intermediate points
+                if time - last_time > max_gap:
+                    # Add timestamps at TARGET_SEGMENT_LENGTH intervals
+                    current = last_time + TARGET_SEGMENT_LENGTH
+                    while current < time:
+                        final_timestamps.append(current)
+                        current += TARGET_SEGMENT_LENGTH
+                final_timestamps.append(time)
+                last_time = time
             
             # Add final segments if needed
             try:
