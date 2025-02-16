@@ -97,7 +97,3 @@ python -m build
    - Check logs in `videos/logs/` for detailed error information
    - Ensure input files are valid video files
    - Verify sufficient disk space for temporary files
-
-## License
-
-MIT License
