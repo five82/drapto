@@ -46,8 +46,8 @@ def detect_scenes(input_file: Path) -> List[float]:
                 raise
 
         try:
-            timestamps = []
-            last_time = 0.0
+            # Extract all scene timestamps
+            raw_timestamps = []
             for scene in scenes:
                 log.debug("Processing scene object: %r (type: %s)", scene, type(scene))
                 try:
@@ -64,25 +64,56 @@ def detect_scenes(input_file: Path) -> List[float]:
                     else:
                         log.warning("Unrecognized scene object: %r", scene)
                         continue
-                    if start_time > 1.0 and (start_time - last_time) >= MIN_SCENE_INTERVAL:
-                        timestamps.append(start_time)
-                        last_time = start_time
-                    else:
-                        log.debug("Skipping scene at %.2fs (too close to previous)", start_time)
+                    if start_time > 1.0:  # Skip very early scenes
+                        raw_timestamps.append(start_time)
                 except Exception as e:
                     log.warning("Error processing scene timestamp: %s", e)
                     continue
 
-            max_gap = TARGET_SEGMENT_LENGTH * 1.5  # Allow 50% overrun
+            # Cluster nearby scene changes
+            from itertools import groupby
+            from operator import itemgetter
+            from statistics import median
+
+            def cluster_timestamps(times, window):
+                if not times:
+                    return []
+                # Sort timestamps
+                sorted_times = sorted(times)
+                clusters = []
+                current_cluster = [sorted_times[0]]
+                
+                for t in sorted_times[1:]:
+                    if t - current_cluster[-1] <= window:
+                        current_cluster.append(t)
+                    else:
+                        # Use median of cluster as representative timestamp
+                        clusters.append(median(current_cluster))
+                        current_cluster = [t]
+                        
+                if current_cluster:
+                    clusters.append(median(current_cluster))
+                    
+                return clusters
+
+            # Cluster nearby scene changes
+            timestamps = cluster_timestamps(raw_timestamps, CLUSTER_WINDOW)
+            
+            # Process gaps between scenes
             final_timestamps = []
             last_time = 0.0
-
+            
             for time in timestamps:
-                if time - last_time > max_gap:
-                    current = last_time + TARGET_SEGMENT_LENGTH
+                gap = time - last_time
+                if gap > MAX_SEGMENT_LENGTH:
+                    # Add intermediate points for very long gaps
+                    # Use dynamic spacing based on gap size
+                    num_splits = max(1, int(gap / TARGET_SEGMENT_LENGTH))
+                    split_size = gap / (num_splits + 1)
+                    current = last_time + split_size
                     while current < time:
                         final_timestamps.append(current)
-                        current += TARGET_SEGMENT_LENGTH
+                        current += split_size
                 final_timestamps.append(time)
                 last_time = time
 
