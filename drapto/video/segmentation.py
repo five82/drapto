@@ -69,6 +69,23 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
     bitrate_kbps = (output_size * 8) / (output_duration * 1000)
     speed_factor = input_duration / encoding_time
     
+    # Determine CRF based on input segment's resolution
+    try:
+        width = int(input_info[1])
+    except Exception as e:
+        log.error("Failed to get segment width: %s", e)
+        width = 0
+        
+    from ..config import CRF_UHD, CRF_HD, CRF_SD
+    if width >= 3840:
+        crf = CRF_UHD
+    elif width >= 1920:
+        crf = CRF_HD
+    else:
+        crf = CRF_SD
+        
+    log.info("  CRF: %s", crf)
+    
     # Compile segment statistics
     stats = {
         'segment': segment.name,
@@ -79,7 +96,8 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
         'speed_factor': speed_factor,
         'resolution': f"{output_info[1]}x{output_info[2]}",
         'framerate': output_info[3],
-        'crop_filter': crop_filter or "none"
+        'crop_filter': crop_filter or "none",
+        'crf': crf
     }
     
     # Log detailed segment info
