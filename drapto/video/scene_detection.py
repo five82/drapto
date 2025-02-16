@@ -9,24 +9,25 @@ from ..formatting import print_check, print_warning
 
 log = logging.getLogger(__name__)
 
-def detect_scenes(input_file: Path, threshold: float = 0.3) -> List[float]:
+def detect_scenes(input_file: Path) -> List[float]:
     """
     Detect scene changes in video using FFmpeg's scene detection filter
+    and filter them to maintain minimum spacing between scenes.
     
     Args:
         input_file: Path to input video file
-        threshold: Scene change threshold (0.0-1.0, default 0.3)
         
     Returns:
         List of timestamps (in seconds) where scene changes occur
     """
-    scenes = []
+    from ..config import SCENE_THRESHOLD, MIN_SCENE_INTERVAL
+    raw_scenes = []
     try:
         # Run FFmpeg with scene detection filter
         cmd = [
             "ffmpeg", "-hide_banner",
             "-i", str(input_file),
-            "-vf", f"select=gt(scene\\,{threshold}),showinfo",
+            "-vf", f"select=gt(scene\\,{SCENE_THRESHOLD}),showinfo",
             "-f", "null", "-"
         ]
         result = run_cmd(cmd, capture_output=True, check=True)
@@ -37,12 +38,21 @@ def detect_scenes(input_file: Path, threshold: float = 0.3) -> List[float]:
             if "pts_time:" in line:
                 try:
                     pts_time = float(line.split("pts_time:")[1].split()[0])
-                    scenes.append(pts_time)
+                    raw_scenes.append(pts_time)
                 except (ValueError, IndexError):
                     continue
+        
+        # Filter scenes to maintain minimum interval
+        filtered_scenes = []
+        if raw_scenes:
+            filtered_scenes.append(raw_scenes[0])  # Always keep first scene
+            for scene in raw_scenes[1:]:
+                if scene - filtered_scenes[-1] >= MIN_SCENE_INTERVAL:
+                    filtered_scenes.append(scene)
                     
-        log.info("Detected %d scene changes", len(scenes))
-        return scenes
+        log.info("Detected %d raw scene changes, filtered to %d scenes",
+                len(raw_scenes), len(filtered_scenes))
+        return filtered_scenes
         
     except Exception as e:
         log.error("Scene detection failed: %s", e)
