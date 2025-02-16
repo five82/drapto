@@ -16,13 +16,12 @@ from .utils import check_dependencies
 def setup_logging():
     """Configure logging with rich output"""
     logging.basicConfig(
-        level=logging.DEBUG,
+        level=logging.INFO,
         format="%(message)s",
         datefmt="[%X]",
         handlers=[RichHandler(rich_tracebacks=True)]
     )
-    # Set scene detection logger to DEBUG explicitly
-    logging.getLogger("drapto.video.scene_detection").setLevel(logging.DEBUG)
+    # No explicit debug level for scene detection; use global INFO level
 
 def parse_args():
     """Parse command line arguments"""
