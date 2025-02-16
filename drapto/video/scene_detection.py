@@ -26,15 +26,26 @@ def detect_scenes(input_file: Path) -> List[float]:
         List of timestamps (in seconds) where scene changes occur
     """
     try:
-        # Detect scenes using content-aware detection
-        scenes = detect(str(input_file), 
-                       ContentDetector(threshold=SCENE_THRESHOLD,
-                                     min_scene_len=MIN_SCENE_INTERVAL))
-        
+        # Detect scenes using content-aware detection with enhanced error logging.
+        try:
+            log.debug("Starting scene detection on %s", input_file)
+            scenes = detect(str(input_file),
+                          ContentDetector(threshold=SCENE_THRESHOLD,
+                                        min_scene_len=MIN_SCENE_INTERVAL))
+            log.debug("Raw scenes detected: %r", scenes)
+        except Exception as e:
+            log.error("Scene detection failed during detect() call: %s", e)
+            raise
+
         if not scenes:
             # Fall back to adaptive detection if no scenes found
-            scenes = detect(str(input_file),
-                          AdaptiveDetector(min_scene_len=MIN_SCENE_INTERVAL))
+            try:
+                scenes = detect(str(input_file),
+                              AdaptiveDetector(min_scene_len=MIN_SCENE_INTERVAL))
+                log.debug("Adaptive scenes detected: %r", scenes)
+            except Exception as e:
+                log.error("Adaptive scene detection failed: %s", e)
+                raise
         
         # Convert scene list to timestamps with enhanced error handling and debug logging
         timestamps = []
