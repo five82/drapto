@@ -13,6 +13,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+def run_cmd_interactive(cmd: List[str]) -> int:
+    """Run a command interactively so that its output (including progress bar)
+    is printed directly to the console."""
+    logger.info("Running interactive command: %s", " ".join(cmd))
+    process = subprocess.Popen(cmd)
+    return process.wait()
+
 def run_cmd(cmd: List[str], capture_output: bool = True, 
             check: bool = True) -> subprocess.CompletedProcess:
     """Run a command and handle errors"""
