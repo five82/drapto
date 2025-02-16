@@ -106,6 +106,9 @@ def encode_dolby_vision(input_file: Path) -> Optional[Path]:
         except Exception as e:
             log.error("Software fallback failed: %s", e)
         return None
+    except Exception as e:
+        log.error("Dolby Vision encoding failed: %s", e)
+        return None
 
 def encode_standard(input_file: Path) -> Optional[Path]:
     """
