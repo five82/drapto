@@ -90,9 +90,6 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
     log.info("  Encoding time: %.2fs (%.2fx realtime)", 
              stats['encoding_time'], stats['speed_factor'])
     log.info("  Resolution: %s @ %s", stats['resolution'], stats['framerate'])
-    if vmaf_stats:
-        log.info("  VMAF Score: %.2f (min: %.2f, max: %.2f)",
-                 stats['vmaf_score'], stats['vmaf_min'], stats['vmaf_max'])
     
     return stats
 from ..utils import run_cmd, check_dependencies
