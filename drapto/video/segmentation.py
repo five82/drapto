@@ -233,6 +233,7 @@ def segment_video(input_file: Path) -> bool:
                 "-reset_timestamps", "1",
                 str(segments_dir / "%04d.mkv")
             ])
+            variable_seg = True
         else:
             cmd.extend([
                 "-i", str(input_file),
@@ -243,24 +244,19 @@ def segment_video(input_file: Path) -> bool:
                 "-reset_timestamps", "1",
                 str(segments_dir / "%04d.mkv")
             ])
-        variable_seg = True
-    else:
-        cmd.extend([
-            "-i", str(input_file),
-            "-c:v", "copy",
-            "-an",
-            "-f", "segment",
-            "-segment_time", str(SEGMENT_LENGTH),
-            "-reset_timestamps", "1",
-            str(segments_dir / "%04d.mkv")
-        ])
-        variable_seg = False
-    run_cmd(cmd)
-    
-    # Validate segments with the appropriate variable_segmentation flag
-    if not validate_segments(input_file, SEGMENT_LENGTH, variable_segmentation=variable_seg):
-        return False
+            variable_seg = False
             
+        run_cmd(cmd)
+        
+        # Validate segments with the appropriate variable_segmentation flag
+        if not validate_segments(input_file, SEGMENT_LENGTH, variable_segmentation=variable_seg):
+            return False
+            
+        return True
+        
+    except Exception as e:
+        log.error("Segmentation failed: %s", e)
+        return False
         return True
         
     except Exception as e:
