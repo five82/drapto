@@ -54,5 +54,8 @@ SEGMENTS_DIR = WORKING_ROOT / "segments"
 ENCODED_SEGMENTS_DIR = WORKING_ROOT / "encoded_segments" 
 WORKING_DIR = WORKING_ROOT / "working"
 
+# Logging configuration
+LOG_LEVEL = "INFO"  # Default logging level; valid values: DEBUG, INFO, WARNING, ERROR, CRITICAL
+
 # Create log directory
 LOG_DIR.mkdir(parents=True, exist_ok=True)

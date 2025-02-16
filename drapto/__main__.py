@@ -13,15 +13,20 @@ from .formatting import print_header, print_error, print_info, print_success
 from .pipeline import process_directory, process_file
 from .utils import check_dependencies
 
-def setup_logging():
-    """Configure logging with rich output"""
+def setup_logging(log_level: str = None):
+    """Configure logging with rich output using the specified logging level"""
+    from drapto.config import LOG_LEVEL
+    # Use the provided log_level or fallback to the one in config.py
+    level = log_level if log_level is not None else LOG_LEVEL
+    # Convert the level (a string) to its numeric value using logging._nameToLevel
+    numeric_level = logging._nameToLevel.get(level.upper(), logging.INFO)
     logging.basicConfig(
-        level=logging.INFO,
+        level=numeric_level,
         format="%(message)s",
         datefmt="[%X]",
         handlers=[RichHandler(rich_tracebacks=True)]
     )
-    # No explicit debug level for scene detection; use global INFO level
+    # No explicit debug level for scene detection; use global level
 
 def parse_args():
     """Parse command line arguments"""
@@ -32,6 +37,13 @@ def parse_args():
         "--version",
         action="version",
         version=f"%(prog)s {__version__}"
+    )
+    parser.add_argument(
+        "--log-level",
+        dest="log_level",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        default=None,
+        help="Set logging level (default from config: %(default)s)"
     )
     parser.add_argument(
         "input",
@@ -47,8 +59,8 @@ def parse_args():
 
 def main():
     """Main entry point"""
-    setup_logging()
     args = parse_args()
+    setup_logging(args.log_level)
     
     log = logging.getLogger("drapto")
     print_header(f"Starting drapto video encoder v{__version__}")
