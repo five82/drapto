@@ -39,16 +39,19 @@ def detect_scenes(input_file: Path) -> List[float]:
         # Convert scene list to timestamps
         timestamps = []
         for scene in scenes:
-            if hasattr(scene, "start_time"):
-                start_time = scene.start_time.get_seconds()
-            elif isinstance(scene, (tuple, list)) and len(scene) > 0:
-                start_time = float(scene[0])
-            elif isinstance(scene, (float, int)):
-                start_time = float(scene)
-            else:
-                log.warning("Unrecognized scene object: %s", scene)
+            try:
+                if hasattr(scene, "start_time"):
+                    start_time = scene.start_time.get_seconds()
+                elif isinstance(scene, (tuple, list)) and len(scene) > 0:
+                    start_time = float(scene[0])
+                elif isinstance(scene, (float, int)):
+                    start_time = float(scene)
+                else:
+                    log.warning("Unrecognized scene object: %s", scene)
+                    continue
+            except Exception as conv_e:
+                log.warning("Error processing scene object %s: %s", scene, conv_e)
                 continue
-            # Skip very early scenes (less than 1 second)
             if start_time > 1.0:
                 timestamps.append(start_time)
         
