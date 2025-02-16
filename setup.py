@@ -7,6 +7,7 @@ setup(
     install_requires=[
         "ffmpeg-python",
         "rich",
+        "scenedetect[opencv]",
     ],
     entry_points={
         "console_scripts": [

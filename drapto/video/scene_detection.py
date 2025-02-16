@@ -4,15 +4,20 @@ import logging
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+from scenedetect import detect, ContentDetector, AdaptiveDetector
+from scenedetect.scene_manager import save_images
+
 from ..utils import run_cmd
 from ..formatting import print_check, print_warning
+from ..config import SCENE_THRESHOLD, MIN_SCENE_INTERVAL, TARGET_SEGMENT_LENGTH
 
 log = logging.getLogger(__name__)
 
 def detect_scenes(input_file: Path) -> List[float]:
     """
-    Detect scene changes in video using FFmpeg's scene detection filter
-    and filter them to maintain minimum spacing between scenes.
+    Detect scene changes in video using PySceneDetect's content-aware detection.
+    Optimizes scene boundaries to target roughly 10-second segments while preserving
+    natural scene transitions.
     
     Args:
         input_file: Path to input video file
@@ -20,39 +25,60 @@ def detect_scenes(input_file: Path) -> List[float]:
     Returns:
         List of timestamps (in seconds) where scene changes occur
     """
-    from ..config import SCENE_THRESHOLD, MIN_SCENE_INTERVAL
-    raw_scenes = []
     try:
-        # Run FFmpeg with scene detection filter
-        cmd = [
-            "ffmpeg", "-hide_banner",
-            "-i", str(input_file),
-            "-vf", f"select=gt(scene\\,{SCENE_THRESHOLD}),showinfo",
-            "-f", "null", "-"
-        ]
-        result = run_cmd(cmd, capture_output=True, check=True)
+        # Detect scenes using content-aware detection
+        scenes = detect(str(input_file), 
+                       ContentDetector(threshold=SCENE_THRESHOLD,
+                                     min_scene_len=MIN_SCENE_INTERVAL))
         
-        # Parse scene change timestamps from stderr output
-        # Example line: "[Parsed_showinfo_1 @ 0x7f8f5c] n:   1 pts:    2.002 pts_time:2.002
-        for line in result.stderr.splitlines():
-            if "pts_time:" in line:
-                try:
-                    pts_time = float(line.split("pts_time:")[1].split()[0])
-                    raw_scenes.append(pts_time)
-                except (ValueError, IndexError):
-                    continue
+        if not scenes:
+            # Fall back to adaptive detection if no scenes found
+            scenes = detect(str(input_file),
+                          AdaptiveDetector(min_scene_len=MIN_SCENE_INTERVAL))
         
-        # Filter scenes to maintain minimum interval
-        filtered_scenes = []
-        if raw_scenes:
-            filtered_scenes.append(raw_scenes[0])  # Always keep first scene
-            for scene in raw_scenes[1:]:
-                if scene - filtered_scenes[-1] >= MIN_SCENE_INTERVAL:
-                    filtered_scenes.append(scene)
-                    
-        log.info("Detected %d raw scene changes, filtered to %d scenes",
-                len(raw_scenes), len(filtered_scenes))
-        return filtered_scenes
+        # Convert scene list to timestamps
+        timestamps = []
+        for scene in scenes:
+            # Get start time of each scene in seconds
+            start_time = float(scene[0].get_seconds())
+            # Skip very early scenes (less than 1 second)
+            if start_time > 1.0:
+                timestamps.append(start_time)
+        
+        # Add additional timestamps to ensure no segment is too long
+        max_gap = TARGET_SEGMENT_LENGTH * 1.5  # Allow 50% overrun
+        final_timestamps = []
+        last_time = 0.0
+        
+        for time in timestamps:
+            # If gap is too large, add intermediate points
+            if time - last_time > max_gap:
+                # Add timestamps at TARGET_SEGMENT_LENGTH intervals
+                current = last_time + TARGET_SEGMENT_LENGTH
+                while current < time:
+                    final_timestamps.append(current)
+                    current += TARGET_SEGMENT_LENGTH
+            final_timestamps.append(time)
+            last_time = time
+            
+        # Add final segments if needed
+        try:
+            duration = float(run_cmd([
+                "ffprobe", "-v", "error",
+                "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                str(input_file)
+            ]).stdout.strip())
+            
+            while duration - last_time > max_gap:
+                last_time += TARGET_SEGMENT_LENGTH
+                final_timestamps.append(last_time)
+        except Exception as e:
+            log.warning("Could not get video duration: %s", e)
+        
+        log.info("Detected %d scene changes, optimized to %d segments",
+                len(timestamps), len(final_timestamps))
+        return final_timestamps
         
     except Exception as e:
         log.error("Scene detection failed: %s", e)
