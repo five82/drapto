@@ -60,14 +60,16 @@ def main():
     # Process input
     try:
         if args.input.is_file():
-            if args.output.suffix:
-                # Single file mode
-                if process_file(args.input, args.output):
+            if args.output.is_dir():
+                out_file = args.output / args.input.name
+                if process_file(args.input, out_file):
                     log.info("Successfully encoded %s", args.input.name)
                     return 0
             else:
-                log.error("Output must be a file when input is a file")
-                return 1
+                # Output specified as a file
+                if process_file(args.input, args.output):
+                    log.info("Successfully encoded %s", args.input.name)
+                    return 0
         elif args.input.is_dir():
             if not args.output.suffix:
                 # Directory mode
