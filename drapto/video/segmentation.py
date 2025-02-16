@@ -125,13 +125,19 @@ def validate_segments(input_file: Path, segment_length: int, variable_segmentati
                 valid_segments.append((segment, duration))
                 total_segment_duration += duration
             else:
-                # For non-last segments, require a minimum duration of 1.0 s.
-                if duration < 1.0:
-                    log.warning("Skipping very short segment: %.2fs in %s", duration, segment.name)
-                    continue
-                if duration < segment_length * 0.75:
-                    log.error("Invalid segment duration: %.2fs in %s", duration, segment.name)
-                    return False
+                if variable_segmentation:
+                    # For variable segmentation, only require non-last segments to be at least 1.0 s.
+                    if duration < 1.0:
+                        log.warning("Skipping very short segment: %.2fs in %s", duration, segment.name)
+                        continue
+                else:
+                    # For fixed segmentation, require a minimum duration of 1.0 s and at least 75% of segment_length.
+                    if duration < 1.0:
+                        log.warning("Skipping very short segment: %.2fs in %s", duration, segment.name)
+                        continue
+                    if duration < segment_length * 0.75:
+                        log.error("Invalid segment duration: %.2fs in %s", duration, segment.name)
+                        return False
                 valid_segments.append((segment, duration))
                 total_segment_duration += duration
     
