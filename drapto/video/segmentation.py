@@ -125,21 +125,16 @@ def validate_segments(input_file: Path, segment_length: int, variable_segmentati
                 else:
                     # For non-scene-aligned short segments:
                     if segment == segments[-1]:
-                        # Last segment can be shorter
+                        # Last segment can be shorter, but not too short
                         if duration < 0.1:
-                            log.error("Last segment too short: %.2fs in %s", duration, segment.name)
-                            return False
+                            log.warning("Skipping very short last segment: %.2fs in %s", duration, segment.name)
+                            continue
                         valid_segments.append((segment, duration))
                         total_segment_duration += duration
                     else:
-                        # Non-last segments must meet minimum requirements
-                        if variable_segmentation:
-                            log.warning("Skipping short non-scene-aligned segment: %.2fs in %s", duration, segment.name)
-                            continue
-                        else:
-                            if duration < segment_length * 0.75:
-                                log.error("Invalid segment duration: %.2fs in %s", duration, segment.name)
-                                return False
+                        # Skip non-scene-aligned short segments
+                        log.warning("Skipping short non-scene-aligned segment: %.2fs in %s", duration, segment.name)
+                        continue
             else:
                 # Normal duration segment
                 valid_segments.append((segment, duration))
