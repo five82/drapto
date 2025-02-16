@@ -88,6 +88,10 @@ def encode_dolby_vision(input_file: Path) -> Optional[Path]:
         "-dolbyvision", "true",
         "-y", str(output_file)
     ])
+
+    # Format and log the command for better readability
+    formatted_cmd = " \\\n    ".join(cmd)
+    log.info("Dolby Vision encoding command:\n%s", formatted_cmd)
     
     try:
         run_cmd(cmd)
