@@ -57,12 +57,9 @@ def segment_video(input_file: Path) -> bool:
         run_cmd(cmd)
         
         # Validate segments
-        segments = list(segments_dir.glob("*.mkv"))
-        if not segments:
-            log.error("No segments created")
+        if not validate_segments(input_file, SEGMENT_LENGTH):
             return False
             
-        log.info("Created %d segments", len(segments))
         return True
         
     except Exception as e:
@@ -141,6 +138,10 @@ def encode_segments(crop_filter: Optional[str] = None) -> bool:
         ]
         run_cmd(cmd)
         
+        # Validate encoded segments
+        if not validate_encoded_segments(segments_dir):
+            return False
+            
         return True
         
     except Exception as e:
@@ -148,6 +149,80 @@ def encode_segments(crop_filter: Optional[str] = None) -> bool:
         return False
     finally:
         Path(script_file.name).unlink()
+
+def validate_encoded_segments(segments_dir: Path) -> bool:
+    """
+    Validate encoded segments after parallel encoding
+    
+    Args:
+        segments_dir: Directory containing original segments for comparison
+        
+    Returns:
+        bool: True if all encoded segments are valid
+    """
+    encoded_dir = WORKING_DIR / "encoded_segments"
+    original_segments = sorted(segments_dir.glob("*.mkv"))
+    encoded_segments = sorted(encoded_dir.glob("*.mkv"))
+    
+    if len(encoded_segments) != len(original_segments):
+        log.error(
+            "Encoded segment count (%d) doesn't match original (%d)",
+            len(encoded_segments), len(original_segments)
+        )
+        return False
+        
+    for orig, encoded in zip(original_segments, encoded_segments):
+        try:
+            # Check encoded segment exists and has size
+            if not encoded.exists() or encoded.stat().st_size == 0:
+                log.error("Missing or empty encoded segment: %s", encoded.name)
+                return False
+                
+            # Verify AV1 codec and basic stream properties
+            result = run_cmd([
+                "ffprobe", "-v", "error",
+                "-show_entries", "stream=codec_name,width,height:format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                str(encoded)
+            ])
+            
+            lines = result.stdout.strip().split('\n')
+            if len(lines) < 4:  # codec, width, height, duration
+                log.error("Invalid encoded segment  %s", encoded.name)
+                return False
+                
+            codec, width, height, duration = lines
+            
+            # Verify codec
+            if codec != "av1":
+                log.error(
+                    "Wrong codec '%s' in encoded segment: %s",
+                    codec, encoded.name
+                )
+                return False
+                
+            # Compare durations (allow 0.1s difference)
+            orig_duration = float(run_cmd([
+                "ffprobe", "-v", "error",
+                "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                str(orig)
+            ]).stdout.strip())
+            
+            enc_duration = float(duration)
+            if abs(orig_duration - enc_duration) > 0.1:
+                log.error(
+                    "Duration mismatch in %s: %.2f vs %.2f",
+                    encoded.name, orig_duration, enc_duration
+                )
+                return False
+                
+        except Exception as e:
+            log.error("Failed to validate encoded segment %s: %s", encoded.name, e)
+            return False
+            
+    log.info("Successfully validated %d encoded segments", len(encoded_segments))
+    return True
 
 def concatenate_segments(output_file: Path) -> bool:
     """
