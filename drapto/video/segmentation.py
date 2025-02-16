@@ -191,15 +191,31 @@ def segment_video(input_file: Path) -> bool:
             # Add hardware acceleration for decoding only
             cmd.extend(hw_opt.split())
             
-        cmd.extend([
-            "-i", str(input_file),
-            "-c:v", "copy",
-            "-an",
-            "-f", "segment",
-            "-segment_time", str(SEGMENT_LENGTH),
-            "-reset_timestamps", "1",
-            str(segments_dir / "%04d.mkv")
-        ])
+        from .scene_detection import detect_scenes
+        scenes = detect_scenes(input_file)
+        if scenes:
+            # Create a comma-separated list of scene-change timestamps (in seconds)
+            # Optionally, filter out any scene times below a minimum value (e.g. 1.0s) if needed.
+            segment_times = ",".join(f"{t:.2f}" for t in scenes if t > 1.0)
+            cmd.extend([
+                "-i", str(input_file),
+                "-c:v", "copy",
+                "-an",
+                "-f", "segment",
+                "-segment_times", segment_times,
+                "-reset_timestamps", "1",
+                str(segments_dir / "%04d.mkv")
+            ])
+        else:
+            cmd.extend([
+                "-i", str(input_file),
+                "-c:v", "copy",
+                "-an",
+                "-f", "segment",
+                "-segment_time", str(SEGMENT_LENGTH),
+                "-reset_timestamps", "1",
+                str(segments_dir / "%04d.mkv")
+            ])
         run_cmd(cmd)
         
         # Validate segments
