@@ -26,7 +26,7 @@ def detect_scenes(input_file: Path, threshold: float = 0.3) -> List[float]:
         cmd = [
             "ffmpeg", "-hide_banner",
             "-i", str(input_file),
-            "-vf", f"select=gt(scene,{threshold}),showinfo",
+            "-vf", f"select=gt(scene\\,{threshold}),showinfo",
             "-f", "null", "-"
         ]
         result = run_cmd(cmd, capture_output=True, check=True)

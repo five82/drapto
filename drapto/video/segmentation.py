@@ -90,6 +90,8 @@ def validate_segments(input_file: Path, segment_length: int) -> bool:
             if duration is None or codec is None:
                 log.error("Invalid segment %s: missing duration or codec", segment.name)
                 return False
+                
+            log.info("Segment %s: duration=%.2fs, codec=%s", segment.name, duration, codec)
     
             # For the last segment, if duration is extremely short, check for scene alignment
             if segment == segments[-1]:
