@@ -6,6 +6,8 @@ import subprocess
 from pathlib import Path
 from typing import Optional, Tuple
 
+from ..utils import run_cmd
+
 log = logging.getLogger(__name__)
 
 def detect_dolby_vision(input_file: Path) -> bool:
