@@ -65,6 +65,7 @@ def encode_dolby_vision(input_file: Path) -> Optional[Path]:
         "-preset", str(PRESET),
         "-crf", str(crf),
         "-svtav1-params", SVT_PARAMS,
+        "-pix_fmt", "yuv420p10le",
         "-dolbyvision", "true",
         "-y", str(output_file)
     ])
