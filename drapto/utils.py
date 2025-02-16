@@ -7,11 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Union, Optional
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+# (Removed basicConfig call so that __main__.py can fully control logging configuration)
 logger = logging.getLogger(__name__)
 
 def run_cmd_with_progress(cmd: List[str], total_duration: Optional[float] = None, log_interval: float = 3.0) -> int:
