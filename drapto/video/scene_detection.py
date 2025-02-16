@@ -36,23 +36,32 @@ def detect_scenes(input_file: Path) -> List[float]:
             scenes = detect(str(input_file),
                           AdaptiveDetector(min_scene_len=MIN_SCENE_INTERVAL))
         
-        # Convert scene list to timestamps with additional debug logging for troubleshooting
+        # Convert scene list to timestamps with enhanced error handling and debug logging
         timestamps = []
         for scene in scenes:
             log.debug("Processing scene object: %r (type: %s)", scene, type(scene))
             try:
-                if hasattr(scene, "start_time"):
-                    start_time = scene.start_time.get_seconds()
-                    log.debug("Using start_time attribute: %f", start_time)
-                elif isinstance(scene, (tuple, list)):
-                    log.debug("Scene object is tuple/list of length %d: %r", len(scene), scene)
-                    start_time = float(scene[0])
-                    log.debug("Converted first element to float: %f", start_time)
-                elif isinstance(scene, (float, int)):
-                    start_time = float(scene)
-                    log.debug("Scene object is numeric: %f", start_time)
-                else:
-                    log.warning("Unrecognized scene object: %r", scene)
+                # Attempt to safely get the scene's start time.
+                try:
+                    if hasattr(scene, "start_time"):
+                        start_time = scene.start_time.get_seconds()
+                        log.debug("Using start_time attribute: %f", start_time)
+                    elif isinstance(scene, (tuple, list)):
+                        # Use a nested try/except to catch slicing/indexing errors.
+                        try:
+                            start_time = float(scene[0])
+                            log.debug("Converted first element to float: %f", start_time)
+                        except Exception as e_index:
+                            log.warning("Error accessing index 0 of scene %r: %s", scene, e_index)
+                            continue
+                    elif isinstance(scene, (float, int)):
+                        start_time = float(scene)
+                        log.debug("Scene object is numeric: %f", start_time)
+                    else:
+                        log.warning("Unrecognized scene object: %r", scene)
+                        continue
+                except Exception as inner_e:
+                    log.warning("Inner error processing scene object %r: %s", scene, inner_e)
                     continue
             except Exception as conv_e:
                 log.warning("Error processing scene object %r: %s", scene, conv_e)
