@@ -134,7 +134,7 @@ def format_size(size: int) -> str:
 
 def check_dependencies() -> bool:
     """Check for required dependencies"""
-    required = ['ffmpeg', 'ffprobe', 'mediainfo', 'bc']
+    required = ['ffmpeg', 'ffprobe', 'mediainfo']
     
     for cmd in required:
         try:

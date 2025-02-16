@@ -307,55 +307,84 @@ def encode_segments(crop_filter: Optional[str] = None) -> bool:
     # Track failed segments for reporting
     failed_segments = []
     
-    # Create temporary script for GNU Parallel
-    script_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
-    
-    command_logged = False
-    try:
-        for segment in segments_dir.glob("*.mkv"):
-            output_segment = encoded_dir / segment.name
-        
-            # Build ab-av1 command
-            cmd = [
-                "ab-av1", "auto-encode",
-                "--input", str(segment),
-                "--output", str(output_segment),
-                "--encoder", "libsvtav1",
-                "--min-vmaf", str(TARGET_VMAF),
-                "--preset", str(PRESET),
-                "--svt", SVT_PARAMS,
-                "--keyint", "10s",
-                "--samples", str(VMAF_SAMPLE_COUNT),
-                "--sample-duration", f"{VMAF_SAMPLE_LENGTH}s",
-                "--vmaf", "n_subsample=8:pool=harmonic_mean",
-                "--pix-format", "yuv420p10le",
-                "--quiet"
-            ]
-            if crop_filter:
-                cmd.extend(["--vfilter", crop_filter])
+    from concurrent.futures import ProcessPoolExecutor, as_completed
+    import multiprocessing
 
-            # Log the command only once
-            if not command_logged:
-                formatted_command = " \\\n    ".join(cmd)
-                print_info("Encoding command parameters (common for all segments):")
-                log.info("\n%s", formatted_command)
-                command_logged = True
-
-            # Write the command to the temporary script file for GNU Parallel
-            script_file.write(" ".join(cmd) + "\n")
-            
-        script_file.close()
-        os.chmod(script_file.name, 0o755)
-        
-        # Run encoding jobs in parallel
+    def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[str] = None) -> None:
+        """Encode a single video segment using ab-av1"""
         cmd = [
-            "parallel", "--no-notice",
-            "--line-buffer",
-            "--halt", "soon,fail=1",
-            "--jobs", "0",
-            ":::", script_file.name
+            "ab-av1", "auto-encode",
+            "--input", str(segment),
+            "--output", str(output_segment),
+            "--encoder", "libsvtav1", 
+            "--min-vmaf", str(TARGET_VMAF),
+            "--preset", str(PRESET),
+            "--svt", SVT_PARAMS,
+            "--keyint", "10s",
+            "--samples", str(VMAF_SAMPLE_COUNT),
+            "--sample-duration", f"{VMAF_SAMPLE_LENGTH}s",
+            "--vmaf", "n_subsample=8:pool=harmonic_mean",
+            "--pix-format", "yuv420p10le",
+            "--quiet"
         ]
+        if crop_filter:
+            cmd.extend(["--vfilter", crop_filter])
+            
         run_cmd(cmd)
+
+    try:
+        # Get list of segments to encode
+        segments = list(segments_dir.glob("*.mkv"))
+        if not segments:
+            log.error("No segments found to encode")
+            return False
+
+        # Log example command
+        example_cmd = [
+            "ab-av1", "auto-encode",
+            "--input", "<input>",
+            "--output", "<output>",
+            "--encoder", "libsvtav1",
+            "--min-vmaf", str(TARGET_VMAF),
+            "--preset", str(PRESET),
+            "--svt", SVT_PARAMS,
+            "--keyint", "10s",
+            "--samples", str(VMAF_SAMPLE_COUNT),
+            "--sample-duration", f"{VMAF_SAMPLE_LENGTH}s",
+            "--vmaf", "n_subsample=8:pool=harmonic_mean",
+            "--pix-format", "yuv420p10le",
+            "--quiet"
+        ]
+        if crop_filter:
+            example_cmd.extend(["--vfilter", crop_filter])
+        formatted_command = " \\\n    ".join(example_cmd)
+        print_info("Encoding command parameters (common for all segments):")
+        log.info("\n%s", formatted_command)
+
+        # Use ProcessPoolExecutor for parallel encoding
+        max_workers = max(1, multiprocessing.cpu_count())
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all encoding jobs
+            futures = {}
+            for segment in segments:
+                output_segment = encoded_dir / segment.name
+                future = executor.submit(encode_segment, segment, output_segment, crop_filter)
+                futures[future] = segment
+
+            # Monitor jobs as they complete
+            failed_segments = []
+            for future in as_completed(futures):
+                segment = futures[future]
+                try:
+                    future.result()
+                    log.info("Successfully encoded segment: %s", segment.name)
+                except Exception as e:
+                    log.error("Failed to encode segment %s: %s", segment.name, e)
+                    failed_segments.append(segment)
+
+            if failed_segments:
+                log.error("Failed to encode %d segments", len(failed_segments))
+                return False
         
         # Validate encoded segments
         if not validate_encoded_segments(segments_dir):
