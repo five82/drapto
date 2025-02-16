@@ -17,6 +17,48 @@ from ..formatting import print_info, print_check
 
 log = logging.getLogger(__name__)
 
+def merge_segments(segment1: Path, segment2: Path, output: Path) -> bool:
+    """
+    Merge two segments using ffmpeg's concat demuxer
+    
+    Args:
+        segment1: First segment
+        segment2: Second segment to append
+        output: Output path for merged segment
+        
+    Returns:
+        bool: True if merge successful
+    """
+    # Create temporary concat file
+    concat_file = output.parent / "concat.txt"
+    try:
+        with open(concat_file, 'w') as f:
+            f.write(f"file '{segment1.absolute()}'\n")
+            f.write(f"file '{segment2.absolute()}'\n")
+            
+        cmd = [
+            "ffmpeg", "-hide_banner", "-loglevel", "warning",
+            "-f", "concat",
+            "-safe", "0",
+            "-i", str(concat_file),
+            "-c", "copy",
+            "-y", str(output)
+        ]
+        run_cmd(cmd)
+        
+        # Verify merged output
+        if not output.exists() or output.stat().st_size == 0:
+            log.error("Failed to create merged segment")
+            return False
+            
+        return True
+    except Exception as e:
+        log.error("Failed to merge segments: %s", e)
+        return False
+    finally:
+        if concat_file.exists():
+            concat_file.unlink()
+
 def validate_segments(input_file: Path, segment_length: int, variable_segmentation: bool = False) -> bool:
     """
     Validate video segments after segmentation.
@@ -109,34 +151,26 @@ def validate_segments(input_file: Path, segment_length: int, variable_segmentati
             log.info("Segment %s: duration=%.2fs, codec=%s", segment.name, duration, codec)
     
             # Check if segment duration is short
-            if duration < 1.0:
-                # For any short segment, check scene alignment
-                from .scene_detection import detect_scenes
-                scenes = detect_scenes(input_file)
-                cumulative_duration = sum(d for _, d in valid_segments)
-                segment_end = cumulative_duration + duration
-                tolerance = 0.5  # seconds
-                aligned = any(abs(scene - segment_end) <= tolerance for scene in scenes)
+            if duration < 1.0 and valid_segments:
+                # Try to merge with previous segment
+                prev_segment, prev_duration = valid_segments[-1]
+                merged_name = f"merged_{prev_segment.stem}_{segment.stem}.mkv"
+                merged_path = segment.parent / merged_name
                 
-                if aligned:
-                    log.info("Short segment %.2fs in %s aligns with scene change", duration, segment.name)
-                    valid_segments.append((segment, duration))
+                if merge_segments(prev_segment, segment, merged_path):
+                    log.info("Merged short segment %.2fs with previous segment", duration)
+                    # Update the previous segment entry with merged segment
+                    merged_duration = prev_duration + duration
+                    valid_segments[-1] = (merged_path, merged_duration)
                     total_segment_duration += duration
+                    # Clean up original segments
+                    prev_segment.unlink()
+                    segment.unlink()
                 else:
-                    # For non-scene-aligned short segments:
-                    if segment == segments[-1]:
-                        # Last segment can be shorter, but not too short
-                        if duration < 0.1:
-                            log.warning("Skipping very short last segment: %.2fs in %s", duration, segment.name)
-                            continue
-                        valid_segments.append((segment, duration))
-                        total_segment_duration += duration
-                    else:
-                        # Skip non-scene-aligned short segments
-                        log.warning("Skipping short non-scene-aligned segment: %.2fs in %s", duration, segment.name)
-                        continue
+                    log.error("Failed to merge short segment: %s", segment.name)
+                    return False
             else:
-                # Normal duration segment
+                # Normal duration segment or first segment
                 valid_segments.append((segment, duration))
                 total_segment_duration += duration
     
