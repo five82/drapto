@@ -75,6 +75,10 @@ def process_file(input_file: Path, output_file: Path) -> Optional[Path]:
         log.info("Output size: %s", format_size(output_size))
         log.info("Reduction:   %.2f%%", reduction)
         
+        # Clean up temporary working directories and files in /tmp after successful encode
+        from .utils import cleanup_working_dirs
+        cleanup_working_dirs()
+        
         return output_file
         
     except Exception as e:

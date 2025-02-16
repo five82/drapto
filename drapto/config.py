@@ -6,6 +6,9 @@ from pathlib import Path
 # Get script directory 
 SCRIPT_DIR = Path(__file__).parent.resolve()
 
+# Working root directory in /tmp
+WORKING_ROOT = Path(os.environ.get("DRAPTO_WORKDIR", "/tmp/drapto"))
+
 # Paths
 FFMPEG = SCRIPT_DIR / "ffmpeg"
 FFPROBE = SCRIPT_DIR / "ffprobe"
@@ -38,11 +41,10 @@ VMAF_SAMPLE_COUNT = 3
 VMAF_SAMPLE_LENGTH = 1
 
 # Temporary directories for chunked encoding
-SEGMENTS_DIR = SCRIPT_DIR / "videos" / "segments"
-ENCODED_SEGMENTS_DIR = SCRIPT_DIR / "videos" / "encoded_segments"
-WORKING_DIR = SCRIPT_DIR / "videos" / "working"
+SEGMENTS_DIR = WORKING_ROOT / "segments"
+ENCODED_SEGMENTS_DIR = WORKING_ROOT / "encoded_segments" 
+WORKING_DIR = WORKING_ROOT / "working"
 
 # Create required directories
-for directory in [INPUT_DIR, OUTPUT_DIR, LOG_DIR, SEGMENTS_DIR, 
-                 ENCODED_SEGMENTS_DIR, WORKING_DIR]:
+for directory in [INPUT_DIR, OUTPUT_DIR, LOG_DIR]:
     directory.mkdir(parents=True, exist_ok=True)

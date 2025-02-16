@@ -64,3 +64,14 @@ def check_dependencies() -> bool:
             return False
     
     return True
+
+def cleanup_working_dirs():
+    """Clean up all encoding working directories and files in the working root."""
+    from .config import WORKING_ROOT
+    import shutil
+    try:
+        if WORKING_ROOT.exists():
+            shutil.rmtree(WORKING_ROOT)
+            logger.info("Cleaned up working directories in %s", WORKING_ROOT)
+    except Exception as e:
+        logger.error("Failed to clean up working directories: %s", e)
