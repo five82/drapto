@@ -28,6 +28,7 @@ def validate_segments(input_file: Path, segment_length: int) -> bool:
     Returns:
         bool: True if all segments are valid
     """
+    from .scene_detection import detect_scenes, validate_segment_boundaries
     segments_dir = WORKING_DIR / "segments"
     segments = sorted(segments_dir.glob("*.mkv"))
     
@@ -134,6 +135,18 @@ def validate_segments(input_file: Path, segment_length: int) -> bool:
         log.error("Total valid segment duration (%.2fs) differs significantly from input (%.2fs)",
                   total_segment_duration, total_duration)
         return False
+
+    # Detect scenes and validate segment boundaries against scene changes
+    scenes = detect_scenes(input_file)
+    short_segments = validate_segment_boundaries(segments_dir, scenes)
+    
+    # Don't fail validation for short segments that align with scene changes
+    problematic_segments = [s for s, is_scene in short_segments if not is_scene]
+    if problematic_segments:
+        log.warning(
+            "Found %d problematic short segments not aligned with scene changes",
+            len(problematic_segments)
+        )
     
     print_check(f"Successfully validated {valid_count} segments")
     return True
