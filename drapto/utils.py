@@ -59,8 +59,16 @@ def run_cmd_with_progress(cmd: List[str], total_duration: Optional[float] = None
                     hours, minutes, seconds = parts
                     current_time = int(hours)*3600 + int(minutes)*60 + float(seconds)
                     percent = (current_time / total_duration) * 100
+                    # Calculate estimated remaining time
+                    remaining_seconds = total_duration - current_time
+                    if remaining_seconds < 0:
+                        remaining_seconds = 0
+                    remaining_hours = int(remaining_seconds // 3600)
+                    remaining_minutes = int((remaining_seconds % 3600) // 60)
+                    remaining_secs = int(remaining_seconds % 60)
+                    formatted_remaining = f"{remaining_hours:02d}h {remaining_minutes:02d}m {remaining_secs:02d}s"
                     if percent - last_logged_percent >= log_interval:
-                        logger.info("Progress: %.2f%%, fps: %s", percent, current_fps)
+                        logger.info("Progress: %.2f%%, fps: %s, remaining: %s", percent, current_fps, formatted_remaining)
                         last_logged_percent = percent
                 else:
                     logger.debug("Unexpected out_time format: %s", time_str)
