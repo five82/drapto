@@ -9,7 +9,7 @@ from pathlib import Path
 from rich.logging import RichHandler
 
 from . import __version__
-from .formatting import print_header, print_error
+from .formatting import print_header, print_error, print_info, print_success
 from .pipeline import process_directory, process_file
 from .utils import check_dependencies
 

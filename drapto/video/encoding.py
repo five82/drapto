@@ -12,6 +12,7 @@ from ..config import (
     WORKING_DIR
 )
 from ..utils import run_cmd, run_cmd_interactive, run_cmd_with_progress
+from ..formatting import print_check
 from .hardware import get_hwaccel_options
 from .detection import detect_crop
 from .segmentation import (
