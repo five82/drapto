@@ -17,16 +17,17 @@ from ..formatting import print_info, print_check
 
 log = logging.getLogger(__name__)
 
-def validate_segments(input_file: Path, segment_length: int) -> bool:
+def validate_segments(input_file: Path, segment_length: int, variable_segmentation: bool = False) -> bool:
     """
-    Validate video segments after segmentation
+    Validate video segments after segmentation.
     
     Args:
-        input_file: Original input video file for duration comparison
-        segment_length: Expected segment length in seconds
+        input_file: Original input video file for duration comparison.
+        segment_length: Expected segment length in seconds (for fixed segmentation).
+        variable_segmentation: If True, variable (scene-based) segmentation was used.
         
     Returns:
-        bool: True if all segments are valid
+        bool: True if all segments are valid.
     """
     from .scene_detection import detect_scenes, validate_segment_boundaries
     segments_dir = WORKING_DIR / "segments"
@@ -37,26 +38,40 @@ def validate_segments(input_file: Path, segment_length: int) -> bool:
         return False
     log.info("Found %d segments", len(segments))
         
-    # Get input duration
-    try:
-        result = run_cmd([
-            "ffprobe", "-v", "error",
-            "-show_entries", "format=duration",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(input_file)
-        ])
-        total_duration = float(result.stdout.strip())
-        expected_segments = (total_duration + segment_length - 1) // segment_length
-        
-        if len(segments) < expected_segments * 0.9:  # Allow 10% tolerance
-            log.error(
-                "Found fewer segments than expected: %d vs %d expected",
-                len(segments), expected_segments
-            )
+    if not variable_segmentation:
+        # Fixed segmentation: perform expected segments check.
+        try:
+            result = run_cmd([
+                "ffprobe", "-v", "error",
+                "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                str(input_file)
+            ])
+            total_duration = float(result.stdout.strip())
+            expected_segments = (total_duration + segment_length - 1) // segment_length
+            
+            if len(segments) < expected_segments * 0.9:  # Allow 10% tolerance
+                log.error(
+                    "Found fewer segments than expected: %d vs %d expected",
+                    len(segments), expected_segments
+                )
+                return False
+        except Exception as e:
+            log.error("Failed to get input duration: %s", e)
             return False
-    except Exception as e:
-        log.error("Failed to get input duration: %s", e)
-        return False
+    else:
+        log.info("Variable segmentation in use; skipping fixed expected segments check")
+        try:
+            result = run_cmd([
+                "ffprobe", "-v", "error",
+                "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                str(input_file)
+            ])
+            total_duration = float(result.stdout.strip())
+        except Exception as e:
+            log.error("Failed to get input duration: %s", e)
+            return False
         
     # Validate each segment and build a list of valid segments
     total_segment_duration = 0.0
@@ -143,10 +158,16 @@ def validate_segments(input_file: Path, segment_length: int) -> bool:
         log.error("Found fewer valid segments than expected: %d vs %d expected", valid_count, expected_segments)
         return False
     
-    if abs(total_segment_duration - total_duration) > segment_length:
-        log.error("Total valid segment duration (%.2fs) differs significantly from input (%.2fs)",
-                  total_segment_duration, total_duration)
-        return False
+    if not variable_segmentation:
+        if abs(total_segment_duration - total_duration) > segment_length:
+            log.error("Total valid segment duration (%.2fs) differs significantly from input (%.2fs)",
+                      total_segment_duration, total_duration)
+            return False
+    else:
+        if abs(total_segment_duration - total_duration) > max(1.0, segment_length * 0.5):
+            log.error("Total valid segment duration (%.2fs) differs significantly from input (%.2fs)",
+                      total_segment_duration, total_duration)
+            return False
 
     # Detect scenes and validate segment boundaries against scene changes
     scenes = detect_scenes(input_file)
@@ -216,11 +237,23 @@ def segment_video(input_file: Path) -> bool:
                 "-reset_timestamps", "1",
                 str(segments_dir / "%04d.mkv")
             ])
-        run_cmd(cmd)
-        
-        # Validate segments
-        if not validate_segments(input_file, SEGMENT_LENGTH):
-            return False
+        variable_seg = True
+    else:
+        cmd.extend([
+            "-i", str(input_file),
+            "-c:v", "copy",
+            "-an",
+            "-f", "segment",
+            "-segment_time", str(SEGMENT_LENGTH),
+            "-reset_timestamps", "1",
+            str(segments_dir / "%04d.mkv")
+        ])
+        variable_seg = False
+    run_cmd(cmd)
+    
+    # Validate segments with the appropriate variable_segmentation flag
+    if not validate_segments(input_file, SEGMENT_LENGTH, variable_segmentation=variable_seg):
+        return False
             
         return True
         
