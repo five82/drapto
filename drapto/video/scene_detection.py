@@ -82,8 +82,13 @@ def detect_scenes(input_file: Path) -> List[float]:
                     else:
                         log.warning("Unrecognized scene object: %r", scene)
                         continue
+                    # Filter based on scene change strength if available
                     if start_time > 1.0:  # Skip very early scenes
-                        raw_timestamps.append(start_time)
+                        if hasattr(scene, "change_score"):
+                            if scene.change_score >= (SCENE_THRESHOLD / 2):
+                                raw_timestamps.append(start_time)
+                        else:
+                            raw_timestamps.append(start_time)
                 except Exception as e:
                     log.warning("Error processing scene timestamp: %s", e)
                     continue
@@ -102,7 +107,14 @@ def detect_scenes(input_file: Path) -> List[float]:
                 current_cluster = [sorted_times[0]]
                 
                 for t in sorted_times[1:]:
-                    if t - current_cluster[-1] <= window:
+                    # Use adaptive window based on configuration
+                    adaptive_window = window
+                    if hasattr(t, 'change_score'):
+                        # Adjust window based on scene change strength
+                        score_factor = t.change_score / SCENE_THRESHOLD
+                        adaptive_window = window * (1.0 + score_factor)
+                    
+                    if t - current_cluster[-1] <= adaptive_window:
                         current_cluster.append(t)
                     else:
                         # Use median of cluster as representative timestamp
@@ -123,7 +135,8 @@ def detect_scenes(input_file: Path) -> List[float]:
             
             for time in timestamps:
                 gap = time - last_time
-                if gap > MAX_SEGMENT_LENGTH:
+                # Only split if gap is significantly larger than target length
+                if gap > MAX_SEGMENT_LENGTH or gap > TARGET_SEGMENT_LENGTH * 1.25:
                     # Add intermediate points for very long gaps
                     # Use dynamic spacing based on gap size
                     num_splits = max(1, int(gap / TARGET_SEGMENT_LENGTH))
