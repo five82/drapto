@@ -27,7 +27,12 @@ def detect_dolby_vision(input_file: Path) -> bool:
             text=True,
             check=True
         )
-        return "Dolby Vision" in result.stdout
+        detected = "Dolby Vision" in result.stdout
+        if detected:
+            log.info("Dolby Vision detected")
+        else:
+            log.info("Dolby Vision not detected")
+        return detected
     except subprocess.CalledProcessError:
         log.warning("Failed to run mediainfo on %s", input_file)
         return False
