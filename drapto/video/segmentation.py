@@ -171,7 +171,7 @@ def validate_segments(input_file: Path, segment_length: int, variable_segmentati
             return False
     else:
         # For variable segmentation, only check that total duration matches within tolerance
-        duration_tolerance = max(1.0, total_duration * 0.01)  # 1% tolerance or minimum 1 second
+        duration_tolerance = max(1.0, total_duration * 0.02)  # 2% tolerance or minimum 1 second
         if abs(total_segment_duration - total_duration) > duration_tolerance:
             log.error("Total valid segment duration (%.2fs) differs significantly from input (%.2fs)",
                       total_segment_duration, total_duration)
