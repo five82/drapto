@@ -14,7 +14,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def run_cmd_with_progress(cmd: List[str], total_duration: Optional[float] = None, log_interval: float = 5.0) -> int:
+def run_cmd_with_progress(cmd: List[str], total_duration: Optional[float] = None, log_interval: float = 3.0) -> int:
     """
     Run an ffmpeg command with the -progress pipe:1 option.
     It reads progress output and logs a concise update (percentage and fps)
