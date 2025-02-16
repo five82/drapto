@@ -110,6 +110,8 @@ def encode_audio_track(input_file: Path, track_index: int) -> Optional[Path]:
             "-avoid_negative_ts", "make_zero",
             "-y", str(output_file)
         ]
+        formatted_cmd = " \\\n    ".join(cmd)
+        log.info("Audio encoding command for track %d:\n%s", track_index, formatted_cmd)
         run_cmd(cmd)
         
         return output_file
