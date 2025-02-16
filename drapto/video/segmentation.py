@@ -107,7 +107,7 @@ def encode_segments(crop_filter: Optional[str] = None) -> bool:
                 "--samples", str(VMAF_SAMPLE_COUNT),
                 "--sample-duration", f"{VMAF_SAMPLE_LENGTH}s",
                 "--vmaf", "n_subsample=8:pool=harmonic_mean",
-                "--pix_fmt", "yuv420p10le",
+                "--pix-format", "yuv420p10le",
                 "--quiet"
             ]
             if crop_filter:
