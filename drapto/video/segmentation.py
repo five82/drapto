@@ -145,7 +145,7 @@ def validate_segments(input_file: Path, segment_length: int, variable_segmentati
             log.error("Failed to validate segment %s: %s", segment.name, e)
             return False
     
-    # After processing, check if the count of valid segments meets expectations.
+    # After processing, validate total duration
     valid_count = len(valid_segments)
     try:
         result = run_cmd([
@@ -158,19 +158,21 @@ def validate_segments(input_file: Path, segment_length: int, variable_segmentati
     except Exception as e:
         log.error("Failed to get input duration: %s", e)
         return False
-    
-    expected_segments = (total_duration + segment_length - 1) // segment_length
-    if valid_count < expected_segments * 0.9:
-        log.error("Found fewer valid segments than expected: %d vs %d expected", valid_count, expected_segments)
-        return False
-    
+
+    # For fixed segmentation, check both duration and expected count
     if not variable_segmentation:
+        expected_segments = (total_duration + segment_length - 1) // segment_length
+        if valid_count < expected_segments * 0.9:
+            log.error("Found fewer valid segments than expected: %d vs %d expected", valid_count, expected_segments)
+            return False
         if abs(total_segment_duration - total_duration) > segment_length:
             log.error("Total valid segment duration (%.2fs) differs significantly from input (%.2fs)",
                       total_segment_duration, total_duration)
             return False
     else:
-        if abs(total_segment_duration - total_duration) > max(1.0, segment_length * 0.5):
+        # For variable segmentation, only check that total duration matches within tolerance
+        duration_tolerance = max(1.0, total_duration * 0.01)  # 1% tolerance or minimum 1 second
+        if abs(total_segment_duration - total_duration) > duration_tolerance:
             log.error("Total valid segment duration (%.2fs) differs significantly from input (%.2fs)",
                       total_segment_duration, total_duration)
             return False
