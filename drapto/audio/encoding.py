@@ -100,7 +100,7 @@ def encode_audio_track(input_file: Path, track_index: int) -> Optional[Path]:
         
         # Encode audio track
         cmd = [
-            "ffmpeg", "-hide_banner", "-loglevel", "debug",
+            "ffmpeg", "-hide_banner", "-loglevel", "warning",
             "-i", str(input_file),
             "-map", f"0:a:{track_index}",
             "-c:a", "libopus",

@@ -16,7 +16,7 @@ from .utils import check_dependencies
 def setup_logging():
     """Configure logging with rich output"""
     logging.basicConfig(
-        level=logging.DEBUG,
+        level=logging.INFO,
         format="%(message)s",
         datefmt="[%X]",
         handlers=[RichHandler(rich_tracebacks=True)]

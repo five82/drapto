@@ -65,7 +65,7 @@ def encode_dolby_vision(input_file: Path) -> Optional[Path]:
     # 2. Use simpler command structure
     cmd = [
         "ffmpeg", "-hide_banner",
-        "-loglevel", "debug",
+        "-loglevel", "warning",
         "-hwaccel", "none",
         "-i", str(input_file)
     ]

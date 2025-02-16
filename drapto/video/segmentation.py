@@ -38,7 +38,7 @@ def segment_video(input_file: Path) -> bool:
         hw_opt = get_hwaccel_options(hw_type)
         
         cmd = [
-            "ffmpeg", "-hide_banner", "-loglevel", "debug",
+            "ffmpeg", "-hide_banner", "-loglevel", "warning",
         ]
         
         if hw_opt:
