@@ -60,6 +60,20 @@ def encode_dolby_vision(input_file: Path) -> Optional[Path]:
     else:
         crf = CRF_SD
 
+    # Get total duration in seconds for progress reporting
+    try:
+        duration_result = run_cmd([
+            "ffprobe", "-v", "error",
+            "-select_streams", "v:0",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            str(input_file)
+        ])
+        total_duration = float(duration_result.stdout.strip())
+    except Exception as e:
+        logger.error("Could not get total duration for progress reporting: %s", e)
+        total_duration = None  # We'll still run without progress percentages
+
     # Crop detection for both Dolby Vision and standard encoding
     crop_filter = detect_crop(input_file)
         
@@ -94,7 +108,7 @@ def encode_dolby_vision(input_file: Path) -> Optional[Path]:
     log.info("Dolby Vision encoding command:\n%s", formatted_cmd)
     
     try:
-        if run_cmd_with_progress(cmd) == 0:
+        if run_cmd_with_progress(cmd, total_duration=total_duration, log_interval=5.0) == 0:
             return output_file
         
         log.error("Failed to encode Dolby Vision content")

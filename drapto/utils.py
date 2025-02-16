@@ -14,37 +14,55 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def run_cmd_with_progress(cmd: List[str]) -> int:
+def run_cmd_with_progress(cmd: List[str], total_duration: Optional[float] = None, log_interval: float = 5.0) -> int:
     """
-    Run an ffmpeg command with the -progress pipe:1 option,
-    reading progress status line by line and logging it.
+    Run an ffmpeg command with the -progress pipe:1 option.
+    It reads progress output and logs only when progress increases by a given interval (in percent).
+    
+    Args:
+        cmd: Command list (without the -progress flag)
+        total_duration: Total duration of the video in seconds. If provided, progress is computed.
+        log_interval: Log progress only when percentage increases by at least this many percent.
+        
+    Returns:
+        The process return code.
     """
     import time
 
     # Append the progress flag so that ffmpeg writes progress output to stdout
     cmd_with_progress = cmd + ["-progress", "pipe:1"]
-    
     logger.info("Running ffmpeg command with progress:\n%s", " \\\n    ".join(cmd_with_progress))
     
     process = subprocess.Popen(cmd_with_progress, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     
-    # Continuously read progress lines
+    last_logged_percent = 0.0
+    
     while True:
-        # Read a single line from stdout
         line = process.stdout.readline()
         if line == "":
-            # If the process has terminated, break
             if process.poll() is not None:
                 break
             else:
                 time.sleep(0.1)
                 continue
         line = line.strip()
-        # ffmpeg progress output is in KEY=VALUE format; you can parse it
-        # For this example, we'll just log the progress line.
-        logger.info("ffmpeg progress: %s", line)
-    
-    # Wait for any remaining output and get the return code
+        # If total_duration is provided and this line is out_time_ms, try to log progress every log_interval%
+        if total_duration and line.startswith("out_time_ms="):
+            try:
+                # Remove key and parse value; out_time_ms is an integer number of milliseconds
+                out_time_ms = int(line.replace("out_time_ms=", ""))
+                current_time = out_time_ms / 1000.0  # seconds
+                percent = (current_time / total_duration) * 100
+                if percent - last_logged_percent >= log_interval:
+                    logger.info("Progress: %.2f%%", percent)
+                    last_logged_percent = percent
+            except Exception as e:
+                logger.debug("Error parsing progress line: %s", e)
+        elif line.startswith("progress="):
+            # Optionally, log progress endpoints
+            if line != "progress=continue":
+                logger.info("Progress: %s", line)
+        # For other lines, you might log them at debug level if desired
     process.wait()
     return process.returncode
 
