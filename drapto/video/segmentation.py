@@ -74,6 +74,8 @@ def encode_segments(crop_filter: Optional[str] = None) -> bool:
     
     # Create temporary script for GNU Parallel
     script_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
+    
+    command_logged = False
     try:
         for segment in segments_dir.glob("*.mkv"):
             output_segment = encoded_dir / segment.name
@@ -96,10 +98,12 @@ def encode_segments(crop_filter: Optional[str] = None) -> bool:
             if crop_filter:
                 cmd.extend(["--vfilter", crop_filter])
 
-            # Format the command for better readability in logs
-            formatted_command = " \\\n    ".join(cmd)
-            log.info("Encoding command for segment %s:\n%s", segment.name, formatted_command)
-        
+            # Log the command only once
+            if not command_logged:
+                formatted_command = " \\\n    ".join(cmd)
+                log.info("Encoding command parameters (common for all segments):\n%s", formatted_command)
+                command_logged = True
+
             # Write the command to the temporary script file for GNU Parallel
             script_file.write(" ".join(cmd) + "\n")
             
