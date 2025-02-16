@@ -69,22 +69,26 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
     bitrate_kbps = (output_size * 8) / (output_duration * 1000)
     speed_factor = input_duration / encoding_time
     
-    # Determine CRF based on input segment's resolution
+    # Parse VMAF scores from ab-av1 output if available
+    vmaf_score = None
+    vmaf_min = None
+    vmaf_max = None
     try:
-        width = int(input_info[1])
+        # Look for VMAF scores in stderr output
+        for line in result.stderr.split('\n'):
+            if "VMAF score:" in line:
+                vmaf_parts = line.split(":")
+                if len(vmaf_parts) > 1:
+                    scores = [float(s) for s in vmaf_parts[1].strip().split()]
+                    if scores:
+                        vmaf_score = sum(scores) / len(scores)
+                        vmaf_min = min(scores)
+                        vmaf_max = max(scores)
+                        log.info("  VMAF scores - Avg: %.2f, Min: %.2f, Max: %.2f",
+                                vmaf_score, vmaf_min, vmaf_max)
+                        break
     except Exception as e:
-        log.error("Failed to get segment width: %s", e)
-        width = 0
-        
-    from ..config import CRF_UHD, CRF_HD, CRF_SD
-    if width >= 3840:
-        crf = CRF_UHD
-    elif width >= 1920:
-        crf = CRF_HD
-    else:
-        crf = CRF_SD
-        
-    log.info("  CRF: %s", crf)
+        log.debug("Could not parse VMAF scores: %s", e)
     
     # Compile segment statistics
     stats = {
@@ -97,7 +101,9 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
         'resolution': f"{output_info[1]}x{output_info[2]}",
         'framerate': output_info[3],
         'crop_filter': crop_filter or "none",
-        'crf': crf
+        'vmaf_score': vmaf_score,
+        'vmaf_min': vmaf_min,
+        'vmaf_max': vmaf_max
     }
     
     # Log detailed segment info

@@ -108,11 +108,41 @@ def validate_crop_dimensions(input_file: Path, output_file: Path, validation_rep
 
 def validate_quality_metrics(input_file: Path, output_file: Path, validation_report: list) -> bool:
     """
-    Skip bitrate reduction quality check.
-    (Quality metric not implemented; using file size reduction as the summary metric.)
+    Validate quality metrics based on encoding mode.
+    For chunked encoding, reports VMAF scores if available.
+    For standard encoding, reports CRF value used.
     """
-    validation_report.append("Quality: N/A (quality metric not implemented)")
-    return True
+    from .config import ENABLE_CHUNKED_ENCODING, CRF_SD, CRF_HD, CRF_UHD
+    
+    try:
+        # Get video width to determine quality target
+        result = run_cmd([
+            "ffprobe", "-v", "error",
+            "-select_streams", "v:0",
+            "-show_entries", "stream=width",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            str(input_file)
+        ])
+        width = int(result.stdout.strip())
+        
+        if ENABLE_CHUNKED_ENCODING:
+            # For chunked encoding, we report the target VMAF
+            from .config import TARGET_VMAF
+            validation_report.append(f"Quality target: VMAF {TARGET_VMAF}")
+        else:
+            # For standard encoding, we report the CRF used
+            if width >= 3840:
+                crf = CRF_UHD
+            elif width >= 1920:
+                crf = CRF_HD
+            else:
+                crf = CRF_SD
+            validation_report.append(f"Quality target: CRF {crf}")
+            
+        return True
+    except Exception as e:
+        validation_report.append(f"ERROR: Failed to validate quality metrics: {e}")
+        return False
 
 log = logging.getLogger(__name__)
 
