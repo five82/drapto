@@ -57,11 +57,26 @@ def detect_scenes(input_file: Path) -> List[float]:
                     if hasattr(scene, "start_time"):
                         start_time = scene.start_time.get_seconds()
                     elif isinstance(scene, (tuple, list)):
-                        try:
-                            start_time = float(scene[0])
-                        except Exception as e_index:
-                            log.warning("Error accessing index 0 of scene %r: %s", scene, e_index)
-                            continue
+                        # If the first element is a string in "HH:MM:SS.mmm" format, parse it.
+                        if isinstance(scene[0], str):
+                            try:
+                                parts = scene[0].split(":")
+                                if len(parts) == 3:
+                                    hours = int(parts[0])
+                                    minutes = int(parts[1])
+                                    seconds = float(parts[2])
+                                    start_time = hours * 3600 + minutes * 60 + seconds
+                                else:
+                                    start_time = float(scene[0])
+                            except Exception as e_index:
+                                log.warning("Error parsing time string in scene %r: %s", scene, e_index)
+                                continue
+                        else:
+                            try:
+                                start_time = float(scene[0])
+                            except Exception as e_index:
+                                log.warning("Error converting scene element in scene %r: %s", scene, e_index)
+                                continue
                     elif isinstance(scene, (float, int)):
                         start_time = float(scene)
                     else:
