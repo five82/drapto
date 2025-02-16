@@ -60,10 +60,28 @@ def encode_dolby_vision(input_file: Path) -> Optional[Path]:
     else:
         crf = CRF_SD
         
-    # For Dolby Vision, force software decoding by adding '-hwaccel none'
-    cmd = ["ffmpeg", "-hide_banner", "-loglevel", "debug", "-hwaccel", "none"]
+    # For Dolby Vision content:
+    # 1. Force software decoding
+    # 2. Add thread count control
+    # 3. Add specific decoder options
+    cmd = [
+        "ffmpeg", "-hide_banner",
+        "-loglevel", "debug",
+        "-hwaccel", "none",
+        "-thread_queue_size", "512",
+        "-threads", "4",
+        "-extra_hw_frames", "3"
+    ]
+    
+    # Add input with specific decoder options
     cmd.extend([
-        "-i", str(input_file),
+        "-c:v", "hevc",
+        "-strict", "experimental",
+        "-i", str(input_file)
+    ])
+    
+    # Add encoding options
+    cmd.extend([
         "-map", "0:v:0",
         "-c:v", "libsvtav1",
         "-preset", str(PRESET),
@@ -71,6 +89,7 @@ def encode_dolby_vision(input_file: Path) -> Optional[Path]:
         "-svtav1-params", SVT_PARAMS,
         "-pix_fmt", "yuv420p10le",
         "-dolbyvision", "true",
+        "-max_muxing_queue_size", "1024",
         "-y", str(output_file)
     ])
     
