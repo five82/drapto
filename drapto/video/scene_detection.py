@@ -9,7 +9,10 @@ from scenedetect.scene_manager import save_images
 
 from ..utils import run_cmd
 from ..formatting import print_check, print_warning
-from ..config import SCENE_THRESHOLD, MIN_SCENE_INTERVAL, TARGET_SEGMENT_LENGTH
+from ..config import (
+    SCENE_THRESHOLD, MIN_SCENE_INTERVAL, TARGET_SEGMENT_LENGTH,
+    CLUSTER_WINDOW, MAX_SEGMENT_LENGTH
+)
 
 log = logging.getLogger(__name__)
 
@@ -124,6 +127,7 @@ def detect_scenes(input_file: Path) -> List[float]:
                     "-of", "default=noprint_wrappers=1:nokey=1",
                     str(input_file)
                 ]).stdout.strip())
+                max_gap = TARGET_SEGMENT_LENGTH * 1.5  # Allow 50% overrun
                 while duration - last_time > max_gap:
                     last_time += TARGET_SEGMENT_LENGTH
                     final_timestamps.append(last_time)
