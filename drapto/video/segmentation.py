@@ -27,7 +27,7 @@ def segment_video(input_file: Path) -> bool:
         bool: True if segmentation successful
     """
     segments_dir = WORKING_DIR / "segments"
-    segments_dir.mkdir(exist_ok=True)
+    segments_dir.mkdir(parents=True, exist_ok=True)
     
     try:
         cmd = [
@@ -70,7 +70,7 @@ def encode_segments(crop_filter: Optional[str] = None) -> bool:
         
     segments_dir = WORKING_DIR / "segments"
     encoded_dir = WORKING_DIR / "encoded_segments"
-    encoded_dir.mkdir(exist_ok=True)
+    encoded_dir.mkdir(parents=True, exist_ok=True)
     
     # Create temporary script for GNU Parallel
     script_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
