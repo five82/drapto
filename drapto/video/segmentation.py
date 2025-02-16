@@ -12,6 +12,29 @@ from ..config import (
     VMAF_SAMPLE_LENGTH, PRESET, SVT_PARAMS,
     WORKING_DIR
 )
+
+def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[str] = None) -> None:
+    """
+    Encode a single video segment using ab-av1.
+    """
+    cmd = [
+        "ab-av1", "auto-encode",
+        "--input", str(segment),
+        "--output", str(output_segment),
+        "--encoder", "libsvtav1",
+        "--min-vmaf", str(TARGET_VMAF),
+        "--preset", str(PRESET),
+        "--svt", SVT_PARAMS,
+        "--keyint", "10s",
+        "--samples", str(VMAF_SAMPLE_COUNT),
+        "--sample-duration", f"{VMAF_SAMPLE_LENGTH}s",
+        "--vmaf", "n_subsample=8:pool=harmonic_mean",
+        "--pix-format", "yuv420p10le",
+        "--quiet"
+    ]
+    if crop_filter:
+        cmd.extend(["--vfilter", crop_filter])
+    run_cmd(cmd)
 from ..utils import run_cmd, check_dependencies
 from ..formatting import print_info, print_check
 
@@ -310,27 +333,6 @@ def encode_segments(crop_filter: Optional[str] = None) -> bool:
     from concurrent.futures import ProcessPoolExecutor, as_completed
     import multiprocessing
 
-    def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[str] = None) -> None:
-        """Encode a single video segment using ab-av1"""
-        cmd = [
-            "ab-av1", "auto-encode",
-            "--input", str(segment),
-            "--output", str(output_segment),
-            "--encoder", "libsvtav1", 
-            "--min-vmaf", str(TARGET_VMAF),
-            "--preset", str(PRESET),
-            "--svt", SVT_PARAMS,
-            "--keyint", "10s",
-            "--samples", str(VMAF_SAMPLE_COUNT),
-            "--sample-duration", f"{VMAF_SAMPLE_LENGTH}s",
-            "--vmaf", "n_subsample=8:pool=harmonic_mean",
-            "--pix-format", "yuv420p10le",
-            "--quiet"
-        ]
-        if crop_filter:
-            cmd.extend(["--vfilter", crop_filter])
-            
-        run_cmd(cmd)
 
     try:
         # Get list of segments to encode
