@@ -153,7 +153,7 @@ def detect_crop(input_file: Path, disable_crop: bool = False) -> Optional[str]:
         if interval < 1:
             interval = 1
         total_samples = 20
-    log.info("Analyzing %d frames for black bars...", total_samples)
+    log.info("Analyzing %d frames for black bars (threshold: %d)...", total_samples, crop_threshold)
 
     # Get original video dimensions via ffprobe
     try:

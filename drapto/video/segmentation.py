@@ -101,7 +101,8 @@ def encode_segments(crop_filter: Optional[str] = None) -> bool:
             # Log the command only once
             if not command_logged:
                 formatted_command = " \\\n    ".join(cmd)
-                log.info("Encoding command parameters (common for all segments):\n%s", formatted_command)
+                print_info("Encoding command parameters (common for all segments):")
+                log.info("\n%s", formatted_command)
                 command_logged = True
 
             # Write the command to the temporary script file for GNU Parallel

@@ -90,9 +90,11 @@ def encode_audio_track(input_file: Path, track_index: int) -> Optional[Path]:
             bitrate = f"{num_channels * 48}k"
             layout = "custom"
             
-        log.info(
-            "Configuring audio track %d: %d channels, %s layout, %s bitrate",
-            track_index, num_channels, layout, bitrate
+        print_info(
+            f"Configuring audio track {track_index}:\n"
+            f"Channels: {num_channels}\n"
+            f"Layout:   {layout}\n"
+            f"Bitrate:  {bitrate}"
         )
         
         # Encode audio track
