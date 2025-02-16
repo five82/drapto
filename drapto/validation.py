@@ -14,9 +14,13 @@ def validate_output(input_file: Path, output_file: Path) -> bool:
     Validate the output file to ensure encoding was successful.
     Checks:
     - File exists and has size
-    - Video stream is AV1
-    - Audio streams are Opus
+    - Video stream properties (codec, resolution, framerate, bit depth)
+    - Audio streams (codec, channel layout, bitrate)
     - Duration matches input (within 1 second)
+    - Container integrity
+    - Subtitle track preservation
+    - Crop dimensions (if applied)
+    - Quality metrics (VMAF)
     
     Args:
         input_file: Path to input video file
@@ -26,35 +30,38 @@ def validate_output(input_file: Path, output_file: Path) -> bool:
         bool: True if validation successful
     """
     error = False
+    validation_report = []
     
     # Check if file exists and has size
     if not output_file.exists() or output_file.stat().st_size == 0:
         print_error("Output file is empty or doesn't exist")
         return False
-        
-    # Check video stream
-    try:
-        result = run_cmd([
-            "ffprobe", "-v", "error",
-            "-select_streams", "v",
-            "-show_entries", "stream=codec_name",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(output_file)
-        ])
-        video_codec = result.stdout.strip()
-        if video_codec != "av1":
-            print_error(f"No AV1 video stream found in output (found {video_codec})")
-            error = True
+
+    # Validate video stream properties
+    error |= not validate_video_stream(input_file, output_file, validation_report)
+    
+    # Validate audio streams
+    error |= not validate_audio_streams(input_file, output_file, validation_report)
+    
+    # Validate subtitle tracks
+    error |= not validate_subtitle_tracks(input_file, output_file, validation_report)
+    
+    # Validate container integrity
+    error |= not validate_container(output_file, validation_report)
+    
+    # Validate crop dimensions if applied
+    error |= not validate_crop_dimensions(input_file, output_file, validation_report)
+    
+    # Run quality metrics check
+    error |= not validate_quality_metrics(input_file, output_file, validation_report)
+    
+    # Output validation report
+    print_header("Validation Report")
+    for entry in validation_report:
+        if entry.startswith("ERROR"):
+            print_error(entry[7:])  # Skip "ERROR: " prefix
         else:
-            # Get duration if codec check passes
-            result = run_cmd([
-                "ffprobe", "-v", "error",
-                "-show_entries", "format=duration",
-                "-of", "default=noprint_wrappers=1:nokey=1",
-                str(output_file)
-            ])
-            duration = float(result.stdout.strip())
-            print_check(f"Video stream: AV1, Duration: {duration:.2f}s")
+            print_check(entry)
     except Exception as e:
         log.error("Failed to check video stream: %s", e)
         error = True
