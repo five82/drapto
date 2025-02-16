@@ -237,16 +237,8 @@ def segment_video(input_file: Path) -> bool:
             ])
             variable_seg = True
         else:
-            cmd.extend([
-                "-i", str(input_file),
-                "-c:v", "copy",
-                "-an",
-                "-f", "segment",
-                "-segment_time", str(SEGMENT_LENGTH),
-                "-reset_timestamps", "1",
-                str(segments_dir / "%04d.mkv")
-            ])
-            variable_seg = False
+            log.error("Scene detection failed; no scenes detected. Failing segmentation.")
+            return False
             
         run_cmd(cmd)
         
