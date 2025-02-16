@@ -62,23 +62,13 @@ def encode_dolby_vision(input_file: Path) -> Optional[Path]:
         
     # For Dolby Vision content:
     # 1. Force software decoding
-    # 2. Add thread count control
-    # 3. Add specific decoder options
+    # 2. Use simpler command structure
     cmd = [
         "ffmpeg", "-hide_banner",
         "-loglevel", "debug",
         "-hwaccel", "none",
-        "-thread_queue_size", "512",
-        "-threads", "4",
-        "-extra_hw_frames", "3"
-    ]
-    
-    # Add input with specific decoder options
-    cmd.extend([
-        "-c:v", "hevc",
-        "-strict", "experimental",
         "-i", str(input_file)
-    ])
+    ]
     
     # Add encoding options
     cmd.extend([
