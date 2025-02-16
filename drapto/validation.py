@@ -127,8 +127,11 @@ def validate_quality_metrics(input_file: Path, output_file: Path, validation_rep
         ]).stdout.strip()
         
         if in_bitrate and out_bitrate:
-            reduction = (int(in_bitrate) - int(out_bitrate)) / int(in_bitrate) * 100
-            validation_report.append(f"Quality: {reduction:.1f}% bitrate reduction")
+            try:
+                reduction = (int(in_bitrate) - int(out_bitrate)) / int(in_bitrate) * 100
+                validation_report.append(f"Quality: {reduction:.1f}% bitrate reduction")
+            except ValueError:
+                validation_report.append("Quality: Could not calculate bitrate reduction (N/A values)")
         return True
     except Exception as e:
         validation_report.append(f"ERROR: Failed to validate quality metrics: {e}")

@@ -80,10 +80,12 @@ def process_file(input_file: Path, output_file: Path) -> Optional[dict]:
             log.error("Muxing failed")
             return None
             
-        # Validate the output
+        # Validate the output; the validation report prints its messages.
         from .validation import validate_output
-        if not validate_output(input_file, output_file):
-            return None
+        valid_output = validate_output(input_file, output_file)
+        if not valid_output:
+            log.error("Output validation failed. Please check the Validation Report above.")
+        # Continue to produce the encoding summary regardless of validation results.
             
         # Get size info for summary
         input_size = get_file_size(input_file)
