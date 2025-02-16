@@ -56,13 +56,8 @@ def encode_dolby_vision(input_file: Path) -> Optional[Path]:
     else:
         crf = CRF_SD
         
-    # Get hardware acceleration options
-    hwaccel_opts = get_hwaccel_options()
-    
-    # Build ffmpeg command
+    # For Dolby Vision, disable hardware acceleration (it can cause conflicts)
     cmd = ["ffmpeg", "-hide_banner", "-loglevel", "warning"]
-    if hwaccel_opts:
-        cmd.extend(hwaccel_opts.split())
     cmd.extend([
         "-i", str(input_file),
         "-map", "0:v:0",
@@ -79,14 +74,13 @@ def encode_dolby_vision(input_file: Path) -> Optional[Path]:
         return output_file
     except Exception as e:
         log.error("Failed to encode Dolby Vision content: %s", e)
-        if hwaccel_opts:
-            log.info("Retrying without hardware acceleration")
-            cmd[1:1] = []  # Remove hwaccel options
-            try:
-                run_cmd(cmd)
-                return output_file
-            except Exception as e:
-                log.error("Software fallback failed: %s", e)
+        log.info("Retrying without hardware acceleration")
+        try:
+            # Retry is not really needed now because we already removed hwaccel options.
+            run_cmd(cmd)
+            return output_file
+        except Exception as e:
+            log.error("Software fallback failed: %s", e)
         return None
 
 def encode_standard(input_file: Path) -> Optional[Path]:
