@@ -94,7 +94,7 @@ def encode_dolby_vision(input_file: Path) -> Optional[Path]:
     log.info("Dolby Vision encoding command:\n%s", formatted_cmd)
     
     try:
-        if run_cmd_interactive(cmd) == 0:
+        if run_cmd_with_progress(cmd) == 0:
             return output_file
         
         log.error("Failed to encode Dolby Vision content")

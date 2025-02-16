@@ -14,6 +14,40 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+def run_cmd_with_progress(cmd: List[str]) -> int:
+    """
+    Run an ffmpeg command with the -progress pipe:1 option,
+    reading progress status line by line and logging it.
+    """
+    import time
+
+    # Append the progress flag so that ffmpeg writes progress output to stdout
+    cmd_with_progress = cmd + ["-progress", "pipe:1"]
+    
+    logger.info("Running ffmpeg command with progress:\n%s", " \\\n    ".join(cmd_with_progress))
+    
+    process = subprocess.Popen(cmd_with_progress, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    
+    # Continuously read progress lines
+    while True:
+        # Read a single line from stdout
+        line = process.stdout.readline()
+        if line == "":
+            # If the process has terminated, break
+            if process.poll() is not None:
+                break
+            else:
+                time.sleep(0.1)
+                continue
+        line = line.strip()
+        # ffmpeg progress output is in KEY=VALUE format; you can parse it
+        # For this example, we'll just log the progress line.
+        logger.info("ffmpeg progress: %s", line)
+    
+    # Wait for any remaining output and get the return code
+    process.wait()
+    return process.returncode
+
 def run_cmd_interactive(cmd: List[str]) -> int:
     """Run a command interactively so that its output (including progress bar)
     is printed directly to the console."""

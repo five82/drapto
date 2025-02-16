@@ -115,7 +115,7 @@ def encode_audio_track(input_file: Path, track_index: int) -> Optional[Path]:
         ]
         formatted_cmd = " \\\n    ".join(cmd)
         log.info("Audio encoding command for track %d:\n%s", track_index, formatted_cmd)
-        if run_cmd_interactive(cmd) != 0:
+        if run_cmd_with_progress(cmd) != 0:
             raise RuntimeError(f"Audio encoding failed for track {track_index}")
         
         return output_file
