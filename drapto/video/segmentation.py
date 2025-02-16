@@ -17,7 +17,7 @@ from ..formatting import print_info, print_check
 
 log = logging.getLogger(__name__)
 
-def merge_segments(segment1: Path, segment2: Path, output: Path) -> bool:
+def merge_segments(segments: List[Path], output: Path) -> bool:
     """
     Merge two segments using ffmpeg's concat demuxer
     
@@ -33,8 +33,8 @@ def merge_segments(segment1: Path, segment2: Path, output: Path) -> bool:
     concat_file = output.parent / "concat.txt"
     try:
         with open(concat_file, 'w') as f:
-            f.write(f"file '{segment1.absolute()}'\n")
-            f.write(f"file '{segment2.absolute()}'\n")
+            for segment in segments:
+                f.write(f"file '{segment.absolute()}'\n")
             
         cmd = [
             "ffmpeg", "-hide_banner", "-loglevel", "warning",

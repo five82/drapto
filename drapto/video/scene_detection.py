@@ -47,38 +47,34 @@ def detect_scenes(input_file: Path) -> List[float]:
                 log.error("Adaptive scene detection failed: %s", e)
                 raise
         
-        # Convert scene list to timestamps with enhanced error handling and debug logging
+        # Convert scene list to timestamps and enforce minimum intervals
         timestamps = []
+        last_time = 0.0
+        
         for scene in scenes:
             log.debug("Processing scene object: %r (type: %s)", scene, type(scene))
             try:
-                # Attempt to safely get the scene's start time.
-                try:
-                    if hasattr(scene, "start_time"):
-                        start_time = scene.start_time.get_seconds()
-                        log.debug("Using start_time attribute: %f", start_time)
-                    elif isinstance(scene, (tuple, list)):
-                        # Use a nested try/except to catch slicing/indexing errors.
-                        try:
-                            start_time = float(scene[0])
-                            log.debug("Converted first element to float: %f", start_time)
-                        except Exception as e_index:
-                            log.warning("Error accessing index 0 of scene %r: %s", scene, e_index)
-                            continue
-                    elif isinstance(scene, (float, int)):
-                        start_time = float(scene)
-                        log.debug("Scene object is numeric: %f", start_time)
-                    else:
-                        log.warning("Unrecognized scene object: %r", scene)
+                # Get scene timestamp
+                if hasattr(scene, "start_time"):
+                    start_time = scene.start_time.get_seconds()
+                elif isinstance(scene, (tuple, list)):
+                    try:
+                        start_time = float(scene[0])
+                    except Exception as e_index:
+                        log.warning("Error accessing index 0 of scene %r: %s", scene, e_index)
                         continue
-                except Exception as inner_e:
-                    log.warning("Inner error processing scene object %r: %s", scene, inner_e)
+                elif isinstance(scene, (float, int)):
+                    start_time = float(scene)
+                else:
+                    log.warning("Unrecognized scene object: %r", scene)
                     continue
-            except Exception as conv_e:
-                log.warning("Error processing scene object %r: %s", scene, conv_e)
-                continue
-            if start_time > 1.0:
-                timestamps.append(start_time)
+                
+                # Only add timestamps that maintain minimum interval
+                if start_time > 1.0 and (start_time - last_time) >= MIN_SCENE_INTERVAL:
+                    timestamps.append(start_time)
+                    last_time = start_time
+                else:
+                    log.debug("Skipping scene at %.2fs (too close to previous)", start_time)
         
         # Add additional timestamps to ensure no segment is too long
         max_gap = TARGET_SEGMENT_LENGTH * 1.5  # Allow 50% overrun
