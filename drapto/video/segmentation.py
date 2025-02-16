@@ -88,6 +88,9 @@ def encode_segments(crop_filter: Optional[str] = None) -> bool:
     encoded_dir = WORKING_DIR / "encoded_segments"
     encoded_dir.mkdir(parents=True, exist_ok=True)
     
+    # Track failed segments for reporting
+    failed_segments = []
+    
     # Create temporary script for GNU Parallel
     script_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
     
@@ -160,9 +163,27 @@ def concatenate_segments(output_file: Path) -> bool:
     concat_file = WORKING_DIR / "concat.txt"
     
     try:
+        # Get total duration of encoded segments
+        total_segment_duration = 0
+        segments = sorted(encoded_dir.glob("*.mkv"))
+        
+        for segment in segments:
+            try:
+                result = run_cmd([
+                    "ffprobe", "-v", "error",
+                    "-show_entries", "format=duration",
+                    "-of", "default=noprint_wrappers=1:nokey=1",
+                    str(segment)
+                ])
+                duration = float(result.stdout.strip())
+                total_segment_duration += duration
+            except Exception as e:
+                log.error("Failed to get duration for segment %s: %s", segment.name, e)
+                return False
+        
         # Create concat file
         with open(concat_file, 'w') as f:
-            for segment in sorted(encoded_dir.glob("*.mkv")):
+            for segment in segments:
                 f.write(f"file '{segment.absolute()}'\n")
                 
         # Concatenate segments
@@ -176,7 +197,47 @@ def concatenate_segments(output_file: Path) -> bool:
         ]
         run_cmd(cmd)
         
-        return True
+        # Validate concatenated output
+        if not output_file.exists() or output_file.stat().st_size == 0:
+            log.error("Concatenated output is missing or empty")
+            return False
+            
+        # Verify output duration matches total segment duration
+        try:
+            result = run_cmd([
+                "ffprobe", "-v", "error",
+                "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                str(output_file)
+            ])
+            output_duration = float(result.stdout.strip())
+            
+            if abs(output_duration - total_segment_duration) > 1.0:
+                log.error(
+                    "Concatenated output duration (%.2fs) differs from "
+                    "total segment duration (%.2fs)",
+                    output_duration, total_segment_duration
+                )
+                return False
+                
+            # Verify AV1 codec in output
+            result = run_cmd([
+                "ffprobe", "-v", "error",
+                "-select_streams", "v",
+                "-show_entries", "stream=codec_name",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                str(output_file)
+            ])
+            if result.stdout.strip() != "av1":
+                log.error("Concatenated output has wrong codec: %s", result.stdout.strip())
+                return False
+                
+            log.info("Successfully validated concatenated output")
+            return True
+            
+        except Exception as e:
+            log.error("Failed to validate concatenated output: %s", e)
+            return False
         
     except Exception as e:
         log.error("Concatenation failed: %s", e)
