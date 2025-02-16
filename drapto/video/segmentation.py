@@ -284,11 +284,6 @@ def segment_video(input_file: Path) -> bool:
     except Exception as e:
         log.error("Segmentation failed: %s", e)
         return False
-        return True
-        
-    except Exception as e:
-        log.error("Segmentation failed: %s", e)
-        return False
 
 def encode_segments(crop_filter: Optional[str] = None) -> bool:
     """
