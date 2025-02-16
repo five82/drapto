@@ -36,21 +36,26 @@ def detect_scenes(input_file: Path) -> List[float]:
             scenes = detect(str(input_file),
                           AdaptiveDetector(min_scene_len=MIN_SCENE_INTERVAL))
         
-        # Convert scene list to timestamps
+        # Convert scene list to timestamps with additional debug logging for troubleshooting
         timestamps = []
         for scene in scenes:
+            log.debug("Processing scene object: %r (type: %s)", scene, type(scene))
             try:
                 if hasattr(scene, "start_time"):
                     start_time = scene.start_time.get_seconds()
-                elif isinstance(scene, (tuple, list)) and len(scene) > 0:
+                    log.debug("Using start_time attribute: %f", start_time)
+                elif isinstance(scene, (tuple, list)):
+                    log.debug("Scene object is tuple/list of length %d: %r", len(scene), scene)
                     start_time = float(scene[0])
+                    log.debug("Converted first element to float: %f", start_time)
                 elif isinstance(scene, (float, int)):
                     start_time = float(scene)
+                    log.debug("Scene object is numeric: %f", start_time)
                 else:
-                    log.warning("Unrecognized scene object: %s", scene)
+                    log.warning("Unrecognized scene object: %r", scene)
                     continue
             except Exception as conv_e:
-                log.warning("Error processing scene object %s: %s", scene, conv_e)
+                log.warning("Error processing scene object %r: %s", scene, conv_e)
                 continue
             if start_time > 1.0:
                 timestamps.append(start_time)
