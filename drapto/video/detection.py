@@ -32,18 +32,184 @@ def detect_dolby_vision(input_file: Path) -> bool:
 
 def detect_crop(input_file: Path, disable_crop: bool = False) -> Optional[str]:
     """
-    Detect black bars and return crop filter string
+    Detect black bars and return an ffmpeg crop filter string.
+    Mirrors the bash implementation by checking for HDR content,
+    adjusting the crop threshold based on black level analysis,
+    sampling frames, and aggregating crop values.
     
     Args:
-        input_file: Path to input video file
-        disable_crop: Skip crop detection if True
-        
+        input_file: Path to input video file.
+        disable_crop: If True, skip crop detection.
+    
     Returns:
-        Optional[str]: ffmpeg crop filter string or None if no crop needed
+        A crop filter string (e.g. "crop=1920:800:0:140") or full dimensions if no cropping is needed.
     """
+    import re
+    from collections import Counter
+
     if disable_crop:
         log.info("Crop detection disabled")
         return None
-        
-    log.info("Crop detection not implemented, skipping crop filter")
-    return None
+
+    log.info("Analyzing video for black bars...")
+
+    # Get color properties from ffprobe
+    try:
+        ct = run_cmd([
+            "ffprobe", "-v", "error", "-select_streams", "v:0",
+            "-show_entries", "stream=color_transfer",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            str(input_file)
+        ]).stdout.strip()
+        cp = run_cmd([
+            "ffprobe", "-v", "error", "-select_streams", "v:0",
+            "-show_entries", "stream=color_primaries",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            str(input_file)
+        ]).stdout.strip()
+        cs = run_cmd([
+            "ffprobe", "-v", "error", "-select_streams", "v:0",
+            "-show_entries", "stream=color_space",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            str(input_file)
+        ]).stdout.strip()
+    except Exception as e:
+        log.error("Unable to read video color properties: %s", e)
+        ct = cp = cs = ""
+
+    # Set initial crop threshold and adjust for HDR content
+    crop_threshold = 16
+    is_hdr = False
+    if (re.match(r"^(smpte2084|arib-std-b67|smpte428|bt2020-10|bt2020-12)$", ct)
+            or cp == "bt2020"
+            or re.match(r"^(bt2020nc|bt2020c)$", cs)):
+        is_hdr = True
+        crop_threshold = 128
+        log.info("HDR content detected, adjusting detection sensitivity")
+
+    # For HDR input, sample a few frames to find average black level and adjust threshold
+    if is_hdr:
+        try:
+            ffmpeg_cmd = [
+                "ffmpeg", "-hide_banner", "-i", str(input_file),
+                "-vf", "select='eq(n,0)+eq(n,100)+eq(n,200)',blackdetect=d=0:pic_th=0.1",
+                "-f", "null", "-"
+            ]
+            result = run_cmd(ffmpeg_cmd, capture_output=True)
+            # ffmpeg outputs blackdetect data on stderr
+            output = result.stderr
+            matches = re.findall(r"black_level:\s*([0-9.]+)", output)
+            if matches:
+                avg_black_level = sum(float(x) for x in matches) / len(matches)
+                black_level = int(avg_black_level)
+            else:
+                black_level = 128
+            crop_threshold = int(black_level * 3 / 2)
+        except Exception as e:
+            log.error("Error during HDR black level analysis: %s", e)
+
+    # Clamp crop_threshold within reasonable bounds
+    if crop_threshold < 16:
+        crop_threshold = 16
+    elif crop_threshold > 256:
+        crop_threshold = 256
+
+    # Determine video duration via ffprobe
+    try:
+        duration_result = run_cmd([
+            "ffprobe", "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            str(input_file)
+        ])
+        duration = float(duration_result.stdout.strip())
+        duration = int(round(duration))
+    except Exception as e:
+        log.error("Failed to get duration: %s", e)
+        duration = 0
+
+    # Skip "credits" for long videos
+    credits_skip = 0
+    if duration > 3600:
+        credits_skip = 180  # Skip 3 minutes for movies > 1 hour
+    elif duration > 1200:
+        credits_skip = 60   # Skip 1 minute for content > 20 minutes
+    elif duration > 300:
+        credits_skip = 30   # Skip 30 seconds for content > 5 minutes
+    if credits_skip > 0 and duration > credits_skip:
+        duration -= credits_skip
+
+    interval = 5  # Check every 5 seconds
+    total_samples = duration // interval
+    if total_samples < 20:
+        interval = duration // 20
+        if interval < 1:
+            interval = 1
+        total_samples = 20
+    log.info("Analyzing %d frames for black bars...", total_samples)
+
+    # Get original video dimensions via ffprobe
+    try:
+        orig_width = int(run_cmd([
+            "ffprobe", "-v", "error", "-select_streams", "v:0",
+            "-show_entries", "stream=width",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            str(input_file)
+        ]).stdout.strip())
+        orig_height = int(run_cmd([
+            "ffprobe", "-v", "error", "-select_streams", "v:0",
+            "-show_entries", "stream=height",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            str(input_file)
+        ]).stdout.strip())
+    except Exception as e:
+        log.error("Failed to get video dimensions: %s", e)
+        return None
+
+    # Run ffmpeg cropdetect filter over a sample of frames
+    try:
+        cropdetect_filter = f"select='not(mod(n,30))',cropdetect=limit={crop_threshold}:round=2:reset=1"
+        frames = total_samples * 2
+        ffmpeg_cmd = [
+            "ffmpeg", "-hide_banner", "-i", str(input_file),
+            "-vf", cropdetect_filter,
+            "-frames:v", str(frames),
+            "-f", "null", "-"
+        ]
+        result = run_cmd(ffmpeg_cmd, capture_output=True)
+        output = result.stderr  # cropdetect output is in stderr
+        # Find all crop= values, e.g. "crop=1920:800:0:140"
+        matches = re.findall(r"crop=(\d+):(\d+):(\d+):(\d+)", output)
+        # Filter to only consider crops that preserve the original width
+        valid_crops = [(int(w), int(h), int(x), int(y))
+                       for (w, h, x, y) in matches if int(w) == orig_width]
+    except Exception as e:
+        log.error("Error during crop detection: %s", e)
+        return None
+
+    if not valid_crops:
+        log.info("No crop values detected, using full dimensions")
+        return f"crop={orig_width}:{orig_height}:0:0"
+
+    # Analyze crop heights (the second value) from valid crops; ignore very small crop heights (<100)
+    crop_heights = [h for (_, h, _, _) in valid_crops if h >= 100]
+    if not crop_heights:
+        most_common_height = orig_height
+    else:
+        counter = Counter(crop_heights)
+        most_common_height, _ = counter.most_common(1)[0]
+
+    black_bar_size = (orig_height - most_common_height) // 2
+    black_bar_percent = (black_bar_size * 100) // orig_height
+
+    if black_bar_size > 0:
+        log.info("Found black bars: %d pixels (%d%% of height)", black_bar_size, black_bar_percent)
+    else:
+        log.info("No significant black bars detected")
+
+    if black_bar_percent > 1:
+        crop_value = f"crop={orig_width}:{most_common_height}:0:{black_bar_size}"
+    else:
+        crop_value = f"crop={orig_width}:{orig_height}:0:0"
+
+    return crop_value
