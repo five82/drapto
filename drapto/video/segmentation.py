@@ -35,6 +35,7 @@ def validate_segments(input_file: Path, segment_length: int) -> bool:
     if not segments:
         log.error("No segments created")
         return False
+    log.info("Found %d segments", len(segments))
         
     # Get input duration
     try:
@@ -90,11 +91,20 @@ def validate_segments(input_file: Path, segment_length: int) -> bool:
                 log.error("Invalid segment %s: missing duration or codec", segment.name)
                 return False
     
-            # For the last segment, allow a minimal duration threshold (e.g. 0.1 s)
+            # For the last segment, if duration is extremely short, check for scene alignment
             if segment == segments[-1]:
                 if duration < 0.1:
-                    log.error("Last segment too short: %.2fs in %s", duration, segment.name)
-                    return False
+                    from .scene_detection import detect_scenes
+                    scenes = detect_scenes(input_file)
+                    cumulative_duration = sum(d for _, d in valid_segments)
+                    segment_end = cumulative_duration + duration
+                    tolerance = 0.5  # seconds
+                    aligned = any(abs(scene - segment_end) <= tolerance for scene in scenes)
+                    if not aligned:
+                        log.error("Last segment too short: %.2fs in %s and not aligned with scene changes", duration, segment.name)
+                        return False
+                    else:
+                        log.info("Last segment %.2fs in %s aligns with scene change", duration, segment.name)
                 valid_segments.append((segment, duration))
                 total_segment_duration += duration
             else:
