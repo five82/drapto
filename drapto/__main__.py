@@ -60,16 +60,23 @@ def main():
     # Process input
     try:
         if args.input.is_file():
-            if args.output.is_dir():
-                out_file = args.output / args.input.name
-                if process_file(args.input, out_file):
-                    log.info("Successfully encoded %s", args.input.name)
-                    return 0
+            # Determine if the output should be treated as a directory
+            # Even if args.output doesn't exist, if it has no file extension we assume it's a directory.
+            if args.output.exists():
+                if args.output.is_dir():
+                    out_file = args.output / args.input.name
+                else:
+                    out_file = args.output
             else:
-                # Output specified as a file
-                if process_file(args.input, args.output):
-                    log.info("Successfully encoded %s", args.input.name)
-                    return 0
+                if args.output.suffix == "":
+                    args.output.mkdir(parents=True, exist_ok=True)
+                    out_file = args.output / args.input.name
+                else:
+                    out_file = args.output
+
+            if process_file(args.input, out_file):
+                log.info("Successfully encoded %s", args.input.name)
+                return 0
         elif args.input.is_dir():
             if not args.output.suffix:
                 # Directory mode
