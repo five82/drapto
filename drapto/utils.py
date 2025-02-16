@@ -1,6 +1,7 @@
 """Utility functions for the drapto encoding pipeline"""
 
 import subprocess
+import sys
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -17,7 +18,7 @@ def run_cmd_interactive(cmd: List[str]) -> int:
     """Run a command interactively so that its output (including progress bar)
     is printed directly to the console."""
     logger.info("Running interactive command: %s", " ".join(cmd))
-    process = subprocess.Popen(cmd)
+    process = subprocess.Popen(cmd, stdout=sys.stdout, stderr=sys.stderr)
     return process.wait()
 
 def run_cmd(cmd: List[str], capture_output: bool = True, 
