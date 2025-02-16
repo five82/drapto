@@ -26,36 +26,31 @@ def detect_scenes(input_file: Path) -> List[float]:
         List of timestamps (in seconds) where scene changes occur
     """
     try:
-        # Detect scenes using content-aware detection with enhanced error logging.
         try:
             log.debug("Starting scene detection on %s", input_file)
             scenes = detect(str(input_file),
-                          ContentDetector(threshold=float(SCENE_THRESHOLD),
-                                        min_scene_len=int(MIN_SCENE_INTERVAL)))
+                            ContentDetector(threshold=float(SCENE_THRESHOLD),
+                                              min_scene_len=int(MIN_SCENE_INTERVAL)))
             log.debug("Raw scenes detected: %r", scenes)
         except Exception as e:
             log.error("Scene detection failed during detect() call: %s", e)
             raise
 
         if not scenes:
-            # Fall back to adaptive detection if no scenes found
             try:
                 scenes = detect(str(input_file),
-                              AdaptiveDetector(min_scene_len=MIN_SCENE_INTERVAL))
+                                AdaptiveDetector(min_scene_len=int(MIN_SCENE_INTERVAL)))
                 log.debug("Adaptive scenes detected: %r", scenes)
             except Exception as e:
                 log.error("Adaptive scene detection failed: %s", e)
                 raise
-        
+
         try:
-            # Convert scene list to timestamps and enforce minimum intervals
             timestamps = []
             last_time = 0.0
-            
             for scene in scenes:
                 log.debug("Processing scene object: %r (type: %s)", scene, type(scene))
                 try:
-                    # Get scene timestamp
                     if hasattr(scene, "start_time"):
                         start_time = scene.start_time.get_seconds()
                     elif isinstance(scene, (tuple, list)):
@@ -69,8 +64,6 @@ def detect_scenes(input_file: Path) -> List[float]:
                     else:
                         log.warning("Unrecognized scene object: %r", scene)
                         continue
-                    
-                    # Only add timestamps that maintain minimum interval
                     if start_time > 1.0 and (start_time - last_time) >= MIN_SCENE_INTERVAL:
                         timestamps.append(start_time)
                         last_time = start_time
@@ -80,23 +73,19 @@ def detect_scenes(input_file: Path) -> List[float]:
                     log.warning("Error processing scene timestamp: %s", e)
                     continue
 
-            # Add additional timestamps to ensure no segment is too long
             max_gap = TARGET_SEGMENT_LENGTH * 1.5  # Allow 50% overrun
             final_timestamps = []
             last_time = 0.0
-            
+
             for time in timestamps:
-                # If gap is too large, add intermediate points
                 if time - last_time > max_gap:
-                    # Add timestamps at TARGET_SEGMENT_LENGTH intervals
                     current = last_time + TARGET_SEGMENT_LENGTH
                     while current < time:
                         final_timestamps.append(current)
                         current += TARGET_SEGMENT_LENGTH
                 final_timestamps.append(time)
                 last_time = time
-            
-            # Add final segments if needed
+
             try:
                 duration = float(run_cmd([
                     "ffprobe", "-v", "error",
@@ -104,17 +93,17 @@ def detect_scenes(input_file: Path) -> List[float]:
                     "-of", "default=noprint_wrappers=1:nokey=1",
                     str(input_file)
                 ]).stdout.strip())
-                    
                 while duration - last_time > max_gap:
                     last_time += TARGET_SEGMENT_LENGTH
                     final_timestamps.append(last_time)
             except Exception as e:
                 log.warning("Could not get video duration: %s", e)
-                
-            log.info("Detected %d scene changes, optimized to %d segments",
-                    len(timestamps), len(final_timestamps))
+
+            log.info("Detected %d scene changes, optimized to %d segments", len(timestamps), len(final_timestamps))
             return final_timestamps
-                
+        except Exception as e:
+            log.error("Scene detection failed: %s", e)
+            return []
     except Exception as e:
         log.error("Scene detection failed: %s", e)
         return []
