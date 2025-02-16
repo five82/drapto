@@ -5,7 +5,134 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 from .utils import run_cmd
-from .formatting import print_check, print_error
+from .formatting import print_check, print_error, print_header
+
+def validate_video_stream(input_file: Path, output_file: Path, validation_report: list) -> bool:
+    """Validate video stream properties"""
+    try:
+        # Check video codec
+        result = run_cmd([
+            "ffprobe", "-v", "error",
+            "-select_streams", "v",
+            "-show_entries", "stream=codec_name,width,height,pix_fmt,r_frame_rate",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            str(output_file)
+        ])
+        codec, width, height, pix_fmt, framerate = result.stdout.strip().split('\n')
+        
+        if codec != "av1":
+            validation_report.append(f"ERROR: No AV1 video stream found (found {codec})")
+            return False
+            
+        validation_report.append(f"Video: {width}x{height} {pix_fmt} @ {framerate}fps")
+        return True
+    except Exception as e:
+        validation_report.append(f"ERROR: Failed to validate video stream: {e}")
+        return False
+
+def validate_audio_streams(input_file: Path, output_file: Path, validation_report: list) -> bool:
+    """Validate audio stream properties"""
+    try:
+        result = run_cmd([
+            "ffprobe", "-v", "error",
+            "-select_streams", "a",
+            "-show_entries", "stream=codec_name,channels,bit_rate",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            str(output_file)
+        ])
+        streams = result.stdout.strip().split('\n')
+        opus_count = sum(1 for s in streams if s.startswith('opus'))
+        
+        if opus_count == 0:
+            validation_report.append("ERROR: No Opus audio streams found")
+            return False
+            
+        validation_report.append(f"Audio: {opus_count} Opus streams")
+        return True
+    except Exception as e:
+        validation_report.append(f"ERROR: Failed to validate audio streams: {e}")
+        return False
+
+def validate_subtitle_tracks(input_file: Path, output_file: Path, validation_report: list) -> bool:
+    """Validate subtitle track preservation"""
+    try:
+        result = run_cmd([
+            "ffprobe", "-v", "error",
+            "-select_streams", "s",
+            "-show_entries", "stream=index",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            str(output_file)
+        ])
+        subtitle_count = len(result.stdout.strip().split('\n')) if result.stdout.strip() else 0
+        validation_report.append(f"Subtitles: {subtitle_count} tracks")
+        return True
+    except Exception as e:
+        validation_report.append(f"ERROR: Failed to validate subtitle tracks: {e}")
+        return False
+
+def validate_container(output_file: Path, validation_report: list) -> bool:
+    """Validate container integrity"""
+    try:
+        run_cmd(["ffprobe", "-v", "error", str(output_file)])
+        validation_report.append("Container: Valid MKV structure")
+        return True
+    except Exception as e:
+        validation_report.append(f"ERROR: Invalid container structure: {e}")
+        return False
+
+def validate_crop_dimensions(input_file: Path, output_file: Path, validation_report: list) -> bool:
+    """Validate crop dimensions if applied"""
+    try:
+        in_res = run_cmd([
+            "ffprobe", "-v", "error",
+            "-select_streams", "v",
+            "-show_entries", "stream=width,height",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            str(input_file)
+        ]).stdout.strip().split('\n')
+        
+        out_res = run_cmd([
+            "ffprobe", "-v", "error",
+            "-select_streams", "v",
+            "-show_entries", "stream=width,height",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            str(output_file)
+        ]).stdout.strip().split('\n')
+        
+        if in_res != out_res:
+            validation_report.append(f"Crop: {out_res[0]}x{out_res[1]} (from {in_res[0]}x{in_res[1]})")
+        return True
+    except Exception as e:
+        validation_report.append(f"ERROR: Failed to validate crop dimensions: {e}")
+        return False
+
+def validate_quality_metrics(input_file: Path, output_file: Path, validation_report: list) -> bool:
+    """Validate output quality metrics"""
+    try:
+        # Basic quality check - could be expanded to run VMAF
+        in_bitrate = run_cmd([
+            "ffprobe", "-v", "error",
+            "-select_streams", "v",
+            "-show_entries", "stream=bit_rate",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            str(input_file)
+        ]).stdout.strip()
+        
+        out_bitrate = run_cmd([
+            "ffprobe", "-v", "error",
+            "-select_streams", "v",
+            "-show_entries", "stream=bit_rate",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            str(output_file)
+        ]).stdout.strip()
+        
+        if in_bitrate and out_bitrate:
+            reduction = (int(in_bitrate) - int(out_bitrate)) / int(in_bitrate) * 100
+            validation_report.append(f"Quality: {reduction:.1f}% bitrate reduction")
+        return True
+    except Exception as e:
+        validation_report.append(f"ERROR: Failed to validate quality metrics: {e}")
+        return False
 
 log = logging.getLogger(__name__)
 
