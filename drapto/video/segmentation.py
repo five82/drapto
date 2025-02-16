@@ -27,12 +27,25 @@ def segment_video(input_file: Path) -> bool:
     Returns:
         bool: True if segmentation successful
     """
+    from .hardware import check_hardware_acceleration, get_hwaccel_options
+    
     segments_dir = WORKING_DIR / "segments"
     segments_dir.mkdir(parents=True, exist_ok=True)
     
     try:
+        # Check for hardware decoding support
+        hw_type = check_hardware_acceleration()
+        hw_opt = get_hwaccel_options(hw_type)
+        
         cmd = [
             "ffmpeg", "-hide_banner", "-loglevel", "error",
+        ]
+        
+        if hw_opt:
+            # Add hardware acceleration for decoding only
+            cmd.extend(hw_opt.split())
+            
+        cmd.extend([
             "-i", str(input_file),
             "-c:v", "copy",
             "-an",
