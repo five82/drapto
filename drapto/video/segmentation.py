@@ -13,9 +13,7 @@ from ..config import (
     WORKING_DIR
 )
 
-    
-    
-    # Get output details
+# Get output details
     output_info = run_cmd([
         "ffprobe", "-v", "error",
         "-show_entries", "stream=codec_name,width,height,r_frame_rate:format=duration,size",
