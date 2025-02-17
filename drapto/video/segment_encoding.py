@@ -59,7 +59,7 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
         "--svt", SVT_PARAMS,
         "--keyint", "10s",
         "--samples", str(sample_count),
-        "--sample-duration", f"{sample_duration_value}sec",
+        "--sample-duration", f"{sample_duration_value}s",
         "--vmaf", "n_subsample=8:pool=perc5_min",
         "--pix-format", "yuv420p10le",
     ]
