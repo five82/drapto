@@ -15,7 +15,7 @@ from .formatting import (
     print_info
 )
 from .video.detection import detect_dolby_vision
-from .video.dv_encoder import encode_dolby_vision  # for Dolby Vision content
+from .video.dv_encoding import encode_dolby_vision  # for Dolby Vision content
 from .video.chunked_encoder import encode_chunked  # for standard (chunked) encoding
 from .audio.encoding import encode_audio_tracks
 from .muxer import mux_tracks
