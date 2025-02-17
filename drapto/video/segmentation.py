@@ -13,46 +13,7 @@ from ..config import (
     WORKING_DIR
 )
 
-def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[str] = None) -> dict:
-    """
-    Encode a single video segment using ab-av1.
     
-    Returns:
-        dict: Encoding statistics and metrics
-    """
-    import time
-    start_time = time.time()
-    
-    # Get input segment details
-    input_info = run_cmd([
-        "ffprobe", "-v", "error",
-        "-show_entries", "stream=codec_name,width,height,r_frame_rate:format=duration",
-        "-of", "default=noprint_wrappers=1:nokey=1",
-        str(segment)
-    ]).stdout.strip().split('\n')
-    input_duration = float(input_info[-1])  # Duration is last item
-    
-    # Run encoding
-    cmd = [
-        "ab-av1", "auto-encode",
-        "--input", str(segment),
-        "--output", str(output_segment),
-        "--encoder", "libsvtav1",
-        "--min-vmaf", str(TARGET_VMAF),
-        "--preset", str(PRESET),
-        "--svt", SVT_PARAMS,
-        "--keyint", "10s",
-        "--samples", str(VMAF_SAMPLE_COUNT),
-        "--sample-duration", f"{VMAF_SAMPLE_LENGTH}s",
-        "--vmaf", "n_subsample=8:pool=harmonic_mean",
-        "--pix-format", "yuv420p10le",
-    ]
-    if crop_filter:
-        cmd.extend(["--vfilter", crop_filter])
-    
-    result = run_cmd(cmd)
-    end_time = time.time()
-    encoding_time = end_time - start_time
     
     # Get output details
     output_info = run_cmd([
