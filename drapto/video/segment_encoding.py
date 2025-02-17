@@ -37,6 +37,17 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
     ]).stdout.strip().split('\n')
     input_duration = float(input_info[-1])  # Duration is last item
     
+    # Dynamically determine how many samples and sample duration to use based on segment length
+    if input_duration < 10:
+        sample_count = 1
+        sample_duration_value = round(input_duration * 0.5, 2)  # use half the segment duration, capped by input_duration
+    elif input_duration < 15:
+        sample_count = 2
+        sample_duration_value = 1
+    else:
+        sample_count = 3
+        sample_duration_value = 1
+    
     # Run encoding
     cmd = [
         "ab-av1", "auto-encode",
@@ -47,8 +58,8 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
         "--preset", str(PRESET),
         "--svt", SVT_PARAMS,
         "--keyint", "10s",
-        "--samples", str(VMAF_SAMPLE_COUNT),
-        "--sample-duration", f"{VMAF_SAMPLE_LENGTH}s",
+        "--samples", str(sample_count),
+        "--sample-duration", f"{sample_duration_value}s",
         "--vmaf", "n_subsample=8:pool=perc5_min",
         "--pix-format", "yuv420p10le",
     ]
@@ -161,8 +172,8 @@ def encode_segments(crop_filter: Optional[str] = None) -> bool:
             "--preset", str(PRESET),
             "--svt", SVT_PARAMS,
             "--keyint", "10s",
-            "--samples", str(VMAF_SAMPLE_COUNT),
-            "--sample-duration", f"{VMAF_SAMPLE_LENGTH}s",
+            "--samples", "<dynamic>",
+            "--sample-duration", "<dynamic>",
             "--vmaf", "n_subsample=8:pool=perc5_min",
             "--pix-format", "yuv420p10le",
         ]
