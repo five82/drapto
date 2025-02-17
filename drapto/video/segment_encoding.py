@@ -49,7 +49,7 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
         "--keyint", "10s",
         "--samples", str(VMAF_SAMPLE_COUNT),
         "--sample-duration", f"{VMAF_SAMPLE_LENGTH}s",
-        "--vmaf", "n_subsample=8:pool=harmonic_mean",
+        "--vmaf", "n_subsample=8:pool=perc5_min",
         "--pix-format", "yuv420p10le",
     ]
     if crop_filter:
@@ -163,7 +163,7 @@ def encode_segments(crop_filter: Optional[str] = None) -> bool:
             "--keyint", "10s",
             "--samples", str(VMAF_SAMPLE_COUNT),
             "--sample-duration", f"{VMAF_SAMPLE_LENGTH}s",
-            "--vmaf", "n_subsample=8:pool=harmonic_mean",
+            "--vmaf", "n_subsample=8:pool=perc5_min",
             "--pix-format", "yuv420p10le",
         ]
         if crop_filter:
