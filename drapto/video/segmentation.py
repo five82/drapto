@@ -18,60 +18,6 @@ from ..formatting import print_info, print_check
 
 log = logging.getLogger(__name__)
     
-    output_duration = float(output_info[-2])  # Duration is second to last
-    output_size = int(output_info[-1])  # Size is last item
-    
-    # Calculate bitrate and speed metrics
-    bitrate_kbps = (output_size * 8) / (output_duration * 1000)
-    speed_factor = input_duration / encoding_time
-    
-    # Parse VMAF scores from ab-av1 output if available
-    vmaf_score = None
-    vmaf_min = None
-    vmaf_max = None
-    try:
-        # Look for VMAF scores in stderr output
-        for line in result.stderr.split('\n'):
-            if "VMAF score:" in line:
-                vmaf_parts = line.split(":")
-                if len(vmaf_parts) > 1:
-                    scores = [float(s) for s in vmaf_parts[1].strip().split()]
-                    if scores:
-                        vmaf_score = sum(scores) / len(scores)
-                        vmaf_min = min(scores)
-                        vmaf_max = max(scores)
-                        log.info("  VMAF scores - Avg: %.2f, Min: %.2f, Max: %.2f",
-                                vmaf_score, vmaf_min, vmaf_max)
-                        break
-    except Exception as e:
-        log.debug("Could not parse VMAF scores: %s", e)
-    
-    # Compile segment statistics
-    stats = {
-        'segment': segment.name,
-        'duration': output_duration,
-        'size_mb': output_size / (1024 * 1024),
-        'bitrate_kbps': bitrate_kbps,
-        'encoding_time': encoding_time,
-        'speed_factor': speed_factor,
-        'resolution': f"{output_info[1]}x{output_info[2]}",
-        'framerate': output_info[3],
-        'crop_filter': crop_filter or "none",
-        'vmaf_score': vmaf_score,
-        'vmaf_min': vmaf_min,
-        'vmaf_max': vmaf_max
-    }
-    
-    # Log detailed segment info
-    log.info("Segment encoding complete: %s", segment.name)
-    log.info("  Duration: %.2fs", stats['duration'])
-    log.info("  Size: %.2f MB", stats['size_mb'])
-    log.info("  Bitrate: %.2f kbps", stats['bitrate_kbps'])
-    log.info("  Encoding time: %.2fs (%.2fx realtime)", 
-             stats['encoding_time'], stats['speed_factor'])
-    log.info("  Resolution: %s @ %s", stats['resolution'], stats['framerate'])
-    
-    return stats
 from ..utils import run_cmd, check_dependencies
 from ..formatting import print_info, print_check
 
