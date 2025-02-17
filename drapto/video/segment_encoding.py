@@ -37,16 +37,11 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
     ]).stdout.strip().split('\n')
     input_duration = float(input_info[-1])  # Duration is last item
     
-    # Dynamically determine how many samples and sample duration to use based on segment length
     if input_duration < 10:
         sample_count = 2
-        sample_duration_value = round(input_duration / 2, 2)  # use half of the segment duration
-    elif input_duration < 15:
-        sample_count = 2
-        sample_duration_value = 1
     else:
         sample_count = 3
-        sample_duration_value = 1
+    sample_duration_value = 1
     
     # Run encoding
     cmd = [
