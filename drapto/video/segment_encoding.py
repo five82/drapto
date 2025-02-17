@@ -15,6 +15,7 @@ from ..config import (
 from ..utils import run_cmd, check_dependencies
 from ..formatting import print_check
 from ..validation import validate_ab_av1
+from .segment_encoding import encode_segment
 
 log = logging.getLogger(__name__)
 
