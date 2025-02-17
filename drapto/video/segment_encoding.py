@@ -37,11 +37,23 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
     ]).stdout.strip().split('\n')
     input_duration = float(input_info[-1])  # Duration is last item
     
-    if input_duration < 10:
-        sample_count = 2
-    else:
-        sample_count = 3
-    sample_duration_value = 1
+    if retry_count == 0:
+        if input_duration < 10:
+            sample_count = 2
+        else:
+            sample_count = 3
+        sample_duration_value = 1
+        min_vmaf_value = str(TARGET_VMAF)
+    elif retry_count == 1:
+        # Second attempt: increase sample count and duration
+        sample_count = 4
+        sample_duration_value = 2
+        min_vmaf_value = str(TARGET_VMAF)
+    elif retry_count == 2:
+        # Third attempt: keep increased sample settings but raise min_vmaf
+        sample_count = 4
+        sample_duration_value = 2
+        min_vmaf_value = "95"
     
     try:
         # Run encoding
@@ -50,7 +62,7 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
             "--input", str(segment),
             "--output", str(output_segment),
             "--encoder", "libsvtav1",
-            "--min-vmaf", str(TARGET_VMAF),
+            "--min-vmaf", min_vmaf_value,
             "--preset", str(PRESET),
             "--svt", SVT_PARAMS,
             "--keyint", "10s",
