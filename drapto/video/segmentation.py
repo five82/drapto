@@ -13,13 +13,10 @@ from ..config import (
     WORKING_DIR
 )
 
-# Get output details
-    output_info = run_cmd([
-        "ffprobe", "-v", "error",
-        "-show_entries", "stream=codec_name,width,height,r_frame_rate:format=duration,size",
-        "-of", "default=noprint_wrappers=1:nokey=1",
-        str(output_segment)
-    ]).stdout.strip().split('\n')
+from ..utils import run_cmd, check_dependencies
+from ..formatting import print_info, print_check
+
+log = logging.getLogger(__name__)
     
     output_duration = float(output_info[-2])  # Duration is second to last
     output_size = int(output_info[-1])  # Size is last item
