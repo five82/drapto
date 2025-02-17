@@ -16,7 +16,8 @@ from ..formatting import print_check
 from .hardware import get_hwaccel_options
 from .detection import detect_crop
 from .segmentation import segment_video
-from .segment_encoding import encode_segments, concatenate_segments
+from .segment_encoding import encode_segments
+from .concatenation import concatenate_segments
 
 log = logging.getLogger(__name__)
 
