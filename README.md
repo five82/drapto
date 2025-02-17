@@ -5,7 +5,7 @@ High-quality AV1 video encoding pipeline with intelligent chunked encoding and D
 ## Features
 
 - **AV1 Encoding with SVT-AV1:** High-quality encoding using libsvtav1 with configurable presets.
-- **Intelligent Chunked & Variable Segmentation:** Automatically segments input video based on scene detection (using PySceneDetect) and/or fixed intervals. Segments are encoded in parallel with built‐in retry logic.
+- **Intelligent Variable Segmentation:** Automatically segments input video based on scene detection. Segments are dynamically determined to balance natural scene changes with a target duration of approximately TARGET_SEGMENT_LENGTH seconds.
 - **VMAF-based Quality Analysis & Adaptive Retry:** Measures quality via VMAF (parsed from ab‑av1 output) and adjusts encoding parameters on retries (e.g. increased sample count/duration, raised min_vmaf).
 - **Dolby Vision Support:** Automatic detection of Dolby Vision content with a dedicated encoding pipeline.
 - **Automatic Black Bar Detection and Cropping:** Detects black bars via ffprobe/ffmpeg and applies appropriate crop filters.
@@ -56,7 +56,8 @@ The encoder can be configured by modifying settings in `drapto/config.py`. Notab
 - `PRESET`: Encoding speed preset (0 to 13; default: 6).
 - `TARGET_VMAF`: Target VMAF for quality-targeted chunked encoding.
 - `VMAF_SAMPLE_COUNT` and `VMAF_SAMPLE_LENGTH`: Parameters used for quality analysis of segments.
-- `SEGMENT_LENGTH` & `TARGET_SEGMENT_LENGTH`: Define fixed and target segment durations.
+- `TARGET_SEGMENT_LENGTH`: Target segment duration (in seconds) used as a guideline by the scene detection algorithm.
+- (Note: A fixed segmentation mode is no longer supported.)
 - Additional parameters for cropping, Dolby Vision handling, and hardware acceleration.
 
 These settings allow you to finely tune the balance between encoding speed and output quality.

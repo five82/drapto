@@ -60,7 +60,7 @@ def merge_segments(segments: List[Path], output: Path) -> bool:
         if concat_file.exists():
             concat_file.unlink()
 
-def validate_segments(input_file: Path, segment_length: int, variable_segmentation: bool = False) -> bool:
+def validate_segments(input_file: Path, variable_segmentation: bool = True) -> bool:
     """
     Validate video segments after segmentation.
     
@@ -81,40 +81,18 @@ def validate_segments(input_file: Path, segment_length: int, variable_segmentati
         return False
     log.info("Found %d segments", len(segments))
         
-    if not variable_segmentation:
-        # Fixed segmentation: perform expected segments check.
-        try:
-            result = run_cmd([
-                "ffprobe", "-v", "error",
-                "-show_entries", "format=duration",
-                "-of", "default=noprint_wrappers=1:nokey=1",
-                str(input_file)
-            ])
-            total_duration = float(result.stdout.strip())
-            expected_segments = (total_duration + segment_length - 1) // segment_length
-            
-            if len(segments) < expected_segments * 0.9:  # Allow 10% tolerance
-                log.error(
-                    "Found fewer segments than expected: %d vs %d expected",
-                    len(segments), expected_segments
-                )
-                return False
-        except Exception as e:
-            log.error("Failed to get input duration: %s", e)
-            return False
-    else:
-        log.info("Variable segmentation in use; skipping fixed expected segments check")
-        try:
-            result = run_cmd([
-                "ffprobe", "-v", "error",
-                "-show_entries", "format=duration",
-                "-of", "default=noprint_wrappers=1:nokey=1",
-                str(input_file)
-            ])
-            total_duration = float(result.stdout.strip())
-        except Exception as e:
-            log.error("Failed to get input duration: %s", e)
-            return False
+    log.info("Variable segmentation in use")
+    try:
+        result = run_cmd([
+            "ffprobe", "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            str(input_file)
+        ])
+        total_duration = float(result.stdout.strip())
+    except Exception as e:
+        log.error("Failed to get input duration: %s", e)
+        return False
         
     # Validate each segment and build a list of valid segments
     total_segment_duration = 0.0
@@ -277,7 +255,7 @@ def segment_video(input_file: Path) -> bool:
         run_cmd(cmd)
         
         # Validate segments with the appropriate variable_segmentation flag
-        if not validate_segments(input_file, SEGMENT_LENGTH, variable_segmentation=variable_seg):
+        if not validate_segments(input_file, variable_segmentation=True):
             return False
             
         return True
