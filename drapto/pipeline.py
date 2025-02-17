@@ -15,7 +15,7 @@ from .formatting import (
     print_info
 )
 from .video.detection import detect_dolby_vision
-from .video.encoding import encode_dolby_vision, encode_standard
+from .video.dv_encoding import encode_dolby_vision, encode_standard
 from .audio.encoding import encode_audio_tracks
 from .muxer import mux_tracks
 from .utils import get_timestamp, format_size, get_file_size

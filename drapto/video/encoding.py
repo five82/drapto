@@ -1,4 +1,4 @@
-"""Video encoding functions for drapto"""
+"""Dolby Vision encoding functions for drapto"""
 
 import logging
 import shutil
