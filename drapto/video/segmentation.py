@@ -17,11 +17,6 @@ from ..utils import run_cmd, check_dependencies
 from ..formatting import print_info, print_check
 
 log = logging.getLogger(__name__)
-    
-from ..utils import run_cmd, check_dependencies
-from ..formatting import print_info, print_check
-
-log = logging.getLogger(__name__)
 
 def merge_segments(segments: List[Path], output: Path) -> bool:
     """
