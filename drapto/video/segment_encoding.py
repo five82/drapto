@@ -39,8 +39,8 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
     
     # Dynamically determine how many samples and sample duration to use based on segment length
     if input_duration < 10:
-        sample_count = 1
-        sample_duration_value = round(input_duration * 0.5, 2)  # use half the segment duration, capped by input_duration
+        sample_count = 2
+        sample_duration_value = round(input_duration / 2, 2)  # use half of the segment duration
     elif input_duration < 15:
         sample_count = 2
         sample_duration_value = 1
