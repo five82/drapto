@@ -66,8 +66,7 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> b
     
     Args:
         input_file: Original input video file for duration comparison.
-        segment_length: Expected segment length in seconds (for fixed segmentation).
-        variable_segmentation: If True, variable (scene-based) segmentation was used.
+        variable_segmentation: Always True, as only scene-based segmentation is supported.
         
     Returns:
         bool: True if all segments are valid.
@@ -171,23 +170,12 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> b
         log.error("Failed to get input duration: %s", e)
         return False
 
-    # For fixed segmentation, check both duration and expected count
-    if not variable_segmentation:
-        expected_segments = (total_duration + segment_length - 1) // segment_length
-        if valid_count < expected_segments * 0.9:
-            log.error("Found fewer valid segments than expected: %d vs %d expected", valid_count, expected_segments)
-            return False
-        if abs(total_segment_duration - total_duration) > segment_length:
-            log.error("Total valid segment duration (%.2fs) differs significantly from input (%.2fs)",
-                      total_segment_duration, total_duration)
-            return False
-    else:
-        # For variable segmentation, only check that total duration matches within tolerance
-        duration_tolerance = max(1.0, total_duration * 0.02)  # 2% tolerance or minimum 1 second
-        if abs(total_segment_duration - total_duration) > duration_tolerance:
-            log.error("Total valid segment duration (%.2fs) differs significantly from input (%.2fs)",
-                      total_segment_duration, total_duration)
-            return False
+    # Check that total duration matches within tolerance
+    duration_tolerance = max(1.0, total_duration * 0.02)  # 2% tolerance or minimum 1 second
+    if abs(total_segment_duration - total_duration) > duration_tolerance:
+        log.error("Total valid segment duration (%.2fs) differs significantly from input (%.2fs)",
+                  total_segment_duration, total_duration)
+        return False
 
     # Detect scenes and validate segment boundaries against scene changes
     scenes = detect_scenes(input_file)
