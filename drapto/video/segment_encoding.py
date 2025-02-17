@@ -1,6 +1,7 @@
 """Functions for encoding video segments in parallel"""
 
 import logging
+import re
 import shutil
 from pathlib import Path
 from typing import List, Optional
@@ -105,22 +106,27 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
     vmaf_score = None
     vmaf_min = None
     vmaf_max = None
+    vmaf_values = []
     try:
-        # Look for VMAF scores in stderr output
         for line in result.stderr.split('\n'):
-            if "VMAF score:" in line:
-                vmaf_parts = line.split(":")
-                if len(vmaf_parts) > 1:
-                    scores = [float(s) for s in vmaf_parts[1].strip().split()]
-                    if scores:
-                        vmaf_score = sum(scores) / len(scores)
-                        vmaf_min = min(scores)
-                        vmaf_max = max(scores)
-                        log.info("  VMAF scores - Avg: %.2f, Min: %.2f, Max: %.2f",
-                                vmaf_score, vmaf_min, vmaf_max)
-                        log.info("Segment analysis complete: %s – VMAF Avg: %.2f, Min: %.2f, Max: %.2f (CRF target determined)",
-                                segment.name, vmaf_score, vmaf_min, vmaf_max)
-                        break
+            # Use a regular expression to capture the VMAF value in lines like "... VMAF 88.72 ..."
+            match = re.search(r"VMAF\s+([0-9.]+)", line)
+            if match:
+                try:
+                    value = float(match.group(1))
+                    vmaf_values.append(value)
+                except Exception:
+                    continue
+        if vmaf_values:
+            vmaf_score = sum(vmaf_values) / len(vmaf_values)
+            vmaf_min = min(vmaf_values)
+            vmaf_max = max(vmaf_values)
+            log.info("  VMAF scores - Avg: %.2f, Min: %.2f, Max: %.2f",
+                     vmaf_score, vmaf_min, vmaf_max)
+            log.info("Segment analysis complete: %s – VMAF Avg: %.2f, Min: %.2f, Max: %.2f (CRF target determined)",
+                     segment.name, vmaf_score, vmaf_min, vmaf_max)
+        else:
+            log.info("Segment analysis complete: %s – No VMAF scores parsed", segment.name)
     except Exception as e:
         log.debug("Could not parse VMAF scores: %s", e)
         log.info("Segment analysis complete: %s – No VMAF scores parsed", segment.name)
