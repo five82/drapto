@@ -55,12 +55,17 @@ def process_file(input_file: Path, output_file: Path) -> Optional[dict]:
         print_check("Standard content detected")
     
     try:
-        if ENABLE_CHUNKED_ENCODING:
-            log.info("Using chunked encoding process")
-            video_track = encode_chunked(input_file)
+        if is_dolby_vision:
+            log.info("Using Dolby Vision encoding pipeline")
+            from .video import dv_encoder  # Import the renamed DV module
+            video_track = dv_encoder.encode_dolby_vision(input_file)
         else:
-            log.info("Using standard encoding process without chunking")
-            video_track = encode_chunked(input_file)  # Use chunked encoder without parallelization
+            if ENABLE_CHUNKED_ENCODING:
+                log.info("Using chunked encoding process")
+                video_track = encode_chunked(input_file)
+            else:
+                log.info("Using standard encoding process without chunking")
+                video_track = encode_chunked(input_file)
             
         if not video_track:
             log.error("Video encoding failed")
