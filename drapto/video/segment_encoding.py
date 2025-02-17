@@ -38,10 +38,7 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
     input_duration = float(input_info[-1])  # Duration is last item
     
     if retry_count == 0:
-        if input_duration < 10:
-            sample_count = 2
-        else:
-            sample_count = 3
+        sample_count = 3
         sample_duration_value = 1
         min_vmaf_value = str(TARGET_VMAF)
     elif retry_count == 1:
