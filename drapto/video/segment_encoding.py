@@ -55,9 +55,6 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
     if crop_filter:
         cmd.extend(["--vfilter", crop_filter])
     
-    formatted_cmd = " \\\n    ".join(cmd)
-    log.info("ab-av1 encoding command:\n%s", formatted_cmd)
-    
     result = run_cmd(cmd)
     end_time = time.time()
     encoding_time = end_time - start_time
@@ -153,6 +150,26 @@ def encode_segments(crop_filter: Optional[str] = None) -> bool:
         if not segments:
             log.error("No segments found to encode")
             return False
+
+        # Log common ab-av1 encoding parameters once (using placeholders for input/output)
+        sample_cmd = [
+            "ab-av1", "auto-encode",
+            "--input", "<input_segment>",
+            "--output", "<output_segment>",
+            "--encoder", "libsvtav1",
+            "--min-vmaf", str(TARGET_VMAF),
+            "--preset", str(PRESET),
+            "--svt", SVT_PARAMS,
+            "--keyint", "10s",
+            "--samples", str(VMAF_SAMPLE_COUNT),
+            "--sample-duration", f"{VMAF_SAMPLE_LENGTH}s",
+            "--vmaf", "n_subsample=8:pool=harmonic_mean",
+            "--pix-format", "yuv420p10le",
+        ]
+        if crop_filter:
+            sample_cmd.extend(["--vfilter", crop_filter])
+        formatted_sample = " \\\n    ".join(sample_cmd)
+        log.info("Common ab-av1 encoding parameters:\n%s", formatted_sample)
 
         # Use ProcessPoolExecutor for parallel encoding
         max_workers = max(1, multiprocessing.cpu_count())
