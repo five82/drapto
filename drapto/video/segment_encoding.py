@@ -55,6 +55,9 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
     if crop_filter:
         cmd.extend(["--vfilter", crop_filter])
     
+    formatted_cmd = " \\\n    ".join(cmd)
+    log.info("ab-av1 encoding command:\n%s", formatted_cmd)
+    
     result = run_cmd(cmd)
     end_time = time.time()
     encoding_time = end_time - start_time
