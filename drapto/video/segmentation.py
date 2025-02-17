@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from ..config import (
-    SEGMENT_LENGTH, TARGET_VMAF, VMAF_SAMPLE_COUNT,
+    TARGET_VMAF, VMAF_SAMPLE_COUNT,
     VMAF_SAMPLE_LENGTH, PRESET, SVT_PARAMS,
     WORKING_DIR
 )
