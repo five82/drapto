@@ -15,7 +15,6 @@ from .formatting import (
     print_info
 )
 from .video.detection import detect_dolby_vision
-from .video.dv_encoding import encode_dolby_vision  # for Dolby Vision content
 from .video.chunked_encoder import encode_chunked  # for standard (chunked) encoding
 from .audio.encoding import encode_audio_tracks
 from .muxer import mux_tracks
@@ -56,10 +55,7 @@ def process_file(input_file: Path, output_file: Path) -> Optional[dict]:
         print_check("Standard content detected")
     
     try:
-        if is_dolby_vision:
-            log.info("Processing Dolby Vision content")
-            video_track = encode_dolby_vision(input_file)
-        elif ENABLE_CHUNKED_ENCODING:
+        if ENABLE_CHUNKED_ENCODING:
             log.info("Using chunked encoding process")
             video_track = encode_chunked(input_file)
         else:
