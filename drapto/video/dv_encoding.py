@@ -15,11 +15,8 @@ from ..utils import run_cmd, run_cmd_interactive, run_cmd_with_progress
 from ..formatting import print_check
 from .hardware import get_hwaccel_options
 from .detection import detect_crop
-from .segmentation import (
-    segment_video,
-    encode_segments,
-    concatenate_segments
-)
+from .segmentation import segment_video
+from .segment_encoding import encode_segments, concatenate_segments
 
 log = logging.getLogger(__name__)
 
