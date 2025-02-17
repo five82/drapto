@@ -118,9 +118,12 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
                         vmaf_max = max(scores)
                         log.info("  VMAF scores - Avg: %.2f, Min: %.2f, Max: %.2f",
                                 vmaf_score, vmaf_min, vmaf_max)
+                        log.info("Segment analysis complete: %s – VMAF Avg: %.2f, Min: %.2f, Max: %.2f (CRF target determined)",
+                                segment.name, vmaf_score, vmaf_min, vmaf_max)
                         break
     except Exception as e:
         log.debug("Could not parse VMAF scores: %s", e)
+        log.info("Segment analysis complete: %s – No VMAF scores parsed", segment.name)
     
     # Compile segment statistics
     stats = {
