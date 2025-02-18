@@ -7,6 +7,7 @@ High-quality AV1 video encoding pipeline with intelligent chunked encoding and D
 - **AV1 Encoding with SVT-AV1:** High-quality encoding using libsvtav1 with configurable presets.
 - **Intelligent Variable Segmentation:** Automatically segments input video based on scene detection. Segments are dynamically determined to balance natural scene changes with a target duration of approximately TARGET_SEGMENT_LENGTH seconds.
 - **VMAF-based Quality Analysis & Adaptive Retry:** Measures quality via VMAF (parsed from ab‑av1 output) and adjusts encoding parameters on retries (e.g. increased sample count/duration, raised min_vmaf).
+- **Standard Encoding:** Segments are encoded in parallel using the standard encoding path with adaptive quality control.
 - **Dolby Vision Support:** Automatic detection of Dolby Vision content with a dedicated encoding pipeline.
 - **Automatic Black Bar Detection and Cropping:** Detects black bars via ffprobe/ffmpeg and applies appropriate crop filters.
 - **High-Quality Opus Audio Encoding:** Dynamically determines the correct bitrate and layout for multiple audio tracks.
@@ -54,7 +55,7 @@ Drapto automatically detects Dolby Vision and uses a dedicated encoding pipeline
 The encoder can be configured by modifying settings in `drapto/config.py`. Notable parameters include:
 
 - `PRESET`: Encoding speed preset (0 to 13; default: 6).
-- `TARGET_VMAF`: Target VMAF for quality-targeted chunked encoding.
+- `TARGET_VMAF`: Target VMAF for quality-targeted standard encoding.
 - `VMAF_SAMPLE_COUNT` and `VMAF_SAMPLE_LENGTH`: Parameters used for quality analysis of segments.
 - `TARGET_SEGMENT_LENGTH`: Target segment duration (in seconds) used as a guideline by the scene detection algorithm.
 - (Note: A fixed segmentation mode is no longer supported.)

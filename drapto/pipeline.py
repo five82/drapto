@@ -15,7 +15,7 @@ from .formatting import (
     print_info
 )
 from .video.detection import detect_dolby_vision
-from .video.chunked_encoder import encode_chunked  # for standard (chunked) encoding
+from .video.standard_encoder import encode_standard  # for standard encoding
 from .audio.encoding import encode_audio_tracks
 from .muxer import mux_tracks
 from .utils import get_timestamp, format_size, get_file_size
@@ -60,12 +60,12 @@ def process_file(input_file: Path, output_file: Path) -> Optional[dict]:
             from .video import dv_encoder  # Import the renamed DV module
             video_track = dv_encoder.encode_dolby_vision(input_file)
         else:
-            if ENABLE_CHUNKED_ENCODING:
-                log.info("Using chunked encoding process")
-                video_track = encode_chunked(input_file)
+            if ENABLE_STANDARD_ENCODING:
+                log.info("Using standard encoding process")
+                video_track = encode_standard(input_file)
             else:
-                log.info("Using standard encoding process without chunking")
-                video_track = encode_chunked(input_file)
+                log.info("Using standard encoding process without extra features")
+                video_track = encode_standard(input_file)
             
         if not video_track:
             log.error("Video encoding failed")

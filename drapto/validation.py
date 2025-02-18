@@ -112,7 +112,7 @@ def validate_quality_metrics(input_file: Path, output_file: Path, validation_rep
     For chunked encoding, reports VMAF scores if available.
     For standard encoding, reports CRF value used.
     """
-    from .config import ENABLE_CHUNKED_ENCODING, CRF_SD, CRF_HD, CRF_UHD
+    from .config import ENABLE_STANDARD_ENCODING, CRF_SD, CRF_HD, CRF_UHD
     
     try:
         # Get video width to determine quality target
@@ -125,12 +125,12 @@ def validate_quality_metrics(input_file: Path, output_file: Path, validation_rep
         ])
         width = int(result.stdout.strip())
         
-        if ENABLE_CHUNKED_ENCODING:
-            # For chunked encoding, we report the target VMAF
+        if ENABLE_STANDARD_ENCODING:
+            # For standard encoding, we now use VMAF quality analysis
             from .config import TARGET_VMAF
             validation_report.append(f"Quality target: VMAF {TARGET_VMAF}")
         else:
-            # For standard encoding, we report the CRF used
+            # (Legacy encoding path) Report CRF value
             if width >= 3840:
                 crf = CRF_UHD
             elif width >= 1920:
