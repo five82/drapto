@@ -46,6 +46,12 @@ def parse_args():
         help="Set logging level (default from config: %(default)s)"
     )
     parser.add_argument(
+        "--disable-crop",
+        dest="disable_crop",
+        action="store_true",
+        help="Disable automatic crop detection"
+    )
+    parser.add_argument(
         "input",
         type=Path,
         help="Input file or directory"

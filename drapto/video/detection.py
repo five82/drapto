@@ -37,7 +37,7 @@ def detect_dolby_vision(input_file: Path) -> bool:
         log.warning("Failed to run mediainfo on %s", input_file)
         return False
 
-def detect_crop(input_file: Path, disable_crop: bool = False) -> Optional[str]:
+def detect_crop(input_file: Path, disable_crop: bool = None) -> Optional[str]:
     """
     Detect black bars and return an ffmpeg crop filter string.
     Mirrors the bash implementation by checking for HDR content,
@@ -54,6 +54,11 @@ def detect_crop(input_file: Path, disable_crop: bool = False) -> Optional[str]:
     import re
     from collections import Counter
 
+    # Use config value if not explicitly set
+    from ..config import DISABLE_CROP
+    if disable_crop is None:
+        disable_crop = DISABLE_CROP
+        
     if disable_crop:
         log.info("Crop detection disabled")
         return None

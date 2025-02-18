@@ -47,6 +47,11 @@ def process_file(input_file: Path, output_file: Path) -> Optional[dict]:
     # Ensure output directory exists
     output_file.parent.mkdir(parents=True, exist_ok=True)
     
+    # Override crop detection if disabled via command line
+    import sys
+    args = sys.argv
+    disable_crop = "--disable-crop" in args
+    
     print_check("Checking for Dolby Vision...")
     is_dolby_vision = detect_dolby_vision(input_file)
     if is_dolby_vision:
