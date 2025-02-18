@@ -121,8 +121,9 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
             vmaf_score = sum(vmaf_values) / len(vmaf_values)
             vmaf_min = min(vmaf_values)
             vmaf_max = max(vmaf_values)
-            log.info("  VMAF scores - Avg: %.2f, Min: %.2f, Max: %.2f",
-                     vmaf_score, vmaf_min, vmaf_max)
+            # Removed duplicate VMAF score log:
+            # log.info("  VMAF scores - Avg: %.2f, Min: %.2f, Max: %.2f",
+            #          vmaf_score, vmaf_min, vmaf_max)
             log.info("Segment analysis complete: %s – VMAF Avg: %.2f, Min: %.2f, Max: %.2f (CRF target determined)",
                      segment.name, vmaf_score, vmaf_min, vmaf_max)
         else:
