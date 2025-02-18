@@ -24,7 +24,7 @@ from .concatenation import concatenate_segments
 
 log = logging.getLogger(__name__)
 
-def encode_dolby_vision(input_file: Path) -> Optional[Path]:
+def encode_dolby_vision(input_file: Path, disable_crop: bool = False) -> Optional[Path]:
     """
     Encode Dolby Vision content using ffmpeg with libsvtav1
     
@@ -78,8 +78,8 @@ def encode_dolby_vision(input_file: Path) -> Optional[Path]:
         logger.error("Could not get total duration for progress reporting: %s", e)
         total_duration = None  # We'll still run without progress percentages
 
-    # Crop detection for both Dolby Vision and standard encoding
-    crop_filter = detect_crop(input_file)
+    # Crop detection for Dolby Vision; disable if requested
+    crop_filter = detect_crop(input_file, disable_crop)
         
     # For Dolby Vision content:
     # 1. Force software decoding

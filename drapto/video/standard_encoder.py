@@ -19,7 +19,7 @@ from .concatenation import concatenate_segments
 
 log = logging.getLogger(__name__)
 
-def encode_standard(input_file: Path) -> Optional[Path]:
+def encode_standard(input_file: Path, disable_crop: bool = False) -> Optional[Path]:
     """
     Encode standard (non-Dolby Vision) content using the standard encoding pipeline.
     
@@ -37,8 +37,8 @@ def encode_standard(input_file: Path) -> Optional[Path]:
     if output_file.exists():
         output_file.unlink()
     
-    # Detect crop values
-    crop_filter = detect_crop(input_file)
+    # Detect crop values; disable if requested
+    crop_filter = detect_crop(input_file, disable_crop)
     
     try:
         # Step 1: Segment video

@@ -62,15 +62,15 @@ def process_file(input_file: Path, output_file: Path) -> Optional[dict]:
     try:
         if is_dolby_vision:
             log.info("Using Dolby Vision encoding pipeline")
-            from .video import dv_encoder  # Import the renamed DV module
-            video_track = dv_encoder.encode_dolby_vision(input_file)
+            from .video import dv_encoder  # Import the Dolby Vision module
+            video_track = dv_encoder.encode_dolby_vision(input_file, disable_crop)
         else:
             if ENABLE_STANDARD_ENCODING:
                 log.info("Using standard encoding process")
-                video_track = encode_standard(input_file)
+                video_track = encode_standard(input_file, disable_crop)
             else:
                 log.info("Using standard encoding process without extra features")
-                video_track = encode_standard(input_file)
+                video_track = encode_standard(input_file, disable_crop)
             
         if not video_track:
             log.error("Video encoding failed")
