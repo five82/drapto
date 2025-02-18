@@ -7,7 +7,7 @@ from typing import Optional
 
 from .config import (
     INPUT_DIR, OUTPUT_DIR, LOG_DIR,
-    ENABLE_CHUNKED_ENCODING
+    ENABLE_STANDARD_ENCODING
 )
 from .formatting import (
     print_header, print_check, print_warning,
