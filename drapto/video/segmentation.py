@@ -5,17 +5,192 @@ import os
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 from ..config import (
-    SEGMENT_LENGTH, TARGET_VMAF, VMAF_SAMPLE_COUNT,
+    TARGET_VMAF, VMAF_SAMPLE_COUNT,
     VMAF_SAMPLE_LENGTH, PRESET, SVT_PARAMS,
     WORKING_DIR
 )
+
 from ..utils import run_cmd, check_dependencies
-from ..formatting import print_info
+from ..formatting import print_info, print_check
 
 log = logging.getLogger(__name__)
+
+def merge_segments(segments: List[Path], output: Path) -> bool:
+    """
+    Merge two segments using ffmpeg's concat demuxer
+    
+    Args:
+        segment1: First segment
+        segment2: Second segment to append
+        output: Output path for merged segment
+        
+    Returns:
+        bool: True if merge successful
+    """
+    # Create temporary concat file
+    concat_file = output.parent / "concat.txt"
+    try:
+        with open(concat_file, 'w') as f:
+            for segment in segments:
+                f.write(f"file '{segment.absolute()}'\n")
+            
+        cmd = [
+            "ffmpeg", "-hide_banner", "-loglevel", "warning",
+            "-f", "concat",
+            "-safe", "0",
+            "-i", str(concat_file),
+            "-c", "copy",
+            "-y", str(output)
+        ]
+        run_cmd(cmd)
+        
+        # Verify merged output
+        if not output.exists() or output.stat().st_size == 0:
+            log.error("Failed to create merged segment")
+            return False
+            
+        return True
+    except Exception as e:
+        log.error("Failed to merge segments: %s", e)
+        return False
+    finally:
+        if concat_file.exists():
+            concat_file.unlink()
+
+def validate_segments(input_file: Path, variable_segmentation: bool = True) -> bool:
+    """
+    Validate video segments after segmentation.
+    
+    Args:
+        input_file: Original input video file for duration comparison.
+        variable_segmentation: Always True, as only scene-based segmentation is supported.
+        
+    Returns:
+        bool: True if all segments are valid.
+    """
+    from .scene_detection import detect_scenes, validate_segment_boundaries
+    segments_dir = WORKING_DIR / "segments"
+    segments = sorted(segments_dir.glob("*.mkv"))
+    
+    if not segments:
+        log.error("No segments created")
+        return False
+    log.info("Found %d segments", len(segments))
+        
+    log.info("Variable segmentation in use")
+    try:
+        result = run_cmd([
+            "ffprobe", "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            str(input_file)
+        ])
+        total_duration = float(result.stdout.strip())
+    except Exception as e:
+        log.error("Failed to get input duration: %s", e)
+        return False
+        
+    # Validate each segment and build a list of valid segments
+    total_segment_duration = 0.0
+    min_size = 1024  # 1KB minimum segment size
+    valid_segments = []
+    
+    for segment in segments:
+        # Check file size
+        if segment.stat().st_size < min_size:
+            log.error("Segment too small: %s", segment.name)
+            return False
+    
+        try:
+            result = run_cmd([
+                "ffprobe", "-v", "error",
+                "-show_entries", "format=duration:stream=codec_name",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                str(segment)
+            ])
+            lines = result.stdout.strip().split('\n')
+            duration = None
+            codec = None
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    duration = float(line)
+                except ValueError:
+                    codec = line
+            if duration is None or codec is None:
+                log.error("Invalid segment %s: missing duration or codec", segment.name)
+                return False
+                
+            log.info("Segment %s: duration=%.2fs, codec=%s", segment.name, duration, codec)
+    
+            # Check if segment duration is short
+            if duration < 1.0 and valid_segments:
+                # Try to merge with previous segment
+                prev_segment, prev_duration = valid_segments[-1]
+                merged_name = f"merged_{prev_segment.stem}_{segment.stem}.mkv"
+                merged_path = segment.parent / merged_name
+                
+                if merge_segments([prev_segment, segment], merged_path):
+                    log.info("Merged short segment %.2fs with previous segment", duration)
+                    # Update the previous segment entry with merged segment
+                    merged_duration = prev_duration + duration
+                    valid_segments[-1] = (merged_path, merged_duration)
+                    total_segment_duration += duration
+                    # Clean up original segments
+                    prev_segment.unlink()
+                    segment.unlink()
+                else:
+                    log.error("Failed to merge short segment: %s", segment.name)
+                    return False
+            else:
+                # Normal duration segment or first segment
+                valid_segments.append((segment, duration))
+                total_segment_duration += duration
+    
+        except Exception as e:
+            log.error("Failed to validate segment %s: %s", segment.name, e)
+            return False
+    
+    # After processing, validate total duration
+    valid_count = len(valid_segments)
+    try:
+        result = run_cmd([
+            "ffprobe", "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            str(input_file)
+        ])
+        total_duration = float(result.stdout.strip())
+    except Exception as e:
+        log.error("Failed to get input duration: %s", e)
+        return False
+
+    # Check that total duration matches within tolerance
+    duration_tolerance = max(1.0, total_duration * 0.02)  # 2% tolerance or minimum 1 second
+    if abs(total_segment_duration - total_duration) > duration_tolerance:
+        log.error("Total valid segment duration (%.2fs) differs significantly from input (%.2fs)",
+                  total_segment_duration, total_duration)
+        return False
+
+    # Detect scenes and validate segment boundaries against scene changes
+    scenes = detect_scenes(input_file)
+    short_segments = validate_segment_boundaries(segments_dir, scenes)
+    
+    # Don't fail validation for short segments that align with scene changes
+    problematic_segments = [s for s, is_scene in short_segments if not is_scene]
+    if problematic_segments:
+        log.warning(
+            "Found %d problematic short segments not aligned with scene changes",
+            len(problematic_segments)
+        )
+    
+    print_check(f"Successfully validated {valid_count} segments")
+    return True
 
 def segment_video(input_file: Path) -> bool:
     """
@@ -45,140 +220,35 @@ def segment_video(input_file: Path) -> bool:
             # Add hardware acceleration for decoding only
             cmd.extend(hw_opt.split())
             
-        cmd.extend([
-            "-i", str(input_file),
-            "-c:v", "copy",
-            "-an",
-            "-f", "segment",
-            "-segment_time", str(SEGMENT_LENGTH),
-            "-reset_timestamps", "1",
-            str(segments_dir / "%04d.mkv")
-        ])
-        run_cmd(cmd)
-        
-        # Validate segments
-        segments = list(segments_dir.glob("*.mkv"))
-        if not segments:
-            log.error("No segments created")
+        from .scene_detection import detect_scenes
+        scenes = detect_scenes(input_file)
+        if scenes:
+            # Create a comma-separated list of scene-change timestamps (in seconds)
+            # Optionally, filter out any scene times below a minimum value (e.g. 1.0s) if needed.
+            segment_times = ",".join(f"{t:.2f}" for t in scenes if t > 1.0)
+            cmd.extend([
+                "-i", str(input_file),
+                "-c:v", "copy",
+                "-an",
+                "-f", "segment",
+                "-segment_times", segment_times,
+                "-reset_timestamps", "1",
+                str(segments_dir / "%04d.mkv")
+            ])
+            variable_seg = True
+        else:
+            log.error("Scene detection failed; no scenes detected. Failing segmentation.")
             return False
             
-        log.info("Created %d segments", len(segments))
+        run_cmd(cmd)
+        
+        # Validate segments with the appropriate variable_segmentation flag
+        if not validate_segments(input_file, variable_segmentation=True):
+            return False
+            
         return True
         
     except Exception as e:
         log.error("Segmentation failed: %s", e)
         return False
 
-def encode_segments(crop_filter: Optional[str] = None) -> bool:
-    """
-    Encode video segments in parallel using ab-av1
-    
-    Args:
-        crop_filter: Optional ffmpeg crop filter string
-        
-    Returns:
-        bool: True if all segments encoded successfully
-    """
-    if not check_dependencies():
-        return False
-        
-    segments_dir = WORKING_DIR / "segments"
-    encoded_dir = WORKING_DIR / "encoded_segments"
-    encoded_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Create temporary script for GNU Parallel
-    script_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
-    
-    command_logged = False
-    try:
-        for segment in segments_dir.glob("*.mkv"):
-            output_segment = encoded_dir / segment.name
-        
-            # Build ab-av1 command
-            cmd = [
-                "ab-av1", "auto-encode",
-                "--input", str(segment),
-                "--output", str(output_segment),
-                "--encoder", "libsvtav1",
-                "--min-vmaf", str(TARGET_VMAF),
-                "--preset", str(PRESET),
-                "--svt", SVT_PARAMS,
-                "--keyint", "10s",
-                "--samples", str(VMAF_SAMPLE_COUNT),
-                "--sample-duration", f"{VMAF_SAMPLE_LENGTH}s",
-                "--vmaf", "n_subsample=8:pool=harmonic_mean",
-                "--pix_fmt", "yuv420p10le",
-                "--quiet"
-            ]
-            if crop_filter:
-                cmd.extend(["--vfilter", crop_filter])
-
-            # Log the command only once
-            if not command_logged:
-                formatted_command = " \\\n    ".join(cmd)
-                print_info("Encoding command parameters (common for all segments):")
-                log.info("\n%s", formatted_command)
-                command_logged = True
-
-            # Write the command to the temporary script file for GNU Parallel
-            script_file.write(" ".join(cmd) + "\n")
-            
-        script_file.close()
-        os.chmod(script_file.name, 0o755)
-        
-        # Run encoding jobs in parallel
-        cmd = [
-            "parallel", "--no-notice",
-            "--line-buffer",
-            "--halt", "soon,fail=1",
-            "--jobs", "0",
-            ":::", script_file.name
-        ]
-        run_cmd(cmd)
-        
-        return True
-        
-    except Exception as e:
-        log.error("Parallel encoding failed: %s", e)
-        return False
-    finally:
-        Path(script_file.name).unlink()
-
-def concatenate_segments(output_file: Path) -> bool:
-    """
-    Concatenate encoded segments into final video
-    
-    Args:
-        output_file: Path for concatenated output
-        
-    Returns:
-        bool: True if concatenation successful
-    """
-    encoded_dir = WORKING_DIR / "encoded_segments"
-    concat_file = WORKING_DIR / "concat.txt"
-    
-    try:
-        # Create concat file
-        with open(concat_file, 'w') as f:
-            for segment in sorted(encoded_dir.glob("*.mkv")):
-                f.write(f"file '{segment.absolute()}'\n")
-                
-        # Concatenate segments
-        cmd = [
-            "ffmpeg", "-hide_banner", "-loglevel", "error",
-            "-f", "concat",
-            "-safe", "0",
-            "-i", str(concat_file),
-            "-c", "copy",
-            "-y", str(output_file)
-        ]
-        run_cmd(cmd)
-        
-        return True
-        
-    except Exception as e:
-        log.error("Concatenation failed: %s", e)
-        return False
-    finally:
-        if concat_file.exists():
-            concat_file.unlink()

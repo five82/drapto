@@ -37,17 +37,28 @@ IS_DOLBY_VISION = False
 # Cropping settings
 DISABLE_CROP = False
 
-# Chunked encoding settings
-ENABLE_CHUNKED_ENCODING = True
-SEGMENT_LENGTH = 15
+# Standard encoding settings
+ENABLE_STANDARD_ENCODING = True
+# Fixed segmentation mode is removed; using only dynamic, scene-based segmentation.
 TARGET_VMAF = 93
 VMAF_SAMPLE_COUNT = 3
 VMAF_SAMPLE_LENGTH = 1
+
+# Scene detection settings
+SCENE_THRESHOLD = 40.0  # Content detection threshold (higher = less sensitive)
+MIN_SCENE_INTERVAL = 5.0  # Minimum time between scene changes (seconds)
+CLUSTER_WINDOW = 2.0  # Window size in seconds for clustering nearby scene changes
+TARGET_SEGMENT_LENGTH = 15.0  # Target segment duration in seconds
+MAX_SEGMENT_LENGTH = 30.0  # Maximum segment length before forcing a split
+ADAPTIVE_CLUSTER_WINDOW = 2.0  # Default window for adaptive scene clustering
 
 # Temporary directories for chunked encoding
 SEGMENTS_DIR = WORKING_ROOT / "segments"
 ENCODED_SEGMENTS_DIR = WORKING_ROOT / "encoded_segments" 
 WORKING_DIR = WORKING_ROOT / "working"
+
+# Logging configuration
+LOG_LEVEL = "INFO"  # Default logging level; valid values: DEBUG, INFO, WARNING, ERROR, CRITICAL
 
 # Create log directory
 LOG_DIR.mkdir(parents=True, exist_ok=True)

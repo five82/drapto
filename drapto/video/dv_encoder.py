@@ -1,4 +1,7 @@
-"""Video encoding functions for drapto"""
+"""Dolby Vision encoding functions for drapto.
+
+This module handles only Dolby Vision content encoding.
+"""
 
 import logging
 import shutil
@@ -12,17 +15,16 @@ from ..config import (
     WORKING_DIR
 )
 from ..utils import run_cmd, run_cmd_interactive, run_cmd_with_progress
+from ..formatting import print_check
 from .hardware import get_hwaccel_options
 from .detection import detect_crop
-from .segmentation import (
-    segment_video,
-    encode_segments,
-    concatenate_segments
-)
+from .segmentation import segment_video
+from .segment_encoding import encode_segments
+from .concatenation import concatenate_segments
 
 log = logging.getLogger(__name__)
 
-def encode_dolby_vision(input_file: Path) -> Optional[Path]:
+def encode_dolby_vision(input_file: Path, disable_crop: bool = False) -> Optional[Path]:
     """
     Encode Dolby Vision content using ffmpeg with libsvtav1
     
@@ -76,8 +78,8 @@ def encode_dolby_vision(input_file: Path) -> Optional[Path]:
         logger.error("Could not get total duration for progress reporting: %s", e)
         total_duration = None  # We'll still run without progress percentages
 
-    # Crop detection for both Dolby Vision and standard encoding
-    crop_filter = detect_crop(input_file)
+    # Crop detection for Dolby Vision; disable if requested
+    crop_filter = detect_crop(input_file, disable_crop)
         
     # For Dolby Vision content:
     # 1. Force software decoding
@@ -126,48 +128,3 @@ def encode_dolby_vision(input_file: Path) -> Optional[Path]:
         log.error("Dolby Vision encoding failed: %s", e)
         return None
 
-def encode_standard(input_file: Path) -> Optional[Path]:
-    """
-    Encode standard content using chunked encoding with ab-av1
-    
-    Args:
-        input_file: Path to input video file
-        
-    Returns:
-        Optional[Path]: Path to encoded video file if successful
-    """
-    # Ensure the working directory exists
-    WORKING_DIR.mkdir(parents=True, exist_ok=True)
-    output_file = WORKING_DIR / "video.mkv"
-
-    # Remove any pre-existing output file
-    if output_file.exists():
-        output_file.unlink()
-    
-    # Detect crop values
-    crop_filter = detect_crop(input_file)
-    
-    try:
-        # Step 1: Segment video
-        if not segment_video(input_file):
-            return None
-            
-        # Step 2: Encode segments
-        if not encode_segments(crop_filter):
-            return None
-            
-        # Step 3: Concatenate segments
-        if not concatenate_segments(output_file):
-            return None
-            
-        return output_file
-        
-    except Exception as e:
-        log.error("Failed to encode standard content: %s", e)
-        return None
-    finally:
-        # Cleanup temporary segment files
-        for temp_dir in ["segments", "encoded_segments"]:
-            temp_path = WORKING_DIR / temp_dir
-            if temp_path.exists():
-                shutil.rmtree(temp_path)

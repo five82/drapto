@@ -7,11 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Union, Optional
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+# (Removed basicConfig call so that __main__.py can fully control logging configuration)
 logger = logging.getLogger(__name__)
 
 def run_cmd_with_progress(cmd: List[str], total_duration: Optional[float] = None, log_interval: float = 3.0) -> int:
@@ -32,7 +28,7 @@ def run_cmd_with_progress(cmd: List[str], total_duration: Optional[float] = None
 
     # Append the progress flag so that ffmpeg writes progress information to stdout
     cmd_with_progress = cmd + ["-progress", "pipe:1"]
-    logger.info("Running ffmpeg command with progress:\n%s", " \\\n    ".join(cmd_with_progress))
+    logger.debug("Running ffmpeg command with progress:\n%s", " \\\n    ".join(cmd_with_progress))
     
     process = subprocess.Popen(cmd_with_progress, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     
@@ -59,8 +55,16 @@ def run_cmd_with_progress(cmd: List[str], total_duration: Optional[float] = None
                     hours, minutes, seconds = parts
                     current_time = int(hours)*3600 + int(minutes)*60 + float(seconds)
                     percent = (current_time / total_duration) * 100
+                    # Calculate estimated remaining time
+                    remaining_seconds = total_duration - current_time
+                    if remaining_seconds < 0:
+                        remaining_seconds = 0
+                    remaining_hours = int(remaining_seconds // 3600)
+                    remaining_minutes = int((remaining_seconds % 3600) // 60)
+                    remaining_secs = int(remaining_seconds % 60)
+                    formatted_remaining = f"{remaining_hours:02d}h {remaining_minutes:02d}m {remaining_secs:02d}s"
                     if percent - last_logged_percent >= log_interval:
-                        logger.info("Progress: %.2f%%, fps: %s", percent, current_fps)
+                        logger.info("Progress: %.2f%%, fps: %s, remaining: %s", percent, current_fps, formatted_remaining)
                         last_logged_percent = percent
                 else:
                     logger.debug("Unexpected out_time format: %s", time_str)
@@ -83,14 +87,14 @@ def run_cmd_with_progress(cmd: List[str], total_duration: Optional[float] = None
 def run_cmd_interactive(cmd: List[str]) -> int:
     """Run a command interactively so that its output (including progress bar)
     is printed directly to the console."""
-    logger.info("Running interactive command: %s", " ".join(cmd))
+    logger.debug("Running interactive command: %s", " ".join(cmd))
     process = subprocess.Popen(cmd, stdout=sys.stdout, stderr=sys.stderr)
     return process.wait()
 
 def run_cmd(cmd: List[str], capture_output: bool = True, 
             check: bool = True) -> subprocess.CompletedProcess:
     """Run a command and handle errors"""
-    logger.info("Running command: %s", " ".join(cmd))
+    logger.debug("Running command: %s", " ".join(cmd))
     try:
         result = subprocess.run(
             cmd,
@@ -126,7 +130,7 @@ def format_size(size: int) -> str:
 
 def check_dependencies() -> bool:
     """Check for required dependencies"""
-    required = ['ffmpeg', 'ffprobe', 'mediainfo', 'bc']
+    required = ['ffmpeg', 'ffprobe', 'mediainfo']
     
     for cmd in required:
         try:
