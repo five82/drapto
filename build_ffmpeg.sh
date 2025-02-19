@@ -187,7 +187,7 @@ build_libdovi() {
         fi
         cd dovi_tool_repo/dolby_vision || { echo "Cannot enter dovi_tool/dolby_vision directory"; exit 1; }
         # Build and install libdovi using cargo-c (make sure cargo-c is installed: cargo install cargo-c)
-        cargo cinstall --release
+        PREFIX="$HOME/.local" cargo-cinstall --release --prefix "$HOME/.local"
         cd ../.. || exit 1
     else
         echo "libdovi found via pkg-config."
