@@ -244,6 +244,7 @@ configure_ffmpeg() {
         --enable-libdav1d \
         --enable-libopus \
         --enable-libsvtav1 \
+        --enable-dolbyvision \
 	--enable-protocol=file \
 	--enable-protocol=crypto \
         --cc=/usr/bin/gcc
