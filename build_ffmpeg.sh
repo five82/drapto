@@ -68,6 +68,7 @@ check_brew_deps() {
         "opus"
         "dav1d"
         "svt-av1"
+        "libdovi"
     )
 
     echo "Checking Homebrew dependencies..."
@@ -244,7 +245,7 @@ configure_ffmpeg() {
         --enable-libdav1d \
         --enable-libopus \
         --enable-libsvtav1 \
-        --enable-dolbyvision \
+        --enable-libdovi \
 	--enable-protocol=file \
 	--enable-protocol=crypto \
         --cc=/usr/bin/gcc
