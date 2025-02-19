@@ -68,7 +68,6 @@ check_brew_deps() {
         "opus"
         "dav1d"
         "svt-av1"
-        "libdovi"
     )
 
     echo "Checking Homebrew dependencies..."
@@ -178,6 +177,24 @@ mkdir -p "$INSTALL_DIR"
 
 # Check system dependencies before starting any builds
 check_dependencies
+
+build_libdovi() {
+    if ! pkg-config --exists libdovi; then
+        echo "libdovi not found via pkg-config; building libdovi using dovi_tool..."
+        # Clone the dovi_tool repo if not already present (you can adjust the clone directory as needed)
+        if [ ! -d "dovi_tool_repo" ]; then
+            git clone --depth=1 https://github.com/quietvoid/dovi_tool.git dovi_tool_repo
+        fi
+        cd dovi_tool_repo/dolby_vision || { echo "Cannot enter dovi_tool/dolby_vision directory"; exit 1; }
+        # Build and install libdovi using cargo-c (make sure cargo-c is installed: cargo install cargo-c)
+        cargo cinstall --release
+        cd ../.. || exit 1
+    else
+        echo "libdovi found via pkg-config."
+    fi
+}
+
+build_libdovi
 
 cd $BUILD_DIR
 
