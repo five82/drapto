@@ -352,6 +352,12 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
         return False
     finally:
         try:
+            # Suppress Dask shutdown chatter
+            import logging
+            logging.getLogger("distributed").setLevel(logging.ERROR)
+            logging.getLogger("tornado").setLevel(logging.ERROR) 
+            logging.getLogger("dask").setLevel(logging.ERROR)
+
             # Ensure graceful shutdown of all workers
             client.shutdown()
             client.close(timeout=5)
