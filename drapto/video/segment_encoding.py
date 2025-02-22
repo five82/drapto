@@ -247,9 +247,14 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
     if not check_dependencies() or not validate_ab_av1():
         return False
 
-    # Silence Dask startup/shutdown logs
-    import logging
+    # Configure Dask logging before importing/using any Dask components
     import os
+    import dask
+    os.environ["DASK_DISTRIBUTED__LOGGING__MINIMUM_LEVEL"] = "error"
+    dask.config.set({"distributed.logging.minimum-level": "error"})
+
+    # Additional logging configuration
+    import logging
     
     # Disable forwarding of worker logs
     os.environ["DASK_DISTRIBUTED__WORKER__LOGGING__FORWARD_TO_LOGGER"] = "0"
