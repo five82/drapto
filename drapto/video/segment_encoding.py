@@ -6,7 +6,6 @@ import shutil
 import time
 import resource
 import psutil
-import ray
 from pathlib import Path
 from typing import List, Optional, Dict
 
@@ -226,10 +225,6 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
 
     return stats
 
-@ray.remote(num_cpus=1)
-def ray_encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[str], retry_count: int, dv_flag: bool, weight: int) -> dict:
-    """Ray remote function wrapper for encode_segment"""
-    return encode_segment(segment, output_segment, crop_filter, retry_count, dv_flag)
 
 def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) -> bool:
     """
@@ -247,14 +242,8 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
     if not check_dependencies() or not validate_ab_av1():
         return False
 
-    # Initialize Ray if not already running
-    if not ray.is_initialized():
-        # Calculate available memory tokens based on system memory
-        import psutil
-        total_gb = psutil.virtual_memory().total / (1024**3)  # Total RAM in GB
-        # Allocate 1 token per 2GB of RAM, minimum 4 tokens
-        memory_tokens = max(4, int(total_gb / 2))
-        ray.init(resources={"memory_token": memory_tokens})
+    from dask.distributed import Client
+    client = Client()  # Starts a local Dask cluster; configure as needed.
         
     segments_dir = WORKING_DIR / "segments"
     encoded_dir = WORKING_DIR / "encoded_segments"
@@ -286,32 +275,19 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
         formatted_sample = " \\\n    ".join(sample_cmd)
         log.info("Common ab-av1 encoding parameters:\n%s", formatted_sample)
 
-        # Submit all segments as Ray tasks
+        # Submit all segments as Dask tasks
         futures = []
         for segment in segments:
             output_segment = encoded_dir / segment.name
-            weight = estimate_memory_weight(segment)
-            future = ray_encode_segment.options(resources={"memory_token": weight}).remote(
-                segment, output_segment, crop_filter, 0, dv_flag, weight
-            )
+            future = client.submit(encode_segment, segment, output_segment, crop_filter, 0, dv_flag)
             futures.append(future)
 
-        # Wait for all tasks to complete, processing results as they arrive
-        segment_stats = []
-        failed_segments = []
-        
-        while futures:
-            done_id, futures = ray.wait(futures)
-            try:
-                stats = ray.get(done_id[0])
-                segment_stats.append(stats)
+        try:
+            segment_stats = client.gather(futures)
+            for stats in segment_stats:
                 log.info("Successfully encoded segment: %s", stats.get('segment'))
-            except Exception as e:
-                log.error("Failed to encode segment: %s", e)
-                failed_segments.append("unknown")
-
-        if failed_segments:
-            log.error("Failed to encode %d segments", len(failed_segments))
+        except Exception as e:
+            log.error("Failed to encode segments: %s", e)
             return False
                 
         # Print summary statistics
@@ -347,6 +323,7 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
         log.error("Parallel encoding failed: %s", e)
         return False
     finally:
+        client.close()
         # Cleanup handled by the calling function
         pass
 
