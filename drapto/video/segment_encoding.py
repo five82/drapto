@@ -342,7 +342,13 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
 
                     available_mem = psutil.virtual_memory().available
 
-                    if current_mem_estimate + estimated_mem <= available_mem * 0.8:
+                    # Use a stricter threshold for 4k content
+                    if res_cat == "4k":
+                        threshold = 0.5
+                    else:
+                        threshold = 0.8
+
+                    if current_mem_estimate + estimated_mem <= available_mem * threshold:
                         output_segment = encoded_dir / segment.name
                         fut = executor.submit(encode_segment, segment, output_segment, crop_filter, 0, dv_flag)
                         running_futures[fut] = (res_cat, estimated_mem)
