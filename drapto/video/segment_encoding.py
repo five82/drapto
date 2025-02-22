@@ -227,7 +227,7 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
     return stats
 
 @ray.remote(num_cpus=1)
-def ray_encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[str], retry_count: int, dv_flag: bool) -> dict:
+def ray_encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[str], retry_count: int, dv_flag: bool, weight: int) -> dict:
     """Ray remote function wrapper for encode_segment"""
     return encode_segment(segment, output_segment, crop_filter, retry_count, dv_flag)
 
@@ -249,7 +249,12 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
 
     # Initialize Ray if not already running
     if not ray.is_initialized():
-        ray.init()
+        # Calculate available memory tokens based on system memory
+        import psutil
+        total_gb = psutil.virtual_memory().total / (1024**3)  # Total RAM in GB
+        # Allocate 1 token per 2GB of RAM, minimum 4 tokens
+        memory_tokens = max(4, int(total_gb / 2))
+        ray.init(resources={"memory_token": memory_tokens})
         
     segments_dir = WORKING_DIR / "segments"
     encoded_dir = WORKING_DIR / "encoded_segments"
@@ -285,7 +290,10 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
         futures = []
         for segment in segments:
             output_segment = encoded_dir / segment.name
-            future = ray_encode_segment.remote(segment, output_segment, crop_filter, 0, dv_flag)
+            weight = estimate_memory_weight(segment)
+            future = ray_encode_segment.options(resources={"memory_token": weight}).remote(
+                segment, output_segment, crop_filter, 0, dv_flag, weight
+            )
             futures.append(future)
 
         # Wait for all tasks to complete, processing results as they arrive
