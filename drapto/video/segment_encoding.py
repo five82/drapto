@@ -258,7 +258,13 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
         def emit(record):
             dask_worker.log_messages.append(record.getMessage())
         handler.emit = emit
-        python_logging.getLogger('drapto').addHandler(handler)
+        # Attach to root logger to capture all messages
+        root_logger = python_logging.getLogger()
+        root_logger.addHandler(handler)
+        # Ensure all loggers propagate up
+        for name in ['drapto', 'distributed']:
+            logger = python_logging.getLogger(name)
+            logger.propagate = True
 
     client = Client(set_as_default=False)
     client.register_worker_callbacks(setup=worker_setup)
