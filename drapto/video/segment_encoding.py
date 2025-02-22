@@ -51,7 +51,7 @@ from ..validation import validate_ab_av1
 
 log = logging.getLogger(__name__)
 
-def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[str] = None, retry_count: int = 0, dv_flag: bool = False) -> dict:
+def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[str] = None, retry_count: int = 0, dv_flag: bool = False) -> tuple[dict, list[str]]:
     """
     Encode a single video segment using ab-av1.
     
@@ -223,7 +223,12 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
     stats['peak_memory_bytes'] = peak_memory_bytes
     stats['resolution_category'] = resolution_category
 
-    return stats
+    # Capture all log messages from this worker
+    from distributed.worker import get_worker
+    worker = get_worker()
+    log_messages = getattr(worker, 'log_messages', [])
+
+    return stats, log_messages
 
 
 def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) -> bool:
@@ -242,9 +247,21 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
     if not check_dependencies() or not validate_ab_av1():
         return False
 
-    from dask.distributed import Client, worker_client
-    # Configure local cluster with explicit cleanup
+    from dask.distributed import Client, worker_client, Worker
+    import logging as python_logging
+
+    # Configure Dask cluster with logging capture
+    def worker_setup(dask_worker: Worker):
+        dask_worker.log_messages = []
+        handler = python_logging.StreamHandler()
+        handler.setFormatter(python_logging.Formatter('%(message)s'))
+        def emit(record):
+            dask_worker.log_messages.append(record.getMessage())
+        handler.emit = emit
+        python_logging.getLogger('drapto').addHandler(handler)
+
     client = Client(set_as_default=False)
+    client.register_worker_callbacks(setup=worker_setup)
     
     segments_dir = WORKING_DIR / "segments"
     encoded_dir = WORKING_DIR / "encoded_segments"
@@ -284,15 +301,19 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
             futures.append(future)
 
         try:
-            segment_stats = client.gather(futures)
-            for stats in segment_stats:
+            results = client.gather(futures)
+            for stats, log_messages in results:
+                # Print captured worker logs
+                for msg in log_messages:
+                    log.info(msg)
                 log.info("Successfully encoded segment: %s", stats.get('segment'))
         except Exception as e:
             log.error("Failed to encode segments: %s", e)
             return False
                 
         # Print summary statistics
-        if segment_stats:
+        if results:
+            segment_stats = [s for s, _ in results]
             total_duration = sum(s['duration'] for s in segment_stats)
             total_size = sum(s['size_mb'] for s in segment_stats)
             avg_bitrate = sum(s['bitrate_kbps'] for s in segment_stats) / len(segment_stats)
