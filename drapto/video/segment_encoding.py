@@ -3,10 +3,44 @@
 import logging
 import re
 import shutil
+import time
+import resource
+import psutil
 from pathlib import Path
 from typing import List, Optional
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import multiprocessing
+
+# Maximum concurrent memory tokens (8 total):
+# - Up to 2 concurrent 4K segments (4 tokens each)
+# - Up to 4 concurrent 1080p segments (2 tokens each) 
+# - Up to 8 concurrent SD segments (1 token each)
+MAX_MEMORY_TOKENS = 8
+
+def estimate_memory_weight(segment: Path) -> int:
+    """
+    Estimate memory weight based on segment resolution:
+    - 4K (width ≥ 3840): 4 tokens
+    - 1080p (width ≥ 1920): 2 tokens  
+    - Lower resolution: 1 token
+    """
+    try:
+        result = run_cmd([
+            "ffprobe", "-v", "error",
+            "-select_streams", "v:0",
+            "-show_entries", "stream=width",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            str(segment)
+        ])
+        width = int(result.stdout.strip())
+        if width >= 3840:  # 4K
+            return 4
+        elif width >= 1920:  # 1080p/2K
+            return 2
+        return 1  # SD/HD
+    except Exception as e:
+        log.warning("Failed to get segment width, assuming SD/HD weight: %s", e)
+        return 1
 
 from ..config import (
     PRESET, TARGET_VMAF, SVT_PARAMS, 
@@ -157,6 +191,37 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
              stats['encoding_time'], stats['speed_factor'])
     log.info("  Resolution: %s @ %s", stats['resolution'], stats['framerate'])
     
+    # Get peak memory usage (in kilobytes)
+    peak_memory_kb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+
+    # Determine resolution category from output width
+    try:
+        width_result = run_cmd([
+            "ffprobe", "-v", "error",
+            "-select_streams", "v:0",
+            "-show_entries", "stream=width",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            str(output_segment)
+        ])
+        width = int(width_result.stdout.strip())
+    except Exception:
+        width = 1280  # Fallback
+
+    if width >= 3840:
+        resolution_category = "4k"
+    elif width >= 1920:
+        resolution_category = "1080p"
+    else:
+        resolution_category = "SDR"
+
+    # Convert peak memory to bytes for later comparison
+    peak_memory_bytes = peak_memory_kb * 1024
+
+    # Record the dynamic values in the stats
+    stats['peak_memory_kb'] = peak_memory_kb
+    stats['peak_memory_bytes'] = peak_memory_bytes
+    stats['resolution_category'] = resolution_category
+
     return stats
 
 def encode_segments(crop_filter: Optional[str] = None) -> bool:
@@ -208,30 +273,83 @@ def encode_segments(crop_filter: Optional[str] = None) -> bool:
         formatted_sample = " \\\n    ".join(sample_cmd)
         log.info("Common ab-av1 encoding parameters:\n%s", formatted_sample)
 
-        # Use ProcessPoolExecutor for parallel encoding
-        max_workers = max(1, multiprocessing.cpu_count())
+        # Use ProcessPoolExecutor with memory token scheduling
         segment_stats = []
-        
-        with ProcessPoolExecutor(max_workers=max_workers) as executor:
-            # Submit all encoding jobs
-            futures = {}
-            for segment in segments:
-                output_segment = encoded_dir / segment.name
-                # Start with retry_count=0
-                future = executor.submit(encode_segment, segment, output_segment, crop_filter, 0)
-                futures[future] = segment
+        failed_segments = []
+        pending_segments = list(segments)          # list of segments left to schedule
+        running_futures = {}                       # mapping of future -> (category, memory)
+        current_mem_estimate = 0                   # total estimated memory used by running tasks
+        default_estimates = {
+            "4k": 3 * 1024**3,
+            "1080p": int(1.5 * 1024**3),
+            "SDR": int(0.5 * 1024**3)
+        }
+        dynamic_mem_estimates = default_estimates.copy()
+        max_workers = max(1, multiprocessing.cpu_count())
 
-            # Monitor jobs as they complete
-            failed_segments = []
-            for future in as_completed(futures):
-                segment = futures[future]
-                try:
-                    stats = future.result()
-                    segment_stats.append(stats)
-                    log.info("Successfully encoded segment: %s", segment.name)
-                except Exception as e:
-                    log.error("Failed to encode segment %s: %s", segment.name, e)
-                    failed_segments.append(segment)
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            while pending_segments or running_futures:
+                # Check for completed tasks and release their tokens
+                completed = []
+                for fut in list(running_futures):
+                    if fut.done():
+                        res_cat, estimated_mem = running_futures.pop(fut)
+                        current_mem_estimate -= estimated_mem
+                        try:
+                            stats = fut.result()
+                            # Update the dynamic estimate for this resolution category
+                            actual = stats.get('peak_memory_bytes')
+                            if actual:
+                                prev = dynamic_mem_estimates.get(res_cat)
+                                if prev is None:
+                                    dynamic_mem_estimates[res_cat] = actual
+                                else:
+                                    dynamic_mem_estimates[res_cat] = (prev + actual) / 2
+                            segment_stats.append(stats)
+                            log.info("Successfully encoded segment: %s", stats.get('segment'))
+                        except Exception as e:
+                            log.error("Failed to encode a segment: %s", e)
+                            failed_segments.append("unknown")
+                        completed.append(fut)
+                
+                # Try scheduling new tasks if tokens are available
+                i = 0
+                while i < len(pending_segments):
+                    segment = pending_segments[i]
+                    # Determine resolution category for segment
+                    try:
+                        result = run_cmd([
+                            "ffprobe", "-v", "error",
+                            "-select_streams", "v:0",
+                            "-show_entries", "stream=width",
+                            "-of", "default=noprint_wrappers=1:nokey=1",
+                            str(segment)
+                        ])
+                        width = int(result.stdout.strip())
+                    except Exception:
+                        width = 1280
+                    if width >= 3840:
+                        res_cat = "4k"
+                    elif width >= 1920:
+                        res_cat = "1080p"
+                    else:
+                        res_cat = "SDR"
+
+                    estimated_mem = dynamic_mem_estimates[res_cat]
+
+                    available_mem = psutil.virtual_memory().available
+
+                    if current_mem_estimate + estimated_mem <= available_mem * 0.8:
+                        output_segment = encoded_dir / segment.name
+                        fut = executor.submit(encode_segment, segment, output_segment, crop_filter, 0)
+                        running_futures[fut] = (res_cat, estimated_mem)
+                        current_mem_estimate += estimated_mem
+                        pending_segments.pop(i)
+                    else:
+                        i += 1
+                
+                # Wait briefly before rechecking
+                time.sleep(0.5)
 
             if failed_segments:
                 log.error("Failed to encode %d segments", len(failed_segments))
