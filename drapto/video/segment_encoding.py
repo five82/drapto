@@ -352,15 +352,13 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
         return False
     finally:
         try:
+            # Suppress Dask shutdown messages
+            logging.getLogger("distributed").setLevel(logging.ERROR)
+            logging.getLogger("tornado").setLevel(logging.ERROR)
+            
             # Ensure graceful shutdown of all workers
-            with logging.getLogger("distributed").handlers[0].console.capture() as capture:
-                client.shutdown()
-                client.close(timeout=5)
-            # Only log actual errors, not expected cleanup messages
-            if capture.get().strip():
-                cleanup_log = capture.get().lower()
-                if "error" in cleanup_log and "commclosed" not in cleanup_log:
-                    log.debug("Dask cleanup messages: %s", capture.get())
+            client.shutdown()
+            client.close(timeout=5)
         except Exception as e:
             # Only log unexpected errors
             if not str(e).startswith(("CommClosedError", "CancelledError")):
