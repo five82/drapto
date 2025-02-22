@@ -279,11 +279,12 @@ def encode_segments(crop_filter: Optional[str] = None) -> bool:
         pending_segments = list(segments)          # list of segments left to schedule
         running_futures = {}                       # mapping of future -> (category, memory)
         current_mem_estimate = 0                   # total estimated memory used by running tasks
-        dynamic_mem_estimates = {                  # dynamic average memory usage per resolution
-            "4k": None,
-            "1080p": None,
-            "SDR": None,
+        default_estimates = {
+            "4k": 3 * 1024**3,
+            "1080p": int(1.5 * 1024**3),
+            "SDR": int(0.5 * 1024**3)
         }
+        dynamic_mem_estimates = default_estimates.copy()
         max_workers = max(1, multiprocessing.cpu_count())
 
         with ProcessPoolExecutor(max_workers=max_workers) as executor:
@@ -334,20 +335,7 @@ def encode_segments(crop_filter: Optional[str] = None) -> bool:
                     else:
                         res_cat = "SDR"
 
-                    # Get dynamic estimate or default if not available (values in bytes)
-                    default_estimates = {
-                        "4k": 3 * 1024**3,
-                        "1080p": int(1.5 * 1024**3),
-                        "SDR": int(0.5 * 1024**3)
-                    }
-                    dynamic_value = dynamic_mem_estimates.get(res_cat)
-                    if dynamic_value is None:
-                        log.warning(
-                            "No dynamic memory estimate available for resolution category '%s'; "
-                            "using fallback default value: %d bytes",
-                            res_cat, default_estimates[res_cat]
-                        )
-                    estimated_mem = dynamic_value or default_estimates[res_cat]
+                    estimated_mem = dynamic_mem_estimates[res_cat]
 
                     available_mem = psutil.virtual_memory().available
 
