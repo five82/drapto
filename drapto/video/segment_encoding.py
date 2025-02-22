@@ -249,9 +249,15 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
 
     # Silence Dask startup/shutdown logs
     import logging
-    logging.getLogger("distributed").setLevel(logging.WARNING)
-    logging.getLogger("dask").setLevel(logging.WARNING) 
-    logging.getLogger("tornado").setLevel(logging.WARNING)
+    import os
+    
+    # Disable forwarding of worker logs
+    os.environ["DASK_DISTRIBUTED__WORKER__LOGGING__FORWARD_TO_LOGGER"] = "0"
+    
+    # Force higher log levels before client creation
+    logging.getLogger("distributed").setLevel(logging.ERROR)
+    logging.getLogger("dask").setLevel(logging.ERROR)
+    logging.getLogger("tornado").setLevel(logging.ERROR)
 
     from dask.distributed import Client, worker_client, Worker
     import logging as python_logging
@@ -272,7 +278,7 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
             logger = python_logging.getLogger(name)
             logger.propagate = True
 
-    client = Client(set_as_default=False)
+    client = Client(dashboard_address=None, set_as_default=False)
     client.register_worker_callbacks(setup=worker_setup)
     
     segments_dir = WORKING_DIR / "segments"
