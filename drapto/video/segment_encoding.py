@@ -189,6 +189,37 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
              stats['encoding_time'], stats['speed_factor'])
     log.info("  Resolution: %s @ %s", stats['resolution'], stats['framerate'])
     
+    # Get peak memory usage (in kilobytes)
+    peak_memory_kb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+
+    # Determine resolution category from output width
+    try:
+        width_result = run_cmd([
+            "ffprobe", "-v", "error",
+            "-select_streams", "v:0",
+            "-show_entries", "stream=width",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            str(output_segment)
+        ])
+        width = int(width_result.stdout.strip())
+    except Exception:
+        width = 1280  # Fallback
+
+    if width >= 3840:
+        resolution_category = "4k"
+    elif width >= 1920:
+        resolution_category = "1080p"
+    else:
+        resolution_category = "SDR"
+
+    # Convert peak memory to bytes for later comparison
+    peak_memory_bytes = peak_memory_kb * 1024
+
+    # Record the dynamic values in the stats
+    stats['peak_memory_kb'] = peak_memory_kb
+    stats['peak_memory_bytes'] = peak_memory_bytes
+    stats['resolution_category'] = resolution_category
+
     return stats
 
 def encode_segments(crop_filter: Optional[str] = None) -> bool:
@@ -244,8 +275,13 @@ def encode_segments(crop_filter: Optional[str] = None) -> bool:
         segment_stats = []
         failed_segments = []
         pending_segments = list(segments)          # list of segments left to schedule
-        running_futures = {}                       # mapping of future -> segment weight
-        current_tokens = 0                         # current cumulative weight in use
+        running_futures = {}                       # mapping of future -> (category, memory)
+        current_mem_estimate = 0                   # total estimated memory used by running tasks
+        dynamic_mem_estimates = {                  # dynamic average memory usage per resolution
+            "4k": None,
+            "1080p": None,
+            "SDR": None,
+        }
         max_workers = max(1, multiprocessing.cpu_count())
 
         with ProcessPoolExecutor(max_workers=max_workers) as executor:
@@ -254,10 +290,18 @@ def encode_segments(crop_filter: Optional[str] = None) -> bool:
                 completed = []
                 for fut in list(running_futures):
                     if fut.done():
-                        weight = running_futures.pop(fut)
-                        current_tokens -= weight
+                        res_cat, estimated_mem = running_futures.pop(fut)
+                        current_mem_estimate -= estimated_mem
                         try:
                             stats = fut.result()
+                            # Update the dynamic estimate for this resolution category
+                            actual = stats.get('peak_memory_bytes')
+                            if actual:
+                                prev = dynamic_mem_estimates.get(res_cat)
+                                if prev is None:
+                                    dynamic_mem_estimates[res_cat] = actual
+                                else:
+                                    dynamic_mem_estimates[res_cat] = (prev + actual) / 2
                             segment_stats.append(stats)
                             log.info("Successfully encoded segment: %s", stats.get('segment'))
                         except Exception as e:
@@ -269,12 +313,40 @@ def encode_segments(crop_filter: Optional[str] = None) -> bool:
                 i = 0
                 while i < len(pending_segments):
                     segment = pending_segments[i]
-                    weight = estimate_memory_weight(segment)
-                    if current_tokens + weight <= MAX_MEMORY_TOKENS:
+                    # Determine resolution category for segment
+                    try:
+                        result = run_cmd([
+                            "ffprobe", "-v", "error",
+                            "-select_streams", "v:0",
+                            "-show_entries", "stream=width",
+                            "-of", "default=noprint_wrappers=1:nokey=1",
+                            str(segment)
+                        ])
+                        width = int(result.stdout.strip())
+                    except Exception:
+                        width = 1280
+                    if width >= 3840:
+                        res_cat = "4k"
+                    elif width >= 1920:
+                        res_cat = "1080p"
+                    else:
+                        res_cat = "SDR"
+
+                    # Get dynamic estimate or default if not available (values in bytes)
+                    default_estimates = {
+                        "4k": 3 * 1024**3,
+                        "1080p": int(1.5 * 1024**3),
+                        "SDR": int(0.5 * 1024**3)
+                    }
+                    estimated_mem = dynamic_mem_estimates.get(res_cat) or default_estimates[res_cat]
+
+                    available_mem = psutil.virtual_memory().available
+
+                    if current_mem_estimate + estimated_mem <= available_mem * 0.8:
                         output_segment = encoded_dir / segment.name
                         fut = executor.submit(encode_segment, segment, output_segment, crop_filter, 0)
-                        running_futures[fut] = weight
-                        current_tokens += weight
+                        running_futures[fut] = (res_cat, estimated_mem)
+                        current_mem_estimate += estimated_mem
                         pending_segments.pop(i)
                     else:
                         i += 1
