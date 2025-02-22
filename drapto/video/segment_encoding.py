@@ -326,11 +326,18 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
     finally:
         try:
             # Ensure graceful shutdown of all workers
-            client.shutdown()
-            client.close(timeout=5)
+            with logging.getLogger("distributed").handlers[0].console.capture() as capture:
+                client.shutdown()
+                client.close(timeout=5)
+            # Only log actual errors, not expected cleanup messages
+            if capture.get().strip():
+                cleanup_log = capture.get().lower()
+                if "error" in cleanup_log and "commclosed" not in cleanup_log:
+                    log.debug("Dask cleanup messages: %s", capture.get())
         except Exception as e:
-            # Log but don't raise shutdown errors
-            log.debug("Dask cleanup produced expected shutdown messages: %s", e)
+            # Only log unexpected errors
+            if not str(e).startswith(("CommClosedError", "CancelledError")):
+                log.debug("Unexpected error during Dask cleanup: %s", e)
 
 def validate_encoded_segments(segments_dir: Path) -> bool:
     """
