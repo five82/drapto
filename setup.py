@@ -8,6 +8,7 @@ setup(
         "ffmpeg-python",
         "rich",
         "scenedetect[opencv]",
+        "psutil",
     ],
     entry_points={
         "console_scripts": [
