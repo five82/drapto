@@ -340,7 +340,14 @@ def encode_segments(crop_filter: Optional[str] = None) -> bool:
                         "1080p": int(1.5 * 1024**3),
                         "SDR": int(0.5 * 1024**3)
                     }
-                    estimated_mem = dynamic_mem_estimates.get(res_cat) or default_estimates[res_cat]
+                    dynamic_value = dynamic_mem_estimates.get(res_cat)
+                    if dynamic_value is None:
+                        log.warning(
+                            "No dynamic memory estimate available for resolution category '%s'; "
+                            "using fallback default value: %d bytes",
+                            res_cat, default_estimates[res_cat]
+                        )
+                    estimated_mem = dynamic_value or default_estimates[res_cat]
 
                     available_mem = psutil.virtual_memory().available
 
