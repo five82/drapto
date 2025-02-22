@@ -53,7 +53,7 @@ from ..validation import validate_ab_av1
 
 log = logging.getLogger(__name__)
 
-def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[str] = None, retry_count: int = 0) -> dict:
+def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[str] = None, retry_count: int = 0, dv_flag: bool = False) -> dict:
     """
     Encode a single video segment using ab-av1.
     
@@ -105,6 +105,9 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
         ]
         if crop_filter:
             cmd.extend(["--vfilter", crop_filter])
+            
+        if dv_flag:
+            cmd.extend(["--enc", "dolbyvision=true"])
         
         result = run_cmd(cmd)
     except Exception as e:
@@ -114,7 +117,7 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
             if output_segment.exists():
                 output_segment.unlink()
             # Retry with incremented retry count
-            return encode_segment(segment, output_segment, crop_filter, retry_count + 1)
+            return encode_segment(segment, output_segment, crop_filter, retry_count + 1, dv_flag)
         else:
             log.error("Segment encoding failed after %d retries", retry_count)
             raise
@@ -224,7 +227,7 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
 
     return stats
 
-def encode_segments(crop_filter: Optional[str] = None) -> bool:
+def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) -> bool:
     """
     Encode video segments in parallel using ab-av1
     
@@ -341,7 +344,7 @@ def encode_segments(crop_filter: Optional[str] = None) -> bool:
 
                     if current_mem_estimate + estimated_mem <= available_mem * 0.8:
                         output_segment = encoded_dir / segment.name
-                        fut = executor.submit(encode_segment, segment, output_segment, crop_filter, 0)
+                        fut = executor.submit(encode_segment, segment, output_segment, crop_filter, 0, dv_flag)
                         running_futures[fut] = (res_cat, estimated_mem)
                         current_mem_estimate += estimated_mem
                         pending_segments.pop(i)
