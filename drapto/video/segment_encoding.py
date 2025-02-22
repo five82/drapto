@@ -242,9 +242,10 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
     if not check_dependencies() or not validate_ab_av1():
         return False
 
-    from dask.distributed import Client
-    client = Client()  # Starts a local Dask cluster; configure as needed.
-        
+    from dask.distributed import Client, worker_client
+    # Configure local cluster with explicit cleanup
+    client = Client(set_as_default=False)
+    
     segments_dir = WORKING_DIR / "segments"
     encoded_dir = WORKING_DIR / "encoded_segments"
     encoded_dir.mkdir(parents=True, exist_ok=True)
@@ -323,9 +324,13 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
         log.error("Parallel encoding failed: %s", e)
         return False
     finally:
-        client.close()
-        # Cleanup handled by the calling function
-        pass
+        try:
+            # Ensure graceful shutdown of all workers
+            client.shutdown()
+            client.close(timeout=5)
+        except Exception as e:
+            # Log but don't raise shutdown errors
+            log.debug("Dask cleanup produced expected shutdown messages: %s", e)
 
 def validate_encoded_segments(segments_dir: Path) -> bool:
     """
