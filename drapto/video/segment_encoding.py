@@ -9,13 +9,18 @@ from typing import List, Optional
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import multiprocessing
 
-# Maximum concurrent memory tokens
-MAX_MEMORY_TOKENS = 8  # adjust based on system memory and testing
+# Maximum concurrent memory tokens (8 total):
+# - Up to 2 concurrent 4K segments (4 tokens each)
+# - Up to 4 concurrent 1080p segments (2 tokens each) 
+# - Up to 8 concurrent SD segments (1 token each)
+MAX_MEMORY_TOKENS = 8
 
 def estimate_memory_weight(segment: Path) -> int:
     """
-    Estimate a memory-weight based on the segment's width.
-    Returns: 4 for 4K (width >= 3840), 2 for 1080p (width >= 1920), and 1 for lower resolutions.
+    Estimate memory weight based on segment resolution:
+    - 4K (width ≥ 3840): 4 tokens
+    - 1080p (width ≥ 1920): 2 tokens  
+    - Lower resolution: 1 token
     """
     try:
         result = run_cmd([
@@ -26,14 +31,14 @@ def estimate_memory_weight(segment: Path) -> int:
             str(segment)
         ])
         width = int(result.stdout.strip())
-    except Exception:
-        width = 1280  # fallback to a typical lower resolution if probe fails
-    if width >= 3840:
-        return 4  # 4k weight
-    elif width >= 1920:
-        return 2  # 1080p weight
-    else:
-        return 1  # SDR
+        if width >= 3840:  # 4K
+            return 4
+        elif width >= 1920:  # 1080p/2K
+            return 2
+        return 1  # SD/HD
+    except Exception as e:
+        log.warning("Failed to get segment width, assuming SD/HD weight: %s", e)
+        return 1
 
 from ..config import (
     PRESET, TARGET_VMAF, SVT_PARAMS, 
