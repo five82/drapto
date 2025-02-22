@@ -3,10 +3,37 @@
 import logging
 import re
 import shutil
+import time
 from pathlib import Path
 from typing import List, Optional
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import multiprocessing
+
+# Maximum concurrent memory tokens
+MAX_MEMORY_TOKENS = 8  # adjust based on system memory and testing
+
+def estimate_memory_weight(segment: Path) -> int:
+    """
+    Estimate a memory-weight based on the segment's width.
+    Returns: 4 for 4K (width >= 3840), 2 for 1080p (width >= 1920), and 1 for lower resolutions.
+    """
+    try:
+        result = run_cmd([
+            "ffprobe", "-v", "error",
+            "-select_streams", "v:0",
+            "-show_entries", "stream=width",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            str(segment)
+        ])
+        width = int(result.stdout.strip())
+    except Exception:
+        width = 1280  # fallback to a typical lower resolution if probe fails
+    if width >= 3840:
+        return 4  # 4k weight
+    elif width >= 1920:
+        return 2  # 1080p weight
+    else:
+        return 1  # SDR
 
 from ..config import (
     PRESET, TARGET_VMAF, SVT_PARAMS, 
@@ -208,30 +235,47 @@ def encode_segments(crop_filter: Optional[str] = None) -> bool:
         formatted_sample = " \\\n    ".join(sample_cmd)
         log.info("Common ab-av1 encoding parameters:\n%s", formatted_sample)
 
-        # Use ProcessPoolExecutor for parallel encoding
-        max_workers = max(1, multiprocessing.cpu_count())
+        # Use ProcessPoolExecutor with memory token scheduling
         segment_stats = []
-        
-        with ProcessPoolExecutor(max_workers=max_workers) as executor:
-            # Submit all encoding jobs
-            futures = {}
-            for segment in segments:
-                output_segment = encoded_dir / segment.name
-                # Start with retry_count=0
-                future = executor.submit(encode_segment, segment, output_segment, crop_filter, 0)
-                futures[future] = segment
+        failed_segments = []
+        pending_segments = list(segments)          # list of segments left to schedule
+        running_futures = {}                       # mapping of future -> segment weight
+        current_tokens = 0                         # current cumulative weight in use
+        max_workers = max(1, multiprocessing.cpu_count())
 
-            # Monitor jobs as they complete
-            failed_segments = []
-            for future in as_completed(futures):
-                segment = futures[future]
-                try:
-                    stats = future.result()
-                    segment_stats.append(stats)
-                    log.info("Successfully encoded segment: %s", segment.name)
-                except Exception as e:
-                    log.error("Failed to encode segment %s: %s", segment.name, e)
-                    failed_segments.append(segment)
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            while pending_segments or running_futures:
+                # Check for completed tasks and release their tokens
+                completed = []
+                for fut in list(running_futures):
+                    if fut.done():
+                        weight = running_futures.pop(fut)
+                        current_tokens -= weight
+                        try:
+                            stats = fut.result()
+                            segment_stats.append(stats)
+                            log.info("Successfully encoded segment: %s", stats.get('segment'))
+                        except Exception as e:
+                            log.error("Failed to encode a segment: %s", e)
+                            failed_segments.append("unknown")
+                        completed.append(fut)
+                
+                # Try scheduling new tasks if tokens are available
+                i = 0
+                while i < len(pending_segments):
+                    segment = pending_segments[i]
+                    weight = estimate_memory_weight(segment)
+                    if current_tokens + weight <= MAX_MEMORY_TOKENS:
+                        output_segment = encoded_dir / segment.name
+                        fut = executor.submit(encode_segment, segment, output_segment, crop_filter, 0)
+                        running_futures[fut] = weight
+                        current_tokens += weight
+                        pending_segments.pop(i)
+                    else:
+                        i += 1
+                
+                # Wait briefly before rechecking
+                time.sleep(0.5)
 
             if failed_segments:
                 log.error("Failed to encode %d segments", len(failed_segments))
