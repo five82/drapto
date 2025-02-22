@@ -6,10 +6,9 @@ import shutil
 import time
 import resource
 import psutil
+import ray
 from pathlib import Path
-from typing import List, Optional
-from concurrent.futures import ProcessPoolExecutor, as_completed
-import multiprocessing
+from typing import List, Optional, Dict
 
 # Maximum concurrent memory tokens (8 total):
 # - Up to 2 concurrent 4K segments (4 tokens each)
@@ -227,12 +226,18 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
 
     return stats
 
+@ray.remote(num_cpus=1)
+def ray_encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[str], retry_count: int, dv_flag: bool) -> dict:
+    """Ray remote function wrapper for encode_segment"""
+    return encode_segment(segment, output_segment, crop_filter, retry_count, dv_flag)
+
 def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) -> bool:
     """
-    Encode video segments in parallel using ab-av1
+    Encode video segments in parallel using Ray for dynamic resource management
     
     Args:
         crop_filter: Optional ffmpeg crop filter string
+        dv_flag: Whether this is Dolby Vision content
         
     Returns:
         bool: True if all segments encoded successfully
@@ -241,22 +246,22 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
     
     if not check_dependencies() or not validate_ab_av1():
         return False
+
+    # Initialize Ray if not already running
+    if not ray.is_initialized():
+        ray.init()
         
     segments_dir = WORKING_DIR / "segments"
     encoded_dir = WORKING_DIR / "encoded_segments"
     encoded_dir.mkdir(parents=True, exist_ok=True)
     
-    # Track failed segments for reporting
-    failed_segments = []
-    
     try:
-        # Get list of segments to encode
         segments = list(segments_dir.glob("*.mkv"))
         if not segments:
             log.error("No segments found to encode")
             return False
 
-        # Log common ab-av1 encoding parameters once (using placeholders for input/output)
+        # Log encoding parameters
         sample_cmd = [
             "ab-av1", "auto-encode",
             "--input", "<input_segment>",
@@ -276,93 +281,30 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
         formatted_sample = " \\\n    ".join(sample_cmd)
         log.info("Common ab-av1 encoding parameters:\n%s", formatted_sample)
 
-        # Use ProcessPoolExecutor with memory token scheduling
+        # Submit all segments as Ray tasks
+        futures = []
+        for segment in segments:
+            output_segment = encoded_dir / segment.name
+            future = ray_encode_segment.remote(segment, output_segment, crop_filter, 0, dv_flag)
+            futures.append(future)
+
+        # Wait for all tasks to complete, processing results as they arrive
         segment_stats = []
         failed_segments = []
-        pending_segments = list(segments)          # list of segments left to schedule
-        running_futures = {}                       # mapping of future -> (category, memory)
-        current_mem_estimate = 0                   # total estimated memory used by running tasks
-        default_estimates = {
-            "4k": 3 * 1024**3,
-            "1080p": int(1.5 * 1024**3),
-            "SDR": int(0.5 * 1024**3)
-        }
-        dynamic_mem_estimates = default_estimates.copy()
-        max_workers = max(1, multiprocessing.cpu_count())
+        
+        while futures:
+            done_id, futures = ray.wait(futures)
+            try:
+                stats = ray.get(done_id[0])
+                segment_stats.append(stats)
+                log.info("Successfully encoded segment: %s", stats.get('segment'))
+            except Exception as e:
+                log.error("Failed to encode segment: %s", e)
+                failed_segments.append("unknown")
 
-        with ProcessPoolExecutor(max_workers=max_workers) as executor:
-            while pending_segments or running_futures:
-                # Check for completed tasks and release their tokens
-                completed = []
-                for fut in list(running_futures):
-                    if fut.done():
-                        res_cat, estimated_mem = running_futures.pop(fut)
-                        current_mem_estimate -= estimated_mem
-                        try:
-                            stats = fut.result()
-                            # Update the dynamic estimate for this resolution category
-                            actual = stats.get('peak_memory_bytes')
-                            if actual:
-                                prev = dynamic_mem_estimates.get(res_cat)
-                                if prev is None:
-                                    dynamic_mem_estimates[res_cat] = actual
-                                else:
-                                    dynamic_mem_estimates[res_cat] = (prev + actual) / 2
-                            segment_stats.append(stats)
-                            log.info("Successfully encoded segment: %s", stats.get('segment'))
-                        except Exception as e:
-                            log.error("Failed to encode a segment: %s", e)
-                            failed_segments.append("unknown")
-                        completed.append(fut)
-                
-                # Try scheduling new tasks if tokens are available
-                i = 0
-                while i < len(pending_segments):
-                    segment = pending_segments[i]
-                    # Determine resolution category for segment
-                    try:
-                        result = run_cmd([
-                            "ffprobe", "-v", "error",
-                            "-select_streams", "v:0",
-                            "-show_entries", "stream=width",
-                            "-of", "default=noprint_wrappers=1:nokey=1",
-                            str(segment)
-                        ])
-                        width = int(result.stdout.strip())
-                    except Exception:
-                        width = 1280
-                    if width >= 3840:
-                        res_cat = "4k"
-                    elif width >= 1920:
-                        res_cat = "1080p"
-                    else:
-                        res_cat = "SDR"
-
-                    estimated_mem = dynamic_mem_estimates[res_cat]
-
-                    available_mem = psutil.virtual_memory().available
-
-                    # Use a stricter threshold for 4k content
-                    if res_cat == "4k":
-                        threshold = 0.5
-                    else:
-                        threshold = 0.8
-
-                    if current_mem_estimate + estimated_mem <= available_mem * threshold:
-                        output_segment = encoded_dir / segment.name
-                        fut = executor.submit(encode_segment, segment, output_segment, crop_filter, 0, dv_flag)
-                        running_futures[fut] = (res_cat, estimated_mem)
-                        current_mem_estimate += estimated_mem
-                        pending_segments.pop(i)
-                    else:
-                        i += 1
-                
-                # Wait briefly before rechecking
-                time.sleep(0.5)
-
-            if failed_segments:
-                log.error("Failed to encode %d segments", len(failed_segments))
-                return False
+        if failed_segments:
+            log.error("Failed to encode %d segments", len(failed_segments))
+            return False
                 
         # Print summary statistics
         if segment_stats:
