@@ -9,7 +9,7 @@ setup(
         "rich",
         "scenedetect[opencv]",
         "psutil",
-        "ray>=2.6.0",
+        "ray>=2.5.0",
     ],
     entry_points={
         "console_scripts": [
