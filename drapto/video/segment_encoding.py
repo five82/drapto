@@ -247,6 +247,12 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
     if not check_dependencies() or not validate_ab_av1():
         return False
 
+    # Silence Dask startup/shutdown logs
+    import logging
+    logging.getLogger("distributed").setLevel(logging.WARNING)
+    logging.getLogger("dask").setLevel(logging.WARNING) 
+    logging.getLogger("tornado").setLevel(logging.WARNING)
+
     from dask.distributed import Client, worker_client, Worker
     import logging as python_logging
 
