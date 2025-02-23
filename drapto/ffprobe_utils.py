@@ -39,7 +39,7 @@ def get_video_info(path: Path) -> Dict[str, Any]:
     """
     args = [
         "-select_streams", "v:0",
-        "-show_entries", "stream=codec_name,width,height,start_time,duration,pix_fmt,r_frame_rate",
+        "-show_entries", "stream=codec_name,width,height,start_time,duration,pix_fmt,r_frame_rate,color_transfer,color_primaries,color_space",
         "-of", "json"
     ]
     data = ffprobe_query(path, args)

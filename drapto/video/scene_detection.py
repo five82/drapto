@@ -46,14 +46,8 @@ def detect_scenes(input_file: Path) -> List[float]:
 
     # 2. Determine scene detection threshold based on HDR or SDR.
     try:
-        result = run_cmd([
-            "ffprobe", "-v", "error",
-            "-select_streams", "v:0",
-            "-show_entries", "stream=color_transfer",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(input_file)
-        ])
-        ct = result.stdout.strip().lower()
+        info = get_video_info(input_file)
+        ct = info.get("color_transfer", "").lower()
         if ct in ["smpte2084", "arib-std-b67", "smpte428", "bt2020-10", "bt2020-12"]:
             threshold_val = HDR_SCENE_THRESHOLD
         else:
@@ -140,13 +134,8 @@ def validate_segment_boundaries(
         
         for segment in segments:
             # Get segment duration
-            result = run_cmd([
-                "ffprobe", "-v", "error",
-                "-show_entries", "format=duration",
-                "-of", "default=noprint_wrappers=1:nokey=1",
-                str(segment)
-            ])
-            duration = float(result.stdout.strip())
+            format_info = get_format_info(segment)
+            duration = float(format_info.get("duration", 0))
             
             if duration < min_duration:
                 # Check if this segment boundary aligns with a scene change
