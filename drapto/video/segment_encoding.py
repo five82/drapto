@@ -235,7 +235,7 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
 
 def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) -> bool:
     """
-    Encode video segments in parallel using Ray for dynamic resource management
+    Encode video segments in parallel with dynamic memory-aware scheduling
     
     Args:
         crop_filter: Optional ffmpeg crop filter string
@@ -245,31 +245,16 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
         bool: True if all segments encoded successfully
     """
     from ..validation import validate_ab_av1
+    import psutil
+    import time
+    from concurrent.futures import ThreadPoolExecutor, as_completed
     
     if not check_dependencies() or not validate_ab_av1():
         return False
 
-    from dask.distributed import Client, worker_client, Worker
-    import logging as python_logging
-
-    # Configure Dask cluster with logging capture
-    def worker_setup(dask_worker: Worker):
-        dask_worker.log_messages = []
-        handler = python_logging.StreamHandler()
-        handler.setFormatter(python_logging.Formatter('%(message)s'))
-        def emit(record):
-            dask_worker.log_messages.append(record.getMessage())
-        handler.emit = emit
-        # Attach to root logger to capture all messages
-        root_logger = python_logging.getLogger()
-        root_logger.addHandler(handler)
-        # Ensure all loggers propagate up
-        for name in ['drapto', 'distributed']:
-            logger = python_logging.getLogger(name)
-            logger.propagate = True
-
-    client = Client(set_as_default=False)
-    client.register_worker_callbacks(setup=worker_setup)
+    # Configure memory thresholds
+    MEMORY_THRESHOLD = 0.8  # Use up to 80% of available memory
+    BASE_MEMORY_PER_TOKEN = 512 * 1024 * 1024  # 512MB base memory per token
     
     segments_dir = WORKING_DIR / "segments"
     encoded_dir = WORKING_DIR / "encoded_segments"
@@ -301,23 +286,69 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
         formatted_sample = " \\\n    ".join(sample_cmd)
         log.info("Common ab-av1 encoding parameters:\n%s", formatted_sample)
 
-        # Submit all segments as Dask tasks
-        futures = []
-        for segment in segments:
-            output_segment = encoded_dir / segment.name
-            future = client.submit(encode_segment, segment, output_segment, crop_filter, 0, dv_flag)
-            futures.append(future)
+        # Initialize thread pool and tracking variables
+        max_workers = psutil.cpu_count()
+        running_tasks = {}  # task_id -> (future, memory_weight)
+        completed_results = []
+        next_segment_idx = 0
 
-        try:
-            results = client.gather(futures)
-            for stats, log_messages in results:
-                # Print captured worker logs
-                for msg in log_messages:
-                    log.info(msg)
-                log.info("Successfully encoded segment: %s", stats.get('segment'))
-        except Exception as e:
-            log.error("Failed to encode segments: %s", e)
-            return False
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            while next_segment_idx < len(segments) or running_tasks:
+                # Check available memory
+                mem = psutil.virtual_memory()
+                available_memory = mem.available
+                target_available = mem.total * (1 - MEMORY_THRESHOLD)
+                
+                # Calculate current memory usage by our tasks
+                current_task_memory = sum(weight * BASE_MEMORY_PER_TOKEN 
+                                        for _, weight in running_tasks.values())
+                
+                # Submit new tasks if memory permits
+                while (next_segment_idx < len(segments) and 
+                       available_memory - current_task_memory > target_available):
+                    segment = segments[next_segment_idx]
+                    output_segment = encoded_dir / segment.name
+                    
+                    # Estimate memory requirements
+                    memory_weight = estimate_memory_weight(segment)
+                    estimated_memory = memory_weight * BASE_MEMORY_PER_TOKEN
+                    
+                    if available_memory - (current_task_memory + estimated_memory) > target_available:
+                        future = executor.submit(encode_segment, segment, output_segment, 
+                                              crop_filter, 0, dv_flag)
+                        running_tasks[next_segment_idx] = (future, memory_weight)
+                        current_task_memory += estimated_memory
+                        next_segment_idx += 1
+                    else:
+                        break
+                
+                # Check for completed tasks
+                completed = []
+                for task_id, (future, _) in running_tasks.items():
+                    if future.done():
+                        try:
+                            result = future.result()
+                            completed_results.append(result)
+                            stats, log_messages = result
+                            
+                            # Print captured logs
+                            for msg in log_messages:
+                                log.info(msg)
+                            log.info("Successfully encoded segment: %s", 
+                                    stats.get('segment'))
+                            
+                        except Exception as e:
+                            log.error("Task failed: %s", e)
+                            return False
+                        completed.append(task_id)
+                
+                # Remove completed tasks
+                for task_id in completed:
+                    running_tasks.pop(task_id)
+                
+                # Short sleep to prevent tight loop
+                if running_tasks:
+                    time.sleep(0.1)
                 
         # Print summary statistics
         if results:
@@ -352,21 +383,6 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
     except Exception as e:
         log.error("Parallel encoding failed: %s", e)
         return False
-    finally:
-        try:
-            # Suppress Dask shutdown chatter
-            import logging
-            logging.getLogger("distributed").setLevel(logging.ERROR)
-            logging.getLogger("tornado").setLevel(logging.ERROR) 
-            logging.getLogger("dask").setLevel(logging.ERROR)
-
-            # Ensure graceful shutdown of all workers
-            client.shutdown()
-            client.close(timeout=5)
-        except Exception as e:
-            # Only log unexpected errors
-            if not str(e).startswith(("CommClosedError", "CancelledError")):
-                log.debug("Unexpected error during Dask cleanup: %s", e)
 
 def validate_encoded_segments(segments_dir: Path) -> bool:
     """
