@@ -7,8 +7,7 @@ from typing import Optional, Tuple
 
 from .utils import run_cmd
 from .formatting import print_check, print_error, print_header
-from .ffprobe_utils import get_video_info, get_audio_info, get_format_info
-from .ffprobe_utils import get_video_info, get_audio_info, get_format_info, get_subtitle_info
+from .ffprobe_utils import get_video_info, get_format_info, get_subtitle_info
 
 def validate_video_stream(input_file: Path, output_file: Path, validation_report: list) -> bool:
     """Validate video stream properties"""
@@ -33,16 +32,23 @@ def validate_video_stream(input_file: Path, output_file: Path, validation_report
 def validate_audio_streams(input_file: Path, output_file: Path, validation_report: list) -> bool:
     """Validate audio stream properties"""
     try:
-        # Get audio info for all streams
-        audio_info = get_audio_info(output_file)
-        streams = audio_info.get("streams", [])
+        # Run ffprobe to get all audio stream info in JSON format
+        result = run_cmd([
+            "ffprobe", "-v", "error",
+            "-select_streams", "a",
+            "-show_entries", "stream=codec_name",
+            "-of", "json",
+            str(output_file)
+        ])
+        data = json.loads(result.stdout)
+        streams = data.get("streams", [])
         opus_count = sum(1 for s in streams if s.get("codec_name") == "opus")
         
         if opus_count == 0:
             validation_report.append("ERROR: No Opus audio streams found")
             return False
             
-        validation_report.append(f"Audio: {opus_count} Opus streams")
+        validation_report.append(f"Audio: {opus_count} Opus stream(s)")
         return True
     except Exception as e:
         validation_report.append(f"ERROR: Failed to validate audio streams: {e}")
