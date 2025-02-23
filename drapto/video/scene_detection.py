@@ -18,20 +18,20 @@ log = logging.getLogger(__name__)
 
 def detect_scenes(input_file: Path) -> List[float]:
     """
-    Improved scene detection for target VMAF encoding.
-    This function computes ideal segment boundaries based on the video's total duration
-    and TARGET_SEGMENT_LENGTH, then refines these boundaries using candidate scene changes
-    detected via PySceneDetect. For each ideal boundary, if a candidate scene is found within
-    a tolerance window, its timestamp is used; otherwise the ideal boundary is used.
+    Improved scene detection for dynamic segmentation.
+    
+    This function uses candidate scene detection via PySceneDetect, filters out
+    scenes that are too close together (less than MIN_SCENE_INTERVAL apart), and
+    inserts artificial boundaries if a gap exceeds MAX_SEGMENT_LENGTH.
     
     Args:
-        input_file: Path to input video file
-        
+        input_file: Path to input video file.
+    
     Returns:
-        List of scene-change timestamps (in seconds) for segmentation.
+        List[float]: Sorted list of scene-change timestamps (in seconds) for segmentation.
     """
     from ..utils import run_cmd
-    from ..config import TARGET_SEGMENT_LENGTH, SCENE_THRESHOLD, HDR_SCENE_THRESHOLD
+    from ..config import SCENE_THRESHOLD, HDR_SCENE_THRESHOLD, MIN_SCENE_INTERVAL, MAX_SEGMENT_LENGTH, MIN_SCENE_LEN
     import math
 
     # 1. Get total duration of the video via ffprobe.
