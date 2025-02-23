@@ -5,9 +5,10 @@ High-quality AV1 video encoding pipeline with intelligent chunked encoding and D
 ## Features
 
 - **AV1 Encoding with SVT-AV1:** High-quality encoding using libsvtav1 with configurable presets.
-- **Intelligent Variable Segmentation:** Automatically segments input video based on scene detection. Segments are dynamically determined to balance natural scene changes with a target duration of approximately TARGET_SEGMENT_LENGTH seconds.
+- **Intelligent Scene-Based Segmentation:** Automatically segments the input video using adaptive scene detection and clustering. Fixed segmentation modes have been removed—now only dynamic, scene-based segmentation is supported. (Configure parameters such as SCENE_THRESHOLD, MIN_SCENE_INTERVAL, CLUSTER_WINDOW, MAX_SEGMENT_LENGTH, and TARGET_SEGMENT_LENGTH in config.py.)
 - **VMAF-based Quality Analysis & Adaptive Retry:** Measures quality via VMAF (parsed from ab‑av1 output) and adjusts encoding parameters on retries (e.g. increased sample count/duration, raised min_vmaf).
-- **Standard Encoding:** Segments are encoded in parallel using the standard encoding path with adaptive quality control.
+- **Standard Encoding Pipeline:** Encodes segments in parallel using a dynamic memory‐aware scheduler that performs a warm-up analysis to optimally balance resource usage with adaptive retries. (See parameters MEMORY_THRESHOLD, MAX_MEMORY_TOKENS, and TASK_STAGGER_DELAY in config.py.)
+- **Enhanced Output Validation:** Performs comprehensive validation of video/audio streams, container integrity, crop dimensions, and VMAF-based quality metrics, outputting a detailed validation report.
 - **Dolby Vision Support:** Automatic detection of Dolby Vision content with a dedicated encoding pipeline.
 - **Automatic Black Bar Detection and Cropping:** Detects black bars via ffprobe/ffmpeg and applies appropriate crop filters.
 - **High-Quality Opus Audio Encoding:** Dynamically determines the correct bitrate and layout for multiple audio tracks.
@@ -45,10 +46,10 @@ drapto input.mkv output.mkv
 drapto input_dir/ output_dir/
 ```
 
-Drapto automatically detects Dolby Vision and uses a dedicated encoding pipeline for it. For standard content, the following steps occur:
-- **Segmentation:** The video is segmented using variable segmentation based on scene detection (with options for fixed chunk lengths as a fallback).
-- **Parallel Encoding with Adaptive Retry:** Segments are encoded in parallel. If encoding a segment fails, the pipeline retries (up to 3 attempts) with adjusted parameters (e.g. sample count/duration and quality thresholds).
-- **Concatenation & Validation:** The encoded segments are concatenated and rigorously validated (checking codec, duration, crop, and VMAF/CRF quality targets).
+Drapto automatically detects Dolby Vision and routes such content through a dedicated encoding pipeline. For standard (non‑Dolby Vision) content, the pipeline performs:
+- **Segmentation:** The video is segmented using dynamic, scene-based detection.
+- **Dynamic, Memory-Aware Parallel Encoding:** Segments are encoded in parallel utilizing a warm-up phase to gauge resource usage. Adaptive retry strategies are applied on failures.
+- **Concatenation & Enhanced Validation:** The encoded segments are concatenated and thoroughly validated (including checks on codec, duration, crop, and VMAF quality metrics), with a detailed report produced.
 
 ### Configuration
 
