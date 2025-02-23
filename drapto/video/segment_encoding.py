@@ -63,7 +63,7 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
     
     def capture_log(msg, *args, **kwargs):
         formatted = msg % args if args else msg
-        log.info(formatted, *args, **kwargs)
+        log.info(formatted)  # Pass only the formatted string
         output_logs.append(formatted)
         
     start_time = time.time()
