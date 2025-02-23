@@ -69,7 +69,7 @@ def detect_crop(input_file: Path, disable_crop: bool = None) -> Optional[str]:
     # Get color properties from ffprobe
     try:
         # Use ffprobe_utils to get color properties in one call
-        from .ffprobe_utils import ffprobe_query
+        from ..ffprobe_utils import ffprobe_query
         data = ffprobe_query(input_file, [
             "-select_streams", "v:0",
             "-show_entries", "stream=color_transfer,color_primaries,color_space",
