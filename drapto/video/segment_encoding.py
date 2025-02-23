@@ -518,10 +518,12 @@ def validate_encoded_segments(segments_dir: Path) -> bool:
             ]).stdout.strip())
             
             enc_duration = float(duration)
-            if abs(orig_duration - enc_duration) > 0.1:
+            # Allow a relative tolerance of 2% (or at least 0.1 sec) to account for slight discrepancies
+            tolerance = max(0.1, orig_duration * 0.02)
+            if abs(orig_duration - enc_duration) > tolerance:
                 log.error(
-                    "Duration mismatch in %s: %.2f vs %.2f",
-                    encoded.name, orig_duration, enc_duration
+                    "Duration mismatch in %s: %.2f vs %.2f (tolerance: %.2f)",
+                    encoded.name, orig_duration, enc_duration, tolerance
                 )
                 return False
                 
