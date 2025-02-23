@@ -117,9 +117,17 @@ def validate_av_sync(output_file: Path, validation_report: list) -> bool:
         vid_duration = float(video_info.get("duration") or 0)
         
         # Get audio stream info (first audio stream)
-        audio_info = get_audio_info(output_file)
-        if not audio_info:
+        result = run_cmd([
+            "ffprobe", "-v", "error",
+            "-select_streams", "a:0",
+            "-show_entries", "stream=start_time,duration",
+            "-of", "json",
+            str(output_file)
+        ])
+        audio_data = json.loads(result.stdout)
+        if not audio_data.get("streams"):
             raise Exception("No audio stream info found.")
+        audio_info = audio_data["streams"][0]
         aud_start = float(audio_info.get("start_time") or 0)
         aud_duration = float(audio_info.get("duration") or 0)
         
