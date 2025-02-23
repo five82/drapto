@@ -233,6 +233,9 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
     return stats, output_logs
 
 
+# Number of segments to process sequentially for warm-up
+WARMUP_COUNT = 2
+
 def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) -> bool:
     """
     Encode video segments in parallel with dynamic memory-aware scheduling
@@ -266,6 +269,16 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
             log.error("No segments found to encode")
             return False
 
+        # Warm-up: process first WARMUP_COUNT segments sequentially to gauge memory usage
+        warmup_results = []
+        for i in range(min(WARMUP_COUNT, len(segments))):
+            segment = segments[i]
+            output_segment = encoded_dir / segment.name
+            log.info("Warm-up encoding for segment: %s", segment.name)
+            result = encode_segment(segment, output_segment, crop_filter, 0, dv_flag)
+            warmup_results.append(result)
+        next_segment_idx = min(WARMUP_COUNT, len(segments))
+
         # Log encoding parameters
         sample_cmd = [
             "ab-av1", "auto-encode",
@@ -294,6 +307,13 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             while next_segment_idx < len(segments) or running_tasks:
+                # Check overall system memory usage and wait if usage is 90% or higher
+                if psutil.virtual_memory().percent >= 90:
+                    log.info("High memory usage (%d%%); pausing new task submissions...", 
+                            psutil.virtual_memory().percent)
+                    time.sleep(1)
+                    continue
+
                 # Check available memory
                 mem = psutil.virtual_memory()
                 available_memory = mem.available
