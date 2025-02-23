@@ -10,7 +10,7 @@ from scenedetect.scene_manager import save_images
 from ..utils import run_cmd
 from ..formatting import print_check, print_warning
 from ..config import (
-    SCENE_THRESHOLD, MIN_SCENE_INTERVAL, TARGET_SEGMENT_LENGTH,
+    SCENE_THRESHOLD, MIN_SCENE_INTERVAL, DEFAULT_TARGET_SEGMENT_LENGTH,
     CLUSTER_WINDOW, MAX_SEGMENT_LENGTH
 )
 
@@ -135,7 +135,7 @@ def detect_scenes(input_file: Path) -> List[float]:
                 gaps = [timestamps[i] - timestamps[i-1] for i in range(1, len(timestamps))]
                 dynamic_target = median(gaps)
             else:
-                dynamic_target = TARGET_SEGMENT_LENGTH
+                dynamic_target = DEFAULT_TARGET_SEGMENT_LENGTH
             
             # Process gaps between scenes
             final_timestamps = []
