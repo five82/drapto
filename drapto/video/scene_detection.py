@@ -56,7 +56,6 @@ def detect_scenes(input_file: Path) -> List[float]:
         threshold_val = SCENE_THRESHOLD
 
     # 4. Run candidate scene detection using PySceneDetect.
-    from scenedetect import detect, ContentDetector
     try:
         candidates = detect(str(input_file), ContentDetector(threshold=threshold_val, min_scene_len=int(TARGET_MIN_SEGMENT_LENGTH)))
         candidate_timestamps = []
