@@ -22,9 +22,6 @@ LOG_DIR = Path(os.environ.get("DRAPTO_LOG_DIR", str(Path.home() / "drapto_logs")
 
 # Encoding settings
 PRESET = 6
-CRF_SD = 25      # For videos with width <= 1280 (720p)
-CRF_HD = 25      # For videos with width <= 1920 (1080p)
-CRF_UHD = 29     # For videos with width > 1920 (4K and above)
 SVT_PARAMS = "tune=0:film-grain=0:film-grain-denoise=0"
 PIX_FMT = "yuv420p10le"
 
@@ -52,10 +49,10 @@ VMAF_SAMPLE_LENGTH = 1
 # Scene detection settings
 SCENE_THRESHOLD = 40.0  # Content detection threshold for SDR content
 HDR_SCENE_THRESHOLD = 30.0  # Lower threshold for HDR content to yield more scenes
-TARGET_MIN_SEGMENT_LENGTH = 5.0  # Target minimum segment length (seconds) used in scene detection filtering (not a strict enforced minimum)
+TARGET_MIN_SEGMENT_LENGTH = 5.0  # Minimum segment length (seconds)
 MAX_SEGMENT_LENGTH = 15.0  # Maximum segment length before forcing a split
 
-# Temporary directories for chunked encoding
+# Temporary directories for encoding
 SEGMENTS_DIR = WORKING_ROOT / "segments"
 ENCODED_SEGMENTS_DIR = WORKING_ROOT / "encoded_segments"
 WORKING_DIR = WORKING_ROOT / "working"

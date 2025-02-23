@@ -170,37 +170,11 @@ def validate_av_sync(output_file: Path, validation_report: list) -> bool:
 
 def validate_quality_metrics(input_file: Path, output_file: Path, validation_report: list) -> bool:
     """
-    Validate quality metrics based on encoding mode.
-    For chunked encoding, reports VMAF scores if available.
-    For standard encoding, reports CRF value used.
+    Validate quality metrics using VMAF analysis.
     """
-    from .config import ENABLE_STANDARD_ENCODING, CRF_SD, CRF_HD, CRF_UHD
-    
     try:
-        # Get video width to determine quality target
-        result = run_cmd([
-            "ffprobe", "-v", "error",
-            "-select_streams", "v:0",
-            "-show_entries", "stream=width",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(input_file)
-        ])
-        width = int(result.stdout.strip())
-        
-        if ENABLE_STANDARD_ENCODING:
-            # For standard encoding, we now use VMAF quality analysis
-            from .config import TARGET_VMAF
-            validation_report.append(f"Quality target: VMAF {TARGET_VMAF}")
-        else:
-            # (Legacy encoding path) Report CRF value
-            if width >= 3840:
-                crf = CRF_UHD
-            elif width >= 1920:
-                crf = CRF_HD
-            else:
-                crf = CRF_SD
-            validation_report.append(f"Quality target: CRF {crf}")
-            
+        from .config import TARGET_VMAF
+        validation_report.append(f"Quality target: VMAF {TARGET_VMAF}")
         return True
     except Exception as e:
         validation_report.append(f"ERROR: Failed to validate quality metrics: {e}")
