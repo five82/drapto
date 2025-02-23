@@ -9,9 +9,6 @@ SCRIPT_DIR = Path(__file__).parent.resolve()
 # Working root directory in /tmp
 WORKING_ROOT = Path(os.environ.get("DRAPTO_WORKDIR", "/tmp/drapto"))
 
-# Paths for binaries
-FFMPEG = SCRIPT_DIR / "ffmpeg"
-FFPROBE = SCRIPT_DIR / "ffprobe"
 
 # INPUT_DIR and OUTPUT_DIR are provided via command line
 INPUT_DIR = None
