@@ -163,9 +163,9 @@ def detect_scenes(input_file: Path) -> List[float]:
                     "-of", "default=noprint_wrappers=1:nokey=1",
                     str(input_file)
                 ]).stdout.strip())
-                max_gap = TARGET_SEGMENT_LENGTH * 1.5  # Allow 50% overrun
+                max_gap = dynamic_target * 1.5  # Allow 50% overrun based on dynamic target
                 while duration - last_time > max_gap:
-                    last_time += TARGET_SEGMENT_LENGTH
+                    last_time += dynamic_target
                     final_timestamps.append(last_time)
             except Exception as e:
                 log.warning("Could not get video duration: %s", e)
