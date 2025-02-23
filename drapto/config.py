@@ -7,10 +7,6 @@ from pathlib import Path
 WORKING_ROOT = Path(os.environ.get("DRAPTO_WORKDIR", "/tmp/drapto"))
 
 
-# INPUT_DIR and OUTPUT_DIR are provided via command line
-INPUT_DIR = None
-OUTPUT_DIR = None
-
 # LOG_DIR: user definable with default of "$HOME/drapto_logs"
 LOG_DIR = Path(os.environ.get("DRAPTO_LOG_DIR", str(Path.home() / "drapto_logs")))
 
