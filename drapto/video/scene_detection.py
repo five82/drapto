@@ -31,7 +31,7 @@ def detect_scenes(input_file: Path) -> List[float]:
         List[float]: Sorted list of scene-change timestamps (in seconds) for segmentation.
     """
     from ..utils import run_cmd
-    from ..config import SCENE_THRESHOLD, HDR_SCENE_THRESHOLD, MIN_SCENE_INTERVAL, MAX_SEGMENT_LENGTH, MIN_SCENE_LEN
+    from ..config import SCENE_THRESHOLD, HDR_SCENE_THRESHOLD, MIN_SEGMENT_LENGTH, MAX_SEGMENT_LENGTH
     import math
 
     # 1. Get total duration of the video via ffprobe.
