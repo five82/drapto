@@ -98,3 +98,21 @@ def get_subtitle_info(path: Path) -> Dict[str, Any]:
     ]
     data = ffprobe_query(path, args)
     return data
+
+def get_all_audio_info(path: Path) -> list:
+    """
+    Retrieve information for all audio streams.
+    
+    Args:
+        path: Path to media file.
+    
+    Returns:
+        List of dictionaries for each audio stream.
+    """
+    args = [
+        "-select_streams", "a",
+        "-show_entries", "stream=codec_name,channels,bit_rate,start_time,duration",
+        "-of", "json"
+    ]
+    data = ffprobe_query(path, args)
+    return data.get("streams", [])

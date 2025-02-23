@@ -7,7 +7,7 @@ from typing import Optional, Tuple
 
 from .utils import run_cmd
 from .formatting import print_check, print_error, print_header
-from .ffprobe_utils import get_video_info, get_format_info, get_subtitle_info
+from .ffprobe_utils import get_video_info, get_format_info, get_subtitle_info, get_all_audio_info
 
 def validate_video_stream(input_file: Path, output_file: Path, validation_report: list) -> bool:
     """Validate video stream properties"""
@@ -32,16 +32,7 @@ def validate_video_stream(input_file: Path, output_file: Path, validation_report
 def validate_audio_streams(input_file: Path, output_file: Path, validation_report: list) -> bool:
     """Validate audio stream properties"""
     try:
-        # Run ffprobe to get all audio stream info in JSON format
-        result = run_cmd([
-            "ffprobe", "-v", "error",
-            "-select_streams", "a",
-            "-show_entries", "stream=codec_name",
-            "-of", "json",
-            str(output_file)
-        ])
-        data = json.loads(result.stdout)
-        streams = data.get("streams", [])
+        streams = get_all_audio_info(output_file)
         opus_count = sum(1 for s in streams if s.get("codec_name") == "opus")
         
         if opus_count == 0:
@@ -117,17 +108,10 @@ def validate_av_sync(output_file: Path, validation_report: list) -> bool:
         vid_duration = float(video_info.get("duration") or 0)
         
         # Get audio stream info (first audio stream)
-        result = run_cmd([
-            "ffprobe", "-v", "error",
-            "-select_streams", "a:0",
-            "-show_entries", "stream=start_time,duration",
-            "-of", "json",
-            str(output_file)
-        ])
-        audio_data = json.loads(result.stdout)
-        if not audio_data.get("streams"):
+        all_audio = get_all_audio_info(output_file)
+        if not all_audio:
             raise Exception("No audio stream info found.")
-        audio_info = audio_data["streams"][0]
+        audio_info = all_audio[0]
         aud_start = float(audio_info.get("start_time") or 0)
         aud_duration = float(audio_info.get("duration") or 0)
         
