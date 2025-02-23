@@ -1,5 +1,6 @@
 """Video segmentation and parallel encoding functions"""
 
+import json
 import logging
 import os
 import shutil
@@ -127,6 +128,24 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> b
                 return False
                 
             log.info("Segment %s: duration=%.2fs, codec=%s", segment.name, duration, codec)
+
+            # Validate the segment's video timestamps.
+            # Since segments are created without audio (-an), we only check that the video start time is near zero.
+            sync_threshold = 0.2  # increased allowed difference in seconds
+
+            vid_result = run_cmd([
+                "ffprobe", "-v", "error",
+                "-select_streams", "v:0",
+                "-show_entries", "stream=start_time",
+                "-of", "json",
+                str(segment)
+            ])
+            vid_data = json.loads(vid_result.stdout)
+            video_start = float(vid_data["streams"][0].get("start_time") or 0)
+
+            if abs(video_start) > sync_threshold:
+                log.error("Segment %s timestamp issue: video_start=%.2fs is not near 0", segment.name, video_start)
+                return False
     
             # Check if segment duration is short
             if duration < 1.0 and valid_segments:

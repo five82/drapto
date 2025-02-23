@@ -1,5 +1,6 @@
 """Validation utilities for checking encode output"""
 
+import json
 import logging
 from pathlib import Path
 from typing import Optional, Tuple
@@ -106,6 +107,67 @@ def validate_crop_dimensions(input_file: Path, output_file: Path, validation_rep
         validation_report.append(f"ERROR: Failed to validate crop dimensions: {e}")
         return False
 
+def validate_av_sync(output_file: Path, validation_report: list) -> bool:
+    """
+    Validate audio/video sync by comparing the start time and duration of the first
+    audio and video streams in the output file. Any difference above a 0.1-second
+    threshold will flag a sync issue.
+    
+    Args:
+        output_file: Path to the output video file.
+        validation_report: List to append status messages.
+    
+    Returns:
+        bool: True if audio and video sync within threshold, False otherwise.
+    """
+    try:
+        # Get video stream start time and duration.
+        vid_result = run_cmd([
+            "ffprobe", "-v", "error",
+            "-select_streams", "v:0",
+            "-show_entries", "stream=start_time,duration",
+            "-of", "json",
+            str(output_file)
+        ])
+        vid_data = json.loads(vid_result.stdout)
+        if not vid_data.get("streams") or len(vid_data["streams"]) == 0:
+            raise Exception("No video stream info found.")
+        video_stream = vid_data["streams"][0]
+        vid_start = float(video_stream.get("start_time") or 0)
+        vid_duration = float(video_stream.get("duration") or 0)
+        
+        # Get audio stream start time and duration.
+        aud_result = run_cmd([
+            "ffprobe", "-v", "error",
+            "-select_streams", "a:0",
+            "-show_entries", "stream=start_time,duration",
+            "-of", "json",
+            str(output_file)
+        ])
+        aud_data = json.loads(aud_result.stdout)
+        if not aud_data.get("streams") or len(aud_data["streams"]) == 0:
+            raise Exception("No audio stream info found.")
+        audio_stream = aud_data["streams"][0]
+        aud_start = float(audio_stream.get("start_time") or 0)
+        aud_duration = float(audio_stream.get("duration") or 0)
+        
+        start_diff = abs(vid_start - aud_start)
+        duration_diff = abs(vid_duration - aud_duration)
+        threshold = 0.1  # allowed difference in seconds
+        
+        if start_diff > threshold or duration_diff > threshold:
+            validation_report.append(
+                f"ERROR: AV sync issue detected: video start {vid_start:.2f}s vs audio start {aud_start:.2f}s; "
+                f"video duration {vid_duration:.2f}s vs audio duration {aud_duration:.2f}s."
+            )
+            return False
+        else:
+            validation_report.append("AV sync validated: audio and video start times and durations are within threshold")
+            return True
+    except Exception as e:
+        validation_report.append(f"ERROR: Failed to validate AV sync: {e}")
+        return False
+
 def validate_quality_metrics(input_file: Path, output_file: Path, validation_report: list) -> bool:
     """
     Validate quality metrics based on encoding mode.
@@ -191,6 +253,9 @@ def validate_output(input_file: Path, output_file: Path) -> bool:
     
     # Run quality metrics check
     error |= not validate_quality_metrics(input_file, output_file, validation_report)
+    
+    # Validate audio/video sync
+    error |= not validate_av_sync(output_file, validation_report)
     
     # Output validation report
     try:

@@ -1,5 +1,6 @@
 """Handles concatenation of encoded video segments into the final output."""
 
+import json
 import logging
 from pathlib import Path
 from ..utils import run_cmd
@@ -38,6 +39,7 @@ def concatenate_segments(output_file: Path) -> bool:
             
         cmd = [
             "ffmpeg", "-hide_banner", "-loglevel", "error",
+            "-fflags", "+genpts",
             "-f", "concat",
             "-safe", "0",
             "-i", str(concat_file),
@@ -71,6 +73,23 @@ def concatenate_segments(output_file: Path) -> bool:
         ])
         if result.stdout.strip() != "av1":
             log.error("Concatenated output has wrong codec: %s", result.stdout.strip())
+            return False
+
+        # Validate concatenated output video start time
+        sync_threshold = 0.1  # allowed difference in seconds
+
+        vid_result = run_cmd([
+            "ffprobe", "-v", "error",
+            "-select_streams", "v:0",
+            "-show_entries", "stream=start_time",
+            "-of", "json",
+            str(output_file)
+        ])
+        vid_data = json.loads(vid_result.stdout)
+        video_start = float(vid_data["streams"][0].get("start_time") or 0)
+
+        if abs(video_start) > sync_threshold:
+            log.error("Concatenated output video start time is %.2fs (expected near 0)", video_start)
             return False
 
         log.info("Successfully validated concatenated output")
