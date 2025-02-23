@@ -5,9 +5,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from .config import (
-    INPUT_DIR, OUTPUT_DIR, LOG_DIR
-)
+from .config import LOG_DIR
 from .formatting import (
     print_header, print_check, print_warning,
     print_error, print_success, print_separator,
