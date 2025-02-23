@@ -3,9 +3,6 @@
 import os
 from pathlib import Path
 
-# Get script directory
-SCRIPT_DIR = Path(__file__).parent.resolve()
-
 # Working root directory in /tmp
 WORKING_ROOT = Path(os.environ.get("DRAPTO_WORKDIR", "/tmp/drapto"))
 
