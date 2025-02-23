@@ -75,10 +75,9 @@ def concatenate_segments(output_file: Path) -> bool:
             log.error("Concatenated output has wrong codec: %s", result.stdout.strip())
             return False
 
-        # Check AV sync in concatenated output
+        # Validate concatenated output video start time
         sync_threshold = 0.1  # allowed difference in seconds
 
-        # Check video stream start time
         vid_result = run_cmd([
             "ffprobe", "-v", "error",
             "-select_streams", "v:0",
@@ -89,20 +88,8 @@ def concatenate_segments(output_file: Path) -> bool:
         vid_data = json.loads(vid_result.stdout)
         video_start = float(vid_data["streams"][0].get("start_time") or 0)
 
-        # Check audio stream start time
-        aud_result = run_cmd([
-            "ffprobe", "-v", "error",
-            "-select_streams", "a:0",
-            "-show_entries", "stream=start_time",
-            "-of", "json",
-            str(output_file)
-        ])
-        aud_data = json.loads(aud_result.stdout)
-        audio_start = float(aud_data["streams"][0].get("start_time") or 0)
-
-        if abs(video_start - audio_start) > sync_threshold:
-            log.error("Concatenated output AV sync error: video_start=%.2fs, audio_start=%.2fs", 
-                     video_start, audio_start)
+        if abs(video_start) > sync_threshold:
+            log.error("Concatenated output video start time is %.2fs (expected near 0)", video_start)
             return False
 
         log.info("Successfully validated concatenated output")
