@@ -9,7 +9,6 @@ setup(
         "rich",
         "scenedetect[opencv]",
         "psutil",
-        "dask[distributed]",
     ],
     entry_points={
         "console_scripts": [
