@@ -1,5 +1,6 @@
 """Validation utilities for checking encode output"""
 
+import json
 import logging
 from pathlib import Path
 from typing import Optional, Tuple
@@ -125,28 +126,30 @@ def validate_av_sync(output_file: Path, validation_report: list) -> bool:
             "ffprobe", "-v", "error",
             "-select_streams", "v:0",
             "-show_entries", "stream=start_time,duration",
-            "-of", "default=noprint_wrappers=1:nokey=1",
+            "-of", "json",
             str(output_file)
         ])
-        vid_lines = vid_result.stdout.strip().splitlines()
-        if len(vid_lines) < 2:
-            raise Exception("Incomplete video stream info.")
-        vid_start = float(vid_lines[0]) if vid_lines[0] else 0.0
-        vid_duration = float(vid_lines[1])
+        vid_data = json.loads(vid_result.stdout)
+        if not vid_data.get("streams") or len(vid_data["streams"]) == 0:
+            raise Exception("No video stream info found.")
+        video_stream = vid_data["streams"][0]
+        vid_start = float(video_stream.get("start_time") or 0)
+        vid_duration = float(video_stream.get("duration") or 0)
         
         # Get audio stream start time and duration.
         aud_result = run_cmd([
             "ffprobe", "-v", "error",
             "-select_streams", "a:0",
             "-show_entries", "stream=start_time,duration",
-            "-of", "default=noprint_wrappers=1:nokey=1",
+            "-of", "json",
             str(output_file)
         ])
-        aud_lines = aud_result.stdout.strip().splitlines()
-        if len(aud_lines) < 2:
-            raise Exception("Incomplete audio stream info.")
-        aud_start = float(aud_lines[0]) if aud_lines[0] else 0.0
-        aud_duration = float(aud_lines[1])
+        aud_data = json.loads(aud_result.stdout)
+        if not aud_data.get("streams") or len(aud_data["streams"]) == 0:
+            raise Exception("No audio stream info found.")
+        audio_stream = aud_data["streams"][0]
+        aud_start = float(audio_stream.get("start_time") or 0)
+        aud_duration = float(audio_stream.get("duration") or 0)
         
         start_diff = abs(vid_start - aud_start)
         duration_diff = abs(vid_duration - aud_duration)
