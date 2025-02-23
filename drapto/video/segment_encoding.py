@@ -351,8 +351,8 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
                     time.sleep(0.1)
                 
         # Print summary statistics
-        if results:
-            segment_stats = [s for s, _ in results]
+        if completed_results:
+            segment_stats = [s for s, _ in completed_results]
             total_duration = sum(s['duration'] for s in segment_stats)
             total_size = sum(s['size_mb'] for s in segment_stats)
             avg_bitrate = sum(s['bitrate_kbps'] for s in segment_stats) / len(segment_stats)
