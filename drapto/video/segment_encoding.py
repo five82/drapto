@@ -334,7 +334,6 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
         max_workers = psutil.cpu_count()
         running_tasks = {}  # task_id -> (future, memory_weight)
         completed_results = []
-        next_segment_idx = 0
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             while next_segment_idx < len(segments) or running_tasks:
