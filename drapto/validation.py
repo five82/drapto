@@ -7,19 +7,17 @@ from typing import Optional, Tuple
 
 from .utils import run_cmd
 from .formatting import print_check, print_error, print_header
+from .ffprobe_utils import get_video_info, get_audio_info, get_format_info, get_subtitle_info
 
 def validate_video_stream(input_file: Path, output_file: Path, validation_report: list) -> bool:
     """Validate video stream properties"""
     try:
-        # Check video codec
-        result = run_cmd([
-            "ffprobe", "-v", "error",
-            "-select_streams", "v",
-            "-show_entries", "stream=codec_name,width,height,pix_fmt,r_frame_rate",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(output_file)
-        ])
-        codec, width, height, pix_fmt, framerate = result.stdout.strip().split('\n')
+        info = get_video_info(output_file)
+        codec = info.get("codec_name", "")
+        width = info.get("width", "")
+        height = info.get("height", "")
+        pix_fmt = info.get("pix_fmt", "")
+        framerate = info.get("r_frame_rate", "")
         
         if codec != "av1":
             validation_report.append(f"ERROR: No AV1 video stream found (found {codec})")
