@@ -37,15 +37,8 @@ def concatenate_segments(output_file: Path) -> bool:
             for segment in segments:
                 f.write(f"file '{segment.absolute()}'\n")
             
-        cmd = [
-            "ffmpeg", "-hide_banner", "-loglevel", "error",
-            "-fflags", "+genpts",
-            "-f", "concat",
-            "-safe", "0",
-            "-i", str(concat_file),
-            "-c", "copy",
-            "-y", str(output_file)
-        ]
+        from .command_builders import build_concat_command
+        cmd = build_concat_command(segments, output_file, concat_file)
         run_cmd(cmd)
 
         if not output_file.exists() or output_file.stat().st_size == 0:

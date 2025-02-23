@@ -231,29 +231,12 @@ def segment_video(input_file: Path) -> bool:
         hw_type = check_hardware_acceleration()
         hw_opt = get_hwaccel_options(hw_type)
         
-        cmd = [
-            "ffmpeg", "-hide_banner", "-loglevel", "warning",
-        ]
-        
-        if hw_opt:
-            # Add hardware acceleration for decoding only
-            cmd.extend(hw_opt.split())
-            
         from .scene_detection import detect_scenes
+        from .command_builders import build_segment_command
+        
         scenes = detect_scenes(input_file)
         if scenes:
-            # Create a comma-separated list of scene-change timestamps (in seconds)
-            # Optionally, filter out any scene times below a minimum value (e.g. 1.0s) if needed.
-            segment_times = ",".join(f"{t:.2f}" for t in scenes if t > 1.0)
-            cmd.extend([
-                "-i", str(input_file),
-                "-c:v", "copy",
-                "-an",
-                "-f", "segment",
-                "-segment_times", segment_times,
-                "-reset_timestamps", "1",
-                str(segments_dir / "%04d.mkv")
-            ])
+            cmd = build_segment_command(input_file, segments_dir, scenes, hw_opt)
             variable_seg = True
         else:
             log.error("Scene detection failed; no scenes detected. Failing segmentation.")

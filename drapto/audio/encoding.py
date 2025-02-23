@@ -100,21 +100,8 @@ def encode_audio_track(input_file: Path, track_index: int) -> Optional[Path]:
             f"Bitrate:  {bitrate}"
         )
         
-        # Encode audio track
-        cmd = [
-            "ffmpeg", "-hide_banner", "-loglevel", "warning",
-            "-i", str(input_file),
-            "-map", f"0:a:{track_index}",
-            "-c:a", "libopus",
-            "-af", "aformat=channel_layouts=7.1|5.1|stereo|mono",
-            "-application", "audio",
-            "-vbr", "on",
-            "-compression_level", "10",
-            "-frame_duration", "20",
-            "-b:a", bitrate,
-            "-avoid_negative_ts", "make_zero",
-            "-y", str(output_file)
-        ]
+        from ..video.command_builders import build_audio_encode_command
+        cmd = build_audio_encode_command(input_file, output_file, track_index, bitrate)
         formatted_cmd = " \\\n    ".join(cmd)
         log.info("Audio encoding command for track %d:\n%s", track_index, formatted_cmd)
         # Get audio duration for progress reporting
