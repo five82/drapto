@@ -131,13 +131,9 @@ def format_size(size: int) -> str:
 def check_dependencies() -> bool:
     """Check for required dependencies"""
     required = ['ffmpeg', 'ffprobe', 'mediainfo']
-    
+    import shutil
     for cmd in required:
-        try:
-            subprocess.run(['which', cmd], 
-                         capture_output=True, 
-                         check=True)
-        except subprocess.CalledProcessError:
+        if shutil.which(cmd) is None:
             logger.error(f"Required dependency not found: {cmd}")
             return False
     

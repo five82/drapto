@@ -19,7 +19,7 @@ from .concatenation import concatenate_segments
 
 log = logging.getLogger(__name__)
 
-def encode_standard(input_file: Path, disable_crop: bool = False) -> Optional[Path]:
+def encode_standard(input_file: Path, disable_crop: bool = False, dv_flag: bool = False) -> Optional[Path]:
     """
     Encode standard (non-Dolby Vision) content using the standard encoding pipeline.
     
@@ -49,7 +49,7 @@ def encode_standard(input_file: Path, disable_crop: bool = False) -> Optional[Pa
             
         # Step 2: Encode segments
         print_check("Encoding segments in parallel...")
-        if not encode_segments(crop_filter):
+        if not encode_segments(crop_filter, dv_flag):
             return None
             
         # Step 3: Concatenate segments

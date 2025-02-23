@@ -7,9 +7,7 @@ import time
 import resource
 import psutil
 from pathlib import Path
-from typing import List, Optional
-from concurrent.futures import ProcessPoolExecutor, as_completed
-import multiprocessing
+from typing import List, Optional, Dict
 
 # Maximum concurrent memory tokens (8 total):
 # - Up to 2 concurrent 4K segments (4 tokens each)
@@ -17,12 +15,10 @@ import multiprocessing
 # - Up to 8 concurrent SD segments (1 token each)
 MAX_MEMORY_TOKENS = 8
 
-def estimate_memory_weight(segment: Path) -> int:
+def estimate_memory_weight(segment: Path, resolution_weights: dict) -> int:
     """
-    Estimate memory weight based on segment resolution:
-    - 4K (width ≥ 3840): 4 tokens
-    - 1080p (width ≥ 1920): 2 tokens  
-    - Lower resolution: 1 token
+    Estimate memory weight based on segment resolution using dynamic weights
+    from warmup analysis.
     """
     try:
         result = run_cmd([
@@ -34,18 +30,18 @@ def estimate_memory_weight(segment: Path) -> int:
         ])
         width = int(result.stdout.strip())
         if width >= 3840:  # 4K
-            return 4
+            return resolution_weights['4k']
         elif width >= 1920:  # 1080p/2K
-            return 2
-        return 1  # SD/HD
+            return resolution_weights['1080p']
+        return resolution_weights['SDR']  # SD/HD
     except Exception as e:
-        log.warning("Failed to get segment width, assuming SD/HD weight: %s", e)
-        return 1
+        log.warning("Failed to get segment width, using minimum weight: %s", e)
+        return min(resolution_weights.values())
 
 from ..config import (
     PRESET, TARGET_VMAF, SVT_PARAMS, 
     VMAF_SAMPLE_COUNT, VMAF_SAMPLE_LENGTH,
-    WORKING_DIR
+    WORKING_DIR, TASK_STAGGER_DELAY
 )
 from ..utils import run_cmd, check_dependencies
 from ..formatting import print_check
@@ -53,7 +49,7 @@ from ..validation import validate_ab_av1
 
 log = logging.getLogger(__name__)
 
-def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[str] = None, retry_count: int = 0) -> dict:
+def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[str] = None, retry_count: int = 0, dv_flag: bool = False) -> tuple[dict, list[str]]:
     """
     Encode a single video segment using ab-av1.
     
@@ -61,6 +57,13 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
         dict: Encoding statistics and metrics
     """
     import time
+    output_logs = []  # List to collect detailed log messages
+    
+    def capture_log(msg, *args, **kwargs):
+        formatted = msg % args if args else msg
+        log.info(formatted)  # Pass only the formatted string
+        output_logs.append(formatted)
+        
     start_time = time.time()
     
     # Get input segment details
@@ -105,6 +108,9 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
         ]
         if crop_filter:
             cmd.extend(["--vfilter", crop_filter])
+            
+        if dv_flag:
+            cmd.extend(["--enc", "dolbyvision=true"])
         
         result = run_cmd(cmd)
     except Exception as e:
@@ -114,7 +120,7 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
             if output_segment.exists():
                 output_segment.unlink()
             # Retry with incremented retry count
-            return encode_segment(segment, output_segment, crop_filter, retry_count + 1)
+            return encode_segment(segment, output_segment, crop_filter, retry_count + 1, dv_flag)
         else:
             log.error("Segment encoding failed after %d retries", retry_count)
             raise
@@ -158,10 +164,10 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
             # Removed duplicate VMAF score log:
             # log.info("  VMAF scores - Avg: %.2f, Min: %.2f, Max: %.2f",
             #          vmaf_score, vmaf_min, vmaf_max)
-            log.info("Segment analysis complete: %s – VMAF Avg: %.2f, Min: %.2f, Max: %.2f (CRF target determined)",
+            capture_log("Segment analysis complete: %s – VMAF Avg: %.2f, Min: %.2f, Max: %.2f (CRF target determined)",
                      segment.name, vmaf_score, vmaf_min, vmaf_max)
         else:
-            log.info("Segment analysis complete: %s – No VMAF scores parsed", segment.name)
+            capture_log("Segment analysis complete: %s – No VMAF scores parsed", segment.name)
     except Exception as e:
         log.debug("Could not parse VMAF scores: %s", e)
         log.info("Segment analysis complete: %s – No VMAF scores parsed", segment.name)
@@ -183,13 +189,13 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
     }
     
     # Log detailed segment info
-    log.info("Segment encoding complete: %s", segment.name)
-    log.info("  Duration: %.2fs", stats['duration'])
-    log.info("  Size: %.2f MB", stats['size_mb'])
-    log.info("  Bitrate: %.2f kbps", stats['bitrate_kbps'])
-    log.info("  Encoding time: %.2fs (%.2fx realtime)", 
+    capture_log("Segment encoding complete: %s", segment.name)
+    capture_log("  Duration: %.2fs", stats['duration'])
+    capture_log("  Size: %.2f MB", stats['size_mb'])
+    capture_log("  Bitrate: %.2f kbps", stats['bitrate_kbps'])
+    capture_log("  Encoding time: %.2fs (%.2fx realtime)", 
              stats['encoding_time'], stats['speed_factor'])
-    log.info("  Resolution: %s @ %s", stats['resolution'], stats['framerate'])
+    capture_log("  Resolution: %s @ %s", stats['resolution'], stats['framerate'])
     
     # Get peak memory usage (in kilobytes)
     peak_memory_kb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
@@ -222,38 +228,102 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
     stats['peak_memory_bytes'] = peak_memory_bytes
     stats['resolution_category'] = resolution_category
 
-    return stats
+    return stats, output_logs
 
-def encode_segments(crop_filter: Optional[str] = None) -> bool:
+
+# Number of segments to process sequentially for warm-up
+WARMUP_COUNT = 3  # Increased to get better average
+
+def calculate_memory_requirements(warmup_results):
     """
-    Encode video segments in parallel using ab-av1
+    Calculate base memory token size from warmup results and dynamically
+    adjust based on actual peak memory usage during warmup.
+    """
+    memory_by_resolution = {'SDR': [], '1080p': [], '4k': []}
+    
+    for stats, _ in warmup_results:
+        category = stats['resolution_category']
+        memory_bytes = stats['peak_memory_bytes']
+        memory_by_resolution[category].append(memory_bytes)
+    
+    # Calculate averages for each resolution category
+    averages = {}
+    for category, values in memory_by_resolution.items():
+        if values:
+            averages[category] = sum(values) / len(values)
+    
+    # Calculate the average peak memory usage during warmup
+    peak_memories = [stats['peak_memory_bytes'] for stats, _ in warmup_results if 'peak_memory_bytes' in stats]
+    if peak_memories:
+        actual_peak = max(peak_memories)
+        # Use the larger of the calculated average or actual peak memory
+        base_size = max(
+            min((size for size in averages.values() if size > 0), default=512 * 1024 * 1024),
+            actual_peak // 4  # Divide by 4 since we'll multiply by weights later
+        )
+    else:
+        # Fallback to original calculation if no peak memory data
+        base_size = min((size for size in averages.values() if size > 0), default=512 * 1024 * 1024)
+    
+    # Calculate relative weights
+    weights = {
+        'SDR': 1,
+        '1080p': max(1, int(averages.get('1080p', base_size) / base_size)),
+        '4k': max(2, int(averages.get('4k', base_size * 2) / base_size))
+    }
+    
+    return base_size, weights
+
+def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) -> bool:
+    """
+    Encode video segments in parallel with dynamic memory-aware scheduling
     
     Args:
         crop_filter: Optional ffmpeg crop filter string
+        dv_flag: Whether this is Dolby Vision content
         
     Returns:
         bool: True if all segments encoded successfully
     """
     from ..validation import validate_ab_av1
+    import psutil
+    import time
+    from concurrent.futures import ThreadPoolExecutor, as_completed
     
     if not check_dependencies() or not validate_ab_av1():
         return False
-        
+
+    # Configure memory thresholds
+    MEMORY_THRESHOLD = 0.8  # Use up to 80% of available memory
+    BASE_MEMORY_PER_TOKEN = 512 * 1024 * 1024  # 512MB base memory per token
+    
     segments_dir = WORKING_DIR / "segments"
     encoded_dir = WORKING_DIR / "encoded_segments"
     encoded_dir.mkdir(parents=True, exist_ok=True)
     
-    # Track failed segments for reporting
-    failed_segments = []
-    
     try:
-        # Get list of segments to encode
         segments = list(segments_dir.glob("*.mkv"))
         if not segments:
             log.error("No segments found to encode")
             return False
 
-        # Log common ab-av1 encoding parameters once (using placeholders for input/output)
+        # Warm-up: process first WARMUP_COUNT segments sequentially to gauge memory usage
+        warmup_results = []
+        for i in range(min(WARMUP_COUNT, len(segments))):
+            segment = segments[i]
+            output_segment = encoded_dir / segment.name
+            log.info("Warm-up encoding for segment: %s", segment.name)
+            result = encode_segment(segment, output_segment, crop_filter, 0, dv_flag)
+            warmup_results.append(result)
+        next_segment_idx = min(WARMUP_COUNT, len(segments))
+
+        # Calculate dynamic memory requirements from warmup results
+        base_memory_per_token, resolution_weights = calculate_memory_requirements(warmup_results)
+        log.info("Dynamic memory analysis:")
+        log.info("  Base memory per token: %.2f MB", base_memory_per_token / (1024 * 1024))
+        log.info("  Resolution weights: %s", resolution_weights)
+
+        # Log encoding parameters
         sample_cmd = [
             "ab-av1", "auto-encode",
             "--input", "<input_segment>",
@@ -273,90 +343,90 @@ def encode_segments(crop_filter: Optional[str] = None) -> bool:
         formatted_sample = " \\\n    ".join(sample_cmd)
         log.info("Common ab-av1 encoding parameters:\n%s", formatted_sample)
 
-        # Use ProcessPoolExecutor with memory token scheduling
-        segment_stats = []
-        failed_segments = []
-        pending_segments = list(segments)          # list of segments left to schedule
-        running_futures = {}                       # mapping of future -> (category, memory)
-        current_mem_estimate = 0                   # total estimated memory used by running tasks
-        default_estimates = {
-            "4k": 3 * 1024**3,
-            "1080p": int(1.5 * 1024**3),
-            "SDR": int(0.5 * 1024**3)
-        }
-        dynamic_mem_estimates = default_estimates.copy()
-        max_workers = max(1, multiprocessing.cpu_count())
+        # Initialize thread pool and tracking variables
+        max_workers = psutil.cpu_count()
+        running_tasks = {}  # task_id -> (future, memory_weight)
+        completed_results = []
 
-        with ProcessPoolExecutor(max_workers=max_workers) as executor:
-            while pending_segments or running_futures:
-                # Check for completed tasks and release their tokens
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            while next_segment_idx < len(segments) or running_tasks:
+                # Check overall system memory usage and wait if usage is 90% or higher
+                if psutil.virtual_memory().percent >= 90:
+                    log.info("High memory usage (%d%%); pausing new task submissions...", 
+                            psutil.virtual_memory().percent)
+                    time.sleep(1)
+                    continue
+
+                # Check available memory
+                mem = psutil.virtual_memory()
+                available_memory = mem.available
+                target_available = mem.total * (1 - MEMORY_THRESHOLD)
+                
+                # Calculate current memory usage by our tasks
+                current_task_memory = sum(weight * BASE_MEMORY_PER_TOKEN 
+                                        for _, weight in running_tasks.values())
+                
+                # Submit new tasks if memory permits
+                while (next_segment_idx < len(segments) and 
+                       available_memory - current_task_memory > target_available and
+                       available_memory > mem.total * 0.1):
+                    segment = segments[next_segment_idx]
+                    output_segment = encoded_dir / segment.name
+                    
+                    # Estimate memory requirements
+                    memory_weight = estimate_memory_weight(segment, resolution_weights)
+                    estimated_memory = memory_weight * base_memory_per_token
+                    
+                    # Calculate current token usage
+                    current_tokens = sum(weight for (_, weight) in running_tasks.values())
+                    
+                    # Add 10% safety margin to estimated memory
+                    with_margin = estimated_memory * 1.1
+                    
+                    # Check both memory availability and token limit
+                    if (available_memory - (current_task_memory + with_margin) > target_available and
+                        current_tokens + memory_weight <= MAX_MEMORY_TOKENS):
+                        # Stagger task submissions
+                        time.sleep(TASK_STAGGER_DELAY)
+                        future = executor.submit(encode_segment, segment, output_segment, 
+                                              crop_filter, 0, dv_flag)
+                        running_tasks[next_segment_idx] = (future, memory_weight)
+                        current_task_memory += estimated_memory
+                        next_segment_idx += 1
+                    else:
+                        break
+                
+                # Check for completed tasks
                 completed = []
-                for fut in list(running_futures):
-                    if fut.done():
-                        res_cat, estimated_mem = running_futures.pop(fut)
-                        current_mem_estimate -= estimated_mem
+                for task_id, (future, _) in running_tasks.items():
+                    if future.done():
                         try:
-                            stats = fut.result()
-                            # Update the dynamic estimate for this resolution category
-                            actual = stats.get('peak_memory_bytes')
-                            if actual:
-                                prev = dynamic_mem_estimates.get(res_cat)
-                                if prev is None:
-                                    dynamic_mem_estimates[res_cat] = actual
-                                else:
-                                    dynamic_mem_estimates[res_cat] = (prev + actual) / 2
-                            segment_stats.append(stats)
-                            log.info("Successfully encoded segment: %s", stats.get('segment'))
+                            result = future.result()
+                            completed_results.append(result)
+                            stats, log_messages = result
+                            
+                            # Print captured logs
+                            for msg in log_messages:
+                                log.info(msg)
+                            log.info("Successfully encoded segment: %s", 
+                                    stats.get('segment'))
+                            
                         except Exception as e:
-                            log.error("Failed to encode a segment: %s", e)
-                            failed_segments.append("unknown")
-                        completed.append(fut)
+                            log.error("Task failed: %s", e)
+                            return False
+                        completed.append(task_id)
                 
-                # Try scheduling new tasks if tokens are available
-                i = 0
-                while i < len(pending_segments):
-                    segment = pending_segments[i]
-                    # Determine resolution category for segment
-                    try:
-                        result = run_cmd([
-                            "ffprobe", "-v", "error",
-                            "-select_streams", "v:0",
-                            "-show_entries", "stream=width",
-                            "-of", "default=noprint_wrappers=1:nokey=1",
-                            str(segment)
-                        ])
-                        width = int(result.stdout.strip())
-                    except Exception:
-                        width = 1280
-                    if width >= 3840:
-                        res_cat = "4k"
-                    elif width >= 1920:
-                        res_cat = "1080p"
-                    else:
-                        res_cat = "SDR"
-
-                    estimated_mem = dynamic_mem_estimates[res_cat]
-
-                    available_mem = psutil.virtual_memory().available
-
-                    if current_mem_estimate + estimated_mem <= available_mem * 0.8:
-                        output_segment = encoded_dir / segment.name
-                        fut = executor.submit(encode_segment, segment, output_segment, crop_filter, 0)
-                        running_futures[fut] = (res_cat, estimated_mem)
-                        current_mem_estimate += estimated_mem
-                        pending_segments.pop(i)
-                    else:
-                        i += 1
+                # Remove completed tasks
+                for task_id in completed:
+                    running_tasks.pop(task_id)
                 
-                # Wait briefly before rechecking
-                time.sleep(0.5)
-
-            if failed_segments:
-                log.error("Failed to encode %d segments", len(failed_segments))
-                return False
+                # Short sleep to prevent tight loop
+                if running_tasks:
+                    time.sleep(0.1)
                 
         # Print summary statistics
-        if segment_stats:
+        if completed_results:
+            segment_stats = [s for s, _ in completed_results]
             total_duration = sum(s['duration'] for s in segment_stats)
             total_size = sum(s['size_mb'] for s in segment_stats)
             avg_bitrate = sum(s['bitrate_kbps'] for s in segment_stats) / len(segment_stats)
@@ -387,9 +457,6 @@ def encode_segments(crop_filter: Optional[str] = None) -> bool:
     except Exception as e:
         log.error("Parallel encoding failed: %s", e)
         return False
-    finally:
-        # Cleanup handled by the calling function
-        pass
 
 def validate_encoded_segments(segments_dir: Path) -> bool:
     """
@@ -451,10 +518,12 @@ def validate_encoded_segments(segments_dir: Path) -> bool:
             ]).stdout.strip())
             
             enc_duration = float(duration)
-            if abs(orig_duration - enc_duration) > 0.1:
+            # Allow a relative tolerance of 2% (or at least 0.1 sec) to account for slight discrepancies
+            tolerance = max(0.1, orig_duration * 0.02)
+            if abs(orig_duration - enc_duration) > tolerance:
                 log.error(
-                    "Duration mismatch in %s: %.2f vs %.2f",
-                    encoded.name, orig_duration, enc_duration
+                    "Duration mismatch in %s: %.2f vs %.2f (tolerance: %.2f)",
+                    encoded.name, orig_duration, enc_duration, tolerance
                 )
                 return False
                 

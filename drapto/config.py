@@ -28,6 +28,11 @@ CRF_UHD = 29     # For videos with width > 1920 (4K and above)
 SVT_PARAMS = "tune=0:film-grain=0:film-grain-denoise=0"
 PIX_FMT = "yuv420p10le"
 
+# Memory management settings
+MEMORY_THRESHOLD = 0.7  # Lower threshold to reserve 30% free memory
+MAX_MEMORY_TOKENS = 8  # Maximum concurrent memory tokens
+TASK_STAGGER_DELAY = 0.2  # Delay between task submissions in seconds
+
 # Hardware acceleration options
 HWACCEL_OPTS = ""
 
