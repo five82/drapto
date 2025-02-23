@@ -325,7 +325,8 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
                 
                 # Submit new tasks if memory permits
                 while (next_segment_idx < len(segments) and 
-                       available_memory - current_task_memory > target_available):
+                       available_memory - current_task_memory > target_available and
+                       available_memory > mem.total * 0.1):
                     segment = segments[next_segment_idx]
                     output_segment = encoded_dir / segment.name
                     
