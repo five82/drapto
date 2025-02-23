@@ -66,16 +66,10 @@ def detect_crop(input_file: Path, disable_crop: bool = None) -> Optional[str]:
 
     log.info("Analyzing video for black bars...")
 
-    # Get color properties from ffprobe
+    # Get video stream info from ffprobe_utils
     try:
-        # Use ffprobe_utils to get color properties in one call
-        from ..ffprobe_utils import ffprobe_query
-        data = ffprobe_query(input_file, [
-            "-select_streams", "v:0",
-            "-show_entries", "stream=color_transfer,color_primaries,color_space",
-            "-of", "json"
-        ])
-        info = data.get("streams", [{}])[0]
+        from ..ffprobe_utils import get_video_info
+        info = get_video_info(input_file)
         ct = info.get("color_transfer", "")
         cp = info.get("color_primaries", "")
         cs = info.get("color_space", "")
@@ -154,7 +148,7 @@ def detect_crop(input_file: Path, disable_crop: bool = None) -> Optional[str]:
         total_samples = 20
     log.info("Analyzing %d frames for black bars (threshold: %d)...", total_samples, crop_threshold)
 
-    # Get original video dimensions via ffprobe
+    # Get video info from ffprobe_utils
     try:
         video_info = get_video_info(input_file)
         orig_width = int(video_info.get("width", 0))

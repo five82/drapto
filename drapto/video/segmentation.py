@@ -83,13 +83,9 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> b
         
     log.info("Variable segmentation in use")
     try:
-        result = run_cmd([
-            "ffprobe", "-v", "error",
-            "-show_entries", "format=duration",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(input_file)
-        ])
-        total_duration = float(result.stdout.strip())
+        from ..ffprobe_utils import get_format_info
+        format_info = get_format_info(input_file)
+        total_duration = float(format_info.get("duration", 0))
     except Exception as e:
         log.error("Failed to get input duration: %s", e)
         return False
@@ -106,24 +102,14 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> b
             return False
     
         try:
-            result = run_cmd([
-                "ffprobe", "-v", "error",
-                "-show_entries", "format=duration:stream=codec_name",
-                "-of", "default=noprint_wrappers=1:nokey=1",
-                str(segment)
-            ])
-            lines = result.stdout.strip().split('\n')
-            duration = None
-            codec = None
-            for line in lines:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    duration = float(line)
-                except ValueError:
-                    codec = line
-            if duration is None or codec is None:
+            from ..ffprobe_utils import get_format_info, get_video_info
+            format_info = get_format_info(segment)
+            video_info = get_video_info(segment)
+            
+            duration = float(format_info.get("duration", 0))
+            codec = video_info.get("codec_name")
+            
+            if not duration or not codec:
                 log.error("Invalid segment %s: missing duration or codec", segment.name)
                 return False
                 
