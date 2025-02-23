@@ -28,11 +28,32 @@ def detect_scenes(input_file: Path) -> List[float]:
     Returns:
         List of timestamps (in seconds) where scene changes occur
     """
+    # Determine if the video is HDR by checking the color_transfer property via ffprobe
+    try:
+        result = run_cmd([
+            "ffprobe", "-v", "error",
+            "-select_streams", "v:0",
+            "-show_entries", "stream=color_transfer",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            str(input_file)
+        ])
+        color_transfer = result.stdout.strip().lower()
+    except Exception as e:
+        log.warning("Failed to obtain color_transfer info: %s", e)
+        color_transfer = ""
+
+    from ..config import HDR_SCENE_THRESHOLD  # already importing SCENE_THRESHOLD elsewhere
+    if color_transfer in ["smpte2084", "arib-std-b67", "smpte428", "bt2020-10", "bt2020-12"]:
+        used_threshold = HDR_SCENE_THRESHOLD
+        log.info("HDR content detected, using HDR_SCENE_THRESHOLD: %s", used_threshold)
+    else:
+        used_threshold = SCENE_THRESHOLD
+
     try:
         try:
             log.debug("Starting scene detection on %s", input_file)
             scenes = detect(str(input_file),
-                          ContentDetector(threshold=float(SCENE_THRESHOLD),
+                          ContentDetector(threshold=float(used_threshold),
                                         min_scene_len=int(MIN_SCENE_INTERVAL)))
             log.debug("Raw scenes detected: %r", scenes)
         except Exception as e:
