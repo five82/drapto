@@ -11,8 +11,7 @@ from scenedetect.scene_manager import save_images
 from ..utils import run_cmd
 from ..formatting import print_check, print_warning
 from ..config import (
-    SCENE_THRESHOLD, MIN_SCENE_INTERVAL, DEFAULT_TARGET_SEGMENT_LENGTH,
-    CLUSTER_WINDOW, MAX_SEGMENT_LENGTH
+    SCENE_THRESHOLD, MIN_SCENE_INTERVAL, MAX_SEGMENT_LENGTH
 )
 
 log = logging.getLogger(__name__)
@@ -48,12 +47,7 @@ def detect_scenes(input_file: Path) -> List[float]:
         log.error("Failed to get video duration: %s", e)
         return []
 
-    # 2. Calculate ideal segmentation boundaries.
-    # If TARGET_SEGMENT_LENGTH is e.g. 15 sec, determine number of segments.
-    num_boundaries = max(1, int(math.floor(total_duration / TARGET_SEGMENT_LENGTH)))
-    ideal_boundaries = [i * (total_duration / (num_boundaries + 1)) for i in range(1, num_boundaries + 1)]
-
-    # 3. Determine scene detection threshold based on HDR or SDR.
+    # 2. Determine scene detection threshold based on HDR or SDR.
     try:
         result = run_cmd([
             "ffprobe", "-v", "error",
@@ -88,22 +82,37 @@ def detect_scenes(input_file: Path) -> List[float]:
         log.error("Candidate scene detection failed: %s", e)
         candidate_timestamps = []
 
-    # 5. For each ideal boundary, select the candidate scene if it lies within tolerance.
-    tolerance = 2.0  # seconds tolerance for matching ideal boundary with detected candidate
+    # Filter out scenes that are too close together
+    filtered_scenes = []
+    last_ts = 0.0
+    for ts in candidate_timestamps:
+        if ts - last_ts >= MIN_SCENE_INTERVAL:
+            filtered_scenes.append(ts)
+            last_ts = ts
+
+    # Insert artificial boundaries for gaps exceeding MAX_SEGMENT_LENGTH
     final_boundaries = []
-    for ideal in ideal_boundaries:
-        # Find candidate scenes within tolerance of the ideal boundary.
-        nearby = [ts for ts in candidate_timestamps if abs(ts - ideal) <= tolerance]
-        if nearby:
-            # Choose the candidate closest to the ideal boundary.
-            best_candidate = min(nearby, key=lambda ts: abs(ts - ideal))
-            final_boundaries.append(best_candidate)
-        else:
-            final_boundaries.append(ideal)
-            
-    # Ensure the boundaries are sorted and unique.
+    prev_boundary = 0.0
+    for ts in filtered_scenes:
+        gap = ts - prev_boundary
+        if gap > MAX_SEGMENT_LENGTH:
+            # Insert additional boundaries every MAX_SEGMENT_LENGTH seconds
+            num_inserts = int(gap // MAX_SEGMENT_LENGTH)
+            for i in range(1, num_inserts + 1):
+                final_boundaries.append(prev_boundary + i * MAX_SEGMENT_LENGTH)
+        final_boundaries.append(ts)
+        prev_boundary = ts
+    
+    # Check for potential gap after last scene to end of video
+    if total_duration - prev_boundary > MAX_SEGMENT_LENGTH:
+        remaining_gap = total_duration - prev_boundary
+        num_inserts = int(remaining_gap // MAX_SEGMENT_LENGTH)
+        for i in range(1, num_inserts + 1):
+            final_boundaries.append(prev_boundary + i * MAX_SEGMENT_LENGTH)
+
+    # Ensure boundaries are sorted and unique
     final_boundaries = sorted(set(final_boundaries))
-    log.info("Detected %d candidate scenes; final boundaries: %r", len(candidate_timestamps), final_boundaries)
+    log.info("Detected %d scenes, final boundaries: %r", len(candidate_timestamps), final_boundaries)
     return final_boundaries
 
 def validate_segment_boundaries(

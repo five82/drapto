@@ -53,15 +53,8 @@ VMAF_SAMPLE_LENGTH = 1
 SCENE_THRESHOLD = 40.0  # Content detection threshold for SDR content
 HDR_SCENE_THRESHOLD = 30.0  # Lower threshold for HDR content to yield more scenes
 MIN_SCENE_INTERVAL = 5.0  # Minimum time between scene changes (seconds)
-CLUSTER_WINDOW = 2.0  # Window size in seconds for clustering nearby scene changes
-DEFAULT_TARGET_SEGMENT_LENGTH = 15.0  # Default target segment duration when dynamic calculation not possible
 MAX_SEGMENT_LENGTH = 30.0  # Maximum segment length before forcing a split
-ADAPTIVE_CLUSTER_WINDOW = 2.0  # Default window for adaptive scene clustering
-
-# New scene detection improvements
-TARGET_SEGMENT_LENGTH = 15.0       # Target segment duration (in seconds) for ideal segmentation boundaries
-SCENE_CANDIDATE_TOLERANCE = 2.0      # Tolerance (in seconds) for matching candidate scene changes with ideal boundaries
-MIN_SCENE_LEN = 5                  # Minimum scene length (in seconds) for candidate scene detection
+MIN_SCENE_LEN = 5  # Minimum scene length (in seconds) for candidate scene detection
 
 # Temporary directories for chunked encoding
 SEGMENTS_DIR = WORKING_ROOT / "segments"
