@@ -7,7 +7,7 @@ from typing import List, Optional
 logger = logging.getLogger(__name__)
 
 from ..config import WORKING_DIR
-from ..utils import run_cmd, run_cmd_interactive, run_cmd_with_progress
+from ..utils import run_cmd, run_cmd_with_progress
 from ..formatting import print_info
 
 log = logging.getLogger(__name__)
