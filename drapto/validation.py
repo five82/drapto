@@ -32,15 +32,10 @@ def validate_video_stream(input_file: Path, output_file: Path, validation_report
 def validate_audio_streams(input_file: Path, output_file: Path, validation_report: list) -> bool:
     """Validate audio stream properties"""
     try:
-        result = run_cmd([
-            "ffprobe", "-v", "error",
-            "-select_streams", "a",
-            "-show_entries", "stream=codec_name,channels,bit_rate",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(output_file)
-        ])
-        streams = result.stdout.strip().split('\n')
-        opus_count = sum(1 for s in streams if s.startswith('opus'))
+        # Get audio info for all streams
+        audio_info = get_audio_info(output_file)
+        streams = audio_info.get("streams", [])
+        opus_count = sum(1 for s in streams if s.get("codec_name") == "opus")
         
         if opus_count == 0:
             validation_report.append("ERROR: No Opus audio streams found")
@@ -55,14 +50,8 @@ def validate_audio_streams(input_file: Path, output_file: Path, validation_repor
 def validate_subtitle_tracks(input_file: Path, output_file: Path, validation_report: list) -> bool:
     """Validate subtitle track preservation"""
     try:
-        result = run_cmd([
-            "ffprobe", "-v", "error",
-            "-select_streams", "s",
-            "-show_entries", "stream=index",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(output_file)
-        ])
-        subtitle_count = len(result.stdout.strip().split('\n')) if result.stdout.strip() else 0
+        subtitle_info = get_subtitle_info(output_file)
+        subtitle_count = len(subtitle_info.get("streams", []))
         validation_report.append(f"Subtitles: {subtitle_count} tracks")
         return True
     except Exception as e:
@@ -72,9 +61,12 @@ def validate_subtitle_tracks(input_file: Path, output_file: Path, validation_rep
 def validate_container(output_file: Path, validation_report: list) -> bool:
     """Validate container integrity"""
     try:
-        run_cmd(["ffprobe", "-v", "error", str(output_file)])
-        validation_report.append("Container: Valid MKV structure")
-        return True
+        format_info = get_format_info(output_file)
+        if format_info:
+            validation_report.append("Container: Valid MKV structure")
+            return True
+        validation_report.append("ERROR: Invalid container structure")
+        return False
     except Exception as e:
         validation_report.append(f"ERROR: Invalid container structure: {e}")
         return False
@@ -82,21 +74,11 @@ def validate_container(output_file: Path, validation_report: list) -> bool:
 def validate_crop_dimensions(input_file: Path, output_file: Path, validation_report: list) -> bool:
     """Validate crop dimensions if applied"""
     try:
-        in_res = run_cmd([
-            "ffprobe", "-v", "error",
-            "-select_streams", "v",
-            "-show_entries", "stream=width,height",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(input_file)
-        ]).stdout.strip().split('\n')
+        in_video = get_video_info(input_file)
+        out_video = get_video_info(output_file)
         
-        out_res = run_cmd([
-            "ffprobe", "-v", "error",
-            "-select_streams", "v",
-            "-show_entries", "stream=width,height",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(output_file)
-        ]).stdout.strip().split('\n')
+        in_res = [str(in_video.get("width", "")), str(in_video.get("height", ""))]
+        out_res = [str(out_video.get("width", "")), str(out_video.get("height", ""))]
         
         if in_res != out_res:
             validation_report.append(f"Crop: {out_res[0]}x{out_res[1]} (from {in_res[0]}x{in_res[1]})")
