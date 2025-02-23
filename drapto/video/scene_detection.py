@@ -11,7 +11,7 @@ from scenedetect.scene_manager import save_images
 from ..utils import run_cmd
 from ..formatting import print_check, print_warning
 from ..config import (
-    SCENE_THRESHOLD, HDR_SCENE_THRESHOLD, MIN_SCENE_INTERVAL, MAX_SEGMENT_LENGTH, MIN_SCENE_LEN
+    SCENE_THRESHOLD, HDR_SCENE_THRESHOLD, MIN_SEGMENT_INTERVAL, MAX_SEGMENT_LENGTH
 )
 
 log = logging.getLogger(__name__)
@@ -67,7 +67,7 @@ def detect_scenes(input_file: Path) -> List[float]:
     # 4. Run candidate scene detection using PySceneDetect.
     from scenedetect import detect, ContentDetector
     try:
-        candidates = detect(str(input_file), ContentDetector(threshold=threshold_val, min_scene_len=5))
+        candidates = detect(str(input_file), ContentDetector(threshold=threshold_val, min_scene_len=MIN_SEGMENT_INTERVAL))
         candidate_timestamps = []
         for scene in candidates:
             if hasattr(scene, "start_time"):
@@ -86,7 +86,7 @@ def detect_scenes(input_file: Path) -> List[float]:
     filtered_scenes = []
     last_ts = 0.0
     for ts in candidate_timestamps:
-        if ts - last_ts >= MIN_SCENE_INTERVAL:
+        if ts - last_ts >= MIN_SEGMENT_INTERVAL:
             filtered_scenes.append(ts)
             last_ts = ts
 
