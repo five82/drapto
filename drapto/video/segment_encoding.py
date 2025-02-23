@@ -41,7 +41,7 @@ def estimate_memory_weight(segment: Path, resolution_weights: dict) -> int:
 from ..config import (
     PRESET, TARGET_VMAF, SVT_PARAMS, 
     VMAF_SAMPLE_COUNT, VMAF_SAMPLE_LENGTH,
-    WORKING_DIR
+    WORKING_DIR, TASK_STAGGER_DELAY
 )
 from ..utils import run_cmd, check_dependencies
 from ..formatting import print_check
