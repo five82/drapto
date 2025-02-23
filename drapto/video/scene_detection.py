@@ -11,7 +11,7 @@ from scenedetect.scene_manager import save_images
 from ..utils import run_cmd
 from ..formatting import print_check, print_warning
 from ..config import (
-    SCENE_THRESHOLD, HDR_SCENE_THRESHOLD, MIN_SEGMENT_INTERVAL, MAX_SEGMENT_LENGTH
+    SCENE_THRESHOLD, HDR_SCENE_THRESHOLD, MIN_SEGMENT_LENGTH, MAX_SEGMENT_LENGTH
 )
 
 log = logging.getLogger(__name__)
