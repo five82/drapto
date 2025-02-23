@@ -58,6 +58,11 @@ DEFAULT_TARGET_SEGMENT_LENGTH = 15.0  # Default target segment duration when dyn
 MAX_SEGMENT_LENGTH = 30.0  # Maximum segment length before forcing a split
 ADAPTIVE_CLUSTER_WINDOW = 2.0  # Default window for adaptive scene clustering
 
+# New scene detection improvements
+TARGET_SEGMENT_LENGTH = 15.0       # Target segment duration (in seconds) for ideal segmentation boundaries
+SCENE_CANDIDATE_TOLERANCE = 2.0      # Tolerance (in seconds) for matching candidate scene changes with ideal boundaries
+MIN_SCENE_LEN = 5                  # Minimum scene length (in seconds) for candidate scene detection
+
 # Temporary directories for chunked encoding
 SEGMENTS_DIR = WORKING_ROOT / "segments"
 ENCODED_SEGMENTS_DIR = WORKING_ROOT / "encoded_segments" 
