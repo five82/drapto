@@ -265,17 +265,16 @@ def detect_scenes(input_file: Path) -> List[float]:
             
             for time in timestamps:
                 gap = time - last_time
-                # If the gap exceeds 1.75× the dynamic target, insert an extra boundary.
-                if gap > dynamic_target * 1.75:
-                    # For moderately long gaps, add a single midpoint.
-                    if gap <= dynamic_target * 3:
-                        final_timestamps.append(last_time + gap / 2)
-                    else:
-                        # For very long gaps, add up to two equally spaced boundaries.
-                        num_splits = min(2, int(gap / dynamic_target) - 1)
-                        split_size = gap / (num_splits + 1)
-                        for i in range(1, num_splits + 1):
-                            final_timestamps.append(last_time + i * split_size)
+                # Only split if gap is significantly larger than dynamic target length
+                if gap > MAX_SEGMENT_LENGTH or gap > dynamic_target * 1.25:
+                    # Add intermediate points for very long gaps
+                    # Use dynamic spacing based on gap size
+                    num_splits = max(1, int(gap / dynamic_target))
+                    split_size = gap / (num_splits + 1)
+                    current = last_time + split_size
+                    while current < time:
+                        final_timestamps.append(current)
+                        current += split_size
                 final_timestamps.append(time)
                 last_time = time
 
@@ -286,9 +285,10 @@ def detect_scenes(input_file: Path) -> List[float]:
                     "-of", "default=noprint_wrappers=1:nokey=1",
                     str(input_file)
                 ]).stdout.strip())
-                # If the tail gap is moderately long, add one extra boundary at its midpoint.
-                if duration - last_time > dynamic_target * 2:
-                    final_timestamps.append(last_time + (duration - last_time) / 2)
+                max_gap = dynamic_target * 1.5  # Allow 50% overrun based on dynamic target
+                while duration - last_time > max_gap:
+                    last_time += dynamic_target
+                    final_timestamps.append(last_time)
             except Exception as e:
                 log.warning("Could not get video duration: %s", e)
 
