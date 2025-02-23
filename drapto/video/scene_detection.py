@@ -1,5 +1,6 @@
 """Scene detection utilities for video processing"""
 
+import functools
 import logging
 import re
 from pathlib import Path
@@ -16,6 +17,7 @@ from ..config import (
 
 log = logging.getLogger(__name__)
 
+@functools.lru_cache(maxsize=None)
 def detect_scenes(input_file: Path) -> List[float]:
     """
     Improved scene detection for dynamic segmentation.
