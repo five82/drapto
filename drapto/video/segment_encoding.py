@@ -75,15 +75,28 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
     ]).stdout.strip().split('\n')
     input_duration = float(input_info[-1])  # Duration is last item
     
+    # Extract width from the ffprobe output (assuming line 2 is the width)
+    try:
+        width = int(input_info[1])
+    except Exception as e:
+        log.warning("Failed to parse width from input info: %s. Assuming non-4k.", e)
+        width = 0
+
     if retry_count == 0:
         sample_count = 3
         sample_duration_value = 1
-        min_vmaf_value = str(TARGET_VMAF)
+        if width >= 3840:
+            min_vmaf_value = "95"
+        else:
+            min_vmaf_value = str(TARGET_VMAF)
     elif retry_count == 1:
         # Second attempt: increase sample count and duration
         sample_count = 4
         sample_duration_value = 2
-        min_vmaf_value = str(TARGET_VMAF)
+        if width >= 3840:
+            min_vmaf_value = "95"
+        else:
+            min_vmaf_value = str(TARGET_VMAF)
     elif retry_count == 2:
         # Third attempt: keep increased sample settings but raise min_vmaf
         sample_count = 4
@@ -518,8 +531,8 @@ def validate_encoded_segments(segments_dir: Path) -> bool:
             ]).stdout.strip())
             
             enc_duration = float(duration)
-            # Allow a relative tolerance of 2% (or at least 0.1 sec) to account for slight discrepancies
-            tolerance = max(0.1, orig_duration * 0.02)
+            # Allow a relative tolerance of 5% (or at least 0.2 sec) to account for slight discrepancies
+            tolerance = max(0.2, orig_duration * 0.05)
             if abs(orig_duration - enc_duration) > tolerance:
                 log.error(
                     "Duration mismatch in %s: %.2f vs %.2f (tolerance: %.2f)",

@@ -50,10 +50,11 @@ VMAF_SAMPLE_COUNT = 3
 VMAF_SAMPLE_LENGTH = 1
 
 # Scene detection settings
-SCENE_THRESHOLD = 40.0  # Content detection threshold (higher = less sensitive)
+SCENE_THRESHOLD = 40.0  # Content detection threshold for SDR content
+HDR_SCENE_THRESHOLD = 30.0  # Lower threshold for HDR content to yield more scenes
 MIN_SCENE_INTERVAL = 5.0  # Minimum time between scene changes (seconds)
 CLUSTER_WINDOW = 2.0  # Window size in seconds for clustering nearby scene changes
-TARGET_SEGMENT_LENGTH = 15.0  # Target segment duration in seconds
+DEFAULT_TARGET_SEGMENT_LENGTH = 15.0  # Default target segment duration when dynamic calculation not possible
 MAX_SEGMENT_LENGTH = 30.0  # Maximum segment length before forcing a split
 ADAPTIVE_CLUSTER_WINDOW = 2.0  # Default window for adaptive scene clustering
 
