@@ -67,24 +67,17 @@ def detect_crop(input_file: Path, disable_crop: bool = None) -> Optional[str]:
 
     # Get color properties from ffprobe
     try:
-        ct = run_cmd([
-            "ffprobe", "-v", "error", "-select_streams", "v:0",
-            "-show_entries", "stream=color_transfer",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(input_file)
-        ]).stdout.strip()
-        cp = run_cmd([
-            "ffprobe", "-v", "error", "-select_streams", "v:0",
-            "-show_entries", "stream=color_primaries",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(input_file)
-        ]).stdout.strip()
-        cs = run_cmd([
-            "ffprobe", "-v", "error", "-select_streams", "v:0",
-            "-show_entries", "stream=color_space",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(input_file)
-        ]).stdout.strip()
+        # Use ffprobe_utils to get color properties in one call
+        from .ffprobe_utils import ffprobe_query
+        data = ffprobe_query(input_file, [
+            "-select_streams", "v:0",
+            "-show_entries", "stream=color_transfer,color_primaries,color_space",
+            "-of", "json"
+        ])
+        info = data.get("streams", [{}])[0]
+        ct = info.get("color_transfer", "")
+        cp = info.get("color_primaries", "")
+        cs = info.get("color_space", "")
     except Exception as e:
         log.error("Unable to read video color properties: %s", e)
         ct = cp = cs = ""
@@ -162,18 +155,9 @@ def detect_crop(input_file: Path, disable_crop: bool = None) -> Optional[str]:
 
     # Get original video dimensions via ffprobe
     try:
-        orig_width = int(run_cmd([
-            "ffprobe", "-v", "error", "-select_streams", "v:0",
-            "-show_entries", "stream=width",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(input_file)
-        ]).stdout.strip())
-        orig_height = int(run_cmd([
-            "ffprobe", "-v", "error", "-select_streams", "v:0",
-            "-show_entries", "stream=height",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(input_file)
-        ]).stdout.strip())
+        video_info = get_video_info(input_file)
+        orig_width = int(video_info.get("width", 0))
+        orig_height = int(video_info.get("height", 0))
     except Exception as e:
         log.error("Failed to get video dimensions: %s", e)
         return None

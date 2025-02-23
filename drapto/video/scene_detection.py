@@ -38,13 +38,7 @@ def detect_scenes(input_file: Path) -> List[float]:
 
     # 1. Get total duration of the video via ffprobe.
     try:
-        result = run_cmd([
-            "ffprobe", "-v", "error",
-            "-show_entries", "format=duration",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(input_file)
-        ])
-        total_duration = float(result.stdout.strip())
+        total_duration = float(get_format_info(input_file).get("duration", 0))
     except Exception as e:
         log.error("Failed to get video duration: %s", e)
         return []

@@ -21,14 +21,8 @@ def estimate_memory_weight(segment: Path, resolution_weights: dict) -> int:
     from warmup analysis.
     """
     try:
-        result = run_cmd([
-            "ffprobe", "-v", "error",
-            "-select_streams", "v:0",
-            "-show_entries", "stream=width",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(segment)
-        ])
-        width = int(result.stdout.strip())
+        info = get_video_info(segment)
+        width = int(info.get("width", 0))
         if width >= 3840:  # 4K
             return resolution_weights['4k']
         elif width >= 1920:  # 1080p/2K
@@ -67,19 +61,14 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
     start_time = time.time()
     
     # Get input segment details
-    input_info = run_cmd([
-        "ffprobe", "-v", "error",
-        "-show_entries", "stream=codec_name,width,height,r_frame_rate:format=duration",
-        "-of", "default=noprint_wrappers=1:nokey=1",
-        str(segment)
-    ]).stdout.strip().split('\n')
-    input_duration = float(input_info[-1])  # Duration is last item
-    
-    # Extract width from the ffprobe output (assuming line 2 is the width)
+    # Use ffprobe_utils to get segment info
+    video_info = get_video_info(segment)
+    format_info = get_format_info(segment)
+    input_duration = float(format_info.get("duration", 0))
     try:
-        width = int(input_info[1])
+        width = int(video_info.get("width", 0))
     except Exception as e:
-        log.warning("Failed to parse width from input info: %s. Assuming non-4k.", e)
+        log.warning("Failed to parse width from video info: %s. Assuming non-4k.", e)
         width = 0
 
     if retry_count == 0:
@@ -141,15 +130,10 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
     encoding_time = end_time - start_time
     
     # Get output details
-    output_info = run_cmd([
-        "ffprobe", "-v", "error",
-        "-show_entries", "stream=codec_name,width,height,r_frame_rate:format=duration,size",
-        "-of", "default=noprint_wrappers=1:nokey=1",
-        str(output_segment)
-    ]).stdout.strip().split('\n')
-    
-    output_duration = float(output_info[-2])  # Duration is second to last
-    output_size = int(output_info[-1])  # Size is last item
+    video_info_out = get_video_info(output_segment)
+    format_info_out = get_format_info(output_segment)
+    output_duration = float(format_info_out.get("duration", 0))
+    output_size = int(format_info_out.get("size", 0))
     
     # Calculate bitrate and speed metrics
     bitrate_kbps = (output_size * 8) / (output_duration * 1000)
