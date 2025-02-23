@@ -15,12 +15,10 @@ from typing import List, Optional, Dict
 # - Up to 8 concurrent SD segments (1 token each)
 MAX_MEMORY_TOKENS = 8
 
-def estimate_memory_weight(segment: Path) -> int:
+def estimate_memory_weight(segment: Path, resolution_weights: dict) -> int:
     """
-    Estimate memory weight based on segment resolution:
-    - 4K (width ≥ 3840): 4 tokens
-    - 1080p (width ≥ 1920): 2 tokens  
-    - Lower resolution: 1 token
+    Estimate memory weight based on segment resolution using dynamic weights
+    from warmup analysis.
     """
     try:
         result = run_cmd([
@@ -32,13 +30,13 @@ def estimate_memory_weight(segment: Path) -> int:
         ])
         width = int(result.stdout.strip())
         if width >= 3840:  # 4K
-            return 4
+            return resolution_weights['4k']
         elif width >= 1920:  # 1080p/2K
-            return 2
-        return 1  # SD/HD
+            return resolution_weights['1080p']
+        return resolution_weights['SDR']  # SD/HD
     except Exception as e:
-        log.warning("Failed to get segment width, assuming SD/HD weight: %s", e)
-        return 1
+        log.warning("Failed to get segment width, using minimum weight: %s", e)
+        return min(resolution_weights.values())
 
 from ..config import (
     PRESET, TARGET_VMAF, SVT_PARAMS, 
@@ -234,7 +232,34 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
 
 
 # Number of segments to process sequentially for warm-up
-WARMUP_COUNT = 2
+WARMUP_COUNT = 3  # Increased to get better average
+
+def calculate_memory_requirements(warmup_results):
+    """Calculate base memory token size from warmup results"""
+    memory_by_resolution = {'SDR': [], '1080p': [], '4k': []}
+    
+    for stats, _ in warmup_results:
+        category = stats['resolution_category']
+        memory_bytes = stats['peak_memory_bytes']
+        memory_by_resolution[category].append(memory_bytes)
+    
+    # Calculate averages for each resolution category
+    averages = {}
+    for category, values in memory_by_resolution.items():
+        if values:
+            averages[category] = sum(values) / len(values)
+    
+    # Use the smallest non-zero average as base token size
+    base_size = min((size for size in averages.values() if size > 0), default=512 * 1024 * 1024)
+    
+    # Calculate relative weights
+    weights = {
+        'SDR': 1,
+        '1080p': max(1, int(averages.get('1080p', base_size) / base_size)),
+        '4k': max(2, int(averages.get('4k', base_size * 2) / base_size))
+    }
+    
+    return base_size, weights
 
 def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) -> bool:
     """
@@ -278,6 +303,12 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
             result = encode_segment(segment, output_segment, crop_filter, 0, dv_flag)
             warmup_results.append(result)
         next_segment_idx = min(WARMUP_COUNT, len(segments))
+
+        # Calculate dynamic memory requirements from warmup results
+        base_memory_per_token, resolution_weights = calculate_memory_requirements(warmup_results)
+        log.info("Dynamic memory analysis:")
+        log.info("  Base memory per token: %.2f MB", base_memory_per_token / (1024 * 1024))
+        log.info("  Resolution weights: %s", resolution_weights)
 
         # Log encoding parameters
         sample_cmd = [
@@ -331,10 +362,13 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
                     output_segment = encoded_dir / segment.name
                     
                     # Estimate memory requirements
-                    memory_weight = estimate_memory_weight(segment)
-                    estimated_memory = memory_weight * BASE_MEMORY_PER_TOKEN
+                    memory_weight = estimate_memory_weight(segment, resolution_weights)
+                    estimated_memory = memory_weight * base_memory_per_token
                     
-                    if available_memory - (current_task_memory + estimated_memory) > target_available:
+                    # Add 10% safety margin to estimated memory
+                    with_margin = estimated_memory * 1.1
+                    
+                    if available_memory - (current_task_memory + with_margin) > target_available:
                         future = executor.submit(encode_segment, segment, output_segment, 
                                               crop_filter, 0, dv_flag)
                         running_tasks[next_segment_idx] = (future, memory_weight)
