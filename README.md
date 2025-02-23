@@ -20,7 +20,7 @@ High-quality AV1 video encoding pipeline with intelligent chunked encoding and D
 - FFmpeg with support for libsvtav1, libvmaf, and libopus
 - mediainfo
 - [scenedetect](https://pypi.org/project/scenedetect/) (for scene detection)
-- GNU Parallel (for chunked encoding)
+- [GNU Parallel](https://www.gnu.org/software/parallel/) (legacy—parallel encoding is now managed internally with Python's concurrent.futures)
 - ab-av1 (for quality-targeted encoding; install via Cargo: `cargo install ab-av1`)
 
 ## Installation
@@ -62,6 +62,9 @@ The encoder can be configured by modifying settings in `drapto/config.py`. Notab
 - Additional parameters for cropping, Dolby Vision handling, and hardware acceleration.
 
 These settings allow you to finely tune the balance between encoding speed and output quality.
+
+- **Memory Management:** Configure `MEMORY_THRESHOLD`, `MAX_MEMORY_TOKENS`, and `TASK_STAGGER_DELAY` to control resource allocation during parallel encoding.
+- **Scene Detection Tuning:** Adjust `SCENE_THRESHOLD`, `MIN_SCENE_INTERVAL`, `CLUSTER_WINDOW`, `TARGET_SEGMENT_LENGTH`, and `MAX_SEGMENT_LENGTH` to fine-tune segmentation performance.
 
 ### Features
 
