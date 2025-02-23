@@ -302,23 +302,19 @@ def validate_output(input_file: Path, output_file: Path) -> bool:
 
 def validate_ab_av1() -> bool:
     """
-    Check if ab-av1 is available when standard encoding is enabled
+    Check if ab-av1 is available.
     
     Returns:
-        bool: True if ab-av1 is available or not needed
+        bool: True if ab-av1 is available.
     """
-    from .config import ENABLE_STANDARD_ENCODING
-    
-    if ENABLE_STANDARD_ENCODING:
-        print_check("Checking for ab-av1...")
-        try:
-            run_cmd(["which", "ab-av1"])
-            print_check("ab-av1 found")
-            return True
-        except Exception:
-            print_error(
-                "ab-av1 is required for standard encoding but not found. "
-                "Install with: cargo install ab-av1"
-            )
-            return False
-    return True
+    print_check("Checking for ab-av1...")
+    try:
+        run_cmd(["which", "ab-av1"])
+        print_check("ab-av1 found")
+        return True
+    except Exception:
+        print_error(
+            "ab-av1 is required for encoding but not found. "
+            "Install with: cargo install ab-av1"
+        )
+        return False

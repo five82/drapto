@@ -40,7 +40,6 @@ IS_DOLBY_VISION = False
 DISABLE_CROP = False
 
 # Standard encoding settings
-ENABLE_STANDARD_ENCODING = True
 # Fixed segmentation mode is removed; using only dynamic, scene-based segmentation.
 TARGET_VMAF = 93
 VMAF_SAMPLE_COUNT = 3
