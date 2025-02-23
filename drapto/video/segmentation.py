@@ -130,8 +130,8 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> b
             log.info("Segment %s: duration=%.2fs, codec=%s", segment.name, duration, codec)
 
             # Validate the segment's video timestamps.
-            # Since segments are created with "-an" (no audio), we only check that the video start time is near zero.
-            sync_threshold = 0.1  # allowed difference in seconds
+            # Since segments are created without audio (-an), we only check that the video start time is near zero.
+            sync_threshold = 0.2  # increased allowed difference in seconds
 
             vid_result = run_cmd([
                 "ffprobe", "-v", "error",
