@@ -222,13 +222,15 @@ def segment_video(input_file: Path) -> bool:
         
         scenes = detect_scenes(input_file)
         if scenes:
+            from ..command_jobs import SegmentationJob
             cmd = build_segment_command(input_file, segments_dir, scenes, hw_opt)
             variable_seg = True
         else:
             log.error("Scene detection failed; no scenes detected. Failing segmentation.")
             return False
             
-        run_cmd(cmd)
+        job = SegmentationJob(cmd)
+        job.execute()
         
         # Validate segments with the appropriate variable_segmentation flag
         if not validate_segments(input_file, variable_segmentation=True):
