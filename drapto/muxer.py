@@ -46,6 +46,41 @@ def mux_tracks(
     
     try:
         run_cmd(cmd)
+        
+        # Validate AV sync in muxed output
+        sync_threshold = 0.1  # allowed difference in seconds
+
+        vid_result = run_cmd([
+            "ffprobe", "-v", "error",
+            "-select_streams", "v:0",
+            "-show_entries", "stream=start_time,duration",
+            "-of", "json",
+            str(output_file)
+        ])
+        vid_data = json.loads(vid_result.stdout)
+        if not vid_data.get("streams"):
+            log.error("Muxed output: No video stream found")
+            return False
+        video_start = float(vid_data["streams"][0].get("start_time") or 0)
+
+        aud_result = run_cmd([
+            "ffprobe", "-v", "error",
+            "-select_streams", "a:0",
+            "-show_entries", "stream=start_time,duration",
+            "-of", "json",
+            str(output_file)
+        ])
+        aud_data = json.loads(aud_result.stdout)
+        if not aud_data.get("streams"):
+            log.error("Muxed output: No audio stream found")
+            return False
+        audio_start = float(aud_data["streams"][0].get("start_time") or 0)
+
+        if abs(video_start - audio_start) > sync_threshold:
+            log.error("Muxed output AV sync error: video_start=%.2fs, audio_start=%.2fs", 
+                     video_start, audio_start)
+            return False
+
         return True
     except Exception as e:
         log.error("Muxing failed: %s", e)
