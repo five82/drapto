@@ -120,43 +120,143 @@ def detect_scenes(input_file: Path) -> List[float]:
             from statistics import median
 
             def cluster_timestamps(times, window):
+                """Cluster timestamps with weighted medians and outlier rejection."""
                 if not times:
                     return []
-                # Sort timestamps
-                sorted_times = sorted(times)
-                clusters = []
-                current_cluster = [sorted_times[0]]
-                
-                for t in sorted_times[1:]:
-                    # Use adaptive window based on configuration
-                    adaptive_window = window
+        
+                from statistics import stdev, mean
+    
+                # Sort timestamps and extract scores if available
+                sorted_times = []
+                weights = []
+                for t in sorted(times):
                     if hasattr(t, 'change_score'):
-                        # Adjust window based on scene change strength
-                        score_factor = t.change_score / SCENE_THRESHOLD
-                        adaptive_window = window * (1.0 + score_factor)
-                    
-                    if t - current_cluster[-1] <= adaptive_window:
-                        current_cluster.append(t)
+                        score = t.change_score / SCENE_THRESHOLD
+                        # Smooth extreme scores
+                        weight = min(max(score, 0.5), 2.0)
                     else:
-                        # Use median of cluster as representative timestamp
-                        clusters.append(median(current_cluster))
-                        current_cluster = [t]
-                        
+                        weight = 1.0
+                    sorted_times.append(float(t))
+                    weights.append(weight)
+    
+                # Compute gaps between timestamps
+                gaps = [sorted_times[i] - sorted_times[i-1] for i in range(1, len(sorted_times))]
+                if gaps:
+                    gap_mean = mean(gaps)
+                    gap_std = stdev(gaps) if len(gaps) > 1 else gap_mean * 0.5
+        
+                    # Filter outliers (gaps that deviate too much from mean)
+                    outlier_threshold = gap_mean + (2 * gap_std)
+                    filtered_times = [sorted_times[0]]  # Keep first timestamp
+                    filtered_weights = [weights[0]]
+        
+                    for i in range(1, len(sorted_times)):
+                        gap = sorted_times[i] - filtered_times[-1]
+                        if gap < outlier_threshold:
+                            filtered_times.append(sorted_times[i])
+                            filtered_weights.append(weights[i])
+                else:
+                    filtered_times = sorted_times
+                    filtered_weights = weights
+    
+                # Cluster with weighted medians
+                clusters = []
+                current_cluster = [(filtered_times[0], filtered_weights[0])]
+    
+                for t, w in zip(filtered_times[1:], filtered_weights[1:]):
+                    # Compute adaptive window based on local contrast
+                    adaptive_window = window
+                    if len(current_cluster) > 1:
+                        # Adjust window based on weight strength
+                        avg_weight = sum(w for _, w in current_cluster) / len(current_cluster)
+                        adaptive_window *= (1.0 + avg_weight) / 2
+        
+                    if t - current_cluster[-1][0] <= adaptive_window:
+                        current_cluster.append((t, w))
+                    else:
+                        # Compute weighted median for cluster
+                        total_weight = sum(w for _, w in current_cluster)
+                        cumsum = 0
+                        for time, weight in sorted(current_cluster):
+                            cumsum += weight
+                            if cumsum >= total_weight / 2:
+                                clusters.append(time)
+                                break
+                        current_cluster = [(t, w)]
+    
                 if current_cluster:
-                    clusters.append(median(current_cluster))
-                    
+                    # Handle last cluster
+                    total_weight = sum(w for _, w in current_cluster)
+                    cumsum = 0
+                    for time, weight in sorted(current_cluster):
+                        cumsum += weight
+                        if cumsum >= total_weight / 2:
+                            clusters.append(time)
+                            break
+    
+                # Post-process: merge very close scenes
+                if len(clusters) > 1:
+                    merged = [clusters[0]]
+                    for c in clusters[1:]:
+                        if c - merged[-1] >= 1.5:  # Minimum 1.5s gap
+                            merged.append(c)
+                    clusters = merged
+    
                 return clusters
 
             # Cluster nearby scene changes
             timestamps = cluster_timestamps(raw_timestamps, CLUSTER_WINDOW)
             
-            # Calculate dynamic target segment length based on scene gaps
-            from statistics import median
+            # Calculate dynamic target segment length with enhanced HDR handling
+            from statistics import median, mean, stdev
+            
+            # For HDR content, analyze contrast variance
+            contrast_factor = 1.0
+            if color_transfer in ["smpte2084", "arib-std-b67", "smpte428", "bt2020-10", "bt2020-12"]:
+                try:
+                    # Sample frames for contrast analysis
+                    result = run_cmd([
+                        "ffmpeg", "-i", str(input_file),
+                        "-vf", "select='eq(pict_type,I)',blackdetect=d=0:pic_th=0.1",
+                        "-frames:v", "30",
+                        "-f", "null", "-"
+                    ], capture_output=True)
+                    
+                    # Parse black levels to estimate contrast variance
+                    black_levels = re.findall(r"black_level:\s*([0-9.]+)", result.stderr)
+                    if black_levels:
+                        levels = [float(x) for x in black_levels]
+                        level_std = stdev(levels) if len(levels) > 1 else 0
+                        # Adjust contrast factor based on variance
+                        contrast_factor = max(0.8, min(1.2, 1.0 + (level_std / 128)))
+                        log.debug("HDR contrast factor: %.2f", contrast_factor)
+                except Exception as e:
+                    log.warning("HDR contrast analysis failed: %s", e)
+            
+            # Calculate weighted dynamic target
             if len(timestamps) > 1:
                 gaps = [timestamps[i] - timestamps[i-1] for i in range(1, len(timestamps))]
-                dynamic_target = median(gaps)
+                if len(gaps) > 2:
+                    # Remove extreme outliers before calculating target
+                    gap_mean = mean(gaps)
+                    gap_std = stdev(gaps)
+                    filtered_gaps = [g for g in gaps if abs(g - gap_mean) <= 2 * gap_std]
+                    if filtered_gaps:
+                        dynamic_target = median(filtered_gaps) * contrast_factor
+                    else:
+                        dynamic_target = gap_mean * contrast_factor
+                else:
+                    dynamic_target = median(gaps) * contrast_factor
             else:
                 dynamic_target = DEFAULT_TARGET_SEGMENT_LENGTH
+                
+            log.debug("Scene analysis:")
+            log.debug("  Raw scene count: %d", len(raw_timestamps))
+            log.debug("  Filtered scene count: %d", len(timestamps))
+            log.debug("  Dynamic target: %.2fs", dynamic_target)
+            if len(gaps) > 1:
+                log.debug("  Gap statistics - Mean: %.2fs, StdDev: %.2fs", 
+                         mean(gaps), stdev(gaps))
             
             # Process gaps between scenes
             final_timestamps = []
