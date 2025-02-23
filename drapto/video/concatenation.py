@@ -1,5 +1,6 @@
 """Handles concatenation of encoded video segments into the final output."""
 
+import json
 import logging
 from pathlib import Path
 from ..utils import run_cmd

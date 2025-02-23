@@ -1,5 +1,6 @@
 """Video segmentation and parallel encoding functions"""
 
+import json
 import logging
 import os
 import shutil

@@ -1,5 +1,6 @@
 """Handles muxing of video and audio streams"""
 
+import json
 import logging
 from pathlib import Path
 from typing import List, Optional
