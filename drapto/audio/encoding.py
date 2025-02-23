@@ -102,6 +102,8 @@ def encode_audio_track(input_file: Path, track_index: int) -> Optional[Path]:
         
         from ..video.command_builders import build_audio_encode_command
         from ..command_jobs import AudioEncodeJob
+        from ..video.command_builders import build_audio_encode_command
+        from ..command_jobs import AudioEncodeJob
         cmd = build_audio_encode_command(input_file, output_file, track_index, bitrate)
         formatted_cmd = " \\\n    ".join(cmd)
         log.info("Audio encoding command for track %d:\n%s", track_index, formatted_cmd)
