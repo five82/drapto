@@ -31,7 +31,7 @@ def detect_scenes(input_file: Path) -> List[float]:
     Returns:
         List of scene-change timestamps (in seconds) for segmentation.
     """
-    from .utils import run_cmd
+    from ..utils import run_cmd
     from ..config import TARGET_SEGMENT_LENGTH, SCENE_THRESHOLD, HDR_SCENE_THRESHOLD
     import math
 
