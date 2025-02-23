@@ -235,6 +235,7 @@ def detect_scenes(input_file: Path) -> List[float]:
                     log.warning("HDR contrast analysis failed: %s", e)
             
             # Calculate weighted dynamic target
+            gaps = []  # Ensure gaps is always defined
             if len(timestamps) > 1:
                 gaps = [timestamps[i] - timestamps[i-1] for i in range(1, len(timestamps))]
                 if len(gaps) > 2:
@@ -255,7 +256,7 @@ def detect_scenes(input_file: Path) -> List[float]:
             log.debug("  Raw scene count: %d", len(raw_timestamps))
             log.debug("  Filtered scene count: %d", len(timestamps))
             log.debug("  Dynamic target: %.2fs", dynamic_target)
-            if len(gaps) > 1:
+            if gaps and len(gaps) > 1:
                 log.debug("  Gap statistics - Mean: %.2fs, StdDev: %.2fs", 
                          mean(gaps), stdev(gaps))
             
