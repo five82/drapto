@@ -101,6 +101,7 @@ def encode_audio_track(input_file: Path, track_index: int) -> Optional[Path]:
         )
         
         from ..video.command_builders import build_audio_encode_command
+        from ..command_jobs import AudioEncodeJob
         cmd = build_audio_encode_command(input_file, output_file, track_index, bitrate)
         formatted_cmd = " \\\n    ".join(cmd)
         log.info("Audio encoding command for track %d:\n%s", track_index, formatted_cmd)
@@ -118,7 +119,8 @@ def encode_audio_track(input_file: Path, track_index: int) -> Optional[Path]:
             logger.error("Could not get audio duration for progress reporting: %s", e)
             audio_duration = None
 
-        if run_cmd_with_progress(cmd, total_duration=audio_duration, log_interval=5.0) != 0:
+        job = AudioEncodeJob(cmd)
+        if job.execute(total_duration=audio_duration, log_interval=5.0) != 0:
             raise RuntimeError(f"Audio encoding failed for track {track_index}")
         
         return output_file

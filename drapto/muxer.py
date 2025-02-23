@@ -28,10 +28,12 @@ def mux_tracks(
     log.info("Muxing tracks to: %s", output_file)
     
     from .video.command_builders import build_mux_command
+    from .command_jobs import MuxJob
     cmd = build_mux_command(video_track, audio_tracks, output_file)
-    
+        
     try:
-        run_cmd(cmd)
+        job = MuxJob(cmd)
+        job.execute()
         
         # Validate AV sync in muxed output
         sync_threshold = 0.1  # allowed difference in seconds

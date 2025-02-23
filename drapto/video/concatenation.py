@@ -39,8 +39,10 @@ def concatenate_segments(output_file: Path) -> bool:
                 f.write(f"file '{segment.absolute()}'\n")
             
         from .command_builders import build_concat_command
+        from ..command_jobs import ConcatJob
         cmd = build_concat_command(segments, output_file, concat_file)
-        run_cmd(cmd)
+        job = ConcatJob(cmd)
+        job.execute()
 
         if not output_file.exists() or output_file.stat().st_size == 0:
             log.error("Concatenated output is missing or empty")
