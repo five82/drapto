@@ -129,17 +129,25 @@ def detect_scenes(input_file: Path) -> List[float]:
             # Cluster nearby scene changes
             timestamps = cluster_timestamps(raw_timestamps, CLUSTER_WINDOW)
             
+            # Calculate dynamic target segment length based on scene gaps
+            from statistics import median
+            if len(timestamps) > 1:
+                gaps = [timestamps[i] - timestamps[i-1] for i in range(1, len(timestamps))]
+                dynamic_target = median(gaps)
+            else:
+                dynamic_target = TARGET_SEGMENT_LENGTH
+            
             # Process gaps between scenes
             final_timestamps = []
             last_time = 0.0
             
             for time in timestamps:
                 gap = time - last_time
-                # Only split if gap is significantly larger than target length
-                if gap > MAX_SEGMENT_LENGTH or gap > TARGET_SEGMENT_LENGTH * 1.25:
+                # Only split if gap is significantly larger than dynamic target length
+                if gap > MAX_SEGMENT_LENGTH or gap > dynamic_target * 1.25:
                     # Add intermediate points for very long gaps
                     # Use dynamic spacing based on gap size
-                    num_splits = max(1, int(gap / TARGET_SEGMENT_LENGTH))
+                    num_splits = max(1, int(gap / dynamic_target))
                     split_size = gap / (num_splits + 1)
                     current = last_time + split_size
                     while current < time:
