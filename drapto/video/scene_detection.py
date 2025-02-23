@@ -67,7 +67,7 @@ def detect_scenes(input_file: Path) -> List[float]:
     # 4. Run candidate scene detection using PySceneDetect.
     from scenedetect import detect, ContentDetector
     try:
-        candidates = detect(str(input_file), ContentDetector(threshold=threshold_val, min_scene_len=MIN_SEGMENT_INTERVAL))
+        candidates = detect(str(input_file), ContentDetector(threshold=threshold_val, min_scene_len=MIN_SEGMENT_LENGTH))
         candidate_timestamps = []
         for scene in candidates:
             if hasattr(scene, "start_time"):
@@ -86,7 +86,7 @@ def detect_scenes(input_file: Path) -> List[float]:
     filtered_scenes = []
     last_ts = 0.0
     for ts in candidate_timestamps:
-        if ts - last_ts >= MIN_SEGMENT_INTERVAL:
+        if ts - last_ts >= MIN_SEGMENT_LENGTH:
             filtered_scenes.append(ts)
             last_ts = ts
 

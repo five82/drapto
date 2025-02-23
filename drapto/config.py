@@ -52,7 +52,7 @@ VMAF_SAMPLE_LENGTH = 1
 # Scene detection settings
 SCENE_THRESHOLD = 40.0  # Content detection threshold for SDR content
 HDR_SCENE_THRESHOLD = 30.0  # Lower threshold for HDR content to yield more scenes
-MIN_SEGMENT_INTERVAL = 3.0  # Minimum segment length (seconds) for dynamic segmentation
+MIN_SEGMENT_LENGTH = 3.0  # Minimum segment length (seconds) for dynamic segmentation
 MAX_SEGMENT_LENGTH = 30.0  # Maximum segment length before forcing a split
 
 # Temporary directories for chunked encoding
