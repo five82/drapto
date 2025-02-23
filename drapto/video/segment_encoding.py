@@ -235,7 +235,10 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
 WARMUP_COUNT = 3  # Increased to get better average
 
 def calculate_memory_requirements(warmup_results):
-    """Calculate base memory token size from warmup results"""
+    """
+    Calculate base memory token size from warmup results and dynamically
+    adjust based on actual peak memory usage during warmup.
+    """
     memory_by_resolution = {'SDR': [], '1080p': [], '4k': []}
     
     for stats, _ in warmup_results:
@@ -249,8 +252,18 @@ def calculate_memory_requirements(warmup_results):
         if values:
             averages[category] = sum(values) / len(values)
     
-    # Use the smallest non-zero average as base token size
-    base_size = min((size for size in averages.values() if size > 0), default=512 * 1024 * 1024)
+    # Calculate the average peak memory usage during warmup
+    peak_memories = [stats['peak_memory_bytes'] for stats, _ in warmup_results if 'peak_memory_bytes' in stats]
+    if peak_memories:
+        actual_peak = max(peak_memories)
+        # Use the larger of the calculated average or actual peak memory
+        base_size = max(
+            min((size for size in averages.values() if size > 0), default=512 * 1024 * 1024),
+            actual_peak // 4  # Divide by 4 since we'll multiply by weights later
+        )
+    else:
+        # Fallback to original calculation if no peak memory data
+        base_size = min((size for size in averages.values() if size > 0), default=512 * 1024 * 1024)
     
     # Calculate relative weights
     weights = {
@@ -364,10 +377,17 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
                     memory_weight = estimate_memory_weight(segment, resolution_weights)
                     estimated_memory = memory_weight * base_memory_per_token
                     
+                    # Calculate current token usage
+                    current_tokens = sum(weight for (_, weight) in running_tasks.values())
+                    
                     # Add 10% safety margin to estimated memory
                     with_margin = estimated_memory * 1.1
                     
-                    if available_memory - (current_task_memory + with_margin) > target_available:
+                    # Check both memory availability and token limit
+                    if (available_memory - (current_task_memory + with_margin) > target_available and
+                        current_tokens + memory_weight <= MAX_MEMORY_TOKENS):
+                        # Stagger task submissions
+                        time.sleep(TASK_STAGGER_DELAY)
                         future = executor.submit(encode_segment, segment, output_segment, 
                                               crop_filter, 0, dv_flag)
                         running_tasks[next_segment_idx] = (future, memory_weight)
