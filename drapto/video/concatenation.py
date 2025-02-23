@@ -38,6 +38,7 @@ def concatenate_segments(output_file: Path) -> bool:
             
         cmd = [
             "ffmpeg", "-hide_banner", "-loglevel", "error",
+            "-fflags", "+genpts",
             "-f", "concat",
             "-safe", "0",
             "-i", str(concat_file),
