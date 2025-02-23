@@ -59,6 +59,13 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
         dict: Encoding statistics and metrics
     """
     import time
+    output_logs = []  # List to collect detailed log messages
+    
+    def capture_log(msg, *args, **kwargs):
+        formatted = msg % args if args else msg
+        log.info(formatted, *args, **kwargs)
+        output_logs.append(formatted)
+        
     start_time = time.time()
     
     # Get input segment details
@@ -159,10 +166,10 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
             # Removed duplicate VMAF score log:
             # log.info("  VMAF scores - Avg: %.2f, Min: %.2f, Max: %.2f",
             #          vmaf_score, vmaf_min, vmaf_max)
-            log.info("Segment analysis complete: %s – VMAF Avg: %.2f, Min: %.2f, Max: %.2f (CRF target determined)",
+            capture_log("Segment analysis complete: %s – VMAF Avg: %.2f, Min: %.2f, Max: %.2f (CRF target determined)",
                      segment.name, vmaf_score, vmaf_min, vmaf_max)
         else:
-            log.info("Segment analysis complete: %s – No VMAF scores parsed", segment.name)
+            capture_log("Segment analysis complete: %s – No VMAF scores parsed", segment.name)
     except Exception as e:
         log.debug("Could not parse VMAF scores: %s", e)
         log.info("Segment analysis complete: %s – No VMAF scores parsed", segment.name)
@@ -184,13 +191,13 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
     }
     
     # Log detailed segment info
-    log.info("Segment encoding complete: %s", segment.name)
-    log.info("  Duration: %.2fs", stats['duration'])
-    log.info("  Size: %.2f MB", stats['size_mb'])
-    log.info("  Bitrate: %.2f kbps", stats['bitrate_kbps'])
-    log.info("  Encoding time: %.2fs (%.2fx realtime)", 
+    capture_log("Segment encoding complete: %s", segment.name)
+    capture_log("  Duration: %.2fs", stats['duration'])
+    capture_log("  Size: %.2f MB", stats['size_mb'])
+    capture_log("  Bitrate: %.2f kbps", stats['bitrate_kbps'])
+    capture_log("  Encoding time: %.2fs (%.2fx realtime)", 
              stats['encoding_time'], stats['speed_factor'])
-    log.info("  Resolution: %s @ %s", stats['resolution'], stats['framerate'])
+    capture_log("  Resolution: %s @ %s", stats['resolution'], stats['framerate'])
     
     # Get peak memory usage (in kilobytes)
     peak_memory_kb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
@@ -223,12 +230,7 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
     stats['peak_memory_bytes'] = peak_memory_bytes
     stats['resolution_category'] = resolution_category
 
-    # Capture all log messages from this worker
-    from distributed.worker import get_worker
-    worker = get_worker()
-    log_messages = getattr(worker, 'log_messages', [])
-
-    return stats, log_messages
+    return stats, output_logs
 
 
 def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) -> bool:
