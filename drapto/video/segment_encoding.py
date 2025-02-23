@@ -8,6 +8,7 @@ import resource
 import psutil
 from pathlib import Path
 from typing import List, Optional, Dict
+from ..ffprobe_utils import get_video_info, get_format_info
 
 # Maximum concurrent memory tokens (8 total):
 # - Up to 2 concurrent 4K segments (4 tokens each)
@@ -177,8 +178,8 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
         'bitrate_kbps': bitrate_kbps,
         'encoding_time': encoding_time,
         'speed_factor': speed_factor,
-        'resolution': f"{output_info[1]}x{output_info[2]}",
-        'framerate': output_info[3],
+        'resolution': f"{video_info_out.get('width', '0')}x{video_info_out.get('height', '0')}",
+        'framerate': video_info_out.get('r_frame_rate', 'unknown'),
         'crop_filter': crop_filter or "none",
         'vmaf_score': vmaf_score,
         'vmaf_min': vmaf_min,
