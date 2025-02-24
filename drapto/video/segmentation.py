@@ -83,13 +83,9 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> b
         
     log.info("Variable segmentation in use")
     try:
-        result = run_cmd([
-            "ffprobe", "-v", "error",
-            "-show_entries", "format=duration",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(input_file)
-        ])
-        total_duration = float(result.stdout.strip())
+        from ..ffprobe_utils import get_format_info
+        format_info = get_format_info(input_file)
+        total_duration = float(format_info.get("duration", 0))
     except Exception as e:
         log.error("Failed to get input duration: %s", e)
         return False
@@ -106,24 +102,14 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> b
             return False
     
         try:
-            result = run_cmd([
-                "ffprobe", "-v", "error",
-                "-show_entries", "format=duration:stream=codec_name",
-                "-of", "default=noprint_wrappers=1:nokey=1",
-                str(segment)
-            ])
-            lines = result.stdout.strip().split('\n')
-            duration = None
-            codec = None
-            for line in lines:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    duration = float(line)
-                except ValueError:
-                    codec = line
-            if duration is None or codec is None:
+            from ..ffprobe_utils import get_format_info, get_video_info
+            format_info = get_format_info(segment)
+            video_info = get_video_info(segment)
+            
+            duration = float(format_info.get("duration", 0))
+            codec = video_info.get("codec_name")
+            
+            if not duration or not codec:
                 log.error("Invalid segment %s: missing duration or codec", segment.name)
                 return False
                 
@@ -231,35 +217,23 @@ def segment_video(input_file: Path) -> bool:
         hw_type = check_hardware_acceleration()
         hw_opt = get_hwaccel_options(hw_type)
         
-        cmd = [
-            "ffmpeg", "-hide_banner", "-loglevel", "warning",
-        ]
-        
-        if hw_opt:
-            # Add hardware acceleration for decoding only
-            cmd.extend(hw_opt.split())
-            
         from .scene_detection import detect_scenes
+        from .command_builders import build_segment_command
+        
         scenes = detect_scenes(input_file)
         if scenes:
-            # Create a comma-separated list of scene-change timestamps (in seconds)
-            # Optionally, filter out any scene times below a minimum value (e.g. 1.0s) if needed.
-            segment_times = ",".join(f"{t:.2f}" for t in scenes if t > 1.0)
-            cmd.extend([
-                "-i", str(input_file),
-                "-c:v", "copy",
-                "-an",
-                "-f", "segment",
-                "-segment_times", segment_times,
-                "-reset_timestamps", "1",
-                str(segments_dir / "%04d.mkv")
-            ])
+            from ..command_jobs import SegmentationJob
+            from ..command_jobs import SegmentationJob
+            cmd = build_segment_command(input_file, segments_dir, scenes, hw_opt)
+            job = SegmentationJob(cmd)
+            job.execute()
             variable_seg = True
         else:
             log.error("Scene detection failed; no scenes detected. Failing segmentation.")
             return False
             
-        run_cmd(cmd)
+        job = SegmentationJob(cmd)
+        job.execute()
         
         # Validate segments with the appropriate variable_segmentation flag
         if not validate_segments(input_file, variable_segmentation=True):

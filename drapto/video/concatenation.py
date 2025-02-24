@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 from ..utils import run_cmd
 from ..config import WORKING_DIR
+from ..ffprobe_utils import get_format_info, get_video_info
 
 log = logging.getLogger(__name__)
 
@@ -37,41 +38,25 @@ def concatenate_segments(output_file: Path) -> bool:
             for segment in segments:
                 f.write(f"file '{segment.absolute()}'\n")
             
-        cmd = [
-            "ffmpeg", "-hide_banner", "-loglevel", "error",
-            "-fflags", "+genpts",
-            "-f", "concat",
-            "-safe", "0",
-            "-i", str(concat_file),
-            "-c", "copy",
-            "-y", str(output_file)
-        ]
-        run_cmd(cmd)
+        from .command_builders import build_concat_command
+        from ..command_jobs import ConcatJob
+        cmd = build_concat_command(segments, output_file, concat_file)
+        job = ConcatJob(cmd)
+        job.execute()
 
         if not output_file.exists() or output_file.stat().st_size == 0:
             log.error("Concatenated output is missing or empty")
             return False
 
-        result = run_cmd([
-            "ffprobe", "-v", "error",
-            "-show_entries", "format=duration",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(output_file)
-        ])
-        output_duration = float(result.stdout.strip())
+        format_info = get_format_info(output_file)
+        output_duration = float(format_info.get("duration", 0))
         
         if abs(output_duration - total_segment_duration) > 1.0:
             log.error("Duration mismatch in concatenated output: %.2fs vs %.2fs", output_duration, total_segment_duration)
             return False
 
-        result = run_cmd([
-            "ffprobe", "-v", "error",
-            "-select_streams", "v",
-            "-show_entries", "stream=codec_name",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(output_file)
-        ])
-        if result.stdout.strip() != "av1":
+        video_info = get_video_info(output_file)
+        if video_info.get("codec_name") != "av1":
             log.error("Concatenated output has wrong codec: %s", result.stdout.strip())
             return False
 

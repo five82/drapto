@@ -7,7 +7,7 @@ from typing import List, Optional
 logger = logging.getLogger(__name__)
 
 from ..config import WORKING_DIR
-from ..utils import run_cmd, run_cmd_interactive, run_cmd_with_progress
+from ..utils import run_cmd, run_cmd_with_progress
 from ..formatting import print_info
 
 log = logging.getLogger(__name__)
@@ -100,21 +100,11 @@ def encode_audio_track(input_file: Path, track_index: int) -> Optional[Path]:
             f"Bitrate:  {bitrate}"
         )
         
-        # Encode audio track
-        cmd = [
-            "ffmpeg", "-hide_banner", "-loglevel", "warning",
-            "-i", str(input_file),
-            "-map", f"0:a:{track_index}",
-            "-c:a", "libopus",
-            "-af", "aformat=channel_layouts=7.1|5.1|stereo|mono",
-            "-application", "audio",
-            "-vbr", "on",
-            "-compression_level", "10",
-            "-frame_duration", "20",
-            "-b:a", bitrate,
-            "-avoid_negative_ts", "make_zero",
-            "-y", str(output_file)
-        ]
+        from ..video.command_builders import build_audio_encode_command
+        from ..command_jobs import AudioEncodeJob
+        from ..video.command_builders import build_audio_encode_command
+        from ..command_jobs import AudioEncodeJob
+        cmd = build_audio_encode_command(input_file, output_file, track_index, bitrate)
         formatted_cmd = " \\\n    ".join(cmd)
         log.info("Audio encoding command for track %d:\n%s", track_index, formatted_cmd)
         # Get audio duration for progress reporting
@@ -131,7 +121,8 @@ def encode_audio_track(input_file: Path, track_index: int) -> Optional[Path]:
             logger.error("Could not get audio duration for progress reporting: %s", e)
             audio_duration = None
 
-        if run_cmd_with_progress(cmd, total_duration=audio_duration, log_interval=5.0) != 0:
+        job = AudioEncodeJob(cmd)
+        if job.execute(total_duration=audio_duration, log_interval=5.0) != 0:
             raise RuntimeError(f"Audio encoding failed for track {track_index}")
         
         return output_file

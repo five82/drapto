@@ -27,26 +27,13 @@ def mux_tracks(
     """
     log.info("Muxing tracks to: %s", output_file)
     
-    # Build ffmpeg command
-    cmd = ["ffmpeg", "-hide_banner", "-loglevel", "warning"]
-    
-    # Add video input
-    cmd.extend(["-i", str(video_track)])
-    
-    # Add audio inputs
-    for audio_track in audio_tracks:
-        cmd.extend(["-i", str(audio_track)])
-    
-    # Add mapping
-    cmd.extend(["-map", "0:v:0"])  # Video track
-    for i in range(len(audio_tracks)):
-        cmd.extend(["-map", f"{i+1}:a:0"])  # Audio tracks
-    
-    # Add output file
-    cmd.extend(["-c", "copy", "-y", str(output_file)])
-    
+    from .video.command_builders import build_mux_command
+    from .command_jobs import MuxJob
+    cmd = build_mux_command(video_track, audio_tracks, output_file)
+        
     try:
-        run_cmd(cmd)
+        job = MuxJob(cmd)
+        job.execute()
         
         # Validate AV sync in muxed output
         sync_threshold = 0.1  # allowed difference in seconds

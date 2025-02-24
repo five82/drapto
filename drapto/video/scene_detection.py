@@ -11,6 +11,7 @@ from scenedetect.scene_manager import save_images
 
 from ..utils import run_cmd
 from ..formatting import print_check, print_warning
+from ..ffprobe_utils import get_format_info, get_video_info
 from ..config import (
     SCENE_THRESHOLD, HDR_SCENE_THRESHOLD, TARGET_MIN_SEGMENT_LENGTH, MAX_SEGMENT_LENGTH
 )
@@ -38,27 +39,15 @@ def detect_scenes(input_file: Path) -> List[float]:
 
     # 1. Get total duration of the video via ffprobe.
     try:
-        result = run_cmd([
-            "ffprobe", "-v", "error",
-            "-show_entries", "format=duration",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(input_file)
-        ])
-        total_duration = float(result.stdout.strip())
+        total_duration = float(get_format_info(input_file).get("duration", 0))
     except Exception as e:
         log.error("Failed to get video duration: %s", e)
         return []
 
     # 2. Determine scene detection threshold based on HDR or SDR.
     try:
-        result = run_cmd([
-            "ffprobe", "-v", "error",
-            "-select_streams", "v:0",
-            "-show_entries", "stream=color_transfer",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(input_file)
-        ])
-        ct = result.stdout.strip().lower()
+        info = get_video_info(input_file)
+        ct = info.get("color_transfer", "").lower()
         if ct in ["smpte2084", "arib-std-b67", "smpte428", "bt2020-10", "bt2020-12"]:
             threshold_val = HDR_SCENE_THRESHOLD
         else:
@@ -67,7 +56,6 @@ def detect_scenes(input_file: Path) -> List[float]:
         threshold_val = SCENE_THRESHOLD
 
     # 4. Run candidate scene detection using PySceneDetect.
-    from scenedetect import detect, ContentDetector
     try:
         candidates = detect(str(input_file), ContentDetector(threshold=threshold_val, min_scene_len=int(TARGET_MIN_SEGMENT_LENGTH)))
         candidate_timestamps = []
@@ -145,13 +133,8 @@ def validate_segment_boundaries(
         
         for segment in segments:
             # Get segment duration
-            result = run_cmd([
-                "ffprobe", "-v", "error",
-                "-show_entries", "format=duration",
-                "-of", "default=noprint_wrappers=1:nokey=1",
-                str(segment)
-            ])
-            duration = float(result.stdout.strip())
+            format_info = get_format_info(segment)
+            duration = float(format_info.get("duration", 0))
             
             if duration < min_duration:
                 # Check if this segment boundary aligns with a scene change

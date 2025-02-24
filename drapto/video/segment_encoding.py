@@ -8,6 +8,7 @@ import resource
 import psutil
 from pathlib import Path
 from typing import List, Optional, Dict
+from ..ffprobe_utils import get_video_info, get_format_info
 
 # Maximum concurrent memory tokens (8 total):
 # - Up to 2 concurrent 4K segments (4 tokens each)
@@ -21,14 +22,8 @@ def estimate_memory_weight(segment: Path, resolution_weights: dict) -> int:
     from warmup analysis.
     """
     try:
-        result = run_cmd([
-            "ffprobe", "-v", "error",
-            "-select_streams", "v:0",
-            "-show_entries", "stream=width",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(segment)
-        ])
-        width = int(result.stdout.strip())
+        info = get_video_info(segment)
+        width = int(info.get("width", 0))
         if width >= 3840:  # 4K
             return resolution_weights['4k']
         elif width >= 1920:  # 1080p/2K
@@ -67,19 +62,14 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
     start_time = time.time()
     
     # Get input segment details
-    input_info = run_cmd([
-        "ffprobe", "-v", "error",
-        "-show_entries", "stream=codec_name,width,height,r_frame_rate:format=duration",
-        "-of", "default=noprint_wrappers=1:nokey=1",
-        str(segment)
-    ]).stdout.strip().split('\n')
-    input_duration = float(input_info[-1])  # Duration is last item
-    
-    # Extract width from the ffprobe output (assuming line 2 is the width)
+    # Use ffprobe_utils to get segment info
+    video_info = get_video_info(segment)
+    format_info = get_format_info(segment)
+    input_duration = float(format_info.get("duration", 0))
     try:
-        width = int(input_info[1])
+        width = int(video_info.get("width", 0))
     except Exception as e:
-        log.warning("Failed to parse width from input info: %s. Assuming non-4k.", e)
+        log.warning("Failed to parse width from video info: %s. Assuming non-4k.", e)
         width = 0
 
     if retry_count == 0:
@@ -141,15 +131,10 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
     encoding_time = end_time - start_time
     
     # Get output details
-    output_info = run_cmd([
-        "ffprobe", "-v", "error",
-        "-show_entries", "stream=codec_name,width,height,r_frame_rate:format=duration,size",
-        "-of", "default=noprint_wrappers=1:nokey=1",
-        str(output_segment)
-    ]).stdout.strip().split('\n')
-    
-    output_duration = float(output_info[-2])  # Duration is second to last
-    output_size = int(output_info[-1])  # Size is last item
+    video_info_out = get_video_info(output_segment)
+    format_info_out = get_format_info(output_segment)
+    output_duration = float(format_info_out.get("duration", 0))
+    output_size = int(format_info_out.get("size", 0))
     
     # Calculate bitrate and speed metrics
     bitrate_kbps = (output_size * 8) / (output_duration * 1000)
@@ -193,8 +178,8 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
         'bitrate_kbps': bitrate_kbps,
         'encoding_time': encoding_time,
         'speed_factor': speed_factor,
-        'resolution': f"{output_info[1]}x{output_info[2]}",
-        'framerate': output_info[3],
+        'resolution': f"{video_info_out.get('width', '0')}x{video_info_out.get('height', '0')}",
+        'framerate': video_info_out.get('r_frame_rate', 'unknown'),
         'crop_filter': crop_filter or "none",
         'vmaf_score': vmaf_score,
         'vmaf_min': vmaf_min,
@@ -356,85 +341,60 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
         formatted_sample = " \\\n    ".join(sample_cmd)
         log.info("Common ab-av1 encoding parameters:\n%s", formatted_sample)
 
-        # Initialize thread pool and tracking variables
+        # Initialize thread pool and scheduler
         max_workers = psutil.cpu_count()
-        running_tasks = {}  # task_id -> (future, memory_weight)
         completed_results = []
+    
+        from ..scheduler import MemoryAwareScheduler
+        scheduler = MemoryAwareScheduler(base_memory_per_token, MAX_MEMORY_TOKENS, TASK_STAGGER_DELAY)
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            while next_segment_idx < len(segments) or running_tasks:
-                # Check overall system memory usage and wait if usage is 90% or higher
+            while next_segment_idx < len(segments) or scheduler.running_tasks:
+                # Check system memory and update completed tasks
                 if psutil.virtual_memory().percent >= 90:
-                    log.info("High memory usage (%d%%); pausing new task submissions...", 
+                    log.info("High memory usage (%d%%); pausing task submissions...",
                             psutil.virtual_memory().percent)
                     time.sleep(1)
+                    scheduler.update_completed()
                     continue
 
-                # Check available memory
-                mem = psutil.virtual_memory()
-                available_memory = mem.available
-                target_available = mem.total * (1 - MEMORY_THRESHOLD)
-                
-                # Calculate current memory usage by our tasks
-                current_task_memory = sum(weight * BASE_MEMORY_PER_TOKEN 
-                                        for _, weight in running_tasks.values())
-                
-                # Submit new tasks if memory permits
-                while (next_segment_idx < len(segments) and 
-                       available_memory - current_task_memory > target_available and
-                       available_memory > mem.total * 0.1):
+                # Submit new tasks as long as there are segments remaining
+                while next_segment_idx < len(segments):
                     segment = segments[next_segment_idx]
                     output_segment = encoded_dir / segment.name
-                    
-                    # Estimate memory requirements
                     memory_weight = estimate_memory_weight(segment, resolution_weights)
                     estimated_memory = memory_weight * base_memory_per_token
-                    
-                    # Calculate current token usage
-                    current_tokens = sum(weight for (_, weight) in running_tasks.values())
-                    
-                    # Add 10% safety margin to estimated memory
-                    with_margin = estimated_memory * 1.1
-                    
-                    # Check both memory availability and token limit
-                    if (available_memory - (current_task_memory + with_margin) > target_available and
-                        current_tokens + memory_weight <= MAX_MEMORY_TOKENS):
-                        # Stagger task submissions
-                        time.sleep(TASK_STAGGER_DELAY)
-                        future = executor.submit(encode_segment, segment, output_segment, 
+
+                    if scheduler.can_submit(estimated_memory):
+                        future = executor.submit(encode_segment, segment, output_segment,
                                               crop_filter, 0, dv_flag)
-                        running_tasks[next_segment_idx] = (future, memory_weight)
-                        current_task_memory += estimated_memory
+                        scheduler.add_task(next_segment_idx, future, memory_weight)
                         next_segment_idx += 1
                     else:
                         break
-                
+
                 # Check for completed tasks
-                completed = []
-                for task_id, (future, _) in running_tasks.items():
+                for task_id, (future, _) in list(scheduler.running_tasks.items()):
                     if future.done():
                         try:
                             result = future.result()
                             completed_results.append(result)
                             stats, log_messages = result
-                            
+                        
                             # Print captured logs
                             for msg in log_messages:
                                 log.info(msg)
-                            log.info("Successfully encoded segment: %s", 
+                            log.info("Successfully encoded segment: %s",
                                     stats.get('segment'))
-                            
                         except Exception as e:
                             log.error("Task failed: %s", e)
                             return False
-                        completed.append(task_id)
-                
-                # Remove completed tasks
-                for task_id in completed:
-                    running_tasks.pop(task_id)
-                
-                # Short sleep to prevent tight loop
-                if running_tasks:
+
+                # Update completed tasks in scheduler
+                scheduler.update_completed()
+
+                # Short sleep before next loop iteration
+                if scheduler.running_tasks:
                     time.sleep(0.1)
                 
         # Print summary statistics

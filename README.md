@@ -5,7 +5,7 @@ High-quality AV1 video encoding pipeline with intelligent chunked encoding and D
 ## Features
 
 - **AV1 Encoding with SVT-AV1:** High-quality encoding using libsvtav1 with configurable presets.
-- **Intelligent Scene-Based Segmentation:** Automatically segments the input video using adaptive scene detection and clustering. Fixed segmentation modes have been removed—now only dynamic, scene-based segmentation is supported. (Configure parameters such as SCENE_THRESHOLD, MIN_SCENE_INTERVAL, CLUSTER_WINDOW, MAX_SEGMENT_LENGTH, and TARGET_SEGMENT_LENGTH in config.py.)
+- **Intelligent Scene-Based Segmentation:** Automatically segments the input video using adaptive scene detection. Fixed segmentation modes have been removed—now only dynamic, scene-based segmentation is supported. (Configure parameters such as SCENE_THRESHOLD, HDR_SCENE_THRESHOLD, TARGET_MIN_SEGMENT_LENGTH, and MAX_SEGMENT_LENGTH in config.py.)
 - **VMAF-based Quality Analysis & Adaptive Retry:** Measures quality via VMAF (parsed from ab‑av1 output) and adjusts encoding parameters on retries (e.g. increased sample count/duration, raised min_vmaf).
 - **Standard Encoding Pipeline:** Encodes segments in parallel using a dynamic memory‐aware scheduler that performs a warm-up analysis to optimally balance resource usage with adaptive retries. (See parameters MEMORY_THRESHOLD, MAX_MEMORY_TOKENS, and TASK_STAGGER_DELAY in config.py.)
 - **Enhanced Output Validation:** Performs comprehensive validation of video/audio streams, container integrity, crop dimensions, and VMAF-based quality metrics, outputting a detailed validation report.

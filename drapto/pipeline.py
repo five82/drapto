@@ -5,10 +5,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from .config import (
-    INPUT_DIR, OUTPUT_DIR, LOG_DIR,
-    ENABLE_STANDARD_ENCODING
-)
+from .config import LOG_DIR
 from .formatting import (
     print_header, print_check, print_warning,
     print_error, print_success, print_separator,
@@ -60,7 +57,6 @@ def process_file(input_file: Path, output_file: Path) -> Optional[dict]:
         print_check("Standard content detected")
 
     try:
-        log.info("Using standard encoding process")
         video_track = encode_standard(input_file, disable_crop, dv_flag=is_dolby_vision)
         if not video_track:
             log.error("Video encoding failed")

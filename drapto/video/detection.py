@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 from ..utils import run_cmd
+from ..ffprobe_utils import get_video_info
 
 log = logging.getLogger(__name__)
 
@@ -65,26 +66,13 @@ def detect_crop(input_file: Path, disable_crop: bool = None) -> Optional[str]:
 
     log.info("Analyzing video for black bars...")
 
-    # Get color properties from ffprobe
+    # Get video stream info from ffprobe_utils
     try:
-        ct = run_cmd([
-            "ffprobe", "-v", "error", "-select_streams", "v:0",
-            "-show_entries", "stream=color_transfer",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(input_file)
-        ]).stdout.strip()
-        cp = run_cmd([
-            "ffprobe", "-v", "error", "-select_streams", "v:0",
-            "-show_entries", "stream=color_primaries",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(input_file)
-        ]).stdout.strip()
-        cs = run_cmd([
-            "ffprobe", "-v", "error", "-select_streams", "v:0",
-            "-show_entries", "stream=color_space",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(input_file)
-        ]).stdout.strip()
+        from ..ffprobe_utils import get_video_info
+        info = get_video_info(input_file)
+        ct = info.get("color_transfer", "")
+        cp = info.get("color_primaries", "")
+        cs = info.get("color_space", "")
     except Exception as e:
         log.error("Unable to read video color properties: %s", e)
         ct = cp = cs = ""
@@ -160,20 +148,11 @@ def detect_crop(input_file: Path, disable_crop: bool = None) -> Optional[str]:
         total_samples = 20
     log.info("Analyzing %d frames for black bars (threshold: %d)...", total_samples, crop_threshold)
 
-    # Get original video dimensions via ffprobe
+    # Get video info from ffprobe_utils
     try:
-        orig_width = int(run_cmd([
-            "ffprobe", "-v", "error", "-select_streams", "v:0",
-            "-show_entries", "stream=width",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(input_file)
-        ]).stdout.strip())
-        orig_height = int(run_cmd([
-            "ffprobe", "-v", "error", "-select_streams", "v:0",
-            "-show_entries", "stream=height",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(input_file)
-        ]).stdout.strip())
+        video_info = get_video_info(input_file)
+        orig_width = int(video_info.get("width", 0))
+        orig_height = int(video_info.get("height", 0))
     except Exception as e:
         log.error("Failed to get video dimensions: %s", e)
         return None

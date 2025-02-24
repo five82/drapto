@@ -7,19 +7,17 @@ from typing import Optional, Tuple
 
 from .utils import run_cmd
 from .formatting import print_check, print_error, print_header
+from .ffprobe_utils import get_video_info, get_format_info, get_subtitle_info, get_all_audio_info
 
 def validate_video_stream(input_file: Path, output_file: Path, validation_report: list) -> bool:
     """Validate video stream properties"""
     try:
-        # Check video codec
-        result = run_cmd([
-            "ffprobe", "-v", "error",
-            "-select_streams", "v",
-            "-show_entries", "stream=codec_name,width,height,pix_fmt,r_frame_rate",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(output_file)
-        ])
-        codec, width, height, pix_fmt, framerate = result.stdout.strip().split('\n')
+        info = get_video_info(output_file)
+        codec = info.get("codec_name", "")
+        width = info.get("width", "")
+        height = info.get("height", "")
+        pix_fmt = info.get("pix_fmt", "")
+        framerate = info.get("r_frame_rate", "")
         
         if codec != "av1":
             validation_report.append(f"ERROR: No AV1 video stream found (found {codec})")
@@ -34,21 +32,14 @@ def validate_video_stream(input_file: Path, output_file: Path, validation_report
 def validate_audio_streams(input_file: Path, output_file: Path, validation_report: list) -> bool:
     """Validate audio stream properties"""
     try:
-        result = run_cmd([
-            "ffprobe", "-v", "error",
-            "-select_streams", "a",
-            "-show_entries", "stream=codec_name,channels,bit_rate",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(output_file)
-        ])
-        streams = result.stdout.strip().split('\n')
-        opus_count = sum(1 for s in streams if s.startswith('opus'))
+        streams = get_all_audio_info(output_file)
+        opus_count = sum(1 for s in streams if s.get("codec_name") == "opus")
         
         if opus_count == 0:
             validation_report.append("ERROR: No Opus audio streams found")
             return False
             
-        validation_report.append(f"Audio: {opus_count} Opus streams")
+        validation_report.append(f"Audio: {opus_count} Opus stream(s)")
         return True
     except Exception as e:
         validation_report.append(f"ERROR: Failed to validate audio streams: {e}")
@@ -57,14 +48,8 @@ def validate_audio_streams(input_file: Path, output_file: Path, validation_repor
 def validate_subtitle_tracks(input_file: Path, output_file: Path, validation_report: list) -> bool:
     """Validate subtitle track preservation"""
     try:
-        result = run_cmd([
-            "ffprobe", "-v", "error",
-            "-select_streams", "s",
-            "-show_entries", "stream=index",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(output_file)
-        ])
-        subtitle_count = len(result.stdout.strip().split('\n')) if result.stdout.strip() else 0
+        subtitle_info = get_subtitle_info(output_file)
+        subtitle_count = len(subtitle_info.get("streams", []))
         validation_report.append(f"Subtitles: {subtitle_count} tracks")
         return True
     except Exception as e:
@@ -74,9 +59,12 @@ def validate_subtitle_tracks(input_file: Path, output_file: Path, validation_rep
 def validate_container(output_file: Path, validation_report: list) -> bool:
     """Validate container integrity"""
     try:
-        run_cmd(["ffprobe", "-v", "error", str(output_file)])
-        validation_report.append("Container: Valid MKV structure")
-        return True
+        format_info = get_format_info(output_file)
+        if format_info:
+            validation_report.append("Container: Valid MKV structure")
+            return True
+        validation_report.append("ERROR: Invalid container structure")
+        return False
     except Exception as e:
         validation_report.append(f"ERROR: Invalid container structure: {e}")
         return False
@@ -84,21 +72,11 @@ def validate_container(output_file: Path, validation_report: list) -> bool:
 def validate_crop_dimensions(input_file: Path, output_file: Path, validation_report: list) -> bool:
     """Validate crop dimensions if applied"""
     try:
-        in_res = run_cmd([
-            "ffprobe", "-v", "error",
-            "-select_streams", "v",
-            "-show_entries", "stream=width,height",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(input_file)
-        ]).stdout.strip().split('\n')
+        in_video = get_video_info(input_file)
+        out_video = get_video_info(output_file)
         
-        out_res = run_cmd([
-            "ffprobe", "-v", "error",
-            "-select_streams", "v",
-            "-show_entries", "stream=width,height",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(output_file)
-        ]).stdout.strip().split('\n')
+        in_res = [str(in_video.get("width", "")), str(in_video.get("height", ""))]
+        out_res = [str(out_video.get("width", "")), str(out_video.get("height", ""))]
         
         if in_res != out_res:
             validation_report.append(f"Crop: {out_res[0]}x{out_res[1]} (from {in_res[0]}x{in_res[1]})")
@@ -122,34 +100,20 @@ def validate_av_sync(output_file: Path, validation_report: list) -> bool:
     """
     try:
         # Get video stream start time and duration.
-        vid_result = run_cmd([
-            "ffprobe", "-v", "error",
-            "-select_streams", "v:0",
-            "-show_entries", "stream=start_time,duration",
-            "-of", "json",
-            str(output_file)
-        ])
-        vid_data = json.loads(vid_result.stdout)
-        if not vid_data.get("streams") or len(vid_data["streams"]) == 0:
+        # Get video stream info using our centralized helper
+        video_info = get_video_info(output_file)
+        if not video_info:
             raise Exception("No video stream info found.")
-        video_stream = vid_data["streams"][0]
-        vid_start = float(video_stream.get("start_time") or 0)
-        vid_duration = float(video_stream.get("duration") or 0)
+        vid_start = float(video_info.get("start_time") or 0)
+        vid_duration = float(video_info.get("duration") or 0)
         
-        # Get audio stream start time and duration.
-        aud_result = run_cmd([
-            "ffprobe", "-v", "error",
-            "-select_streams", "a:0",
-            "-show_entries", "stream=start_time,duration",
-            "-of", "json",
-            str(output_file)
-        ])
-        aud_data = json.loads(aud_result.stdout)
-        if not aud_data.get("streams") or len(aud_data["streams"]) == 0:
+        # Get audio stream info (first audio stream)
+        all_audio = get_all_audio_info(output_file)
+        if not all_audio:
             raise Exception("No audio stream info found.")
-        audio_stream = aud_data["streams"][0]
-        aud_start = float(audio_stream.get("start_time") or 0)
-        aud_duration = float(audio_stream.get("duration") or 0)
+        audio_info = all_audio[0]
+        aud_start = float(audio_info.get("start_time") or 0)
+        aud_duration = float(audio_info.get("duration") or 0)
         
         start_diff = abs(vid_start - aud_start)
         duration_diff = abs(vid_duration - aud_duration)
@@ -170,37 +134,11 @@ def validate_av_sync(output_file: Path, validation_report: list) -> bool:
 
 def validate_quality_metrics(input_file: Path, output_file: Path, validation_report: list) -> bool:
     """
-    Validate quality metrics based on encoding mode.
-    For chunked encoding, reports VMAF scores if available.
-    For standard encoding, reports CRF value used.
+    Validate quality metrics using VMAF analysis.
     """
-    from .config import ENABLE_STANDARD_ENCODING, CRF_SD, CRF_HD, CRF_UHD
-    
     try:
-        # Get video width to determine quality target
-        result = run_cmd([
-            "ffprobe", "-v", "error",
-            "-select_streams", "v:0",
-            "-show_entries", "stream=width",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(input_file)
-        ])
-        width = int(result.stdout.strip())
-        
-        if ENABLE_STANDARD_ENCODING:
-            # For standard encoding, we now use VMAF quality analysis
-            from .config import TARGET_VMAF
-            validation_report.append(f"Quality target: VMAF {TARGET_VMAF}")
-        else:
-            # (Legacy encoding path) Report CRF value
-            if width >= 3840:
-                crf = CRF_UHD
-            elif width >= 1920:
-                crf = CRF_HD
-            else:
-                crf = CRF_SD
-            validation_report.append(f"Quality target: CRF {crf}")
-            
+        from .config import TARGET_VMAF
+        validation_report.append(f"Quality target: VMAF {TARGET_VMAF}")
         return True
     except Exception as e:
         validation_report.append(f"ERROR: Failed to validate quality metrics: {e}")
@@ -328,23 +266,19 @@ def validate_output(input_file: Path, output_file: Path) -> bool:
 
 def validate_ab_av1() -> bool:
     """
-    Check if ab-av1 is available when standard encoding is enabled
+    Check if ab-av1 is available.
     
     Returns:
-        bool: True if ab-av1 is available or not needed
+        bool: True if ab-av1 is available.
     """
-    from .config import ENABLE_STANDARD_ENCODING
-    
-    if ENABLE_STANDARD_ENCODING:
-        print_check("Checking for ab-av1...")
-        try:
-            run_cmd(["which", "ab-av1"])
-            print_check("ab-av1 found")
-            return True
-        except Exception:
-            print_error(
-                "ab-av1 is required for standard encoding but not found. "
-                "Install with: cargo install ab-av1"
-            )
-            return False
-    return True
+    print_check("Checking for ab-av1...")
+    try:
+        run_cmd(["which", "ab-av1"])
+        print_check("ab-av1 found")
+        return True
+    except Exception:
+        print_error(
+            "ab-av1 is required for encoding but not found. "
+            "Install with: cargo install ab-av1"
+        )
+        return False
