@@ -10,7 +10,7 @@ from typing import List, Optional
 from pathlib import Path
 from .utils import run_cmd, run_cmd_with_progress
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 class CommandJob:
     """
@@ -32,7 +32,7 @@ class CommandJob:
         Raises:
             subprocess.CalledProcessError if the command fails.
         """
-        log.debug("Executing command: %s", " ".join(self.cmd))
+        logger.debug("Executing command: %s", " ".join(self.cmd))
         result = run_cmd(self.cmd)
         return result
 

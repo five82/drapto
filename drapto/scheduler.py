@@ -6,7 +6,7 @@ import logging
 from concurrent.futures import Future
 from typing import Dict, Tuple
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 class MemoryAwareScheduler:
     def __init__(self, base_mem_per_token: int, max_tokens: int, task_stagger_delay: float):

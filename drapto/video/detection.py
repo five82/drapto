@@ -2,8 +2,8 @@
 Video detection utilities for drapto
 """
 import logging
-import subprocess
 logger = logging.getLogger(__name__)
+import subprocess
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -32,10 +32,10 @@ def detect_dolby_vision(input_file: Path) -> bool:
         if detected:
             logger.info("Dolby Vision detected")
         else:
-            log.info("Dolby Vision not detected")
+            logger.info("Dolby Vision not detected")
         return detected
     except subprocess.CalledProcessError:
-        log.warning("Failed to run mediainfo on %s", input_file)
+        logger.warning("Failed to run mediainfo on %s", input_file)
         return False
 
 def detect_crop(input_file: Path, disable_crop: bool = None) -> Optional[str]:

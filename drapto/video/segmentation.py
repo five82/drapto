@@ -17,7 +17,7 @@ from ..config import (
 from ..utils import run_cmd, check_dependencies
 from ..formatting import print_info, print_check
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 def merge_segments(segments: List[Path], output: Path) -> bool:
     """
@@ -50,12 +50,12 @@ def merge_segments(segments: List[Path], output: Path) -> bool:
         
         # Verify merged output
         if not output.exists() or output.stat().st_size == 0:
-            log.error("Failed to create merged segment")
+            logger.error("Failed to create merged segment")
             return False
             
         return True
     except Exception as e:
-        log.error("Failed to merge segments: %s", e)
+        logger.error("Failed to merge segments: %s", e)
         return False
     finally:
         if concat_file.exists():

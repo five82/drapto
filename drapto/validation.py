@@ -144,7 +144,7 @@ def validate_quality_metrics(input_file: Path, output_file: Path, validation_rep
         validation_report.append(f"ERROR: Failed to validate quality metrics: {e}")
         return False
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 def validate_output(input_file: Path, output_file: Path) -> bool:
     """
@@ -225,7 +225,7 @@ def validate_output(input_file: Path, output_file: Path) -> bool:
         else:
             print_check(f"Audio streams: {opus_count} Opus stream(s)")
     except Exception as e:
-        log.error("Failed to check audio streams: %s", e)
+        logger.error("Failed to check audio streams: %s", e)
         error = True
         
     # Compare input and output duration
