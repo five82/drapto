@@ -10,7 +10,7 @@ from ..config import WORKING_DIR
 from ..utils import run_cmd, run_cmd_with_progress
 from ..formatting import print_info
 from ..exceptions import AudioEncodingError
-from ..ffprobe_utils import get_all_audio_info, get_media_property, probe_session, MetadataError
+from ..ffprobe_utils import get_all_audio_info, get_media_property, probe_session, MetadataError, get_audio_channels
 
 def encode_audio_tracks(input_file: Path) -> List[Path]:
     """
@@ -64,7 +64,7 @@ def encode_audio_track(input_file: Path, track_index: int) -> Path:
     
     try:
         # Get number of channels
-        num_channels = int(get_media_property(input_file, "audio", "channels", track_index))
+        num_channels = get_audio_channels(input_file, track_index)
         
         # Determine bitrate based on channel count
         if num_channels == 1:

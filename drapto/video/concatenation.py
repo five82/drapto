@@ -7,7 +7,7 @@ from ..utils import run_cmd
 from ..config import WORKING_DIR
 from ..ffprobe_utils import (
     get_format_info, get_video_info, get_media_property,
-    probe_session, MetadataError
+    probe_session, MetadataError, get_duration
 )
 from ..exceptions import ConcatenationError
 
@@ -27,8 +27,7 @@ def concatenate_segments(output_file: Path) -> None:
         
         for segment in segments:
             try:
-                with probe_session(segment) as probe:
-                    duration = float(probe.get("duration", "format"))
+                duration = get_duration(segment)
                     total_segment_duration += duration
             except MetadataError as e:
                 logger.error("Failed to get segment duration: %s", e)

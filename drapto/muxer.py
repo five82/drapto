@@ -7,7 +7,7 @@ from typing import List, Optional
 
 from .utils import run_cmd
 from .exceptions import MuxingError
-from .ffprobe_utils import get_media_property, probe_session, MetadataError
+from .ffprobe_utils import get_media_property, probe_session, MetadataError, get_duration
 
 logger = logging.getLogger(__name__)
 
@@ -33,12 +33,9 @@ def mux_tracks(
         try:
             with probe_session(output_file) as probe:
                 # Get video timing with format fallback
-                try:
-                    video_start = probe.get("start_time", "video")
-                    video_duration = probe.get("duration", "video")
-                except MetadataError:
-                    video_start = 0.0
-                    video_duration = probe.get("duration", "format")
+                video_start = 0.0  # Default as before
+                video_duration = get_duration(output_file, "video")
+                if video_duration == 0:
                     logger.warning("Using container duration for video validation")
 
                 # Get audio timing with format fallback

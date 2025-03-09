@@ -238,3 +238,36 @@ def get_first_stream_timing(path: Path, stream_type: str) -> tuple[float, float]
         get_media_property(path, stream_type, "start_time"),
         get_media_property(path, stream_type, "duration")
     )
+
+def get_duration(path: Path, stream_type: str = "video") -> float:
+    """Get duration from stream with fallback to format duration."""
+    try:
+        duration = get_media_property(path, stream_type, "duration")
+        if duration <= 0:
+            raise MetadataError("Invalid duration value")
+        return duration
+    except MetadataError:
+        try:
+            format_duration = get_media_property(path, "format", "duration")
+            if format_duration <= 0:
+                raise MetadataError("Invalid format duration")
+            return format_duration
+        except MetadataError as e:
+            raise MetadataError(f"No valid duration found: {str(e)}") from e
+
+def get_resolution(path: Path) -> Tuple[int, int]:
+    """Get video resolution (width, height)."""
+    try:
+        return (
+            get_media_property(path, "video", "width"),
+            get_media_property(path, "video", "height")
+        )
+    except MetadataError as e:
+        raise MetadataError(f"Failed to get resolution: {str(e)}") from e
+
+def get_audio_channels(path: Path, track_index: int = 0) -> int:
+    """Get number of audio channels for specified track."""
+    try:
+        return get_media_property(path, "audio", "channels", track_index)
+    except MetadataError as e:
+        raise MetadataError(f"Failed to get audio channels: {str(e)}") from e
