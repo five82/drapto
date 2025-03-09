@@ -62,7 +62,7 @@ def merge_segments(segments: List[Path], output: Path) -> None:
         if concat_file.exists():
             concat_file.unlink()
 
-def validate_segments(input_file: Path, variable_segmentation: bool = True) -> bool:
+def validate_segments(input_file: Path, _variable_segmentation: bool = True) -> bool:
     """
     Validate video segments after segmentation.
     
