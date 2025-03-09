@@ -128,14 +128,21 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> N
             # Since segments are created without audio (-an), we only check that the video start time is near zero.
             sync_threshold = 0.2  # increased allowed difference in seconds
 
-            with probe_session(segment) as probe:
-                video_start = probe.get("start_time", "video")
+            try:
+                with probe_session(segment) as probe:
+                    video_start = probe.get("start_time", "video")
 
                 if abs(video_start) > sync_threshold:
                     raise ValidationError(
                         f"Segment {segment.name} timestamp issue: video_start={video_start:.2f}s is not near 0",
                         module="segmentation"
                     )
+            except MetadataError as e:
+                logger.error("Failed to validate segment timing: %s", e)
+                raise ValidationError(
+                    f"Failed to validate segment {segment.name} timing",
+                    module="segmentation"
+                ) from e
     
             try:
                 with probe_session(segment) as probe:
