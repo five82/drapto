@@ -5,7 +5,7 @@ class DraptoError(Exception):
     def __init__(self, message: str, module: str = None):
         self.message = message
         self.module = module
-        super().__init__(message)
+        super().__init__(f"[{module or 'unknown'}] {message}")
 
 class DependencyError(DraptoError):
     """Raised when required dependencies are missing"""
@@ -25,4 +25,24 @@ class ConcatenationError(DraptoError):
 
 class SegmentEncodingError(DraptoError):
     """Raised when segment encoding fails"""
+    pass
+
+class CommandExecutionError(DraptoError):
+    """Raised when a subprocess command fails"""
+    pass
+
+class SegmentMergeError(EncodingError):
+    """Raised when merging short segments fails"""
+    pass
+
+class HardwareAccelError(DraptoError):
+    """Raised when hardware acceleration setup fails"""
+    pass
+
+class AudioEncodingError(DraptoError):
+    """Raised when audio encoding fails"""
+    pass
+
+class SegmentationError(DraptoError):
+    """Raised when video segmentation fails"""
     pass
