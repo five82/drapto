@@ -53,8 +53,8 @@ def concatenate_segments(output_file: Path) -> None:
             video_info = get_video_info(output_file)
             output_duration = get_duration(output_file, "format")
             codec = video_info.get("codec_name")
-                
-                if abs(output_duration - total_segment_duration) > 1.0:
+            
+            if abs(output_duration - total_segment_duration) > 1.0:
                     raise ConcatenationError(
                         f"Duration mismatch in concatenated output: {output_duration:.2f}s vs {total_segment_duration:.2f}s",
                         module="concatenation"
