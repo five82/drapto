@@ -471,11 +471,11 @@ def validate_encoded_segments(segments_dir: Path) -> bool:
                 
                 # Verify codec
                 if codec != "av1":
-                logger.error(
-                    "Wrong codec '%s' in encoded segment: %s",
-                    codec, encoded.name
-                )
-                return False
+                    logger.error(
+                        "Wrong codec '%s' in encoded segment: %s",
+                        codec, encoded.name
+                    )
+                    return False
                 
             # Compare durations (allow 0.1s difference)
             orig_duration = float(run_cmd([
