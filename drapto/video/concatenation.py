@@ -51,8 +51,9 @@ def concatenate_segments(output_file: Path) -> None:
 
         try:
             with probe_session(output_file) as probe:
+                video_info = get_video_info(output_file)
                 output_duration = float(probe.get("duration", "format"))
-                codec = probe.get("codec_name", "video")
+                codec = video_info.get("codec_name")
                 
                 if abs(output_duration - total_segment_duration) > 1.0:
                     raise ConcatenationError(
