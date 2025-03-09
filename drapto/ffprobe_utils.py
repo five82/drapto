@@ -23,7 +23,10 @@ class FFProbeSession:
 
     def get(self, property_name: str, stream_type: str = "video", stream_index: int = 0) -> Any:
         """Get a property, caching the result"""
-        cache_key = (property_name, stream_type, stream_index)
+        if stream_type == "format":
+            cache_key = (property_name, "format", 0)
+        else:
+            cache_key = (property_name, stream_type, stream_index)
         if cache_key not in self._cache:
             self._cache[cache_key] = get_media_property(
                 self.path, stream_type, property_name, stream_index
@@ -89,12 +92,18 @@ def get_media_property(
     Raises:
         MetadataError: If property cannot be retrieved or parsed
     """
-    type_prefix = stream_type[0]  # v for video, a for audio, s for subtitle
-    args = (
-        "-select_streams", f"{type_prefix}:{stream_index}",
-        "-show_entries", f"stream={property_name}",
-        "-of", "default=noprint_wrappers=1:nokey=1"
-    )
+    if stream_type == "format":
+        args = (
+            "-show_entries", f"format={property_name}",
+            "-of", "default=noprint_wrappers=1:nokey=1"
+        )
+    else:
+        type_prefix = stream_type[0]  # v for video, a for audio, s for subtitle
+        args = (
+            "-select_streams", f"{type_prefix}:{stream_index}",
+            "-show_entries", f"stream={property_name}",
+            "-of", "default=noprint_wrappers=1:nokey=1"
+        )
     
     try:
         result = run_cmd(["ffprobe", "-v", "error"] + list(args) + [str(path)])
