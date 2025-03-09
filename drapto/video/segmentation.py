@@ -20,6 +20,7 @@ from ..exceptions import (
 
 from ..utils import run_cmd, check_dependencies
 from ..formatting import print_info, print_check
+from ..ffprobe_utils import get_format_info, get_video_info, get_media_property, MetadataError
 
 logger = logging.getLogger(__name__)
 
