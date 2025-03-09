@@ -71,7 +71,7 @@ def detect_scenes(input_file: Path) -> List[float]:
                     continue
         candidate_timestamps.sort()
     except Exception as e:
-        log.error("Candidate scene detection failed: %s", e)
+        logger.error("Candidate scene detection failed: %s", e)
         candidate_timestamps = []
 
     # Filter out scenes that are too close together
