@@ -26,11 +26,10 @@ logger = logging.getLogger(__name__)
 
 def merge_segments(segments: List[Path], output: Path) -> None:
     """
-    Merge two segments using ffmpeg's concat demuxer
+    Merge video segments using ffmpeg's concat demuxer
     
     Args:
-        segment1: First segment
-        segment2: Second segment to append
+        segments: List of segment paths to merge
         output: Output path for merged segment
         
     Raises:
