@@ -199,7 +199,7 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> b
             len(problematic_segments)
         )
     
-    print_check(f"Successfully validated {valid_count} segments")
+    print_check(f"Successfully validated {len(segments)} segments")
     return True
 
 def segment_video(input_file: Path) -> None:
