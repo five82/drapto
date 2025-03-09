@@ -9,6 +9,7 @@ import psutil
 from pathlib import Path
 from typing import List, Optional, Dict
 from ..ffprobe_utils import get_video_info, get_format_info
+from ..exceptions import DependencyError, SegmentEncodingError
 
 # Maximum concurrent memory tokens (8 total):
 # - Up to 2 concurrent 4K segments (4 tokens each)
