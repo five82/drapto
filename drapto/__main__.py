@@ -6,10 +6,9 @@ import logging
 import sys
 from pathlib import Path
 
-from rich.logging import RichHandler
-
 from . import __version__
 from .config import LOG_DIR
+from .logging import configure_logging
 from .utils import get_timestamp
 from .formatting import print_header, print_error, print_info, print_success
 from .pipeline import process_directory, process_file
@@ -18,24 +17,9 @@ from .utils import check_dependencies
 def setup_logging(log_level: str = None):
     """Configure logging with rich output using the specified logging level"""
     from drapto.config import LOG_LEVEL
-    # Use the provided log_level or fallback to the one in config.py
-    level = log_level if log_level is not None else LOG_LEVEL
-    # Convert the level (a string) to its numeric value using logging._nameToLevel
-    numeric_level = logging._nameToLevel.get(level.upper(), logging.INFO)
-
-    # Only configure console handler here
-    handlers = [RichHandler(rich_tracebacks=True, show_path=False)]
-    
-    logging.basicConfig(
-        level=numeric_level,
-        format="%(message)s",
-        datefmt="[%X]",
-        handlers=handlers
-    )
-    
-    # Log the start of a new session
-    log = logging.getLogger("drapto")
-    log.info("Started new logging session")
+    configure_logging(log_level or LOG_LEVEL)
+    logger = logging.getLogger("drapto")
+    logger.info("Started new logging session")
 
 def parse_args():
     """Parse command line arguments"""

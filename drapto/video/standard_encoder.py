@@ -9,7 +9,7 @@ import shutil
 from pathlib import Path
 from typing import Optional
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 from ..config import WORKING_DIR
 from ..utils import run_cmd
