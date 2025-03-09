@@ -1,5 +1,6 @@
 """Video segmentation and parallel encoding functions"""
 
+import logging
 from pathlib import Path
 from typing import List, Optional
 
