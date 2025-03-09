@@ -209,7 +209,7 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> N
     print_check(f"Successfully validated {valid_count} segments")
     return True
 
-def segment_video(input_file: Path) -> bool:
+def segment_video(input_file: Path) -> None:
     """
     Segment video into chunks for parallel encoding
     

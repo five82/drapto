@@ -50,19 +50,16 @@ def encode_standard(input_file: Path, disable_crop: bool = False, dv_flag: bool 
         
         # Step 1: Segment video
         print_check("Segmenting video...")
-        if not segment_video(input_file):
-            raise SegmentationError("Video segmentation failed", module="segmentation")
+        segment_video(input_file)  # Now raises exceptions directly
         print_check("Successfully segmented video")
             
         # Step 2: Encode segments
         print_check("Encoding segments in parallel...")
-        if not encode_segments(crop_filter, dv_flag):
-            raise SegmentEncodingError("Segment encoding failed", module="encoding")
+        encode_segments(crop_filter, dv_flag)  # Changed from boolean check
             
         # Step 3: Concatenate segments
         print_check("Concatenating segments...")
-        if not concatenate_segments(output_file):
-            raise ConcatenationError("Failed to concatenate segments", module="concatenation")
+        concatenate_segments(output_file)  # Now raises exceptions directly
         print_check("Segments concatenated successfully")
             
         return output_file
