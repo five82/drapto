@@ -108,10 +108,9 @@ def validate_segments(input_file: Path) -> bool:
             raise ValidationError(msg, module="segmentation")
     
         try:
-            with probe_session(segment) as probe:
-                duration = get_duration(segment)
-                video_info = get_video_info(segment)
-                codec = video_info.get("codec_name")
+            duration = get_duration(segment)
+            video_info = get_video_info(segment)
+            codec = video_info.get("codec_name")
                 video_start = video_info.get("start_time", 0.0)
 
             if not duration or not codec:
