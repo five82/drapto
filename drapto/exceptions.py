@@ -4,30 +4,25 @@ class DraptoError(Exception):
     """Base exception for all drapto errors"""
     def __init__(self, message: str, module: str = None):
         self.message = message
-        self.module = module or "unknown"
-        super().__init__(f"[{self.module}] {self.message}")
-
-class EncodingError(DraptoError):
-    """Base class for encoding-related errors"""
-    def __init__(self, message: str, module: str = None):
-        super().__init__(f"Encoding error: {message}", module)
-
-class SegmentEncodingError(EncodingError):
-    """Error during segment encoding"""
-
-class ConcatenationError(EncodingError):
-    """Error during segment concatenation"""
-
-class ValidationError(DraptoError):
-    """Base class for validation errors"""
-    def __init__(self, message: str, module: str = None):
-        super().__init__(f"Validation error: {message}", module)
-
-class ConfigurationError(DraptoError):
-    """Error in configuration/setup"""
+        self.module = module
+        super().__init__(message)
 
 class DependencyError(DraptoError):
-    """Missing required dependencies"""
+    """Raised when required dependencies are missing"""
+    pass
 
-class MemoryError(DraptoError):
-    """Insufficient memory for operation"""
+class EncodingError(DraptoError):
+    """Raised when video encoding fails"""
+    pass
+
+class ValidationError(DraptoError):
+    """Raised when output validation fails"""
+    pass
+
+class ConcatenationError(DraptoError):
+    """Raised when segment concatenation fails"""
+    pass
+
+class SegmentEncodingError(DraptoError):
+    """Raised when segment encoding fails"""
+    pass
