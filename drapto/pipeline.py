@@ -7,6 +7,10 @@ from pathlib import Path
 from typing import Optional
 
 from .config import LOG_DIR
+from .exceptions import (
+    DraptoError, EncodingError, ValidationError,
+    ConcatenationError, SegmentEncodingError
+)
 
 logger = logging.getLogger(__name__)
 from .formatting import (

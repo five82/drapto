@@ -7,6 +7,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Union, Optional
 
+from .exceptions import DependencyError
+
 # (Removed basicConfig call so that __main__.py can fully control logging configuration)
 logger = logging.getLogger(__name__)
 
@@ -125,11 +127,16 @@ def check_dependencies() -> bool:
     """Check for required dependencies"""
     required = ['ffmpeg', 'ffprobe', 'mediainfo']
     import shutil
+    missing = []
     for cmd in required:
         if shutil.which(cmd) is None:
-            logger.error(f"Required dependency not found: {cmd}")
-            return False
+            missing.append(cmd)
     
+    if missing:
+        raise DependencyError(
+            f"Missing dependencies: {', '.join(missing)}",
+            module="dependencies"
+        )
     return True
 
 def cleanup_working_dirs():
