@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 from typing import Dict, Any, Union, Literal
 from functools import lru_cache
+from .utils import run_cmd
 
 class MetadataError(Exception):
     """Raised when metadata cannot be retrieved or parsed"""
