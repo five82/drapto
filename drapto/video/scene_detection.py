@@ -104,7 +104,7 @@ def detect_scenes(input_file: Path) -> List[float]:
 
     # Ensure boundaries are sorted and unique
     final_boundaries = sorted(set(final_boundaries))
-    log.info("Detected %d scenes, final boundaries: %r", len(candidate_timestamps), final_boundaries)
+    logger.info("Detected %d scenes, final boundaries: %r", len(candidate_timestamps), final_boundaries)
     return final_boundaries
 
 def validate_segment_boundaries(
@@ -164,5 +164,5 @@ def validate_segment_boundaries(
         return short_segments
         
     except Exception as e:
-        log.error("Failed to validate segment boundaries: %s", e)
+        logger.error("Failed to validate segment boundaries: %s", e)
         return []
