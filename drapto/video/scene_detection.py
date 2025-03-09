@@ -13,7 +13,7 @@ from scenedetect.scene_manager import save_images
 
 from ..utils import run_cmd
 from ..formatting import print_check, print_warning
-from ..ffprobe_utils import get_format_info, get_video_info
+from ..ffprobe_utils import probe_session, MetadataError
 from ..config import (
     SCENE_THRESHOLD, HDR_SCENE_THRESHOLD, TARGET_MIN_SEGMENT_LENGTH, MAX_SEGMENT_LENGTH
 )
@@ -41,18 +41,27 @@ def detect_scenes(input_file: Path) -> List[float]:
 
     # 1. Get total duration of the video via ffprobe.
     try:
-        total_duration = float(get_format_info(input_file).get("duration", 0))
+        with probe_session(input_file) as probe:
+            total_duration = float(probe.get("duration", "format"))
     except Exception as e:
         logger.error("Failed to get video duration: %s", e)
         return []
 
     # 2. Determine scene detection threshold based on HDR or SDR.
     try:
-        info = get_video_info(input_file)
-        ct = info.get("color_transfer", "").lower()
-        if ct in ["smpte2084", "arib-std-b67", "smpte428", "bt2020-10", "bt2020-12"]:
-            threshold_val = HDR_SCENE_THRESHOLD
-        else:
+        try:
+            with probe_session(input_file) as probe:
+                ct = probe.get("color_transfer", "video", 0) or ""
+                cp = probe.get("color_primaries", "video", 0) or ""
+                cs = probe.get("color_space", "video", 0) or ""
+                
+            ct = ct.lower()
+            if ct in ["smpte2084", "arib-std-b67", "smpte428", "bt2020-10", "bt2020-12"]:
+                threshold_val = HDR_SCENE_THRESHOLD
+            else:
+        except MetadataError as e:
+            logger.warning("Could not determine color properties: %s", e)
+            threshold_val = SCENE_THRESHOLD
             threshold_val = SCENE_THRESHOLD
     except Exception:
         threshold_val = SCENE_THRESHOLD
