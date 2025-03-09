@@ -110,15 +110,18 @@ def get_media_property(
         value = result.stdout.strip()
         
         # Handle empty results
-        if not value:
-            raise MetadataError(f"No value found", property_name)
+        if not value or value.lower() in ["n/a", "nan"]:
+            raise MetadataError(f"No valid value found for {property_name}", property_name)
             
         # Type casting based on property
-        if property_name in ["duration", "start_time"]:
-            return float(value)
-        elif property_name in ["width", "height", "channels"]:
-            return int(value)
-        return value
+        try:
+            if property_name in ["duration", "start_time"]:
+                return float(value)
+            elif property_name in ["width", "height", "channels"]:
+                return int(value)
+            return value
+        except ValueError as e:
+            raise MetadataError(f"Could not convert {value} to required type", property_name) from e
         
     except Exception as e:
         raise MetadataError(

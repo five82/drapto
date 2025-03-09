@@ -82,7 +82,18 @@ def validate_segments(input_file: Path) -> bool:
     logger.info("Scene-based segmentation in use")
     try:
         with probe_session(input_file) as probe:
-            total_duration = probe.get("duration", "video")
+            try:
+                # First try to get video stream duration
+                total_duration = probe.get("duration", "video")
+                logger.debug("Using video stream duration: %.2fs", total_duration)
+            except MetadataError:
+                # Fall back to format duration if video stream duration unavailable
+                total_duration = probe.get("duration", "format")
+                logger.debug("Using container duration: %.2fs", total_duration)
+                
+        if not isinstance(total_duration, (int, float)) or total_duration <= 0:
+            raise MetadataError(f"Invalid duration value: {total_duration}")
+            
     except MetadataError as e:
         raise SegmentationError(f"Failed to get input duration: {str(e)}", module="segmentation") from e
         
