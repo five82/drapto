@@ -61,13 +61,13 @@ def main():
     args = parse_args()
     setup_logging(args.log_level)
     
-    log = logging.getLogger("drapto")
+    logger = logging.getLogger("drapto")
     print_header(f"Starting drapto video encoder v{__version__}")
     print_info("Processing input...")
     
     # Check dependencies
     if not check_dependencies():
-        log.error("Missing required dependencies")
+        logger.error("Missing required dependencies")
         return 1
         
     # Process input
@@ -100,7 +100,7 @@ def main():
                 log.error("Output must be a directory when input is a directory")
                 return 1
         else:
-            log.error("Input %s does not exist", args.input)
+            logger.error("Input %s does not exist", args.input)
             return 1
     except KeyboardInterrupt:
         log.warning("Encoding interrupted by user")
