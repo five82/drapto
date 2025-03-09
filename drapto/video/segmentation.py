@@ -115,9 +115,9 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> N
                     codec = probe.get("codec_name", "video")
                 
                 if not duration or not codec:
-                msg = f"Invalid segment {segment.name}: missing duration or codec"
-                logger.error(msg)
-                raise ValidationError(msg, module="segmentation")
+                    msg = f"Invalid segment {segment.name}: missing duration or codec"
+                    logger.error(msg)
+                    raise ValidationError(msg, module="segmentation")
                 
             logger.info("Segment %s: duration=%.2fs, codec=%s", segment.name, duration, codec)
         except Exception as e:
