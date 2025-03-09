@@ -84,7 +84,7 @@ def process_file(input_file: Path, output_file: Path) -> Optional[dict]:
             from .validation import validate_output
             valid_output = validate_output(input_file, output_file)
             if not valid_output:
-                log.error("Output validation failed. Please check the Validation Report above.")
+                logger.error("Output validation failed. Please check the Validation Report above.")
             # Continue to produce the encoding summary regardless of validation results.
                 
             # Get size info for summary

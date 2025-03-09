@@ -30,7 +30,7 @@ def estimate_memory_weight(segment: Path, resolution_weights: dict) -> int:
             return resolution_weights['1080p']
         return resolution_weights['SDR']  # SD/HD
     except Exception as e:
-        log.warning("Failed to get segment width, using minimum weight: %s", e)
+        logger.warning("Failed to get segment width, using minimum weight: %s", e)
         return min(resolution_weights.values())
 
 import logging
@@ -57,7 +57,7 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
     
     def capture_log(msg, *args, **kwargs):
         formatted = msg % args if args else msg
-        log.info(formatted)  # Pass only the formatted string
+        logger.info(formatted)  # Pass only the formatted string
         output_logs.append(formatted)
         
     start_time = time.time()
@@ -119,14 +119,14 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
         result = run_cmd(cmd)
     except Exception as e:
         if retry_count < 2:  # Allow up to 2 retries (3 total attempts)
-            log.warning("Segment encoding failed, retrying (%d): %s", retry_count + 1, e)
+            logger.warning("Segment encoding failed, retrying (%d): %s", retry_count + 1, e)
             # Remove failed output if it exists
             if output_segment.exists():
                 output_segment.unlink()
             # Retry with incremented retry count
             return encode_segment(segment, output_segment, crop_filter, retry_count + 1, dv_flag)
         else:
-            log.error("Segment encoding failed after %d retries", retry_count)
+            logger.error("Segment encoding failed after %d retries", retry_count)
             raise
     end_time = time.time()
     encoding_time = end_time - start_time
@@ -318,9 +318,9 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
 
         # Calculate dynamic memory requirements from warmup results
         base_memory_per_token, resolution_weights = calculate_memory_requirements(warmup_results)
-        log.info("Dynamic memory analysis:")
-        log.info("  Base memory per token: %.2f MB", base_memory_per_token / (1024 * 1024))
-        log.info("  Resolution weights: %s", resolution_weights)
+        logger.info("Dynamic memory analysis:")
+        logger.info("  Base memory per token: %.2f MB", base_memory_per_token / (1024 * 1024))
+        logger.info("  Resolution weights: %s", resolution_weights)
 
         # Log encoding parameters
         sample_cmd = [
@@ -340,7 +340,7 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
         if crop_filter:
             sample_cmd.extend(["--vfilter", crop_filter])
         formatted_sample = " \\\n    ".join(sample_cmd)
-        log.info("Common ab-av1 encoding parameters:\n%s", formatted_sample)
+        logger.info("Common ab-av1 encoding parameters:\n%s", formatted_sample)
 
         # Initialize thread pool and scheduler
         max_workers = psutil.cpu_count()

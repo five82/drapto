@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 from typing import List, Optional
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 def build_segment_command(
     input_file: Path,

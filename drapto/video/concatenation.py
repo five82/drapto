@@ -7,7 +7,7 @@ from ..utils import run_cmd
 from ..config import WORKING_DIR
 from ..ffprobe_utils import get_format_info, get_video_info
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 def concatenate_segments(output_file: Path) -> bool:
     """
@@ -45,19 +45,19 @@ def concatenate_segments(output_file: Path) -> bool:
         job.execute()
 
         if not output_file.exists() or output_file.stat().st_size == 0:
-            log.error("Concatenated output is missing or empty")
+            logger.error("Concatenated output is missing or empty")
             return False
 
         format_info = get_format_info(output_file)
         output_duration = float(format_info.get("duration", 0))
         
         if abs(output_duration - total_segment_duration) > 1.0:
-            log.error("Duration mismatch in concatenated output: %.2fs vs %.2fs", output_duration, total_segment_duration)
+            logger.error("Duration mismatch in concatenated output: %.2fs vs %.2fs", output_duration, total_segment_duration)
             return False
 
         video_info = get_video_info(output_file)
         if video_info.get("codec_name") != "av1":
-            log.error("Concatenated output has wrong codec: %s", result.stdout.strip())
+            logger.error("Concatenated output has wrong codec: %s", result.stdout.strip())
             return False
 
         # Validate concatenated output video start time
@@ -74,14 +74,14 @@ def concatenate_segments(output_file: Path) -> bool:
         video_start = float(vid_data["streams"][0].get("start_time") or 0)
 
         if abs(video_start) > sync_threshold:
-            log.error("Concatenated output video start time is %.2fs (expected near 0)", video_start)
+            logger.error("Concatenated output video start time is %.2fs (expected near 0)", video_start)
             return False
 
-        log.info("Successfully validated concatenated output")
+        logger.info("Successfully validated concatenated output")
         return True
 
     except Exception as e:
-        log.error("Concatenation failed: %s", e)
+        logger.error("Concatenation failed: %s", e)
         return False
     finally:
         if concat_file.exists():

@@ -7,7 +7,7 @@ from typing import List, Optional
 
 from .utils import run_cmd
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 def mux_tracks(
     video_track: Path,
@@ -25,7 +25,7 @@ def mux_tracks(
     Returns:
         bool: True if muxing successful
     """
-    log.info("Muxing tracks to: %s", output_file)
+    logger.info("Muxing tracks to: %s", output_file)
     
     from .video.command_builders import build_mux_command
     from .command_jobs import MuxJob
@@ -47,7 +47,7 @@ def mux_tracks(
         ])
         vid_data = json.loads(vid_result.stdout)
         if not vid_data.get("streams"):
-            log.error("Muxed output: No video stream found")
+            logger.error("Muxed output: No video stream found")
             return False
         video_start = float(vid_data["streams"][0].get("start_time") or 0)
 
@@ -60,16 +60,16 @@ def mux_tracks(
         ])
         aud_data = json.loads(aud_result.stdout)
         if not aud_data.get("streams"):
-            log.error("Muxed output: No audio stream found")
+            logger.error("Muxed output: No audio stream found")
             return False
         audio_start = float(aud_data["streams"][0].get("start_time") or 0)
 
         if abs(video_start - audio_start) > sync_threshold:
-            log.error("Muxed output AV sync error: video_start=%.2fs, audio_start=%.2fs", 
+            logger.error("Muxed output AV sync error: video_start=%.2fs, audio_start=%.2fs", 
                      video_start, audio_start)
             return False
 
         return True
     except Exception as e:
-        log.error("Muxing failed: %s", e)
+        logger.error("Muxing failed: %s", e)
         return False
