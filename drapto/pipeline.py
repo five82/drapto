@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import Optional
 
 from .config import LOG_DIR
+
+logger = logging.getLogger(__name__)
 from .formatting import (
     print_header, print_check, print_warning,
     print_error, print_success, print_separator,
@@ -43,8 +45,8 @@ def process_file(input_file: Path, output_file: Path) -> Optional[dict]:
     try:
         start_time = time.time()
         print_header("Starting Encode")
-        log.info("Beginning encode of: %s", input_file.name)
-        log.info("Encode log: %s", log_file.name)
+        logger.info("Beginning encode of: %s", input_file.name)
+        logger.info("Encode log: %s", log_file.name)
         print_check(f"Input path:  {input_file.resolve()}")
         print_check(f"Output path: {output_file.resolve()}")
         print_separator()
@@ -66,25 +68,25 @@ def process_file(input_file: Path, output_file: Path) -> Optional[dict]:
         try:
             video_track = encode_standard(input_file, disable_crop, dv_flag=is_dolby_vision)
             if not video_track:
-                log.error("Video encoding failed")
+                logger.error("Video encoding failed")
                 return None
                 
             # Process audio
             audio_tracks = encode_audio_tracks(input_file)
             if not audio_tracks:
-                log.error("Audio encoding failed")
+                logger.error("Audio encoding failed")
                 return None
                 
             # Mux everything together
             if not mux_tracks(video_track, audio_tracks, output_file):
-                log.error("Muxing failed")
+                logger.error("Muxing failed")
                 return None
                 
             # Validate the output; the validation report prints its messages.
             from .validation import validate_output
             valid_output = validate_output(input_file, output_file)
             if not valid_output:
-                log.error("Output validation failed. Please check the Validation Report above.")
+                logger.error("Output validation failed. Please check the Validation Report above.")
             # Continue to produce the encoding summary regardless of validation results.
                 
             # Get size info for summary
@@ -123,13 +125,13 @@ def process_file(input_file: Path, output_file: Path) -> Optional[dict]:
             }
             
         except Exception as e:
-            log.exception("Error processing %s: %s", input_file.name, e)
+            logger.exception("Error processing %s: %s", input_file.name, e)
             return None
     finally:
         # Clean up the file handler
         logging.root.removeHandler(file_handler)
         file_handler.close()
-        log.info("Closed encode log: %s", log_file.name)
+        logger.info("Closed encode log: %s", log_file.name)
 
 def process_directory(input_dir: Path, output_dir: Path) -> bool:
     """
@@ -145,7 +147,7 @@ def process_directory(input_dir: Path, output_dir: Path) -> bool:
     video_files.extend(input_dir.glob("*.mp4"))
     
     if not video_files:
-        log.error("No video files found in %s", input_dir)
+        logger.error("No video files found in %s", input_dir)
         return False
         
     success = True
