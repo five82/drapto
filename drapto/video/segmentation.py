@@ -121,6 +121,9 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> N
                 raise ValidationError(msg, module="segmentation")
                 
             logger.info("Segment %s: duration=%.2fs, codec=%s", segment.name, duration, codec)
+        except Exception as e:
+            logger.error("Failed to validate segment %s: %s", segment.name, e)
+            raise ValidationError(f"Failed to validate segment {segment.name}: {str(e)}", module="segmentation") from e
 
             # Validate the segment's video timestamps.
             # Since segments are created without audio (-an), we only check that the video start time is near zero.
@@ -184,8 +187,6 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> N
             total_duration = probe.get("duration", "video")
     except MetadataError as e:
         msg = f"Failed to get input duration: {str(e)}"
-        logger.error(msg)
-        raise SegmentationError(msg, module="segmentation") from e
         logger.error(msg)
         raise SegmentationError(msg, module="segmentation") from e
 
