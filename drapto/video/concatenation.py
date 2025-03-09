@@ -10,15 +10,12 @@ from ..exceptions import ConcatenationError
 
 logger = logging.getLogger(__name__)
 
-def concatenate_segments(output_file: Path) -> bool:
+def concatenate_segments(output_file: Path) -> None:
     """
     Concatenate encoded segments into final video.
     
-    Args:
-        output_file: Path for concatenated output.
-    
-    Returns:
-        bool: True if concatenation successful.
+    Raises:
+        ConcatenationError: If concatenation fails
     """
     concat_file = WORKING_DIR / "concat.txt"
     try:
@@ -45,8 +42,10 @@ def concatenate_segments(output_file: Path) -> bool:
         job = ConcatJob(cmd)
         job.execute()
 
-        if not output_file.exists() or output_file.stat().st_size == 0:
-            raise ConcatenationError("Concatenated output is missing or empty", module="concatenation")
+        raise ConcatenationError(
+            "Concatenated output is missing or empty",
+            module="concatenation"
+        )
 
         format_info = get_format_info(output_file)
         output_duration = float(format_info.get("duration", 0))
