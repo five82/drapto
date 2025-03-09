@@ -127,18 +127,6 @@ def validate_segments(input_file: Path, _variable_segmentation: bool = True) -> 
                 module="segmentation"
             ) from e
     
-            except MetadataError as e:
-                logger.error("Failed to get segment metadata: %s", e)
-                raise SegmentEncodingError(
-                    f"Failed to validate segment {segment.name}: {str(e)}",
-                    module="segment_encoding"
-                ) from e
-            except Exception as e:
-                logger.error("Failed to validate segment %s: %s", segment.name, e)
-                raise SegmentEncodingError(
-                    f"Failed to validate segment {segment.name}: {str(e)}",
-                    module="segment_encoding"
-                ) from e
     
     # Check that total duration matches within tolerance
     duration_tolerance = max(1.0, total_duration * 0.02)  # 2% tolerance or minimum 1 second
