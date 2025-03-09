@@ -6,10 +6,10 @@ performing segmentation, parallel encoding, and concatenation.
 
 import logging
 import shutil
-
-log = logging.getLogger(__name__)
 from pathlib import Path
 from typing import Optional
+
+log = logging.getLogger(__name__)
 
 from ..config import WORKING_DIR
 from ..utils import run_cmd
@@ -18,8 +18,6 @@ from .detection import detect_crop
 from .segmentation import segment_video
 from .segment_encoding import encode_segments
 from .concatenation import concatenate_segments
-
-log = logging.getLogger(__name__)
 
 def encode_standard(input_file: Path, disable_crop: bool = False, dv_flag: bool = False) -> Optional[Path]:
     """
