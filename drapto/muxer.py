@@ -7,6 +7,7 @@ from typing import List, Optional
 
 from .utils import run_cmd
 from .exceptions import MuxingError
+from .ffprobe_utils import get_media_property
 
 logger = logging.getLogger(__name__)
 
