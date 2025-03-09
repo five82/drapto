@@ -148,25 +148,25 @@ def validate_segment_boundaries(
                     duration = float(probe.get("duration", "format"))
                 
                 if duration < min_duration:
-                # Check if this segment boundary aligns with a scene change
-                segment_end = cumulative_duration + duration
-                is_scene = any(
-                    abs(scene_time - segment_end) <= scene_tolerance
-                    for scene_time in scene_timestamps
-                )
-                
-                if is_scene:
-                    print_check(
-                        f"Short segment {segment.name} ({duration:.2f}s) "
-                        "aligns with scene change"
-                    )
-                else:
-                    print_warning(
-                        f"Short segment {segment.name} ({duration:.2f}s) "
-                        "does not align with scene changes"
+                    # Check if this segment boundary aligns with a scene change
+                    segment_end = cumulative_duration + duration
+                    is_scene = any(
+                        abs(scene_time - segment_end) <= scene_tolerance
+                        for scene_time in scene_timestamps
                     )
                     
-                short_segments.append((segment, is_scene))
+                    if is_scene:
+                        print_check(
+                            f"Short segment {segment.name} ({duration:.2f}s) "
+                            "aligns with scene change"
+                        )
+                    else:
+                        print_warning(
+                            f"Short segment {segment.name} ({duration:.2f}s) "
+                            "does not align with scene changes"
+                        )
+                        
+                    short_segments.append((segment, is_scene))
                 
             cumulative_duration += duration
             
