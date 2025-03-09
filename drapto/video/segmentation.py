@@ -140,8 +140,6 @@ def validate_segments(input_file: Path, _variable_segmentation: bool = True) -> 
                     module="segment_encoding"
                 ) from e
     
-    duration_tolerance = max(1.0, total_duration * 0.02)
-
     # Check that total duration matches within tolerance
     duration_tolerance = max(1.0, total_duration * 0.02)  # 2% tolerance or minimum 1 second
     if abs(total_segment_duration - total_duration) > duration_tolerance:
@@ -161,7 +159,6 @@ def validate_segments(input_file: Path, _variable_segmentation: bool = True) -> 
         logger.warning(
             "Found %d problematic short segments not aligned with scene changes",
             len(problematic_segments)
-        )
         )
     
     print_check(f"Successfully validated {len(valid_segments)} segments")
