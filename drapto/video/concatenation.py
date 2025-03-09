@@ -66,15 +66,7 @@ def concatenate_segments(output_file: Path) -> None:
         # Validate concatenated output video start time
         sync_threshold = 0.1  # allowed difference in seconds
 
-        vid_result = run_cmd([
-            "ffprobe", "-v", "error",
-            "-select_streams", "v:0",
-            "-show_entries", "stream=start_time",
-            "-of", "json",
-            str(output_file)
-        ])
-        vid_data = json.loads(vid_result.stdout)
-        video_start = float(vid_data["streams"][0].get("start_time") or 0)
+        video_start = get_media_property(output_file, "video", "start_time")
 
         if abs(video_start) > sync_threshold:
             raise ConcatenationError(

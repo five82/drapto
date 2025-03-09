@@ -122,15 +122,7 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> N
             # Since segments are created without audio (-an), we only check that the video start time is near zero.
             sync_threshold = 0.2  # increased allowed difference in seconds
 
-            vid_result = run_cmd([
-                "ffprobe", "-v", "error",
-                "-select_streams", "v:0",
-                "-show_entries", "stream=start_time",
-                "-of", "json",
-                str(segment)
-            ])
-            vid_data = json.loads(vid_result.stdout)
-            video_start = float(vid_data["streams"][0].get("start_time") or 0)
+            video_start = get_media_property(segment, "video", "start_time")
 
             if abs(video_start) > sync_threshold:
                 raise ValidationError(

@@ -453,19 +453,10 @@ def validate_encoded_segments(segments_dir: Path) -> bool:
                 return False
                 
             # Verify AV1 codec and basic stream properties
-            result = run_cmd([
-                "ffprobe", "-v", "error",
-                "-show_entries", "stream=codec_name,width,height:format=duration",
-                "-of", "default=noprint_wrappers=1:nokey=1",
-                str(encoded)
-            ])
-            
-            lines = result.stdout.strip().split('\n')
-            if len(lines) < 4:  # codec, width, height, duration
-                logger.error("Invalid encoded segment  %s", encoded.name)
-                return False
-                
-            codec, width, height, duration = lines
+            codec = get_media_property(encoded, "video", "codec_name")
+            width = get_media_property(encoded, "video", "width")
+            height = get_media_property(encoded, "video", "height")
+            duration = get_media_property(encoded, "format", "duration")
             
             # Verify codec
             if codec != "av1":
