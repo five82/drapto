@@ -6,6 +6,7 @@ from pathlib import Path
 from ..utils import run_cmd
 from ..config import WORKING_DIR
 from ..ffprobe_utils import get_format_info, get_video_info
+from ..exceptions import ConcatenationError
 
 logger = logging.getLogger(__name__)
 
