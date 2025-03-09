@@ -135,12 +135,14 @@ def get_video_info(path: Path) -> Dict[str, Any]:
     
     info = {}
     try:
+        # Use a single probe session to batch all property queries
         with probe_session(path) as probe:
             for prop in properties:
                 try:
                     info[prop] = probe.get(prop, "video")
                 except MetadataError:
                     info[prop] = None
+                    logger.debug("Property %s not found in video stream", prop)
         return info
     except MetadataError as e:
         logger.warning("Failed to get video info: %s", e)

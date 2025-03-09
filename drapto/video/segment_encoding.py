@@ -462,13 +462,15 @@ def validate_encoded_segments(segments_dir: Path) -> bool:
                 return False
                 
             # Verify AV1 codec and basic stream properties
-            codec = get_media_property(encoded, "video", "codec_name")
-            width = get_media_property(encoded, "video", "width")
-            height = get_media_property(encoded, "video", "height")
-            duration = get_media_property(encoded, "format", "duration")
-            
-            # Verify codec
-            if codec != "av1":
+            try:
+                with probe_session(encoded) as probe:
+                    codec = probe.get("codec_name", "video")
+                    width = probe.get("width", "video")
+                    height = probe.get("height", "video")
+                    duration = probe.get("duration", "format")
+                
+                # Verify codec
+                if codec != "av1":
                 logger.error(
                     "Wrong codec '%s' in encoded segment: %s",
                     codec, encoded.name

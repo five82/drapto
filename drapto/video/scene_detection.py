@@ -51,11 +51,10 @@ def detect_scenes(input_file: Path) -> List[float]:
     try:
         try:
             with probe_session(input_file) as probe:
-                ct = probe.get("color_transfer", "video", 0) or ""
+                ct = (probe.get("color_transfer", "video", 0) or "").lower()
                 cp = probe.get("color_primaries", "video", 0) or ""
                 cs = probe.get("color_space", "video", 0) or ""
                 
-            ct = ct.lower()
             if ct in ["smpte2084", "arib-std-b67", "smpte428", "bt2020-10", "bt2020-12"]:
                 threshold_val = HDR_SCENE_THRESHOLD
             else:

@@ -54,11 +54,19 @@ def concatenate_segments(output_file: Path) -> None:
                 module="concatenation"
             )
 
-        if get_media_property(output_file, "video", "codec_name") != "av1":
+        try:
+            with probe_session(output_file) as probe:
+                codec = probe.get("codec_name", "video")
+                if codec != "av1":
+                    raise ConcatenationError(
+                        "Concatenated output has wrong codec - expected av1",
+                        module="concatenation"
+                    )
+        except MetadataError as e:
             raise ConcatenationError(
-                "Concatenated output has wrong codec - expected av1",
+                f"Failed to validate output codec: {str(e)}",
                 module="concatenation"
-            )
+            ) from e
 
         # Validate concatenated output video start time
         sync_threshold = 0.1  # allowed difference in seconds
