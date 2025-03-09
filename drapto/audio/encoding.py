@@ -41,13 +41,13 @@ def encode_audio_tracks(input_file: Path) -> Optional[List[Path]]:
             if output_track:
                 encoded_tracks.append(output_track)
             else:
-                log.error("Failed to encode audio track %d", track_idx)
+                logger.error("Failed to encode audio track %d", track_idx)
                 return None
                 
         return encoded_tracks
         
     except Exception as e:
-        log.error("Failed to process audio tracks: %s", e)
+        logger.error("Failed to process audio tracks: %s", e)
         return None
 
 def encode_audio_track(input_file: Path, track_index: int) -> Optional[Path]:
@@ -102,7 +102,7 @@ def encode_audio_track(input_file: Path, track_index: int) -> Optional[Path]:
         from ..command_jobs import AudioEncodeJob
         cmd = build_audio_encode_command(input_file, output_file, track_index, bitrate)
         formatted_cmd = " \\\n    ".join(cmd)
-        log.info("Audio encoding command for track %d:\n%s", track_index, formatted_cmd)
+        logger.info("Audio encoding command for track %d:\n%s", track_index, formatted_cmd)
         # Get audio duration for progress reporting
         try:
             duration_result = run_cmd([
@@ -124,5 +124,5 @@ def encode_audio_track(input_file: Path, track_index: int) -> Optional[Path]:
         return output_file
         
     except Exception as e:
-        log.error("Failed to encode audio track %d: %s", track_index, e)
+        logger.error("Failed to encode audio track %d: %s", track_index, e)
         return None
