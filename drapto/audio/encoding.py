@@ -10,8 +10,6 @@ from ..config import WORKING_DIR
 from ..utils import run_cmd, run_cmd_with_progress
 from ..formatting import print_info
 
-log = logging.getLogger(__name__)
-
 def encode_audio_tracks(input_file: Path) -> Optional[List[Path]]:
     """
     Encode all audio tracks from input file using libopus
@@ -100,8 +98,6 @@ def encode_audio_track(input_file: Path, track_index: int) -> Optional[Path]:
             f"Bitrate:  {bitrate}"
         )
         
-        from ..video.command_builders import build_audio_encode_command
-        from ..command_jobs import AudioEncodeJob
         from ..video.command_builders import build_audio_encode_command
         from ..command_jobs import AudioEncodeJob
         cmd = build_audio_encode_command(input_file, output_file, track_index, bitrate)

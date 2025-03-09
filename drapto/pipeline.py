@@ -59,9 +59,9 @@ def process_file(input_file: Path, output_file: Path) -> Optional[dict]:
         print_check("Checking for Dolby Vision...")
         is_dolby_vision = detect_dolby_vision(input_file)
         if is_dolby_vision:
-        print_success("Dolby Vision detected")
-    else:
-        print_check("Standard content detected")
+            print_success("Dolby Vision detected")
+        else:
+            print_check("Standard content detected")
 
     try:
         video_track = encode_standard(input_file, disable_crop, dv_flag=is_dolby_vision)
