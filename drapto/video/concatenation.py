@@ -5,7 +5,10 @@ import logging
 from pathlib import Path
 from ..utils import run_cmd
 from ..config import WORKING_DIR
-from ..ffprobe_utils import get_format_info, get_video_info, get_media_property
+from ..ffprobe_utils import (
+    get_format_info, get_video_info, get_media_property,
+    probe_session, MetadataError
+)
 from ..exceptions import ConcatenationError
 
 logger = logging.getLogger(__name__)

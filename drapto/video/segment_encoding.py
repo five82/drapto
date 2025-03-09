@@ -208,6 +208,9 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
         except MetadataError:
             logger.warning("Could not determine output width, using fallback value")
             width = 1280  # Fallback
+    except Exception as e:
+        logger.error("Error determining resolution: %s", e)
+        width = 1280  # Fallback on any error
 
     if width >= 3840:
         resolution_category = "4k"
