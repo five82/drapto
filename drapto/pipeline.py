@@ -44,9 +44,9 @@ def process_file(input_file: Path, output_file: Path) -> Optional[dict]:
         print_header("Starting Encode")
         log.info("Beginning encode of: %s", input_file.name)
         log.info("Encode log: %s", log_file.name)
-    print_check(f"Input path:  {input_file.resolve()}")
-    print_check(f"Output path: {output_file.resolve()}")
-    print_separator()
+        print_check(f"Input path:  {input_file.resolve()}")
+        print_check(f"Output path: {output_file.resolve()}")
+        print_separator()
     
     # Ensure output directory exists
     output_file.parent.mkdir(parents=True, exist_ok=True)
