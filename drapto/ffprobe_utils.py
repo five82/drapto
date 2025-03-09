@@ -7,9 +7,17 @@ Helper functions to query ffprobe and return parsed data.
 import subprocess
 import json
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Union, Literal
+from functools import lru_cache
 
-def ffprobe_query(path: Path, args: list) -> Dict[str, Any]:
+class MetadataError(Exception):
+    """Raised when metadata cannot be retrieved or parsed"""
+    def __init__(self, message: str, property_name: str = None):
+        self.property_name = property_name
+        super().__init__(f"Metadata error: {message}")
+
+@lru_cache(maxsize=100)
+def ffprobe_query(path: Path, args: tuple) -> Dict[str, Any]:
     """
     Run ffprobe with the specified arguments and return parsed JSON output.
     
@@ -23,9 +31,58 @@ def ffprobe_query(path: Path, args: list) -> Dict[str, Any]:
     Raises:
         subprocess.CalledProcessError if the command fails.
     """
-    cmd = ["ffprobe", "-v", "error"] + args + [str(path)]
+    cmd = ["ffprobe", "-v", "error"] + list(args) + [str(path)]
     result = subprocess.run(cmd, capture_output=True, text=True, check=True)
     return json.loads(result.stdout)
+
+def get_media_property(
+    path: Path,
+    stream_type: Literal["video", "audio", "subtitle"],
+    property_name: str,
+    stream_index: int = 0
+) -> Union[float, int, str]:
+    """
+    Unified metadata fetcher with error handling and type casting.
+    
+    Args:
+        path: Path to media file
+        stream_type: Type of stream ("video", "audio", or "subtitle")
+        property_name: Name of the property to fetch
+        stream_index: Stream index (default 0)
+        
+    Returns:
+        Property value with appropriate type casting
+        
+    Raises:
+        MetadataError: If property cannot be retrieved or parsed
+    """
+    type_prefix = stream_type[0]  # v for video, a for audio, s for subtitle
+    args = (
+        "-select_streams", f"{type_prefix}:{stream_index}",
+        "-show_entries", f"stream={property_name}",
+        "-of", "default=noprint_wrappers=1:nokey=1"
+    )
+    
+    try:
+        result = run_cmd(["ffprobe", "-v", "error"] + list(args) + [str(path)])
+        value = result.stdout.strip()
+        
+        # Handle empty results
+        if not value:
+            raise MetadataError(f"No value found", property_name)
+            
+        # Type casting based on property
+        if property_name in ["duration", "start_time"]:
+            return float(value)
+        elif property_name in ["width", "height", "channels"]:
+            return int(value)
+        return value
+        
+    except Exception as e:
+        raise MetadataError(
+            f"Could not get {property_name}: {str(e)}", 
+            property_name
+        ) from e
 
 def get_video_info(path: Path) -> Dict[str, Any]:
     """
@@ -37,13 +94,20 @@ def get_video_info(path: Path) -> Dict[str, Any]:
     Returns:
         Dictionary with video stream info (codec, width, height, duration, etc.)
     """
-    args = [
-        "-select_streams", "v:0",
-        "-show_entries", "stream=codec_name,width,height,start_time,duration,pix_fmt,r_frame_rate,color_transfer,color_primaries,color_space",
-        "-of", "json"
+    properties = [
+        "codec_name", "width", "height", "start_time", "duration",
+        "pix_fmt", "r_frame_rate", "color_transfer", "color_primaries",
+        "color_space"
     ]
-    data = ffprobe_query(path, args)
-    return data.get("streams", [{}])[0]
+    
+    info = {}
+    for prop in properties:
+        try:
+            info[prop] = get_media_property(path, "video", prop)
+        except MetadataError:
+            info[prop] = None
+            
+    return info
 
 def get_audio_info(path: Path, stream_index: int = 0) -> Dict[str, Any]:
     """
