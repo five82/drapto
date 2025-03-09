@@ -6,6 +6,8 @@ performing segmentation, parallel encoding, and concatenation.
 
 import logging
 import shutil
+
+log = logging.getLogger(__name__)
 from pathlib import Path
 from typing import Optional
 
