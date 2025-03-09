@@ -45,20 +45,23 @@ def concatenate_segments(output_file: Path) -> bool:
         job.execute()
 
         if not output_file.exists() or output_file.stat().st_size == 0:
-            logger.error("Concatenated output is missing or empty")
-            return False
+            raise ConcatenationError("Concatenated output is missing or empty", module="concatenation")
 
         format_info = get_format_info(output_file)
         output_duration = float(format_info.get("duration", 0))
         
         if abs(output_duration - total_segment_duration) > 1.0:
-            logger.error("Duration mismatch in concatenated output: %.2fs vs %.2fs", output_duration, total_segment_duration)
-            return False
+            raise ConcatenationError(
+                f"Duration mismatch in concatenated output: {output_duration:.2f}s vs {total_segment_duration:.2f}s",
+                module="concatenation"
+            )
 
         video_info = get_video_info(output_file)
         if video_info.get("codec_name") != "av1":
-            logger.error("Concatenated output has wrong codec: %s", result.stdout.strip())
-            return False
+            raise ConcatenationError(
+                f"Concatenated output has wrong codec: {result.stdout.strip()}", 
+                module="concatenation"
+            )
 
         # Validate concatenated output video start time
         sync_threshold = 0.1  # allowed difference in seconds
@@ -74,15 +77,16 @@ def concatenate_segments(output_file: Path) -> bool:
         video_start = float(vid_data["streams"][0].get("start_time") or 0)
 
         if abs(video_start) > sync_threshold:
-            logger.error("Concatenated output video start time is %.2fs (expected near 0)", video_start)
-            return False
+            raise ConcatenationError(
+                f"Concatenated output video start time is {video_start:.2f}s (expected near 0)",
+                module="concatenation"
+            )
 
         logger.info("Successfully validated concatenated output")
         return True
 
     except Exception as e:
-        logger.error("Concatenation failed: %s", e)
-        return False
+        raise ConcatenationError(f"Concatenation failed: {str(e)}", module="concatenation") from e
     finally:
         if concat_file.exists():
             concat_file.unlink()

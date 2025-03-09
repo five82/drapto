@@ -149,7 +149,7 @@ def validate_quality_metrics(input_file: Path, output_file: Path, validation_rep
 
 logger = logging.getLogger(__name__)
 
-def validate_output(input_file: Path, output_file: Path) -> bool:
+def validate_output(input_file: Path, output_file: Path) -> None:
     """
     Validate the output file to ensure encoding was successful.
     Checks:
@@ -174,8 +174,7 @@ def validate_output(input_file: Path, output_file: Path) -> bool:
     
     # Check if file exists and has size
     if not output_file.exists() or output_file.stat().st_size == 0:
-        print_error("Output file is empty or doesn't exist")
-        return False
+        raise ValidationError("Output file is empty or doesn't exist", module="validation")
 
     # Validate video stream properties
     error |= not validate_video_stream(input_file, output_file, validation_report)
@@ -261,11 +260,9 @@ def validate_output(input_file: Path, output_file: Path) -> bool:
         error = True
         
     if error:
-        print_error("Output validation failed")
-        return False
+        raise ValidationError("Output validation failed", module="validation")
         
     print_check("Output validation successful")
-    return True
 
 def validate_ab_av1() -> bool:
     """
