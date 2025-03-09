@@ -13,11 +13,9 @@ from ..exceptions import (
     SegmentationError, ValidationError,
     SegmentMergeError, SegmentEncodingError
 )
-
-from ..utils import run_cmd, check_dependencies
+from ..utils import run_cmd
 from ..formatting import print_info, print_check
 from ..ffprobe_utils import (
-    get_format_info, get_video_info, get_media_property,
     MetadataError, probe_session
 )
 
@@ -171,8 +169,7 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> b
                     module="segment_encoding"
                 ) from e
     
-    # After processing, validate total duration
-    valid_count = len(valid_segments)
+    duration_tolerance = max(1.0, total_duration * 0.02)
     try:
         with probe_session(input_file) as probe:
             total_duration = probe.get("duration", "video")
@@ -200,6 +197,7 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> b
         logger.warning(
             "Found %d problematic short segments not aligned with scene changes",
             len(problematic_segments)
+        )
         )
     
     print_check(f"Successfully validated {valid_count} segments")
