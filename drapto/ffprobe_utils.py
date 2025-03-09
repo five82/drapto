@@ -239,10 +239,14 @@ def get_first_stream_timing(path: Path, stream_type: str) -> tuple[float, float]
         get_media_property(path, stream_type, "duration")
     )
 
-def get_duration(path: Path, stream_type: str = "video") -> float:
+def get_duration(
+    path: Path, 
+    stream_type: str = "video",
+    stream_index: int = 0
+) -> float:
     """Get duration from stream with fallback to format duration."""
     try:
-        duration = get_media_property(path, stream_type, "duration")
+        duration = get_media_property(path, stream_type, "duration", stream_index)
         if duration <= 0:
             raise MetadataError("Invalid duration value")
         return duration

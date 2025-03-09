@@ -74,15 +74,11 @@ def validate_container(output_file: Path, validation_report: list) -> None:
 def validate_crop_dimensions(input_file: Path, output_file: Path, validation_report: list) -> None:
     """Validate crop dimensions if applied"""
     try:
-        with probe_session(input_file) as in_probe, \
-             probe_session(output_file) as out_probe:
-            in_width = in_probe.get("width", "video")
-            in_height = in_probe.get("height", "video")
-            out_width = out_probe.get("width", "video")
-            out_height = out_probe.get("height", "video")
-            
-            in_res = [str(in_width), str(in_height)]
-            out_res = [str(out_width), str(out_height)]
+        in_width, in_height = get_resolution(input_file)
+        out_width, out_height = get_resolution(output_file)
+        
+        in_res = [str(in_width), str(in_height)]
+        out_res = [str(out_width), str(out_height)]
             
         if not all(in_res) or not all(out_res):
             raise ValidationError("Failed to get resolution data", module="validation")
