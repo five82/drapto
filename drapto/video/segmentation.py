@@ -1,10 +1,7 @@
 """Video segmentation and parallel encoding functions"""
 
-import json
 import logging
-import os
 import shutil
-import tempfile
 from pathlib import Path
 from typing import List, Optional
 
@@ -68,7 +65,7 @@ def merge_segments(segments: List[Path], output: Path) -> None:
         if concat_file.exists():
             concat_file.unlink()
 
-def validate_segments(input_file: Path, variable_segmentation: bool = True) -> None:
+def validate_segments(input_file: Path, variable_segmentation: bool = True) -> bool:
     """
     Validate video segments after segmentation.
     
@@ -88,7 +85,7 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> N
         raise SegmentationError("No segments found in segments directory", module="segmentation")
     logger.info("Found %d segments", len(segments))
         
-    logger.info("Variable segmentation in use")
+    logger.info("Scene-based segmentation in use")
     try:
         with probe_session(input_file) as probe:
             total_duration = probe.get("duration", "video")
@@ -113,30 +110,22 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> N
                 with probe_session(segment) as probe:
                     duration = float(probe.get("duration", "format"))
                     codec = probe.get("codec_name", "video")
-                
+                    video_start = probe.get("start_time", "video")
+
                 if not duration or not codec:
                     msg = f"Invalid segment {segment.name}: missing duration or codec"
                     logger.error(msg)
                     raise ValidationError(msg, module="segmentation")
-                
-                logger.info("Segment %s: duration=%.2fs, codec=%s", segment.name, duration, codec)
-        except Exception as e:
-            logger.error("Failed to validate segment %s: %s", segment.name, e)
-            raise ValidationError(f"Failed to validate segment {segment.name}: {str(e)}", module="segmentation") from e
 
-            # Validate the segment's video timestamps.
-            # Since segments are created without audio (-an), we only check that the video start time is near zero.
-            sync_threshold = 0.2  # increased allowed difference in seconds
-
-            try:
-                with probe_session(segment) as probe:
-                    video_start = probe.get("start_time", "video")
-
+                # Validate video timestamps
+                sync_threshold = 0.2  # increased allowed difference in seconds
                 if abs(video_start) > sync_threshold:
                     raise ValidationError(
                         f"Segment {segment.name} timestamp issue: video_start={video_start:.2f}s is not near 0",
                         module="segmentation"
                     )
+                
+                logger.info("Segment %s: duration=%.2fs, codec=%s", segment.name, duration, codec)
             except MetadataError as e:
                 logger.error("Failed to validate segment timing: %s", e)
                 raise ValidationError(
