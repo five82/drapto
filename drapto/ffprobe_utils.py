@@ -8,7 +8,7 @@ import subprocess
 import json
 import logging
 from pathlib import Path
-from typing import Dict, Any, Union, Literal, Generator
+from typing import Dict, Any, Union, Literal, Generator, Tuple
 from functools import lru_cache
 from contextlib import contextmanager
 from .utils import run_cmd

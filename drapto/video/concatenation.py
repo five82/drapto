@@ -28,7 +28,7 @@ def concatenate_segments(output_file: Path) -> None:
         for segment in segments:
             try:
                 duration = get_duration(segment)
-                    total_segment_duration += duration
+                total_segment_duration += duration
             except MetadataError as e:
                 logger.error("Failed to get segment duration: %s", e)
                 raise ConcatenationError(f"Failed to get segment duration: {str(e)}", module="concatenation") from e
