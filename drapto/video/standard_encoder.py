@@ -61,7 +61,7 @@ def encode_standard(input_file: Path, disable_crop: bool = False, dv_flag: bool 
         return output_file
         
     except Exception as e:
-        log.error("Failed to encode standard content: %s", e)
+        logger.error("Failed to encode standard content: %s", e)
         return None
     finally:
         print_check("Cleaning up temporary files...")
