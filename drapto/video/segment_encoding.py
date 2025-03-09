@@ -291,8 +291,8 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
     import time
     from concurrent.futures import ThreadPoolExecutor, as_completed
     
-    if not check_dependencies() or not validate_ab_av1():
-        raise DependencyError("Missing required dependencies", module="segment_encoding")
+    check_dependencies()  # Will raise DependencyError if any issues
+    validate_ab_av1()     # Will raise DependencyError if ab-av1 missing
 
     # Configure memory thresholds
     MEMORY_THRESHOLD = 0.8  # Use up to 80% of available memory
