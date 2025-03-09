@@ -94,22 +94,22 @@ def main():
             if not args.output.suffix:
                 # Directory mode: pass both input and output directories to process_directory
                 if process_directory(args.input, args.output):
-                    log.info("Successfully processed directory %s", args.input)
+                    logger.info("Successfully processed directory %s", args.input)
                     return 0
             else:
-                log.error("Output must be a directory when input is a directory")
+                logger.error("Output must be a directory when input is a directory")
                 return 1
         else:
             logger.error("Input %s does not exist", args.input)
             return 1
     except KeyboardInterrupt:
-        log.warning("Encoding interrupted by user")
+        logger.warning("Encoding interrupted by user")
         return 130
     except Exception as e:
-        log.exception("Encoding failed: %s", e)
+        logger.exception("Encoding failed: %s", e)
         return 1
         
-    log.error("Encoding failed")
+    logger.error("Encoding failed")
     return 1
 
 if __name__ == "__main__":
