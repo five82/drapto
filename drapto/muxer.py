@@ -27,23 +27,29 @@ def mux_tracks(
         job = MuxJob(cmd)
         job.execute()
         
-        # Validate AV sync in muxed output
+        # Validate AV sync in muxed output using probe session
         sync_threshold = 0.1  # allowed difference in seconds
 
-        video_start = get_media_property(output_file, "video", "start_time")
-        video_duration = get_media_property(output_file, "video", "duration")
-        audio_start = get_media_property(output_file, "audio", "start_time")
-        audio_duration = get_media_property(output_file, "audio", "duration")
+        try:
+            with probe_session(output_file) as probe:
+                video_start = probe.get("start_time", "video")
+                video_duration = probe.get("duration", "video") 
+                audio_start = probe.get("start_time", "audio")
+                audio_duration = probe.get("duration", "audio")
 
-        start_diff = abs(video_start - audio_start)
-        duration_diff = abs(video_duration - audio_duration)
-        
-        if start_diff > sync_threshold or duration_diff > sync_threshold:
-            raise MuxingError(
-                f"AV sync issue detected: video_start={video_start:.2f}s vs audio_start={audio_start:.2f}s; "
-                f"video_duration={video_duration:.2f}s vs audio_duration={audio_duration:.2f}s",
-                module="muxer"
-            )
+            start_diff = abs(video_start - audio_start)
+            duration_diff = abs(video_duration - audio_duration)
+            
+            if start_diff > sync_threshold or duration_diff > sync_threshold:
+                raise MuxingError(
+                    f"AV sync issue detected: video_start={video_start:.2f}s vs audio_start={audio_start:.2f}s; "
+                    f"video_duration={video_duration:.2f}s vs audio_duration={audio_duration:.2f}s",
+                    module="muxer"
+                )
+
+        except MetadataError as e:
+            logger.error("Failed to validate AV sync: %s", e)
+            raise MuxingError(f"AV sync validation failed: {str(e)}", module="muxer") from e
             
     except Exception as e:
         logger.error("Muxing failed: %s", e)
