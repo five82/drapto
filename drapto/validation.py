@@ -13,13 +13,13 @@ from .exceptions import ValidationError, DependencyError
 def validate_video_stream(input_file: Path, output_file: Path, validation_report: list) -> None:
     """Validate video stream properties"""
     try:
-        info = get_video_info(output_file)
-        codec = info.get("codec_name", "")
-        width = info.get("width", "")
-        height = info.get("height", "")
-        pix_fmt = info.get("pix_fmt", "")
-        framerate = info.get("r_frame_rate", "")
-        
+        with probe_session(output_file) as probe:
+            codec = probe.get("codec_name", "video")
+            width = probe.get("width", "video") 
+            height = probe.get("height", "video")
+            pix_fmt = probe.get("pix_fmt", "video")
+            framerate = probe.get("r_frame_rate", "video")
+            
         if codec != "av1":
             raise ValidationError(
                 f"No AV1 video stream found (found {codec})", 
@@ -71,13 +71,17 @@ def validate_container(output_file: Path, validation_report: list) -> None:
 def validate_crop_dimensions(input_file: Path, output_file: Path, validation_report: list) -> None:
     """Validate crop dimensions if applied"""
     try:
-        in_video = get_video_info(input_file)
-        out_video = get_video_info(output_file)
-        
-        in_res = [str(in_video.get("width", "")), str(in_video.get("height", ""))]
-        out_res = [str(out_video.get("width", "")), str(out_video.get("height", ""))]
-        
-        if not in_res or not out_res:
+        with probe_session(input_file) as in_probe, \
+             probe_session(output_file) as out_probe:
+            in_width = in_probe.get("width", "video")
+            in_height = in_probe.get("height", "video")
+            out_width = out_probe.get("width", "video")
+            out_height = out_probe.get("height", "video")
+            
+            in_res = [str(in_width), str(in_height)]
+            out_res = [str(out_width), str(out_height)]
+            
+        if not all(in_res) or not all(out_res):
             raise ValidationError("Failed to get resolution data", module="validation")
             
         if in_res != out_res:
