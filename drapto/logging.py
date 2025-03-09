@@ -21,7 +21,7 @@ def configure_logging(log_level: str = "INFO", file_logging: bool = True) -> Non
     logger.addHandler(console_handler)
     
     if file_logging:
-        # File handler with rotating logs
+        # Simple file handler for main log
         log_file = LOG_DIR / "drapto.log"
         file_handler = logging.FileHandler(log_file)
         file_formatter = logging.Formatter(
