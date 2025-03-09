@@ -11,6 +11,7 @@ from .exceptions import (
     DraptoError, EncodingError, ValidationError,
     ConcatenationError, SegmentEncodingError
 )
+from .validation import validate_output
 
 logger = logging.getLogger(__name__)
 from .formatting import (

@@ -6,9 +6,14 @@ various pipeline steps (e.g. segmentation, audio encoding, muxing).
 """
 
 import logging
+import subprocess
 from typing import List, Optional
 from pathlib import Path
 from .utils import run_cmd, run_cmd_with_progress
+from .exceptions import (
+    CommandExecutionError, SegmentationError,
+    AudioEncodingError
+)
 
 logger = logging.getLogger(__name__)
 
