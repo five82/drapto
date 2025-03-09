@@ -502,7 +502,7 @@ def validate_encoded_segments(segments_dir: Path) -> bool:
                 
         except Exception as e:
             logger.error("Failed to validate encoded segment %s: %s", encoded.name, e)
-            return False
+            raise SegmentEncodingError("Failed to validate encoded segment", module="segment_encoding")
             
     logger.info("Successfully validated %d encoded segments", len(encoded_segments))
     return True
