@@ -68,12 +68,12 @@ def detect_crop(input_file: Path, disable_crop: bool = None) -> Optional[str]:
 
     # Get video stream info from ffprobe_utils
     try:
-        from ..ffprobe_utils import get_video_info
-        info = get_video_info(input_file)
-        ct = info.get("color_transfer", "")
-        cp = info.get("color_primaries", "")
-        cs = info.get("color_space", "")
-    except Exception as e:
+        from ..ffprobe_utils import probe_session
+        with probe_session(input_file) as probe:
+            ct = probe.get("color_transfer")
+            cp = probe.get("color_primaries") 
+            cs = probe.get("color_space")
+    except MetadataError as e:
         logger.error("Unable to read video color properties: %s", e)
         ct = cp = cs = ""
 
@@ -144,9 +144,10 @@ def detect_crop(input_file: Path, disable_crop: bool = None) -> Optional[str]:
 
     # Get video dimensions
     try:
-        orig_width = int(get_media_property(input_file, "video", "width"))
-        orig_height = int(get_media_property(input_file, "video", "height"))
-    except Exception as e:
+        with probe_session(input_file) as probe:
+            orig_width = int(probe.get("width"))
+            orig_height = int(probe.get("height"))
+    except MetadataError as e:
         logger.error("Failed to get video dimensions: %s", e)
         return None
 
