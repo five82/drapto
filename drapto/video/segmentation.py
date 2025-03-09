@@ -5,6 +5,9 @@ from pathlib import Path
 from typing import List, Optional
 
 from .scene_detection import detect_scenes, validate_segment_boundaries
+from .hardware import check_hardware_acceleration, get_hwaccel_options
+from .command_builders import build_segment_command
+from ..command_jobs import SegmentationJob
 from ..config import WORKING_DIR
 from ..exceptions import (
     SegmentationError, ValidationError,
@@ -137,7 +140,7 @@ def validate_segments(input_file: Path) -> bool:
     short_segments = validate_segment_boundaries(segments_dir, scenes)
     
     # Don't fail validation for short segments that align with scene changes
-    problematic_segments = [s for s, is_scene in short_segments if not is_scene]
+    problematic_segments = [_s for _s, is_scene in short_segments if not is_scene]
     if problematic_segments:
         logger.warning(
             "Found %d problematic short segments not aligned with scene changes",
@@ -157,8 +160,6 @@ def segment_video(input_file: Path) -> bool:
     Returns:
         bool: True if segmentation successful
     """
-    from .hardware import check_hardware_acceleration, get_hwaccel_options
-    
     segments_dir = WORKING_DIR / "segments"
     segments_dir.mkdir(parents=True, exist_ok=True)
     
@@ -167,14 +168,10 @@ def segment_video(input_file: Path) -> bool:
         hw_type = check_hardware_acceleration()
         hw_opt = get_hwaccel_options(hw_type)
         
-        from .scene_detection import detect_scenes
-        from .command_builders import build_segment_command
-        
         scenes = detect_scenes(input_file)
         if not scenes:
             raise SegmentationError("Scene detection failed; no scenes detected", module="segmentation")
             
-        from ..command_jobs import SegmentationJob
         cmd = build_segment_command(input_file, segments_dir, scenes, hw_opt)
         job = SegmentationJob(cmd)
         job.execute()
