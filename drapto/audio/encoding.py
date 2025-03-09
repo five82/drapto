@@ -32,7 +32,7 @@ def encode_audio_tracks(input_file: Path) -> Optional[List[Path]]:
         num_tracks = len(result.stdout.strip().split('\n'))
         
         if num_tracks == 0:
-            log.warning("No audio tracks found")
+            logger.warning("No audio tracks found")
             return []
             
         encoded_tracks = []
