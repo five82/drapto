@@ -168,8 +168,8 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
         else:
             capture_log("Segment analysis complete: %s – No VMAF scores parsed", segment.name)
     except Exception as e:
-        log.debug("Could not parse VMAF scores: %s", e)
-        log.info("Segment analysis complete: %s – No VMAF scores parsed", segment.name)
+        logger.debug("Could not parse VMAF scores: %s", e)
+        logger.info("Segment analysis complete: %s – No VMAF scores parsed", segment.name)
     
     # Compile segment statistics
     stats = {
@@ -303,7 +303,7 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
     try:
         segments = list(segments_dir.glob("*.mkv"))
         if not segments:
-            log.error("No segments found to encode")
+            logger.error("No segments found to encode")
             return False
 
         # Warm-up: process first WARMUP_COUNT segments sequentially to gauge memory usage
@@ -311,7 +311,7 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
         for i in range(min(WARMUP_COUNT, len(segments))):
             segment = segments[i]
             output_segment = encoded_dir / segment.name
-            log.info("Warm-up encoding for segment: %s", segment.name)
+            logger.info("Warm-up encoding for segment: %s", segment.name)
             result = encode_segment(segment, output_segment, crop_filter, 0, dv_flag)
             warmup_results.append(result)
         next_segment_idx = min(WARMUP_COUNT, len(segments))
@@ -353,7 +353,7 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
             while next_segment_idx < len(segments) or scheduler.running_tasks:
                 # Check system memory and update completed tasks
                 if psutil.virtual_memory().percent >= 90:
-                    log.info("High memory usage (%d%%); pausing task submissions...",
+                    logger.info("High memory usage (%d%%); pausing task submissions...",
                             psutil.virtual_memory().percent)
                     time.sleep(1)
                     scheduler.update_completed()
@@ -384,11 +384,11 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
                         
                             # Print captured logs
                             for msg in log_messages:
-                                log.info(msg)
-                            log.info("Successfully encoded segment: %s",
+                                logger.info(msg)
+                            logger.info("Successfully encoded segment: %s",
                                     stats.get('segment'))
                         except Exception as e:
-                            log.error("Task failed: %s", e)
+                            logger.error("Task failed: %s", e)
                             return False
 
                 # Update completed tasks in scheduler
@@ -413,13 +413,13 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
                 min_vmaf = min(s['vmaf_min'] or float('inf') for s in vmaf_stats)
                 max_vmaf = max(s['vmaf_max'] or 0 for s in vmaf_stats)
                 
-            log.info("Encoding Summary:")
-            log.info("  Total Duration: %.2f seconds", total_duration)
-            log.info("  Total Size: %.2f MB", total_size)
-            log.info("  Average Bitrate: %.2f kbps", avg_bitrate)
-            log.info("  Average Speed: %.2fx realtime", avg_speed)
+            logger.info("Encoding Summary:")
+            logger.info("  Total Duration: %.2f seconds", total_duration)
+            logger.info("  Total Size: %.2f MB", total_size)
+            logger.info("  Average Bitrate: %.2f kbps", avg_bitrate)
+            logger.info("  Average Speed: %.2fx realtime", avg_speed)
             if 'avg_vmaf' in locals():
-                log.info("  VMAF Scores - Avg: %.2f, Min: %.2f, Max: %.2f",
+                logger.info("  VMAF Scores - Avg: %.2f, Min: %.2f, Max: %.2f",
                          avg_vmaf, min_vmaf, max_vmaf)
         
         # Validate encoded segments
@@ -429,7 +429,7 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
         return True
         
     except Exception as e:
-        log.error("Parallel encoding failed: %s", e)
+        logger.error("Parallel encoding failed: %s", e)
         return False
 
 def validate_encoded_segments(segments_dir: Path) -> bool:
@@ -447,7 +447,7 @@ def validate_encoded_segments(segments_dir: Path) -> bool:
     encoded_segments = sorted(encoded_dir.glob("*.mkv"))
     
     if len(encoded_segments) != len(original_segments):
-        log.error(
+        logger.error(
             "Encoded segment count (%d) doesn't match original (%d)",
             len(encoded_segments), len(original_segments)
         )
@@ -457,7 +457,7 @@ def validate_encoded_segments(segments_dir: Path) -> bool:
         try:
             # Check encoded segment exists and has size
             if not encoded.exists() or encoded.stat().st_size == 0:
-                log.error("Missing or empty encoded segment: %s", encoded.name)
+                logger.error("Missing or empty encoded segment: %s", encoded.name)
                 return False
                 
             # Verify AV1 codec and basic stream properties
@@ -470,14 +470,14 @@ def validate_encoded_segments(segments_dir: Path) -> bool:
             
             lines = result.stdout.strip().split('\n')
             if len(lines) < 4:  # codec, width, height, duration
-                log.error("Invalid encoded segment  %s", encoded.name)
+                logger.error("Invalid encoded segment  %s", encoded.name)
                 return False
                 
             codec, width, height, duration = lines
             
             # Verify codec
             if codec != "av1":
-                log.error(
+                logger.error(
                     "Wrong codec '%s' in encoded segment: %s",
                     codec, encoded.name
                 )
@@ -495,17 +495,17 @@ def validate_encoded_segments(segments_dir: Path) -> bool:
             # Allow a relative tolerance of 5% (or at least 0.2 sec) to account for slight discrepancies
             tolerance = max(0.2, orig_duration * 0.05)
             if abs(orig_duration - enc_duration) > tolerance:
-                log.error(
+                logger.error(
                     "Duration mismatch in %s: %.2f vs %.2f (tolerance: %.2f)",
                     encoded.name, orig_duration, enc_duration, tolerance
                 )
                 return False
                 
         except Exception as e:
-            log.error("Failed to validate encoded segment %s: %s", encoded.name, e)
+            logger.error("Failed to validate encoded segment %s: %s", encoded.name, e)
             return False
             
-    log.info("Successfully validated %d encoded segments", len(encoded_segments))
+    logger.info("Successfully validated %d encoded segments", len(encoded_segments))
     return True
 
 
