@@ -10,7 +10,7 @@ from ..config import WORKING_DIR
 from ..utils import run_cmd, run_cmd_with_progress
 from ..formatting import print_info
 from ..exceptions import AudioEncodingError
-from ..ffprobe_utils import get_all_audio_info, get_media_property
+from ..ffprobe_utils import get_all_audio_info, get_media_property, probe_session, MetadataError
 
 def encode_audio_tracks(input_file: Path) -> List[Path]:
     """
@@ -97,15 +97,9 @@ def encode_audio_track(input_file: Path, track_index: int) -> Path:
         logger.info("Audio encoding command for track %d:\n%s", track_index, formatted_cmd)
         # Get audio duration for progress reporting
         try:
-            duration_result = run_cmd([
-                "ffprobe", "-v", "error",
-                "-select_streams", f"a:{track_index}",
-                "-show_entries", "format=duration",
-                "-of", "default=noprint_wrappers=1:nokey=1",
-                str(input_file)
-            ])
-            audio_duration = float(duration_result.stdout.strip())
-        except Exception as e:
+            with probe_session(input_file) as probe:
+                audio_duration = float(probe.get("duration", "audio", track_index))
+        except MetadataError as e:
             logger.error("Could not get audio duration for progress reporting: %s", e)
             audio_duration = None
 
