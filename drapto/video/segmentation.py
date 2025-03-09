@@ -87,8 +87,9 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> N
         
     logger.info("Variable segmentation in use")
     try:
-        total_duration = get_media_property(input_file, "video", "duration")
-    except Exception as e:
+        with probe_session(input_file) as probe:
+            total_duration = probe.get("duration", "video")
+    except MetadataError as e:
         raise SegmentationError(f"Failed to get input duration: {str(e)}", module="segmentation") from e
         
     # Validate each segment and build a list of valid segments
@@ -122,13 +123,14 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> N
             # Since segments are created without audio (-an), we only check that the video start time is near zero.
             sync_threshold = 0.2  # increased allowed difference in seconds
 
-            video_start = get_media_property(segment, "video", "start_time")
+            with probe_session(segment) as probe:
+                video_start = probe.get("start_time", "video")
 
-            if abs(video_start) > sync_threshold:
-                raise ValidationError(
-                    f"Segment {segment.name} timestamp issue: video_start={video_start:.2f}s is not near 0",
-                    module="segmentation"
-                )
+                if abs(video_start) > sync_threshold:
+                    raise ValidationError(
+                        f"Segment {segment.name} timestamp issue: video_start={video_start:.2f}s is not near 0",
+                        module="segmentation"
+                    )
     
             # Check if segment duration is short
             if duration < 1.0 and valid_segments:
