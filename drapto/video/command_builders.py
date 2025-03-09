@@ -85,11 +85,12 @@ def build_concat_command(
 ) -> List[str]:
     """Build ffmpeg command for concatenating segments"""
     return [
-        "ffmpeg", "-hide_banner", "-loglevel", "error",
-        "-fflags", "+genpts",
-        "-f", "concat",
-        "-safe", "0",
+        "ffmpeg", "-hide_banner", "-loglevel", "warning",
+        "-f", "concat", "-safe", "0",
         "-i", str(concat_file),
         "-c", "copy",
+        "-movflags", "+faststart",  # Ensure proper MP4 metadata
+        "-fflags", "+genpts",  # Generate missing PTS values
+        "-map_metadata", "0",  # Copy metadata from first input
         "-y", str(output_file)
     ]
