@@ -189,7 +189,8 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> b
     duration_tolerance = max(1.0, total_duration * 0.02)  # 2% tolerance or minimum 1 second
     if abs(total_segment_duration - total_duration) > duration_tolerance:
         raise ValidationError(
-            f"Total valid segment duration ({total_segment_duration:.2f}s) differs significantly from input ({total_duration:.2f}s)",
+            f"Total valid segment duration ({total_segment_duration:.2f}s) "
+            f"differs significantly from input ({total_duration:.2f}s)",
             module="segmentation"
         )
 
