@@ -273,7 +273,7 @@ def calculate_memory_requirements(warmup_results):
     
     return base_size, weights
 
-def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) -> bool:
+def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) -> None:
     """
     Encode video segments in parallel with dynamic memory-aware scheduling
     
@@ -281,8 +281,9 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
         crop_filter: Optional ffmpeg crop filter string
         dv_flag: Whether this is Dolby Vision content
         
-    Returns:
-        bool: True if all segments encoded successfully
+    Raises:
+        SegmentEncodingError: If encoding fails
+        DependencyError: If required dependencies are missing
     """
     from ..validation import validate_ab_av1
     import psutil
@@ -290,7 +291,7 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
     from concurrent.futures import ThreadPoolExecutor, as_completed
     
     if not check_dependencies() or not validate_ab_av1():
-        return False
+        raise DependencyError("Missing required dependencies", module="segment_encoding")
 
     # Configure memory thresholds
     MEMORY_THRESHOLD = 0.8  # Use up to 80% of available memory
@@ -423,14 +424,11 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
                          avg_vmaf, min_vmaf, max_vmaf)
         
         # Validate encoded segments
-        if not validate_encoded_segments(segments_dir):
-            return False
+        validate_encoded_segments(segments_dir)
             
-        return True
-        
     except Exception as e:
         logger.error("Parallel encoding failed: %s", e)
-        return False
+        raise SegmentEncodingError(f"Parallel encoding failed: {str(e)}", module="segment_encoding") from e
 
 def validate_encoded_segments(segments_dir: Path) -> bool:
     """
