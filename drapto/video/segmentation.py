@@ -13,6 +13,10 @@ from ..config import (
     VMAF_SAMPLE_LENGTH, PRESET, SVT_PARAMS,
     WORKING_DIR
 )
+from ..exceptions import (
+    SegmentationError, ValidationError,
+    SegmentMergeError
+)
 
 from ..utils import run_cmd, check_dependencies
 from ..formatting import print_info, print_check
