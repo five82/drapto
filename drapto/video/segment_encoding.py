@@ -202,15 +202,8 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
 
     # Determine resolution category from output width
     try:
-        width_result = run_cmd([
-            "ffprobe", "-v", "error",
-            "-select_streams", "v:0",
-            "-show_entries", "stream=width",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(output_segment)
-        ])
-        width = int(width_result.stdout.strip())
-    except Exception:
+        width = get_media_property(output_segment, "video", "width")
+    except MetadataError:
         width = 1280  # Fallback
 
     if width >= 3840:

@@ -57,10 +57,9 @@ def concatenate_segments(output_file: Path) -> None:
                 module="concatenation"
             )
 
-        video_info = get_video_info(output_file)
-        if video_info.get("codec_name") != "av1":
+        if get_media_property(output_file, "video", "codec_name") != "av1":
             raise ConcatenationError(
-                f"Concatenated output has wrong codec: {result.stdout.strip()}", 
+                "Concatenated output has wrong codec - expected av1",
                 module="concatenation"
             )
 

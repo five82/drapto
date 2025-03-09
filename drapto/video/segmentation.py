@@ -174,14 +174,8 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> N
     # After processing, validate total duration
     valid_count = len(valid_segments)
     try:
-        result = run_cmd([
-            "ffprobe", "-v", "error",
-            "-show_entries", "format=duration",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(input_file)
-        ])
-        total_duration = float(result.stdout.strip())
-    except Exception as e:
+        total_duration = get_media_property(input_file, "video", "duration")
+    except MetadataError as e:
         msg = f"Failed to get input duration: {str(e)}"
         logger.error(msg)
         raise SegmentationError(msg, module="segmentation") from e

@@ -181,3 +181,10 @@ def get_all_audio_info(path: Path) -> list:
     ]
     data = ffprobe_query(path, args)
     return data.get("streams", [])
+
+def get_first_stream_timing(path: Path, stream_type: str) -> tuple[float, float]:
+    """Get start time and duration for first stream of type"""
+    return (
+        get_media_property(path, stream_type, "start_time"),
+        get_media_property(path, stream_type, "duration")
+    )
