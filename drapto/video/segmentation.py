@@ -109,13 +109,12 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> N
     
         try:
             from ..ffprobe_utils import get_format_info, get_video_info
-            format_info = get_format_info(segment)
-            video_info = get_video_info(segment)
-            
-            duration = float(format_info.get("duration", 0))
-            codec = video_info.get("codec_name")
-            
-            if not duration or not codec:
+            try:
+                with probe_session(segment) as probe:
+                    duration = float(probe.get("duration", "format"))
+                    codec = probe.get("codec_name", "video")
+                
+                if not duration or not codec:
                 msg = f"Invalid segment {segment.name}: missing duration or codec"
                 logger.error(msg)
                 raise ValidationError(msg, module="segmentation")
