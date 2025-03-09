@@ -60,13 +60,18 @@ def concatenate_segments(output_file: Path) -> None:
         # Validate concatenated output video start time
         sync_threshold = 0.1  # allowed difference in seconds
 
-        video_start = get_media_property(output_file, "video", "start_time")
+        try:
+            with probe_session(output_file) as probe:
+                video_start = probe.get("start_time", "video")
+                video_duration = probe.get("duration", "video")
 
-        if abs(video_start) > sync_threshold:
-            raise ConcatenationError(
-                f"Concatenated output video start time is {video_start:.2f}s (expected near 0)",
-                module="concatenation"
-            )
+            if abs(video_start) > sync_threshold:
+                raise ConcatenationError(
+                    f"Concatenated output video start time is {video_start:.2f}s (expected near 0)",
+                    module="concatenation"
+                )
+        except MetadataError as e:
+            raise ConcatenationError(f"Failed to validate video timing: {str(e)}", module="concatenation") from e
 
         logger.info("Successfully validated concatenated output")
 

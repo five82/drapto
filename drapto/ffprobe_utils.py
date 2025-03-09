@@ -62,8 +62,11 @@ def ffprobe_query(path: Path, args: tuple) -> Dict[str, Any]:
         subprocess.CalledProcessError if the command fails.
     """
     cmd = ["ffprobe", "-v", "error"] + list(args) + [str(path)]
-    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-    return json.loads(result.stdout)
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        return json.loads(result.stdout)
+    except (subprocess.CalledProcessError, json.JSONDecodeError) as e:
+        raise MetadataError(f"Failed to query ffprobe: {str(e)}") from e
 
 def get_media_property(
     path: Path,
@@ -131,13 +134,17 @@ def get_video_info(path: Path) -> Dict[str, Any]:
     ]
     
     info = {}
-    for prop in properties:
-        try:
-            info[prop] = get_media_property(path, "video", prop)
-        except MetadataError:
-            info[prop] = None
-            
-    return info
+    try:
+        with probe_session(path) as probe:
+            for prop in properties:
+                try:
+                    info[prop] = probe.get(prop, "video")
+                except MetadataError:
+                    info[prop] = None
+        return info
+    except MetadataError as e:
+        logger.warning("Failed to get video info: %s", e)
+        return {prop: None for prop in properties}
 
 def get_audio_info(path: Path, stream_index: int = 0) -> Dict[str, Any]:
     """

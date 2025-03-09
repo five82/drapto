@@ -202,9 +202,12 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
 
     # Determine resolution category from output width
     try:
-        width = get_media_property(output_segment, "video", "width")
-    except MetadataError:
-        width = 1280  # Fallback
+        try:
+            with probe_session(output_segment) as probe:
+                width = int(probe.get("width", "video"))
+        except MetadataError:
+            logger.warning("Could not determine output width, using fallback value")
+            width = 1280  # Fallback
 
     if width >= 3840:
         resolution_category = "4k"
