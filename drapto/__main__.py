@@ -23,16 +23,8 @@ def setup_logging(log_level: str = None):
     # Convert the level (a string) to its numeric value using logging._nameToLevel
     numeric_level = logging._nameToLevel.get(level.upper(), logging.INFO)
 
-    # Configure both console and file handlers
+    # Only configure console handler here
     handlers = [RichHandler(rich_tracebacks=True, show_path=False)]
-    
-    # Add file handler with timestamp-based filename
-    log_file = LOG_DIR / f"drapto_{get_timestamp()}.log"
-    file_handler = logging.FileHandler(log_file)
-    file_handler.setFormatter(logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    ))
-    handlers.append(file_handler)
     
     logging.basicConfig(
         level=numeric_level,
@@ -44,7 +36,6 @@ def setup_logging(log_level: str = None):
     # Log the start of a new session
     log = logging.getLogger("drapto")
     log.info("Started new logging session")
-    log.info("Log file: %s", log_file)
 
 def parse_args():
     """Parse command line arguments"""

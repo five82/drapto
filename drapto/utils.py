@@ -110,8 +110,8 @@ def get_file_size(path: Union[str, Path]) -> int:
     return Path(path).stat().st_size
 
 def get_timestamp() -> str:
-    """Get current timestamp in YYYYMMDD_HHMMSS format"""
-    return datetime.now().strftime("%Y%m%d_%H%M%S")
+    """Get current timestamp in YYYY-MM-DD_HH-MM-SS format"""
+    return datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
 def format_size(size: int) -> str:
     """Format file size for display"""

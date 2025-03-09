@@ -31,12 +31,19 @@ def process_file(input_file: Path, output_file: Path) -> Optional[dict]:
         Optional[dict]: Dictionary containing encoding summary if successful
     """
     timestamp = get_timestamp()
+    # Create log file name with video name and timestamp
     log_file = LOG_DIR / f"{input_file.stem}_{timestamp}.log"
-
-    start_time = time.time()
     
-    print_header("Starting Encode")
-    print_info(f"Processing file: {input_file.name}")
+    # Configure file handler for this encode
+    file_handler = logging.FileHandler(log_file)
+    file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    logging.root.addHandler(file_handler)
+    
+    try:
+        start_time = time.time()
+        print_header("Starting Encode")
+        log.info("Beginning encode of: %s", input_file.name)
+        log.info("Encode log: %s", log_file.name)
     print_check(f"Input path:  {input_file.resolve()}")
     print_check(f"Output path: {output_file.resolve()}")
     print_separator()
