@@ -119,7 +119,7 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> N
                     logger.error(msg)
                     raise ValidationError(msg, module="segmentation")
                 
-            logger.info("Segment %s: duration=%.2fs, codec=%s", segment.name, duration, codec)
+                logger.info("Segment %s: duration=%.2fs, codec=%s", segment.name, duration, codec)
         except Exception as e:
             logger.error("Failed to validate segment %s: %s", segment.name, e)
             raise ValidationError(f"Failed to validate segment {segment.name}: {str(e)}", module="segmentation") from e
