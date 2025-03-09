@@ -55,12 +55,12 @@ def concatenate_segments(output_file: Path) -> None:
             codec = video_info.get("codec_name")
             
             if abs(output_duration - total_segment_duration) > 1.0:
-                    raise ConcatenationError(
-                        f"Duration mismatch in concatenated output: {output_duration:.2f}s vs {total_segment_duration:.2f}s",
-                        module="concatenation"
-                    )
-                    
-                if codec != "av1":
+                raise ConcatenationError(
+                    f"Duration mismatch in concatenated output: {output_duration:.2f}s vs {total_segment_duration:.2f}s",
+                    module="concatenation"
+                )
+                
+            if codec != "av1":
                     raise ConcatenationError(
                         "Concatenated output has wrong codec - expected av1",
                         module="concatenation"
