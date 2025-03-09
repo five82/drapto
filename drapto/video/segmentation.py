@@ -5,11 +5,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from .scene_detection import detect_scenes, validate_segment_boundaries
-from ..config import (
-    TARGET_VMAF, VMAF_SAMPLE_COUNT,
-    VMAF_SAMPLE_LENGTH, PRESET, SVT_PARAMS,
-    WORKING_DIR
-)
+from ..config import WORKING_DIR
 from ..exceptions import (
     SegmentationError, ValidationError,
     SegmentMergeError, SegmentEncodingError
@@ -68,7 +64,6 @@ def validate_segments(input_file: Path) -> bool:
     
     Args:
         input_file: Original input video file for duration comparison.
-        variable_segmentation: Always True, as only scene-based segmentation is supported.
         
     Raises:
         ValidationError: If segments are invalid
@@ -185,7 +180,7 @@ def segment_video(input_file: Path) -> bool:
         job.execute()
         
         # Validate segments
-        validate_segments(input_file, variable_segmentation=True)
+        validate_segments(input_file)
         
         return True
         
