@@ -13,7 +13,7 @@ from scenedetect.scene_manager import save_images
 
 from ..utils import run_cmd
 from ..formatting import print_check, print_warning
-from ..ffprobe_utils import probe_session, MetadataError
+from ..ffprobe_utils import probe_session, MetadataError, get_format_info
 from ..config import (
     SCENE_THRESHOLD, HDR_SCENE_THRESHOLD, TARGET_MIN_SEGMENT_LENGTH, MAX_SEGMENT_LENGTH
 )
