@@ -166,7 +166,10 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> N
     
         except Exception as e:
             logger.error("Failed to validate segment %s: %s", segment.name, e)
-            return False
+            raise SegmentEncodingError(
+                f"Failed to validate segment {segment.name}: {str(e)}",
+                module="segment_encoding"
+            ) from e
     
     # After processing, validate total duration
     valid_count = len(valid_segments)

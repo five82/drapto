@@ -13,7 +13,7 @@ def mux_tracks(
     video_track: Path,
     audio_tracks: List[Path],
     output_file: Path
-) -> bool:
+) -> None:
     """
     Mux video and audio tracks into final output file
     
@@ -47,8 +47,7 @@ def mux_tracks(
         ])
         vid_data = json.loads(vid_result.stdout)
         if not vid_data.get("streams"):
-            logger.error("Muxed output: No video stream found")
-            return False
+            raise MuxingError("No video stream found in muxed output", module="muxer")
         video_start = float(vid_data["streams"][0].get("start_time") or 0)
 
         aud_result = run_cmd([
@@ -60,16 +59,14 @@ def mux_tracks(
         ])
         aud_data = json.loads(aud_result.stdout)
         if not aud_data.get("streams"):
-            logger.error("Muxed output: No audio stream found")
-            return False
+            raise MuxingError("No audio stream found in muxed output", module="muxer")
         audio_start = float(aud_data["streams"][0].get("start_time") or 0)
 
         if abs(video_start - audio_start) > sync_threshold:
-            logger.error("Muxed output AV sync error: video_start=%.2fs, audio_start=%.2fs", 
-                     video_start, audio_start)
-            return False
-
-        return True
+            raise MuxingError(
+                f"AV sync error in muxed output: video_start={video_start:.2f}s, audio_start={audio_start:.2f}s",
+                module="muxer"
+            )
     except Exception as e:
         logger.error("Muxing failed: %s", e)
         return False

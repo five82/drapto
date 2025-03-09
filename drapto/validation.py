@@ -177,7 +177,7 @@ def validate_output(input_file: Path, output_file: Path) -> None:
     
     print_check("Output validation successful")
 
-def validate_ab_av1() -> bool:
+def validate_ab_av1() -> None:
     """
     Check if ab-av1 is available.
     
@@ -190,8 +190,7 @@ def validate_ab_av1() -> bool:
         print_check("ab-av1 found")
         return True
     except Exception:
-        print_error(
-            "ab-av1 is required for encoding but not found. "
-            "Install with: cargo install ab-av1"
+        raise DependencyError(
+            "ab-av1 is required for encoding but not found. Install with: cargo install ab-av1",
+            module="validation"
         )
-        return False

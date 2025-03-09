@@ -43,6 +43,10 @@ class AudioEncodingError(DraptoError):
     """Raised when audio encoding fails"""
     pass
 
+class MuxingError(DraptoError):
+    """Raised when muxing audio/video tracks fails"""
+    pass
+
 class SegmentationError(DraptoError):
     """Raised when video segmentation fails"""
     pass

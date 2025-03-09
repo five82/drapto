@@ -42,10 +42,11 @@ def concatenate_segments(output_file: Path) -> None:
         job = ConcatJob(cmd)
         job.execute()
 
-        raise ConcatenationError(
-            "Concatenated output is missing or empty",
-            module="concatenation"
-        )
+        if not output_file.exists() or output_file.stat().st_size == 0:
+            raise ConcatenationError(
+                "Concatenated output is missing or empty",
+                module="concatenation"
+            )
 
         format_info = get_format_info(output_file)
         output_duration = float(format_info.get("duration", 0))
