@@ -59,9 +59,9 @@ def detect_scenes(input_file: Path) -> List[float]:
             if ct in ["smpte2084", "arib-std-b67", "smpte428", "bt2020-10", "bt2020-12"]:
                 threshold_val = HDR_SCENE_THRESHOLD
             else:
+                threshold_val = SCENE_THRESHOLD
         except MetadataError as e:
             logger.warning("Could not determine color properties: %s", e)
-            threshold_val = SCENE_THRESHOLD
             threshold_val = SCENE_THRESHOLD
     except Exception:
         threshold_val = SCENE_THRESHOLD
