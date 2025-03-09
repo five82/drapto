@@ -62,7 +62,7 @@ def merge_segments(segments: List[Path], output: Path) -> None:
         if concat_file.exists():
             concat_file.unlink()
 
-def validate_segments(input_file: Path, _variable_segmentation: bool = True) -> bool:
+def validate_segments(input_file: Path) -> bool:
     """
     Validate video segments after segmentation.
     
@@ -88,10 +88,9 @@ def validate_segments(input_file: Path, _variable_segmentation: bool = True) -> 
     except MetadataError as e:
         raise SegmentationError(f"Failed to get input duration: {str(e)}", module="segmentation") from e
         
-    # Validate each segment and build a list of valid segments
+    # Validate each segment
     total_segment_duration = 0.0
     min_size = 1024  # 1KB minimum segment size
-    valid_segments = []
     
     for segment in segments:
         # Check file size
@@ -119,6 +118,7 @@ def validate_segments(input_file: Path, _variable_segmentation: bool = True) -> 
                     module="segmentation"
                 )
             
+            total_segment_duration += duration
             logger.info("Segment %s: duration=%.2fs, codec=%s", segment.name, duration, codec)
         except (MetadataError, ValidationError) as e:
             logger.error("Failed to validate segment timing: %s", e)
@@ -149,10 +149,10 @@ def validate_segments(input_file: Path, _variable_segmentation: bool = True) -> 
             len(problematic_segments)
         )
     
-    print_check(f"Successfully validated {len(valid_segments)} segments")
+    print_check(f"Successfully validated {len(segments)} segments")
     return True
 
-def segment_video(input_file: Path) -> None:
+def segment_video(input_file: Path) -> bool:
     """
     Segment video into chunks for parallel encoding
     
