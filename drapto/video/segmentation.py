@@ -180,14 +180,12 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> N
     # After processing, validate total duration
     valid_count = len(valid_segments)
     try:
-            with probe_session(input_file) as probe:
-                total_duration = probe.get("duration", "video")
-        except MetadataError as e:
-            msg = f"Failed to get input duration: {str(e)}"
-            logger.error(msg)
-            raise SegmentationError(msg, module="segmentation") from e
+        with probe_session(input_file) as probe:
+            total_duration = probe.get("duration", "video")
     except MetadataError as e:
         msg = f"Failed to get input duration: {str(e)}"
+        logger.error(msg)
+        raise SegmentationError(msg, module="segmentation") from e
         logger.error(msg)
         raise SegmentationError(msg, module="segmentation") from e
 

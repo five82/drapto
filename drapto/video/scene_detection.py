@@ -168,7 +168,9 @@ def validate_segment_boundaries(
                         
                     short_segments.append((segment, is_scene))
                 
-            cumulative_duration += duration
+                cumulative_duration += duration
+            except Exception as e:
+                logger.error("Failed to validate segment %s: %s", segment.name, e)
             
         return short_segments
         
