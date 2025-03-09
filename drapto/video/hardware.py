@@ -6,7 +6,7 @@ from typing import Optional
 
 from ..utils import run_cmd
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 def check_hardware_acceleration() -> Optional[str]:
     """
@@ -18,11 +18,11 @@ def check_hardware_acceleration() -> Optional[str]:
             # VideoToolbox is used for decoding on macOS
             result = run_cmd(["ffmpeg", "-hide_banner", "-hwaccels"])
             if "videotoolbox" in result.stdout:
-                log.info("Found VideoToolbox for hardware decoding")
+                logger.info("Found VideoToolbox for hardware decoding")
                 return "videotoolbox"
         except Exception as e:
-            log.warning("Error checking hardware acceleration: %s", e)
-    log.info("No supported hardware decoding acceleration found")
+            logger.warning("Error checking hardware acceleration: %s", e)
+    logger.info("No supported hardware decoding acceleration found")
     return None
 
 def get_hwaccel_options(accel_type: Optional[str] = None) -> str:

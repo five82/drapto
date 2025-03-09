@@ -18,7 +18,7 @@ from .audio.encoding import encode_audio_tracks
 from .muxer import mux_tracks
 from .utils import get_timestamp, format_size, get_file_size
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 def process_file(input_file: Path, output_file: Path) -> Optional[dict]:
     """
