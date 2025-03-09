@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 from ..config import WORKING_DIR
 from ..utils import run_cmd, run_cmd_with_progress
 from ..formatting import print_info
+from ..exceptions import AudioEncodingError
 
 def encode_audio_tracks(input_file: Path) -> List[Path]:
     """
