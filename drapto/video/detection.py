@@ -148,11 +148,10 @@ def detect_crop(input_file: Path, disable_crop: bool = None) -> Optional[str]:
         total_samples = 20
     logger.info("Analyzing %d frames for black bars (threshold: %d)...", total_samples, crop_threshold)
 
-    # Get video info from ffprobe_utils
+    # Get video dimensions
     try:
-        video_info = get_video_info(input_file)
-        orig_width = int(video_info.get("width", 0))
-        orig_height = int(video_info.get("height", 0))
+        orig_width = int(get_media_property(input_file, "video", "width"))
+        orig_height = int(get_media_property(input_file, "video", "height"))
     except Exception as e:
         logger.error("Failed to get video dimensions: %s", e)
         return None

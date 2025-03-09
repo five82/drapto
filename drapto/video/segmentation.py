@@ -87,9 +87,7 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> N
         
     logger.info("Variable segmentation in use")
     try:
-        from ..ffprobe_utils import get_format_info
-        format_info = get_format_info(input_file)
-        total_duration = float(format_info.get("duration", 0))
+        total_duration = get_media_property(input_file, "video", "duration")
     except Exception as e:
         raise SegmentationError(f"Failed to get input duration: {str(e)}", module="segmentation") from e
         

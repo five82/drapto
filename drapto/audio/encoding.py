@@ -22,15 +22,9 @@ def encode_audio_tracks(input_file: Path) -> List[Path]:
         AudioEncodingError: If encoding fails
     """
     try:
-        # Get number of audio tracks
-        result = run_cmd([
-            "ffprobe", "-v", "error",
-            "-select_streams", "a",
-            "-show_entries", "stream=index",
-            "-of", "csv=p=0",
-            str(input_file)
-        ])
-        num_tracks = len(result.stdout.strip().split('\n'))
+        # Get number of audio tracks from ffprobe_utils
+        audio_info = get_all_audio_info(input_file)
+        num_tracks = len(audio_info)
         
         if num_tracks == 0:
             logger.warning("No audio tracks found")
@@ -69,14 +63,7 @@ def encode_audio_track(input_file: Path, track_index: int) -> Path:
     
     try:
         # Get number of channels
-        result = run_cmd([
-            "ffprobe", "-v", "error",
-            "-select_streams", f"a:{track_index}",
-            "-show_entries", "stream=channels",
-            "-of", "csv=p=0",
-            str(input_file)
-        ])
-        num_channels = int(result.stdout.strip())
+        num_channels = int(get_media_property(input_file, "audio", "channels", track_index))
         
         # Determine bitrate based on channel count
         if num_channels == 1:
