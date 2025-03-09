@@ -139,17 +139,17 @@ def validate_quality_metrics(input_file: Path, output_file: Path, validation_rep
 logger = logging.getLogger(__name__)
 
 def validate_output(input_file: Path, output_file: Path) -> None:
-    """
-    Validate the output file to ensure encoding was successful.
-    """
+    """Validate the output file to ensure encoding was successful."""
     validation_report = []
     has_errors = False
     
-    try:
-        # Check if file exists and has size
-        if not output_file.exists() or output_file.stat().st_size == 0:
-            raise ValidationError("Output file is empty or doesn't exist", module="validation")
+    # Check if file exists and has size
+    if not output_file.exists():
+        raise ValidationError("Output file does not exist", module="validation")
+    if output_file.stat().st_size == 0:
+        raise ValidationError("Output file is empty", module="validation")
 
+    try:
         # Validate individual components
         validate_video_stream(input_file, output_file, validation_report)
         validate_audio_streams(input_file, output_file, validation_report)
@@ -159,8 +159,9 @@ def validate_output(input_file: Path, output_file: Path) -> None:
         validate_quality_metrics(input_file, output_file, validation_report)
         validate_av_sync(output_file, validation_report)
         
-    except ValidationError:
+    except ValidationError as e:
         has_errors = True
+        validation_report.append(f"ERROR: {e.message}")
     
     # Final check for any accumulated errors
     if any(entry.startswith("ERROR") for entry in validation_report) or has_errors:
