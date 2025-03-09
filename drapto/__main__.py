@@ -9,6 +9,8 @@ from pathlib import Path
 from rich.logging import RichHandler
 
 from . import __version__
+from .config import LOG_DIR
+from .utils import get_timestamp
 from .formatting import print_header, print_error, print_info, print_success
 from .pipeline import process_directory, process_file
 from .utils import check_dependencies
@@ -20,13 +22,29 @@ def setup_logging(log_level: str = None):
     level = log_level if log_level is not None else LOG_LEVEL
     # Convert the level (a string) to its numeric value using logging._nameToLevel
     numeric_level = logging._nameToLevel.get(level.upper(), logging.INFO)
+
+    # Configure both console and file handlers
+    handlers = [RichHandler(rich_tracebacks=True, show_path=False)]
+    
+    # Add file handler with timestamp-based filename
+    log_file = LOG_DIR / f"drapto_{get_timestamp()}.log"
+    file_handler = logging.FileHandler(log_file)
+    file_handler.setFormatter(logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    ))
+    handlers.append(file_handler)
+    
     logging.basicConfig(
         level=numeric_level,
         format="%(message)s",
         datefmt="[%X]",
-        handlers=[RichHandler(rich_tracebacks=True, show_path=False)]
+        handlers=handlers
     )
-    # No explicit debug level for scene detection; use global level
+    
+    # Log the start of a new session
+    log = logging.getLogger("drapto")
+    log.info("Started new logging session")
+    log.info("Log file: %s", log_file)
 
 def parse_args():
     """Parse command line arguments"""
