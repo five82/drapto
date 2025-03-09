@@ -1,6 +1,7 @@
 """High-level pipeline orchestration for video encoding"""
 
 import logging
+import sys
 import time
 from pathlib import Path
 from typing import Optional
@@ -52,7 +53,6 @@ def process_file(input_file: Path, output_file: Path) -> Optional[dict]:
         output_file.parent.mkdir(parents=True, exist_ok=True)
         
         # Override crop detection if disabled via command line
-        import sys
         args = sys.argv
         disable_crop = "--disable-crop" in args
         
@@ -63,7 +63,7 @@ def process_file(input_file: Path, output_file: Path) -> Optional[dict]:
         else:
             print_check("Standard content detected")
 
-    try:
+        try:
         video_track = encode_standard(input_file, disable_crop, dv_flag=is_dolby_vision)
         if not video_track:
             log.error("Video encoding failed")
