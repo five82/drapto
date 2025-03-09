@@ -10,7 +10,10 @@ from ..config import WORKING_DIR
 from ..utils import run_cmd, run_cmd_with_progress
 from ..formatting import print_info
 from ..exceptions import AudioEncodingError
-from ..ffprobe_utils import get_all_audio_info, get_media_property, probe_session, MetadataError, get_audio_channels
+from ..ffprobe_utils import (
+    get_all_audio_info, get_media_property, probe_session,
+    MetadataError, get_audio_channels, get_duration
+)
 
 def encode_audio_tracks(input_file: Path) -> List[Path]:
     """

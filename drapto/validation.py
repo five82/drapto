@@ -9,7 +9,7 @@ from .utils import run_cmd
 from .formatting import print_check, print_error, print_header
 from .ffprobe_utils import (
     get_video_info, get_format_info, get_subtitle_info,
-    get_all_audio_info, probe_session
+    get_all_audio_info, probe_session, get_resolution
 )
 from .exceptions import ValidationError, DependencyError
 
