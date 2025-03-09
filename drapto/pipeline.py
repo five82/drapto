@@ -125,6 +125,11 @@ def process_file(input_file: Path, output_file: Path) -> Optional[dict]:
     except Exception as e:
         log.exception("Error processing %s: %s", input_file.name, e)
         return None
+    finally:
+        # Clean up the file handler
+        logging.root.removeHandler(file_handler)
+        file_handler.close()
+        log.info("Closed encode log: %s", log_file.name)
 
 def process_directory(input_dir: Path, output_dir: Path) -> bool:
     """
