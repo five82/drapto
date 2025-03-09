@@ -15,7 +15,7 @@ from ..exceptions import (
     SegmentMergeError, SegmentEncodingError
 )
 from ..utils import run_cmd
-from ..formatting import print_info, print_check
+from ..formatting import print_check
 from ..ffprobe_utils import (
     MetadataError, probe_session
 )
@@ -74,7 +74,6 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> b
         ValidationError: If segments are invalid
         SegmentationError: If segment validation fails
     """
-    from .scene_detection import detect_scenes, validate_segment_boundaries
     segments_dir = WORKING_DIR / "segments"
     segments = sorted(segments_dir.glob("*.mkv"))
     
@@ -128,35 +127,6 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> b
                 module="segmentation"
             ) from e
     
-            try:
-                with probe_session(segment) as probe:
-                    duration = float(probe.get("duration", "format"))
-                    video_start = probe.get("start_time", "video")
-                    
-                    # Check if segment duration is short
-                    if duration < 1.0 and valid_segments:
-                        # Try to merge with previous segment
-                        prev_segment, prev_duration = valid_segments[-1]
-                        merged_name = f"merged_{prev_segment.stem}_{segment.stem}.mkv"
-                        merged_path = segment.parent / merged_name
-                        
-                        if merge_segments([prev_segment, segment], merged_path):
-                            logger.info("Merged short segment %.2fs with previous segment", duration)
-                            # Update the previous segment entry with merged segment
-                            merged_duration = prev_duration + duration
-                            valid_segments[-1] = (merged_path, merged_duration)
-                            total_segment_duration += duration
-                            # Clean up original segments
-                            prev_segment.unlink()
-                            segment.unlink()
-                        else:
-                            msg = f"Failed to merge short segment: {segment.name}"
-                            logger.error(msg)
-                            raise SegmentMergeError(msg, module="segmentation")
-                    else:
-                        # Normal duration segment or first segment
-                        valid_segments.append((segment, duration))
-                        total_segment_duration += duration
             except MetadataError as e:
                 logger.error("Failed to get segment metadata: %s", e)
                 raise SegmentEncodingError(
@@ -171,13 +141,6 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> b
                 ) from e
     
     duration_tolerance = max(1.0, total_duration * 0.02)
-    try:
-        with probe_session(input_file) as probe:
-            total_duration = probe.get("duration", "video")
-    except MetadataError as e:
-        msg = f"Failed to get input duration: {str(e)}"
-        logger.error(msg)
-        raise SegmentationError(msg, module="segmentation") from e
 
     # Check that total duration matches within tolerance
     duration_tolerance = max(1.0, total_duration * 0.02)  # 2% tolerance or minimum 1 second
