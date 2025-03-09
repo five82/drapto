@@ -477,22 +477,30 @@ def validate_encoded_segments(segments_dir: Path) -> bool:
                     )
                     return False
                 
+            except MetadataError as e:
+                logger.error("Failed to get encoded segment properties: %s", e)
+                return False
+
             # Compare durations (allow 0.1s difference)
-            orig_duration = float(run_cmd([
-                "ffprobe", "-v", "error",
-                "-show_entries", "format=duration",
-                "-of", "default=noprint_wrappers=1:nokey=1",
-                str(orig)
-            ]).stdout.strip())
-            
-            enc_duration = float(duration)
-            # Allow a relative tolerance of 5% (or at least 0.2 sec) to account for slight discrepancies
-            tolerance = max(0.2, orig_duration * 0.05)
-            if abs(orig_duration - enc_duration) > tolerance:
-                logger.error(
-                    "Duration mismatch in %s: %.2f vs %.2f (tolerance: %.2f)",
-                    encoded.name, orig_duration, enc_duration, tolerance
-                )
+            try:
+                orig_duration = float(run_cmd([
+                    "ffprobe", "-v", "error",
+                    "-show_entries", "format=duration",
+                    "-of", "default=noprint_wrappers=1:nokey=1",
+                    str(orig)
+                ]).stdout.strip())
+                
+                enc_duration = float(duration)
+                # Allow a relative tolerance of 5% (or at least 0.2 sec) to account for slight discrepancies
+                tolerance = max(0.2, orig_duration * 0.05)
+                if abs(orig_duration - enc_duration) > tolerance:
+                    logger.error(
+                        "Duration mismatch in %s: %.2f vs %.2f (tolerance: %.2f)",
+                        encoded.name, orig_duration, enc_duration, tolerance
+                    )
+                    return False
+            except Exception as e:
+                logger.error("Failed to compare segment durations: %s", e)
                 return False
                 
         except Exception as e:
