@@ -70,4 +70,4 @@ def mux_tracks(
             )
     except Exception as e:
         logger.error("Muxing failed: %s", e)
-        return False
+        raise MuxingError("Muxing failed", module="muxer")

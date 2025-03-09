@@ -188,7 +188,7 @@ def validate_ab_av1() -> None:
     try:
         run_cmd(["which", "ab-av1"])
         print_check("ab-av1 found")
-        return True
+        return
     except Exception:
         raise DependencyError(
             "ab-av1 is required for encoding but not found. Install with: cargo install ab-av1",
