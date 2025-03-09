@@ -104,34 +104,33 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> b
             logger.error(msg)
             raise ValidationError(msg, module="segmentation")
     
+        from ..ffprobe_utils import get_format_info, get_video_info
         try:
-            from ..ffprobe_utils import get_format_info, get_video_info
-            try:
-                with probe_session(segment) as probe:
-                    duration = float(probe.get("duration", "format"))
-                    codec = probe.get("codec_name", "video")
-                    video_start = probe.get("start_time", "video")
+            with probe_session(segment) as probe:
+                duration = float(probe.get("duration", "format"))
+                codec = probe.get("codec_name", "video")
+                video_start = probe.get("start_time", "video")
 
-                if not duration or not codec:
-                    msg = f"Invalid segment {segment.name}: missing duration or codec"
-                    logger.error(msg)
-                    raise ValidationError(msg, module="segmentation")
+            if not duration or not codec:
+                msg = f"Invalid segment {segment.name}: missing duration or codec"
+                logger.error(msg)
+                raise ValidationError(msg, module="segmentation")
 
-                # Validate video timestamps
-                sync_threshold = 0.2  # increased allowed difference in seconds
-                if abs(video_start) > sync_threshold:
-                    raise ValidationError(
-                        f"Segment {segment.name} timestamp issue: video_start={video_start:.2f}s is not near 0",
-                        module="segmentation"
-                    )
-                
-                logger.info("Segment %s: duration=%.2fs, codec=%s", segment.name, duration, codec)
-            except MetadataError as e:
-                logger.error("Failed to validate segment timing: %s", e)
+            # Validate video timestamps
+            sync_threshold = 0.2  # increased allowed difference in seconds
+            if abs(video_start) > sync_threshold:
                 raise ValidationError(
-                    f"Failed to validate segment {segment.name} timing",
+                    f"Segment {segment.name} timestamp issue: video_start={video_start:.2f}s is not near 0",
                     module="segmentation"
-                ) from e
+                )
+            
+            logger.info("Segment %s: duration=%.2fs, codec=%s", segment.name, duration, codec)
+        except MetadataError as e:
+            logger.error("Failed to validate segment timing: %s", e)
+            raise ValidationError(
+                f"Failed to validate segment {segment.name} timing",
+                module="segmentation"
+            ) from e
     
             try:
                 with probe_session(segment) as probe:
