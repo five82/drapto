@@ -10,15 +10,15 @@ from ..config import WORKING_DIR
 from ..utils import run_cmd, run_cmd_with_progress
 from ..formatting import print_info
 
-def encode_audio_tracks(input_file: Path) -> Optional[List[Path]]:
+def encode_audio_tracks(input_file: Path) -> List[Path]:
     """
     Encode all audio tracks from input file using libopus
     
-    Args:
-        input_file: Path to input video file
-        
     Returns:
-        Optional[List[Path]]: List of encoded audio track paths if successful
+        List[Path]: List of encoded audio track paths
+        
+    Raises:
+        AudioEncodingError: If encoding fails
     """
     try:
         # Get number of audio tracks
@@ -37,29 +37,32 @@ def encode_audio_tracks(input_file: Path) -> Optional[List[Path]]:
             
         encoded_tracks = []
         for track_idx in range(num_tracks):
-            output_track = encode_audio_track(input_file, track_idx)
-            if output_track:
+            try:
+                output_track = encode_audio_track(input_file, track_idx)
                 encoded_tracks.append(output_track)
-            else:
-                logger.error("Failed to encode audio track %d", track_idx)
-                return None
+            except Exception as e:
+                raise AudioEncodingError(
+                    f"Failed to encode audio track {track_idx}: {str(e)}",
+                    module="audio_encoding"
+                ) from e
                 
         return encoded_tracks
         
     except Exception as e:
-        logger.error("Failed to process audio tracks: %s", e)
-        return None
+        raise AudioEncodingError(
+            f"Audio processing failed: {str(e)}", 
+            module="audio_encoding"
+        ) from e
 
-def encode_audio_track(input_file: Path, track_index: int) -> Optional[Path]:
+def encode_audio_track(input_file: Path, track_index: int) -> Path:
     """
     Encode a single audio track using libopus
     
-    Args:
-        input_file: Path to input video file
-        track_index: Index of audio track to encode
-        
     Returns:
-        Optional[Path]: Path to encoded audio file if successful
+        Path: Path to encoded audio file
+        
+    Raises:
+        AudioEncodingError: If encoding fails
     """
     output_file = WORKING_DIR / f"audio-{track_index}.mkv"
     
@@ -118,11 +121,13 @@ def encode_audio_track(input_file: Path, track_index: int) -> Optional[Path]:
             audio_duration = None
 
         job = AudioEncodeJob(cmd)
-        if job.execute(total_duration=audio_duration, log_interval=5.0) != 0:
-            raise RuntimeError(f"Audio encoding failed for track {track_index}")
+        job.execute(total_duration=audio_duration, log_interval=5.0)
         
         return output_file
         
     except Exception as e:
         logger.error("Failed to encode audio track %d: %s", track_index, e)
-        return None
+        raise AudioEncodingError(
+            f"Audio track {track_index} encoding failed: {str(e)}",
+            module="audio_encoding"
+        ) from e
