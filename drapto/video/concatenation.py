@@ -23,13 +23,7 @@ def concatenate_segments(output_file: Path) -> None:
         segments = sorted((WORKING_DIR / "encoded_segments").glob("*.mkv"))
         
         for segment in segments:
-            result = run_cmd([
-                "ffprobe", "-v", "error",
-                "-show_entries", "format=duration",
-                "-of", "default=noprint_wrappers=1:nokey=1",
-                str(segment)
-            ])
-            duration = float(result.stdout.strip())
+            duration = float(get_media_property(segment, "format", "duration"))
             total_segment_duration += duration
         
         with open(concat_file, 'w') as f:
