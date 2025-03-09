@@ -135,37 +135,47 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> N
                         module="segmentation"
                     )
     
-            # Check if segment duration is short
-            if duration < 1.0 and valid_segments:
-                # Try to merge with previous segment
-                prev_segment, prev_duration = valid_segments[-1]
-                merged_name = f"merged_{prev_segment.stem}_{segment.stem}.mkv"
-                merged_path = segment.parent / merged_name
-                
-                if merge_segments([prev_segment, segment], merged_path):
-                    logger.info("Merged short segment %.2fs with previous segment", duration)
-                    # Update the previous segment entry with merged segment
-                    merged_duration = prev_duration + duration
-                    valid_segments[-1] = (merged_path, merged_duration)
-                    total_segment_duration += duration
-                    # Clean up original segments
-                    prev_segment.unlink()
-                    segment.unlink()
-                else:
-                    msg = f"Failed to merge short segment: {segment.name}"
-                    logger.error(msg)
-                    raise SegmentMergeError(msg, module="segmentation")
-            else:
-                # Normal duration segment or first segment
-                valid_segments.append((segment, duration))
-                total_segment_duration += duration
-    
-        except Exception as e:
-            logger.error("Failed to validate segment %s: %s", segment.name, e)
-            raise SegmentEncodingError(
-                f"Failed to validate segment {segment.name}: {str(e)}",
-                module="segment_encoding"
-            ) from e
+            try:
+                with probe_session(segment) as probe:
+                    duration = float(probe.get("duration", "format"))
+                    video_start = probe.get("start_time", "video")
+                    
+                    # Check if segment duration is short
+                    if duration < 1.0 and valid_segments:
+                        # Try to merge with previous segment
+                        prev_segment, prev_duration = valid_segments[-1]
+                        merged_name = f"merged_{prev_segment.stem}_{segment.stem}.mkv"
+                        merged_path = segment.parent / merged_name
+                        
+                        if merge_segments([prev_segment, segment], merged_path):
+                            logger.info("Merged short segment %.2fs with previous segment", duration)
+                            # Update the previous segment entry with merged segment
+                            merged_duration = prev_duration + duration
+                            valid_segments[-1] = (merged_path, merged_duration)
+                            total_segment_duration += duration
+                            # Clean up original segments
+                            prev_segment.unlink()
+                            segment.unlink()
+                        else:
+                            msg = f"Failed to merge short segment: {segment.name}"
+                            logger.error(msg)
+                            raise SegmentMergeError(msg, module="segmentation")
+                    else:
+                        # Normal duration segment or first segment
+                        valid_segments.append((segment, duration))
+                        total_segment_duration += duration
+            except MetadataError as e:
+                logger.error("Failed to get segment metadata: %s", e)
+                raise SegmentEncodingError(
+                    f"Failed to validate segment {segment.name}: {str(e)}",
+                    module="segment_encoding"
+                ) from e
+            except Exception as e:
+                logger.error("Failed to validate segment %s: %s", segment.name, e)
+                raise SegmentEncodingError(
+                    f"Failed to validate segment {segment.name}: {str(e)}",
+                    module="segment_encoding"
+                ) from e
     
     # After processing, validate total duration
     valid_count = len(valid_segments)

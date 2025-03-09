@@ -45,18 +45,17 @@ def concatenate_segments(output_file: Path) -> None:
                 module="concatenation"
             )
 
-        format_info = get_format_info(output_file)
-        output_duration = float(format_info.get("duration", 0))
-        
-        if abs(output_duration - total_segment_duration) > 1.0:
-            raise ConcatenationError(
-                f"Duration mismatch in concatenated output: {output_duration:.2f}s vs {total_segment_duration:.2f}s",
-                module="concatenation"
-            )
-
         try:
             with probe_session(output_file) as probe:
+                output_duration = float(probe.get("duration", "format"))
                 codec = probe.get("codec_name", "video")
+                
+                if abs(output_duration - total_segment_duration) > 1.0:
+                    raise ConcatenationError(
+                        f"Duration mismatch in concatenated output: {output_duration:.2f}s vs {total_segment_duration:.2f}s",
+                        module="concatenation"
+                    )
+                    
                 if codec != "av1":
                     raise ConcatenationError(
                         "Concatenated output has wrong codec - expected av1",

@@ -142,11 +142,12 @@ def validate_segment_boundaries(
         cumulative_duration = 0.0
         
         for segment in segments:
-            # Get segment duration
-            format_info = get_format_info(segment)
-            duration = float(format_info.get("duration", 0))
-            
-            if duration < min_duration:
+            try:
+                # Get segment duration using probe session
+                with probe_session(segment) as probe:
+                    duration = float(probe.get("duration", "format"))
+                
+                if duration < min_duration:
                 # Check if this segment boundary aligns with a scene change
                 segment_end = cumulative_duration + duration
                 is_scene = any(
