@@ -1,7 +1,5 @@
 """Video segmentation and parallel encoding functions"""
 
-import logging
-import shutil
 from pathlib import Path
 from typing import List, Optional
 
@@ -103,7 +101,6 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> b
             logger.error(msg)
             raise ValidationError(msg, module="segmentation")
     
-        from ..ffprobe_utils import get_format_info, get_video_info
         try:
             with probe_session(segment) as probe:
                 duration = float(probe.get("duration", "format"))
@@ -124,7 +121,7 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> b
                 )
             
             logger.info("Segment %s: duration=%.2fs, codec=%s", segment.name, duration, codec)
-        except MetadataError as e:
+        except (MetadataError, ValidationError) as e:
             logger.error("Failed to validate segment timing: %s", e)
             raise ValidationError(
                 f"Failed to validate segment {segment.name} timing",
