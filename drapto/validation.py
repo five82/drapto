@@ -204,7 +204,7 @@ def validate_output(input_file: Path, output_file: Path) -> bool:
             else:
                 print_check(entry)
     except Exception as e:
-        log.error("Failed to output validation report: %s", e)
+        logger.error("Failed to output validation report: %s", e)
         error = True
         
     # Check audio streams
@@ -254,7 +254,7 @@ def validate_output(input_file: Path, output_file: Path) -> bool:
             )
             error = True
     except Exception as e:
-        log.error("Failed to compare durations: %s", e)
+        logger.error("Failed to compare durations: %s", e)
         error = True
         
     if error:

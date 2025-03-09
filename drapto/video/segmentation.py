@@ -77,17 +77,17 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> b
     segments = sorted(segments_dir.glob("*.mkv"))
     
     if not segments:
-        log.error("No segments created")
+        logger.error("No segments created")
         return False
-    log.info("Found %d segments", len(segments))
+    logger.info("Found %d segments", len(segments))
         
-    log.info("Variable segmentation in use")
+    logger.info("Variable segmentation in use")
     try:
         from ..ffprobe_utils import get_format_info
         format_info = get_format_info(input_file)
         total_duration = float(format_info.get("duration", 0))
     except Exception as e:
-        log.error("Failed to get input duration: %s", e)
+        logger.error("Failed to get input duration: %s", e)
         return False
         
     # Validate each segment and build a list of valid segments
@@ -98,7 +98,7 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> b
     for segment in segments:
         # Check file size
         if segment.stat().st_size < min_size:
-            log.error("Segment too small: %s", segment.name)
+            logger.error("Segment too small: %s", segment.name)
             return False
     
         try:
@@ -110,10 +110,10 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> b
             codec = video_info.get("codec_name")
             
             if not duration or not codec:
-                log.error("Invalid segment %s: missing duration or codec", segment.name)
+                logger.error("Invalid segment %s: missing duration or codec", segment.name)
                 return False
                 
-            log.info("Segment %s: duration=%.2fs, codec=%s", segment.name, duration, codec)
+            logger.info("Segment %s: duration=%.2fs, codec=%s", segment.name, duration, codec)
 
             # Validate the segment's video timestamps.
             # Since segments are created without audio (-an), we only check that the video start time is near zero.
@@ -130,7 +130,7 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> b
             video_start = float(vid_data["streams"][0].get("start_time") or 0)
 
             if abs(video_start) > sync_threshold:
-                log.error("Segment %s timestamp issue: video_start=%.2fs is not near 0", segment.name, video_start)
+                logger.error("Segment %s timestamp issue: video_start=%.2fs is not near 0", segment.name, video_start)
                 return False
     
             # Check if segment duration is short
@@ -141,7 +141,7 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> b
                 merged_path = segment.parent / merged_name
                 
                 if merge_segments([prev_segment, segment], merged_path):
-                    log.info("Merged short segment %.2fs with previous segment", duration)
+                    logger.info("Merged short segment %.2fs with previous segment", duration)
                     # Update the previous segment entry with merged segment
                     merged_duration = prev_duration + duration
                     valid_segments[-1] = (merged_path, merged_duration)
@@ -150,7 +150,7 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> b
                     prev_segment.unlink()
                     segment.unlink()
                 else:
-                    log.error("Failed to merge short segment: %s", segment.name)
+                    logger.error("Failed to merge short segment: %s", segment.name)
                     return False
             else:
                 # Normal duration segment or first segment
@@ -158,7 +158,7 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> b
                 total_segment_duration += duration
     
         except Exception as e:
-            log.error("Failed to validate segment %s: %s", segment.name, e)
+            logger.error("Failed to validate segment %s: %s", segment.name, e)
             return False
     
     # After processing, validate total duration
@@ -172,13 +172,13 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> b
         ])
         total_duration = float(result.stdout.strip())
     except Exception as e:
-        log.error("Failed to get input duration: %s", e)
+        logger.error("Failed to get input duration: %s", e)
         return False
 
     # Check that total duration matches within tolerance
     duration_tolerance = max(1.0, total_duration * 0.02)  # 2% tolerance or minimum 1 second
     if abs(total_segment_duration - total_duration) > duration_tolerance:
-        log.error("Total valid segment duration (%.2fs) differs significantly from input (%.2fs)",
+        logger.error("Total valid segment duration (%.2fs) differs significantly from input (%.2fs)",
                   total_segment_duration, total_duration)
         return False
 
@@ -189,7 +189,7 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> b
     # Don't fail validation for short segments that align with scene changes
     problematic_segments = [s for s, is_scene in short_segments if not is_scene]
     if problematic_segments:
-        log.warning(
+        logger.warning(
             "Found %d problematic short segments not aligned with scene changes",
             len(problematic_segments)
         )
@@ -229,7 +229,7 @@ def segment_video(input_file: Path) -> bool:
             job.execute()
             variable_seg = True
         else:
-            log.error("Scene detection failed; no scenes detected. Failing segmentation.")
+            logger.error("Scene detection failed; no scenes detected. Failing segmentation.")
             return False
             
         job = SegmentationJob(cmd)
@@ -242,6 +242,6 @@ def segment_video(input_file: Path) -> bool:
         return True
         
     except Exception as e:
-        log.error("Segmentation failed: %s", e)
+        logger.error("Segmentation failed: %s", e)
         return False
 

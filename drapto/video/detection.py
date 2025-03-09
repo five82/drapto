@@ -61,10 +61,10 @@ def detect_crop(input_file: Path, disable_crop: bool = None) -> Optional[str]:
         disable_crop = DISABLE_CROP
         
     if disable_crop:
-        log.info("Crop detection disabled")
+        logger.info("Crop detection disabled")
         return None
 
-    log.info("Analyzing video for black bars...")
+    logger.info("Analyzing video for black bars...")
 
     # Get video stream info from ffprobe_utils
     try:
@@ -74,7 +74,7 @@ def detect_crop(input_file: Path, disable_crop: bool = None) -> Optional[str]:
         cp = info.get("color_primaries", "")
         cs = info.get("color_space", "")
     except Exception as e:
-        log.error("Unable to read video color properties: %s", e)
+        logger.error("Unable to read video color properties: %s", e)
         ct = cp = cs = ""
 
     # Set initial crop threshold and adjust for HDR content
@@ -85,7 +85,7 @@ def detect_crop(input_file: Path, disable_crop: bool = None) -> Optional[str]:
             or re.match(r"^(bt2020nc|bt2020c)$", cs)):
         is_hdr = True
         crop_threshold = 128
-        log.info("HDR content detected, adjusting detection sensitivity")
+        logger.info("HDR content detected, adjusting detection sensitivity")
 
     # For HDR input, sample a few frames to find average black level and adjust threshold
     if is_hdr:
@@ -106,7 +106,7 @@ def detect_crop(input_file: Path, disable_crop: bool = None) -> Optional[str]:
                 black_level = 128
             crop_threshold = int(black_level * 3 / 2)
         except Exception as e:
-            log.error("Error during HDR black level analysis: %s", e)
+            logger.error("Error during HDR black level analysis: %s", e)
 
     # Clamp crop_threshold within reasonable bounds
     if crop_threshold < 16:
@@ -125,7 +125,7 @@ def detect_crop(input_file: Path, disable_crop: bool = None) -> Optional[str]:
         duration = float(duration_result.stdout.strip())
         duration = int(round(duration))
     except Exception as e:
-        log.error("Failed to get duration: %s", e)
+        logger.error("Failed to get duration: %s", e)
         duration = 0
 
     # Skip "credits" for long videos
@@ -146,7 +146,7 @@ def detect_crop(input_file: Path, disable_crop: bool = None) -> Optional[str]:
         if interval < 1:
             interval = 1
         total_samples = 20
-    log.info("Analyzing %d frames for black bars (threshold: %d)...", total_samples, crop_threshold)
+    logger.info("Analyzing %d frames for black bars (threshold: %d)...", total_samples, crop_threshold)
 
     # Get video info from ffprobe_utils
     try:
@@ -154,7 +154,7 @@ def detect_crop(input_file: Path, disable_crop: bool = None) -> Optional[str]:
         orig_width = int(video_info.get("width", 0))
         orig_height = int(video_info.get("height", 0))
     except Exception as e:
-        log.error("Failed to get video dimensions: %s", e)
+        logger.error("Failed to get video dimensions: %s", e)
         return None
 
     # Run ffmpeg cropdetect filter over a sample of frames
@@ -175,11 +175,11 @@ def detect_crop(input_file: Path, disable_crop: bool = None) -> Optional[str]:
         valid_crops = [(int(w), int(h), int(x), int(y))
                        for (w, h, x, y) in matches if int(w) == orig_width]
     except Exception as e:
-        log.error("Error during crop detection: %s", e)
+        logger.error("Error during crop detection: %s", e)
         return None
 
     if not valid_crops:
-        log.info("No crop values detected, using full dimensions")
+        logger.info("No crop values detected, using full dimensions")
         return f"crop={orig_width}:{orig_height}:0:0"
 
     # Analyze crop heights (the second value) from valid crops; ignore very small crop heights (<100)
@@ -194,9 +194,9 @@ def detect_crop(input_file: Path, disable_crop: bool = None) -> Optional[str]:
     black_bar_percent = (black_bar_size * 100) // orig_height
 
     if black_bar_size > 0:
-        log.info("Found black bars: %d pixels (%d%% of height)", black_bar_size, black_bar_percent)
+        logger.info("Found black bars: %d pixels (%d%% of height)", black_bar_size, black_bar_percent)
     else:
-        log.info("No significant black bars detected")
+        logger.info("No significant black bars detected")
 
     if black_bar_percent > 1:
         crop_value = f"crop={orig_width}:{most_common_height}:0:{black_bar_size}"
