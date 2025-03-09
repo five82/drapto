@@ -98,9 +98,13 @@ def encode_audio_track(input_file: Path, track_index: int) -> Path:
         # Get audio duration for progress reporting
         try:
             with probe_session(input_file) as probe:
-                audio_duration = float(probe.get("duration", "audio", track_index))
+                try:
+                    audio_duration = float(probe.get("duration", "audio", track_index))
+                except MetadataError:
+                    audio_duration = float(probe.get("duration", "format"))
+                    logger.warning("Using container duration for audio progress reporting")
         except MetadataError as e:
-            logger.error("Could not get audio duration for progress reporting: %s", e)
+            logger.error("Could not get audio duration: %s", e)
             audio_duration = None
 
         job = AudioEncodeJob(cmd)

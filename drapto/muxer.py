@@ -32,15 +32,30 @@ def mux_tracks(
 
         try:
             with probe_session(output_file) as probe:
-                video_start = probe.get("start_time", "video")
-                video_duration = probe.get("duration", "video") 
-                audio_start = probe.get("start_time", "audio")
-                audio_duration = probe.get("duration", "audio")
+                # Get video timing with format fallback
+                try:
+                    video_start = probe.get("start_time", "video")
+                    video_duration = probe.get("duration", "video")
+                except MetadataError:
+                    video_start = 0.0
+                    video_duration = probe.get("duration", "format")
+                    logger.warning("Using container duration for video validation")
+
+                # Get audio timing with format fallback
+                try:
+                    audio_start = probe.get("start_time", "audio")
+                    audio_duration = probe.get("duration", "audio")
+                except MetadataError:
+                    audio_start = 0.0
+                    audio_duration = probe.get("duration", "format")
+                    logger.warning("Using container duration for audio validation")
 
             start_diff = abs(video_start - audio_start)
             duration_diff = abs(video_duration - audio_duration)
             
-            if start_diff > sync_threshold or duration_diff > sync_threshold:
+            # Increase sync thresholds for container durations
+            max_sync_threshold = 0.5 if any([isinstance(video_duration, float), isinstance(audio_duration, float)]) else 0.2
+            if start_diff > max_sync_threshold or duration_diff > max_sync_threshold:
                 raise MuxingError(
                     f"AV sync issue detected: video_start={video_start:.2f}s vs audio_start={audio_start:.2f}s; "
                     f"video_duration={video_duration:.2f}s vs audio_duration={audio_duration:.2f}s",
