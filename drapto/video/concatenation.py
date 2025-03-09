@@ -83,7 +83,6 @@ def concatenate_segments(output_file: Path) -> None:
             )
 
         logger.info("Successfully validated concatenated output")
-        return True
 
     except Exception as e:
         raise ConcatenationError(f"Concatenation failed: {str(e)}", module="concatenation") from e
