@@ -198,7 +198,6 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> b
             "Found %d problematic short segments not aligned with scene changes",
             len(problematic_segments)
         )
-        )
     
     print_check(f"Successfully validated {valid_count} segments")
     return True
