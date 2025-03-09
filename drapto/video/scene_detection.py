@@ -16,7 +16,7 @@ from ..config import (
     SCENE_THRESHOLD, HDR_SCENE_THRESHOLD, TARGET_MIN_SEGMENT_LENGTH, MAX_SEGMENT_LENGTH
 )
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 @functools.lru_cache(maxsize=None)
 def detect_scenes(input_file: Path) -> List[float]:
