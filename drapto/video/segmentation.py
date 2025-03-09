@@ -138,8 +138,10 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> N
             video_start = float(vid_data["streams"][0].get("start_time") or 0)
 
             if abs(video_start) > sync_threshold:
-                logger.error("Segment %s timestamp issue: video_start=%.2fs is not near 0", segment.name, video_start)
-                return False
+                raise ValidationError(
+                    f"Segment {segment.name} timestamp issue: video_start={video_start:.2f}s is not near 0",
+                    module="segmentation"
+                )
     
             # Check if segment duration is short
             if duration < 1.0 and valid_segments:
@@ -188,9 +190,10 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> N
     # Check that total duration matches within tolerance
     duration_tolerance = max(1.0, total_duration * 0.02)  # 2% tolerance or minimum 1 second
     if abs(total_segment_duration - total_duration) > duration_tolerance:
-        logger.error("Total valid segment duration (%.2fs) differs significantly from input (%.2fs)",
-                  total_segment_duration, total_duration)
-        return False
+        raise ValidationError(
+            f"Total valid segment duration ({total_segment_duration:.2f}s) differs significantly from input ({total_duration:.2f}s)",
+            module="segmentation"
+        )
 
     # Detect scenes and validate segment boundaries against scene changes
     scenes = detect_scenes(input_file)
@@ -231,27 +234,21 @@ def segment_video(input_file: Path) -> bool:
         from .command_builders import build_segment_command
         
         scenes = detect_scenes(input_file)
-        if scenes:
-            from ..command_jobs import SegmentationJob
-            from ..command_jobs import SegmentationJob
-            cmd = build_segment_command(input_file, segments_dir, scenes, hw_opt)
-            job = SegmentationJob(cmd)
-            job.execute()
-            variable_seg = True
-        else:
-            logger.error("Scene detection failed; no scenes detected. Failing segmentation.")
-            return False
+        if not scenes:
+            raise SegmentationError("Scene detection failed; no scenes detected", module="segmentation")
             
+        from ..command_jobs import SegmentationJob
+        cmd = build_segment_command(input_file, segments_dir, scenes, hw_opt)
         job = SegmentationJob(cmd)
         job.execute()
         
-        # Validate segments with the appropriate variable_segmentation flag
-        if not validate_segments(input_file, variable_segmentation=True):
-            return False
-            
+        # Validate segments
+        validate_segments(input_file, variable_segmentation=True)
+        
         return True
         
     except Exception as e:
-        logger.error("Segmentation failed: %s", e)
-        return False
+        if isinstance(e, (SegmentationError, ValidationError)):
+            raise
+        raise SegmentationError(f"Segmentation failed: {str(e)}", module="segmentation") from e
 
