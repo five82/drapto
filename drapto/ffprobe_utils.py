@@ -171,13 +171,19 @@ def get_audio_info(path: Path, stream_index: int = 0) -> Dict[str, Any]:
     Returns:
         Dictionary with audio stream info (codec, channels, bit_rate, start_time, duration, etc.)
     """
-    args = [
-        "-select_streams", f"a:{stream_index}",
-        "-show_entries", "stream=codec_name,channels,bit_rate,start_time,duration",
-        "-of", "json"
-    ]
-    data = ffprobe_query(path, args)
-    return data.get("streams", [{}])[0]
+    props = ["codec_name", "channels", "bit_rate", "start_time", "duration"]
+    info = {}
+    try:
+        with probe_session(path) as probe:
+            for prop in props:
+                try:
+                    info[prop] = probe.get(prop, "audio", stream_index)
+                except MetadataError:
+                    info[prop] = None
+        return info
+    except MetadataError as e:
+        logger.warning("Failed to get audio info: %s", e)
+        return {prop: None for prop in props}
 
 def get_format_info(path: Path) -> Dict[str, Any]:
     """

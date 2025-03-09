@@ -31,16 +31,14 @@ def mux_tracks(
         sync_threshold = 0.1  # allowed difference in seconds
 
         try:
-            with probe_session(output_file) as probe:
-                # Get video timing with format fallback
-                video_start = 0.0  # Default as before
-                video_duration = get_duration(output_file, "video")
-                if video_duration == 0:
-                    logger.warning("Using container duration for video validation")
+            video_info = get_video_info(output_file)
+            video_start = video_info.get("start_time", 0.0)
+            video_duration = get_duration(output_file, "video")
+            if video_duration == 0:
+                logger.warning("Using container duration for video validation")
 
-                # Get audio timing with format fallback
-                audio_start = 0.0  # Default as video_start
-                audio_duration = get_duration(output_file, "audio")
+            audio_duration = get_duration(output_file, "audio")
+            audio_start = 0.0  # Audio start time not available in utilities yet
                 if not audio_duration:
                     logger.warning("Using container duration for audio validation")
 
