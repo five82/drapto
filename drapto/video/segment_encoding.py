@@ -66,13 +66,16 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
         
     start_time = time.time()
     
-    # Get input segment details
-    # Use ffprobe_utils to get segment info
-    video_info = get_video_info(segment)
-    format_info = get_format_info(segment)
-    input_duration = float(format_info.get("duration", 0))
+    # Get input segment details using probe session
     try:
-        width = int(video_info.get("width", 0))
+        with probe_session(segment) as probe:
+            input_duration = float(probe.get("duration", "format"))
+            width = int(probe.get("width", "video"))
+    except MetadataError as e:
+        logger.error("Failed to get segment info: %s", e)
+        if retry_count < 2:
+            logger.warning("Retrying segment due to metadata error")
+            return encode_segment(segment, output_segment, crop_filter, retry_count + 1, dv_flag)
     except Exception as e:
         logger.warning("Failed to parse width from video info: %s. Assuming non-4k.", e)
         width = 0
@@ -483,13 +486,8 @@ def validate_encoded_segments(segments_dir: Path) -> bool:
 
             # Compare durations (allow 0.1s difference)
             try:
-                orig_duration = float(run_cmd([
-                    "ffprobe", "-v", "error",
-                    "-show_entries", "format=duration",
-                    "-of", "default=noprint_wrappers=1:nokey=1",
-                    str(orig)
-                ]).stdout.strip())
-                
+                with probe_session(orig) as probe:
+                    orig_duration = float(probe.get("duration", "format"))
                 enc_duration = float(duration)
                 # Allow a relative tolerance of 5% (or at least 0.2 sec) to account for slight discrepancies
                 tolerance = max(0.2, orig_duration * 0.05)

@@ -116,9 +116,10 @@ def detect_crop(input_file: Path, disable_crop: bool = None) -> Optional[str]:
 
     # Determine video duration via ffprobe
     try:
-        duration = float(get_media_property(input_file, "format", "duration"))
-        duration = int(round(duration))
-    except Exception as e:
+        with probe_session(input_file) as probe:
+            duration = float(probe.get("duration", "format"))
+            duration = int(round(duration))
+    except MetadataError as e:
         logger.error("Failed to get duration: %s", e)
         duration = 0
 

@@ -26,8 +26,13 @@ def concatenate_segments(output_file: Path) -> None:
         segments = sorted((WORKING_DIR / "encoded_segments").glob("*.mkv"))
         
         for segment in segments:
-            duration = float(get_media_property(segment, "format", "duration"))
-            total_segment_duration += duration
+            try:
+                with probe_session(segment) as probe:
+                    duration = float(probe.get("duration", "format"))
+                    total_segment_duration += duration
+            except MetadataError as e:
+                logger.error("Failed to get segment duration: %s", e)
+                raise ConcatenationError(f"Failed to get segment duration: {str(e)}", module="concatenation") from e
         
         with open(concat_file, 'w') as f:
             for segment in segments:
