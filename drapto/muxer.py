@@ -7,7 +7,7 @@ from typing import List, Optional
 
 from .utils import run_cmd
 from .exceptions import MuxingError
-from .ffprobe_utils import get_media_property
+from .ffprobe_utils import get_media_property, probe_session, MetadataError
 
 logger = logging.getLogger(__name__)
 
