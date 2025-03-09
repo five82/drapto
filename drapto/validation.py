@@ -20,14 +20,15 @@ def validate_video_stream(input_file: Path, output_file: Path, validation_report
         framerate = info.get("r_frame_rate", "")
         
         if codec != "av1":
-            validation_report.append(f"ERROR: No AV1 video stream found (found {codec})")
-            return False
+            msg = f"No AV1 video stream found (found {codec})"
+            validation_report.append(f"ERROR: {msg}")
+            raise ValidationError(msg, module="validation")
             
         validation_report.append(f"Video: {width}x{height} {pix_fmt} @ {framerate}fps")
-        return True
     except Exception as e:
-        validation_report.append(f"ERROR: Failed to validate video stream: {e}")
-        return False
+        msg = f"Failed to validate video stream: {str(e)}"
+        validation_report.append(f"ERROR: {msg}")
+        raise ValidationError(msg, module="validation") from e
 
 def validate_audio_streams(input_file: Path, output_file: Path, validation_report: list) -> bool:
     """Validate audio stream properties"""
@@ -36,14 +37,15 @@ def validate_audio_streams(input_file: Path, output_file: Path, validation_repor
         opus_count = sum(1 for s in streams if s.get("codec_name") == "opus")
         
         if opus_count == 0:
-            validation_report.append("ERROR: No Opus audio streams found")
-            return False
+            msg = "No Opus audio streams found"
+            validation_report.append(f"ERROR: {msg}")
+            raise ValidationError(msg, module="validation")
             
         validation_report.append(f"Audio: {opus_count} Opus stream(s)")
-        return True
     except Exception as e:
-        validation_report.append(f"ERROR: Failed to validate audio streams: {e}")
-        return False
+        msg = f"Failed to validate audio streams: {str(e)}"
+        validation_report.append(f"ERROR: {msg}")
+        raise ValidationError(msg, module="validation") from e
 
 def validate_subtitle_tracks(input_file: Path, output_file: Path, validation_report: list) -> bool:
     """Validate subtitle track preservation"""
