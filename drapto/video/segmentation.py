@@ -19,7 +19,7 @@ from ..formatting import print_info, print_check
 
 logger = logging.getLogger(__name__)
 
-def merge_segments(segments: List[Path], output: Path) -> bool:
+def merge_segments(segments: List[Path], output: Path) -> None:
     """
     Merge two segments using ffmpeg's concat demuxer
     
@@ -28,8 +28,8 @@ def merge_segments(segments: List[Path], output: Path) -> bool:
         segment2: Second segment to append
         output: Output path for merged segment
         
-    Returns:
-        bool: True if merge successful
+    Raises:
+        SegmentMergeError: If merging fails
     """
     # Create temporary concat file
     concat_file = output.parent / "concat.txt"
@@ -51,17 +51,16 @@ def merge_segments(segments: List[Path], output: Path) -> bool:
         # Verify merged output
         if not output.exists() or output.stat().st_size == 0:
             logger.error("Failed to create merged segment")
-            return False
+            raise SegmentMergeError("Failed to create merged segment", module="segmentation")
             
-        return True
     except Exception as e:
         logger.error("Failed to merge segments: %s", e)
-        return False
+        raise SegmentMergeError(f"Failed to merge segments: {str(e)}", module="segmentation") from e
     finally:
         if concat_file.exists():
             concat_file.unlink()
 
-def validate_segments(input_file: Path, variable_segmentation: bool = True) -> bool:
+def validate_segments(input_file: Path, variable_segmentation: bool = True) -> None:
     """
     Validate video segments after segmentation.
     
@@ -69,16 +68,18 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> b
         input_file: Original input video file for duration comparison.
         variable_segmentation: Always True, as only scene-based segmentation is supported.
         
-    Returns:
-        bool: True if all segments are valid.
+    Raises:
+        ValidationError: If segments are invalid
+        SegmentationError: If segment validation fails
     """
     from .scene_detection import detect_scenes, validate_segment_boundaries
     segments_dir = WORKING_DIR / "segments"
     segments = sorted(segments_dir.glob("*.mkv"))
     
     if not segments:
-        logger.error("No segments created")
-        return False
+        msg = "No segments created"
+        logger.error(msg)
+        raise SegmentationError(msg, module="segmentation")
     logger.info("Found %d segments", len(segments))
         
     logger.info("Variable segmentation in use")
@@ -87,8 +88,9 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> b
         format_info = get_format_info(input_file)
         total_duration = float(format_info.get("duration", 0))
     except Exception as e:
-        logger.error("Failed to get input duration: %s", e)
-        return False
+        msg = f"Failed to get input duration: {str(e)}"
+        logger.error(msg)
+        raise SegmentationError(msg, module="segmentation") from e
         
     # Validate each segment and build a list of valid segments
     total_segment_duration = 0.0
@@ -98,8 +100,9 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> b
     for segment in segments:
         # Check file size
         if segment.stat().st_size < min_size:
-            logger.error("Segment too small: %s", segment.name)
-            return False
+            msg = f"Segment too small: {segment.name}"
+            logger.error(msg)
+            raise ValidationError(msg, module="segmentation")
     
         try:
             from ..ffprobe_utils import get_format_info, get_video_info
@@ -110,8 +113,9 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> b
             codec = video_info.get("codec_name")
             
             if not duration or not codec:
-                logger.error("Invalid segment %s: missing duration or codec", segment.name)
-                return False
+                msg = f"Invalid segment {segment.name}: missing duration or codec"
+                logger.error(msg)
+                raise ValidationError(msg, module="segmentation")
                 
             logger.info("Segment %s: duration=%.2fs, codec=%s", segment.name, duration, codec)
 
@@ -150,8 +154,9 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> b
                     prev_segment.unlink()
                     segment.unlink()
                 else:
-                    logger.error("Failed to merge short segment: %s", segment.name)
-                    return False
+                    msg = f"Failed to merge short segment: {segment.name}"
+                    logger.error(msg)
+                    raise SegmentMergeError(msg, module="segmentation")
             else:
                 # Normal duration segment or first segment
                 valid_segments.append((segment, duration))
@@ -172,8 +177,9 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> b
         ])
         total_duration = float(result.stdout.strip())
     except Exception as e:
-        logger.error("Failed to get input duration: %s", e)
-        return False
+        msg = f"Failed to get input duration: {str(e)}"
+        logger.error(msg)
+        raise SegmentationError(msg, module="segmentation") from e
 
     # Check that total duration matches within tolerance
     duration_tolerance = max(1.0, total_duration * 0.02)  # 2% tolerance or minimum 1 second
