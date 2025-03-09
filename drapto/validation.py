@@ -10,7 +10,7 @@ from .formatting import print_check, print_error, print_header
 from .ffprobe_utils import get_video_info, get_format_info, get_subtitle_info, get_all_audio_info
 from .exceptions import ValidationError
 
-def validate_video_stream(input_file: Path, output_file: Path, validation_report: list) -> bool:
+def validate_video_stream(input_file: Path, output_file: Path, validation_report: list) -> None:
     """Validate video stream properties"""
     try:
         info = get_video_info(output_file)
@@ -21,58 +21,54 @@ def validate_video_stream(input_file: Path, output_file: Path, validation_report
         framerate = info.get("r_frame_rate", "")
         
         if codec != "av1":
-            msg = f"No AV1 video stream found (found {codec})"
-            validation_report.append(f"ERROR: {msg}")
-            raise ValidationError(msg, module="validation")
+            raise ValidationError(
+                f"No AV1 video stream found (found {codec})", 
+                module="validation"
+            )
             
         validation_report.append(f"Video: {width}x{height} {pix_fmt} @ {framerate}fps")
     except Exception as e:
-        msg = f"Failed to validate video stream: {str(e)}"
-        validation_report.append(f"ERROR: {msg}")
-        raise ValidationError(msg, module="validation") from e
+        validation_report.append(f"ERROR: {str(e)}")
+        raise
 
-def validate_audio_streams(input_file: Path, output_file: Path, validation_report: list) -> bool:
+def validate_audio_streams(input_file: Path, output_file: Path, validation_report: list) -> None:
     """Validate audio stream properties"""
     try:
         streams = get_all_audio_info(output_file)
         opus_count = sum(1 for s in streams if s.get("codec_name") == "opus")
         
         if opus_count == 0:
-            msg = "No Opus audio streams found"
-            validation_report.append(f"ERROR: {msg}")
-            raise ValidationError(msg, module="validation")
+            raise ValidationError("No Opus audio streams found", module="validation")
             
         validation_report.append(f"Audio: {opus_count} Opus stream(s)")
     except Exception as e:
-        msg = f"Failed to validate audio streams: {str(e)}"
-        validation_report.append(f"ERROR: {msg}")
-        raise ValidationError(msg, module="validation") from e
+        validation_report.append(f"ERROR: {str(e)}")
+        raise
 
-def validate_subtitle_tracks(input_file: Path, output_file: Path, validation_report: list) -> bool:
+def validate_subtitle_tracks(input_file: Path, output_file: Path, validation_report: list) -> None:
     """Validate subtitle track preservation"""
     try:
         subtitle_info = get_subtitle_info(output_file)
+        if not subtitle_info:
+            raise ValidationError("No subtitle streams found", module="validation")
         subtitle_count = len(subtitle_info.get("streams", []))
         validation_report.append(f"Subtitles: {subtitle_count} tracks")
-        return True
     except Exception as e:
-        validation_report.append(f"ERROR: Failed to validate subtitle tracks: {e}")
-        return False
+        validation_report.append(f"ERROR: {str(e)}")
+        raise
 
-def validate_container(output_file: Path, validation_report: list) -> bool:
+def validate_container(output_file: Path, validation_report: list) -> None:
     """Validate container integrity"""
     try:
         format_info = get_format_info(output_file)
-        if format_info:
-            validation_report.append("Container: Valid MKV structure")
-            return True
-        validation_report.append("ERROR: Invalid container structure")
-        return False
+        if not format_info:
+            raise ValidationError("Invalid container structure", module="validation")
+        validation_report.append("Container: Valid MKV structure")
     except Exception as e:
-        validation_report.append(f"ERROR: Invalid container structure: {e}")
-        return False
+        validation_report.append(f"ERROR: {str(e)}")
+        raise
 
-def validate_crop_dimensions(input_file: Path, output_file: Path, validation_report: list) -> bool:
+def validate_crop_dimensions(input_file: Path, output_file: Path, validation_report: list) -> None:
     """Validate crop dimensions if applied"""
     try:
         in_video = get_video_info(input_file)
@@ -81,14 +77,16 @@ def validate_crop_dimensions(input_file: Path, output_file: Path, validation_rep
         in_res = [str(in_video.get("width", "")), str(in_video.get("height", ""))]
         out_res = [str(out_video.get("width", "")), str(out_video.get("height", ""))]
         
+        if not in_res or not out_res:
+            raise ValidationError("Failed to get resolution data", module="validation")
+            
         if in_res != out_res:
             validation_report.append(f"Crop: {out_res[0]}x{out_res[1]} (from {in_res[0]}x{in_res[1]})")
-        return True
     except Exception as e:
-        validation_report.append(f"ERROR: Failed to validate crop dimensions: {e}")
-        return False
+        validation_report.append(f"ERROR: {str(e)}")
+        raise
 
-def validate_av_sync(output_file: Path, validation_report: list) -> bool:
+def validate_av_sync(output_file: Path, validation_report: list) -> None:
     """
     Validate audio/video sync by comparing the start time and duration of the first
     audio and video streams in the output file. Any difference above a 0.1-second
@@ -97,23 +95,17 @@ def validate_av_sync(output_file: Path, validation_report: list) -> bool:
     Args:
         output_file: Path to the output video file.
         validation_report: List to append status messages.
-    
-    Returns:
-        bool: True if audio and video sync within threshold, False otherwise.
     """
     try:
-        # Get video stream start time and duration.
-        # Get video stream info using our centralized helper
         video_info = get_video_info(output_file)
         if not video_info:
-            raise Exception("No video stream info found.")
+            raise ValidationError("No video stream info found", module="validation")
         vid_start = float(video_info.get("start_time") or 0)
         vid_duration = float(video_info.get("duration") or 0)
         
-        # Get audio stream info (first audio stream)
         all_audio = get_all_audio_info(output_file)
         if not all_audio:
-            raise Exception("No audio stream info found.")
+            raise ValidationError("No audio stream info found", module="validation")
         audio_info = all_audio[0]
         aud_start = float(audio_info.get("start_time") or 0)
         aud_duration = float(audio_info.get("duration") or 0)
@@ -123,29 +115,26 @@ def validate_av_sync(output_file: Path, validation_report: list) -> bool:
         threshold = 0.1  # allowed difference in seconds
         
         if start_diff > threshold or duration_diff > threshold:
-            validation_report.append(
-                f"ERROR: AV sync issue detected: video start {vid_start:.2f}s vs audio start {aud_start:.2f}s; "
-                f"video duration {vid_duration:.2f}s vs audio duration {aud_duration:.2f}s."
+            raise ValidationError(
+                f"AV sync issue: video_start={vid_start:.2f}s, audio_start={aud_start:.2f}s",
+                module="validation"
             )
-            return False
-        else:
-            validation_report.append("AV sync validated: audio and video start times and durations are within threshold")
-            return True
+            
+        validation_report.append("AV sync validated: audio and video start times and durations are within threshold")
     except Exception as e:
-        validation_report.append(f"ERROR: Failed to validate AV sync: {e}")
-        return False
+        validation_report.append(f"ERROR: {str(e)}")
+        raise
 
-def validate_quality_metrics(input_file: Path, output_file: Path, validation_report: list) -> bool:
+def validate_quality_metrics(input_file: Path, output_file: Path, validation_report: list) -> None:
     """
     Validate quality metrics using VMAF analysis.
     """
     try:
         from .config import TARGET_VMAF
         validation_report.append(f"Quality target: VMAF {TARGET_VMAF}")
-        return True
     except Exception as e:
-        validation_report.append(f"ERROR: Failed to validate quality metrics: {e}")
-        return False
+        validation_report.append(f"ERROR: {str(e)}")
+        raise
 
 logger = logging.getLogger(__name__)
 
