@@ -70,27 +70,26 @@ def process_file(input_file: Path, output_file: Path) -> Optional[dict]:
             print_check("Standard content detected")
 
         try:
-            video_track = encode_standard(input_file, disable_crop, dv_flag=is_dolby_vision)
-            if not video_track:
-                logger.error("Video encoding failed")
-                return None
+            try:
+                # Replace boolean checks with exception handling
+                video_track = encode_standard(input_file, disable_crop, dv_flag=is_dolby_vision)
                 
-            # Process audio
-            audio_tracks = encode_audio_tracks(input_file)
-            if not audio_tracks:
-                logger.error("Audio encoding failed")
-                return None
+                # Process audio - will raise on error
+                audio_tracks = encode_audio_tracks(input_file)
                 
-            # Mux everything together
-            if not mux_tracks(video_track, audio_tracks, output_file):
-                logger.error("Muxing failed")
-                return None
+                # Mux everything together - raises on error
+                mux_tracks(video_track, audio_tracks, output_file)
                 
-            # Validate the output; the validation report prints its messages.
-            from .validation import validate_output
-            valid_output = validate_output(input_file, output_file)
-            if not valid_output:
-                logger.error("Output validation failed. Please check the Validation Report above.")
+                # Validate output - raises ValidationError
+                validate_output(input_file, output_file)
+
+            except EncodingError as e:
+                logger.error("Encoding failed: %s", e)
+                raise DraptoError("Encoding aborted") from e
+                
+            except ValidationError as e:
+                logger.error("Validation failed: %s", e)
+                raise DraptoError("Validation failed") from e
             # Continue to produce the encoding summary regardless of validation results.
                 
             # Get size info for summary

@@ -22,34 +22,55 @@ class CommandJob:
     def __init__(self, cmd: List[str]):
         self.cmd = cmd
 
-    def execute(self) -> any:
+    def execute(self) -> None:
         """
         Execute the stored command.
         
-        Returns:
-            The result of run_cmd().
-            
         Raises:
-            subprocess.CalledProcessError if the command fails.
+            CommandExecutionError: If command fails
         """
         logger.debug("Executing command: %s", " ".join(self.cmd))
-        result = run_cmd(self.cmd)
-        return result
+        try:
+            run_cmd(self.cmd)
+        except subprocess.CalledProcessError as e:
+            raise CommandExecutionError(
+                f"Command failed: {e.cmd}",
+                module="command_jobs"
+            ) from e
 
 class ProgressCommandJob(CommandJob):
     """Job for running commands that support progress reporting."""
     
-    def execute(self, total_duration: Optional[float] = None, log_interval: float = 3.0) -> int:
+    def execute(self, total_duration: Optional[float] = None, log_interval: float = 3.0) -> None:
         """Execute with progress reporting."""
-        return run_cmd_with_progress(self.cmd, total_duration, log_interval)
+        return_code = run_cmd_with_progress(self.cmd, total_duration, log_interval)
+        if return_code != 0:
+            raise CommandExecutionError(
+                f"Command failed with exit code {return_code}",
+                module="progress_command_job"
+            )
 
 class SegmentationJob(CommandJob):
     """Job for running video segmentation."""
-    pass
+    def execute(self) -> None:
+        try:
+            super().execute()
+        except CommandExecutionError as e:
+            raise SegmentationError(
+                f"Segmentation failed: {str(e)}",
+                module="segmentation"
+            ) from e
 
 class AudioEncodeJob(ProgressCommandJob):
     """Job for encoding an audio track."""
-    pass
+    def execute(self, total_duration: Optional[float] = None, log_interval: float = 3.0) -> None:
+        try:
+            super().execute(total_duration, log_interval)
+        except CommandExecutionError as e:
+            raise AudioEncodingError(
+                f"Audio encoding failed: {str(e)}", 
+                module="audio_encoding"
+            ) from e
 
 class MuxJob(CommandJob):
     """Job for muxing audio and video tracks."""
