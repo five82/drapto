@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 from typing import List, Optional
 
+from .scene_detection import detect_scenes, validate_segment_boundaries
 from ..config import (
     TARGET_VMAF, VMAF_SAMPLE_COUNT,
     VMAF_SAMPLE_LENGTH, PRESET, SVT_PARAMS,
@@ -197,6 +198,7 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> b
         logger.warning(
             "Found %d problematic short segments not aligned with scene changes",
             len(problematic_segments)
+        )
         )
     
     print_check(f"Successfully validated {len(segments)} segments")
