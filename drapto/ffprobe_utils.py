@@ -50,7 +50,7 @@ class MetadataError(Exception):
         super().__init__(f"Metadata error: {message}")
 
 @lru_cache(maxsize=100)
-def ffprobe_query(path: Path, args: tuple) -> Dict[str, Any]:
+def ffprobe_query(path: Path, args: tuple) -> Dict[str, Any]:  # Enforce tuple type
     """
     Run ffprobe with the specified arguments and return parsed JSON output.
     
@@ -189,10 +189,10 @@ def get_format_info(path: Path) -> Dict[str, Any]:
     Returns:
         Dictionary with format info.
     """
-    args = [
+    args = (
         "-show_entries", "format=duration,size",
         "-of", "json"
-    ]
+    )
     data = ffprobe_query(path, args)
     return data.get("format", {})
 
@@ -206,11 +206,11 @@ def get_subtitle_info(path: Path) -> Dict[str, Any]:
     Returns:
         Dictionary with subtitle stream info.
     """
-    args = [
+    args = (
         "-select_streams", "s",
         "-show_entries", "stream=index",
         "-of", "json"
-    ]
+    )
     data = ffprobe_query(path, args)
     return data
 
@@ -224,11 +224,11 @@ def get_all_audio_info(path: Path) -> list:
     Returns:
         List of dictionaries for each audio stream.
     """
-    args = [
+    args = (
         "-select_streams", "a",
         "-show_entries", "stream=codec_name,channels,bit_rate,start_time,duration",
         "-of", "json"
-    ]
+    )
     data = ffprobe_query(path, args)
     return data.get("streams", [])
 
