@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 from ..utils import run_cmd
-from ..ffprobe_utils import get_video_info
+from ..ffprobe_utils import get_video_info, get_media_property
 
 
 def detect_dolby_vision(input_file: Path) -> bool:
