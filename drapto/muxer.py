@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from .utils import run_cmd
+from .exceptions import MuxingError
 
 logger = logging.getLogger(__name__)
 

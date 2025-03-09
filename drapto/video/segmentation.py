@@ -15,7 +15,7 @@ from ..config import (
 )
 from ..exceptions import (
     SegmentationError, ValidationError,
-    SegmentMergeError
+    SegmentMergeError, SegmentEncodingError
 )
 
 from ..utils import run_cmd, check_dependencies

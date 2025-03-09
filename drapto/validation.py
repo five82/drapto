@@ -8,7 +8,7 @@ from typing import Optional, Tuple
 from .utils import run_cmd
 from .formatting import print_check, print_error, print_header
 from .ffprobe_utils import get_video_info, get_format_info, get_subtitle_info, get_all_audio_info
-from .exceptions import ValidationError
+from .exceptions import ValidationError, DependencyError
 
 def validate_video_stream(input_file: Path, output_file: Path, validation_report: list) -> None:
     """Validate video stream properties"""
