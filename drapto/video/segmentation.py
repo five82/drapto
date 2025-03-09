@@ -81,9 +81,7 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> N
     segments = sorted(segments_dir.glob("*.mkv"))
     
     if not segments:
-        msg = "No segments created"
-        logger.error(msg)
-        raise SegmentationError(msg, module="segmentation")
+        raise SegmentationError("No segments found in segments directory", module="segmentation")
     logger.info("Found %d segments", len(segments))
         
     logger.info("Variable segmentation in use")
@@ -92,9 +90,7 @@ def validate_segments(input_file: Path, variable_segmentation: bool = True) -> N
         format_info = get_format_info(input_file)
         total_duration = float(format_info.get("duration", 0))
     except Exception as e:
-        msg = f"Failed to get input duration: {str(e)}"
-        logger.error(msg)
-        raise SegmentationError(msg, module="segmentation") from e
+        raise SegmentationError(f"Failed to get input duration: {str(e)}", module="segmentation") from e
         
     # Validate each segment and build a list of valid segments
     total_segment_duration = 0.0
