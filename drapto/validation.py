@@ -16,12 +16,12 @@ from .exceptions import ValidationError, DependencyError
 def validate_video_stream(input_file: Path, output_file: Path, validation_report: list) -> None:
     """Validate video stream properties"""
     try:
-        with probe_session(output_file) as probe:
-            codec = probe.get("codec_name", "video")
-            width = probe.get("width", "video") 
-            height = probe.get("height", "video")
-            pix_fmt = probe.get("pix_fmt", "video")
-            framerate = probe.get("r_frame_rate", "video")
+        video_info = get_video_info(output_file)
+        codec = video_info.get("codec_name")
+        width = video_info.get("width")
+        height = video_info.get("height")
+        pix_fmt = video_info.get("pix_fmt")
+        framerate = video_info.get("r_frame_rate")
             
         if codec != "av1":
             raise ValidationError(

@@ -39,12 +39,9 @@ def mux_tracks(
                     logger.warning("Using container duration for video validation")
 
                 # Get audio timing with format fallback
-                try:
-                    audio_start = probe.get("start_time", "audio")
-                    audio_duration = probe.get("duration", "audio")
-                except MetadataError:
-                    audio_start = 0.0
-                    audio_duration = probe.get("duration", "format")
+                audio_start = 0.0  # Default as video_start
+                audio_duration = get_duration(output_file, "audio")
+                if not audio_duration:
                     logger.warning("Using container duration for audio validation")
 
             start_diff = abs(video_start - audio_start)

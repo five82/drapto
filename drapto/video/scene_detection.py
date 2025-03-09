@@ -62,10 +62,10 @@ def detect_scenes(input_file: Path) -> List[float]:
     # 2. Determine scene detection threshold based on HDR or SDR.
     try:
         try:
-            with probe_session(input_file) as probe:
-                ct = (probe.get("color_transfer", "video", 0) or "").lower()
-                cp = probe.get("color_primaries", "video", 0) or ""
-                cs = probe.get("color_space", "video", 0) or ""
+            video_info = get_video_info(input_file)
+            ct = (video_info.get("color_transfer") or "").lower()
+            cp = video_info.get("color_primaries") or ""
+            cs = video_info.get("color_space") or ""
                 
             if ct in ["smpte2084", "arib-std-b67", "smpte428", "bt2020-10", "bt2020-12"]:
                 threshold_val = HDR_SCENE_THRESHOLD

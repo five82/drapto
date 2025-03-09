@@ -110,9 +110,10 @@ def validate_segments(input_file: Path) -> bool:
     
         try:
             with probe_session(segment) as probe:
-                duration = float(probe.get("duration", "format"))
-                codec = probe.get("codec_name", "video")
-                video_start = probe.get("start_time", "video")
+                duration = get_duration(segment)
+                video_info = get_video_info(segment)
+                codec = video_info.get("codec_name")
+                video_start = video_info.get("start_time", 0.0)
 
             if not duration or not codec:
                 msg = f"Invalid segment {segment.name}: missing duration or codec"
