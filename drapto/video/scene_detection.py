@@ -2,6 +2,8 @@
 
 import functools
 import logging
+logger = logging.getLogger(__name__)
+import logging
 import re
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -41,7 +43,7 @@ def detect_scenes(input_file: Path) -> List[float]:
     try:
         total_duration = float(get_format_info(input_file).get("duration", 0))
     except Exception as e:
-        log.error("Failed to get video duration: %s", e)
+        logger.error("Failed to get video duration: %s", e)
         return []
 
     # 2. Determine scene detection threshold based on HDR or SDR.

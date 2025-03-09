@@ -33,6 +33,9 @@ def estimate_memory_weight(segment: Path, resolution_weights: dict) -> int:
         log.warning("Failed to get segment width, using minimum weight: %s", e)
         return min(resolution_weights.values())
 
+import logging
+logger = logging.getLogger(__name__)
+
 from ..config import (
     PRESET, TARGET_VMAF, SVT_PARAMS, 
     VMAF_SAMPLE_COUNT, VMAF_SAMPLE_LENGTH,
@@ -67,7 +70,7 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
     try:
         width = int(video_info.get("width", 0))
     except Exception as e:
-        log.warning("Failed to parse width from video info: %s. Assuming non-4k.", e)
+        logger.warning("Failed to parse width from video info: %s. Assuming non-4k.", e)
         width = 0
 
     if retry_count == 0:

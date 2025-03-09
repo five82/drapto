@@ -3,13 +3,13 @@ Video detection utilities for drapto
 """
 import logging
 import subprocess
+logger = logging.getLogger(__name__)
 from pathlib import Path
 from typing import Optional, Tuple
 
 from ..utils import run_cmd
 from ..ffprobe_utils import get_video_info
 
-log = logging.getLogger(__name__)
 
 def detect_dolby_vision(input_file: Path) -> bool:
     """
@@ -30,7 +30,7 @@ def detect_dolby_vision(input_file: Path) -> bool:
         )
         detected = "Dolby Vision" in result.stdout
         if detected:
-            log.info("Dolby Vision detected")
+            logger.info("Dolby Vision detected")
         else:
             log.info("Dolby Vision not detected")
         return detected
