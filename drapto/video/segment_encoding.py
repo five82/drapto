@@ -1,4 +1,17 @@
-"""Functions for encoding video segments in parallel"""
+"""
+Functions for encoding video segments in parallel.
+
+Responsibilities:
+  - High-level orchestration of parallel segment encoding
+  - Building and executing the encoder command
+  - Parsing encoder output for quality metrics (e.g. VMAF) and timing
+  - Aggregating per-segment statistics
+  - Managing memory-aware task scheduling
+  - Validating encoded segment outputs
+
+Note: Low-level tasks (like command construction and metric parsing) have been 
+factored out into helper functions.
+"""
 
 import logging
 import re
@@ -53,19 +66,91 @@ from ..utils import run_cmd, check_dependencies
 from ..formatting import print_check
 from ..validation import validate_ab_av1
 
+def _build_encode_command(
+    segment: Path,
+    output_segment: Path,
+    crop_filter: Optional[str],
+    retry_count: int,
+    is_hdr: bool,
+    dv_flag: bool
+) -> list[str]:
+    """Build the ab-av1 encode command with appropriate parameters."""
+    # Determine sampling parameters based on retry count
+    if retry_count == 0:
+        sample_count = 3
+        sample_duration_value = 1
+        min_vmaf_value = str(TARGET_VMAF_HDR if is_hdr else TARGET_VMAF)
+    elif retry_count == 1:
+        sample_count = 4
+        sample_duration_value = 2
+        min_vmaf_value = str(TARGET_VMAF_HDR if is_hdr else TARGET_VMAF)
+    else:  # retry_count == 2
+        sample_count = 4
+        sample_duration_value = 2
+        min_vmaf_value = "95"  # Force highest quality
+
+    cmd = [
+        "ab-av1", "auto-encode",
+        "--input", str(segment),
+        "--output", str(output_segment),
+        "--encoder", "libsvtav1",
+        "--min-vmaf", min_vmaf_value,
+        "--preset", str(PRESET),
+        "--svt", SVT_PARAMS,
+        "--keyint", "10s",
+        "--samples", str(sample_count),
+        "--sample-duration", f"{sample_duration_value}s",
+        "--vmaf", "n_subsample=8:pool=perc5_min",
+        "--pix-format", "yuv420p10le",
+    ]
+    if crop_filter:
+        cmd.extend(["--vfilter", crop_filter])
+    if dv_flag:
+        cmd.extend(["--enc", "dolbyvision=true"])
+    return cmd
+
+def _parse_vmaf_scores(stderr_output: str) -> tuple[Optional[float], Optional[float], Optional[float]]:
+    """Parse VMAF scores from encoder output."""
+    vmaf_values = []
+    for line in stderr_output.splitlines():
+        match = re.search(r"VMAF\s+([0-9.]+)", line)
+        if match:
+            try:
+                vmaf_values.append(float(match.group(1)))
+            except ValueError:
+                continue
+    if vmaf_values:
+        return (
+            sum(vmaf_values) / len(vmaf_values),  # average
+            min(vmaf_values),                     # minimum
+            max(vmaf_values)                      # maximum
+        )
+    return (None, None, None)
+
 def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[str] = None, retry_count: int = 0, is_hdr: bool = False, dv_flag: bool = False) -> tuple[dict, list[str]]:
     """
     Encode a single video segment using ab-av1.
     
+    Args:
+        segment: Input segment path
+        output_segment: Output segment path
+        crop_filter: Optional crop filter string
+        retry_count: Number of previous retry attempts
+        is_hdr: Whether input is HDR content
+        dv_flag: Whether input is Dolby Vision
+        
     Returns:
-        dict: Encoding statistics and metrics
+        Tuple of (encoding statistics dict, list of log messages)
+        
+    Raises:
+        SegmentEncodingError: If encoding fails
     """
     import time
     output_logs = []  # List to collect detailed log messages
     
     def capture_log(msg, *args, **kwargs):
         formatted = msg % args if args else msg
-        logger.info(formatted)  # Pass only the formatted string
+        logger.info(formatted)
         output_logs.append(formatted)
         
     start_time = time.time()
