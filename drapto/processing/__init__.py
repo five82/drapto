@@ -22,15 +22,15 @@ from ..formatting import (
     print_error, print_success, print_separator,
     print_info
 )
-from .video.detection import detect_dolby_vision
-from .video.standard_encoder import encode_standard
-from .audio.encoding import encode_audio_tracks
-from .muxer import mux_tracks
-from .utils import get_timestamp, format_size, get_file_size
+from ..video.detection import detect_dolby_vision
+from ..video.standard_encoder import encode_standard
+from ..audio.encoding import encode_audio_tracks
+from ..muxer import mux_tracks
+from ..utils import get_timestamp, format_size, get_file_size
 
 logger = logging.getLogger(__name__)
 
-from .processing.summary import setup_encode_logging, build_encode_summary
+from .summary import setup_encode_logging, build_encode_summary
 
 def _run_encode_pipeline(input_file: Path, output_file: Path, disable_crop: bool = False) -> None:
     """Run the main encoding pipeline stages."""
