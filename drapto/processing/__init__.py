@@ -16,7 +16,7 @@ from ..exceptions import (
     DraptoError, EncodingError, ValidationError,
     ConcatenationError, SegmentEncodingError
 )
-from .validation import validate_output
+from ..validation import validate_output
 from .formatting import (
     print_header, print_check, print_warning,
     print_error, print_success, print_separator,
