@@ -18,7 +18,7 @@ class TestAudioEncoding(unittest.TestCase):
     
     @patch("drapto.audio.encoding.get_duration", return_value=60.0)
     @patch("drapto.audio.encoding.get_audio_channels")
-    @patch("drapto.audio.encoding.run_cmd_with_progress", return_value=0)
+    @patch("drapto.command_jobs.run_cmd_with_progress", return_value=0)
     def test_encode_audio_track_stereo(self, mock_run_cmd_with_progress, mock_get_channels, mock_get_duration):
         # Set up to simulate stereo channel (2 channels)
         mock_get_channels.return_value = 2
