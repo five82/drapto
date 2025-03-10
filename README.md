@@ -7,13 +7,13 @@ This is a vibe coding experiment to see how far LLM tools can take this. Pull re
 ## Features
 
 - **AV1 Encoding with SVT-AV1:** High-quality encoding using libsvtav1 with configurable presets.
-- **Intelligent Scene-Based Segmentation:** Automatically segments the input video using adaptive scene detection. Fixed segmentation modes have been removed—now only dynamic, scene-based segmentation is supported. (Configure parameters such as SCENE_THRESHOLD, HDR_SCENE_THRESHOLD, TARGET_MIN_SEGMENT_LENGTH, and MAX_SEGMENT_LENGTH in config.py.)
-- **VMAF-based Quality Analysis & Adaptive Retry:** Measures quality via VMAF (parsed from ab‑av1 output) and adjusts encoding parameters on retries (e.g. increased sample count/duration, raised min_vmaf).
-- **Standard Encoding Pipeline:** Encodes segments in parallel using a dynamic memory‐aware scheduler that performs a warm-up analysis to optimally balance resource usage with adaptive retries. (See parameters MEMORY_THRESHOLD, MAX_MEMORY_TOKENS, and TASK_STAGGER_DELAY in config.py.)
-- **Enhanced Output Validation:** Performs comprehensive validation of video/audio streams, container integrity, crop dimensions, and VMAF-based quality metrics, outputting a detailed validation report.
-- **Dolby Vision Support:** Automatic detection of Dolby Vision content with a dedicated encoding pipeline.
+- **Intelligent Scene-Based Segmentation:** Automatically segments the input video using adaptive scene detection. (Configurable parameters such as SCENE_THRESHOLD, HDR_SCENE_THRESHOLD, TARGET_MIN_SEGMENT_LENGTH, and MAX_SEGMENT_LENGTH in config.py.)
+- **ab-av1 Target Quality VMAF Encoding:** Adjusts segment encoding parameters on retries (e.g. increased sample count/duration, raised min_vmaf).
+- **Parallel Encoding Pipeline:** Encodes segments in parallel using a dynamic memory‐aware scheduler that performs a warm-up analysis to optimally balance resource usage with adaptive retries. (See parameters MEMORY_THRESHOLD, MAX_MEMORY_TOKENS, and TASK_STAGGER_DELAY in config.py.)
+- **Enhanced Output Validation:** Performs comprehensive validation of video/audio streams, container integrity, and crop dimensions, outputting a detailed validation report.
+- **Dolby Vision Support:** Automatic detection and transcoding of Dolby Vision content.
 - **Automatic Black Bar Detection and Cropping:** Detects black bars via ffprobe/ffmpeg and applies appropriate crop filters.
-- **High-Quality Opus Audio Encoding:** Dynamically determines the correct bitrate and layout for multiple audio tracks.
+- **Opus Audio Encoding:** Dynamically determines the bitrate and layout for multiple audio tracks.
 - **Hardware Acceleration:** Supports hardware decoding (e.g., VideoToolbox on macOS) when available.
 - **Comprehensive Output Validation:** Validates video and audio streams, container integrity, crop dimensions, and quality targets.
 
