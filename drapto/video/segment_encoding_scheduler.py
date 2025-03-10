@@ -14,7 +14,9 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 from concurrent.futures import ThreadPoolExecutor, Future
 
-from ..ffprobe.utils import probe_session, MetadataError, get_duration, get_video_info
+from ..ffprobe.exec import MetadataError
+from ..ffprobe.media import get_duration, get_video_info
+from ..ffprobe.session import probe_session
 from ..exceptions import SegmentEncodingError
 from ..config import (
     WORKING_DIR, TASK_STAGGER_DELAY, MAX_MEMORY_TOKENS

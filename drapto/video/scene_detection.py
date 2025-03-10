@@ -12,9 +12,8 @@ import logging
 from pathlib import Path
 from typing import List
 
-from ..ffprobe.utils import (
-    MetadataError, get_duration, get_video_info
-)
+from ..ffprobe.exec import MetadataError
+from ..ffprobe.media import get_duration, get_video_info
 from ..config import (
     SCENE_THRESHOLD, HDR_SCENE_THRESHOLD
 )

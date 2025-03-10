@@ -10,11 +10,9 @@ import logging
 from pathlib import Path
 from typing import List
 
-from ..ffprobe.utils import (
-    get_video_info, get_format_info, get_resolution,
-    get_media_property, MetadataError, probe_session,
-    get_audio_info
-)
+from ..ffprobe.media import get_video_info, get_format_info, get_resolution, get_audio_info
+from ..ffprobe.exec import MetadataError, get_media_property
+from ..ffprobe.session import probe_session
 from ..exceptions import ValidationError
 
 logger = logging.getLogger(__name__)

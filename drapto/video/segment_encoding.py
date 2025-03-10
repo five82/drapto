@@ -55,10 +55,9 @@ def _validate_single_encoded_segment(segment: Path, tolerance: float = 0.2) -> T
         
     except Exception as e:
         return False, f"Failed to validate segment {segment.name}: {str(e)}"
-from ..ffprobe.utils import (
-    get_video_info, get_format_info, get_media_property,
-    probe_session, MetadataError
-)
+from ..ffprobe.media import get_video_info, get_format_info
+from ..ffprobe.exec import MetadataError, get_media_property
+from ..ffprobe.session import probe_session
 from ..exceptions import DependencyError, SegmentEncodingError
 from .encode_helpers import (
     build_encode_command,
