@@ -77,7 +77,7 @@ def process_file(input_file: Path, output_file: Path, disable_crop: bool = False
             _run_encode_pipeline(input_file, output_file, disable_crop)
             
             # Clean up temporary working directories
-            from .utils import cleanup_working_dirs
+            from ..utils import cleanup_working_dirs
             cleanup_working_dirs()
             
             return build_encode_summary(input_file, output_file, start_time)
