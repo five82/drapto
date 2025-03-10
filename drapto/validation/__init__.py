@@ -21,7 +21,8 @@ from .validation_video import (
 )
 from .validation_audio import (
     validate_input_audio,
-    validate_audio_streams
+    validate_audio_streams,
+    validate_encoded_audio
 )
 from .validation_subtitles import validate_subtitle_tracks
 from .validation_quality import validate_quality_metrics
