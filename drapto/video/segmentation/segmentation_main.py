@@ -17,7 +17,7 @@ import logging
 from pathlib import Path
 from typing import List, Optional
 
-from .scene_detection import detect_scenes, validate_segment_boundaries
+from ..scene_detection import detect_scenes, validate_segment_boundaries
 from .hardware import check_hardware_acceleration, get_hwaccel_options
 from ..exceptions import ValidationError
 
