@@ -27,7 +27,7 @@ class TestAudioEncoding(unittest.TestCase):
         mock_run_cmd.return_value = None
         
         # Patch validate_encoded_audio if needed
-        with patch("drapto.audio.encoding.validate_encoded_audio") as mock_validate:
+        with patch("drapto.validation.validation_audio.validate_encoded_audio") as mock_validate:
             output = encode_audio_track(self.input_file, 1)
             self.assertTrue(isinstance(output, Path))
             # Validate the bitrate chosen, if the command builder is visible.
