@@ -17,7 +17,7 @@ from ..exceptions import (
     ConcatenationError, SegmentEncodingError
 )
 from ..validation import validate_output
-from .formatting import (
+from ..formatting import (
     print_header, print_check, print_warning,
     print_error, print_success, print_separator,
     print_info
