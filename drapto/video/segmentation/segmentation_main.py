@@ -177,3 +177,79 @@ def segment_video(input_file: Path) -> bool:
             raise
         raise SegmentationError(f"Segmentation failed: {str(e)}", module="segmentation") from e
 
+"""
+Video Segmentation Implementation
+
+Responsibilities:
+- Perform scene-based video segmentation
+- Coordinate segment creation and validation
+- Handle segment boundary detection
+"""
+
+import logging
+from pathlib import Path
+from typing import List, Optional
+
+from ...ffprobe.exec import MetadataError
+from ...ffprobe.media import get_duration, get_video_info
+from ...config import (
+    SCENE_THRESHOLD, HDR_SCENE_THRESHOLD
+)
+from ..scene_detection_helpers import (
+    get_candidate_scenes,
+    filter_scene_candidates,
+    insert_artificial_boundaries,
+    validate_segment_boundaries
+)
+
+logger = logging.getLogger(__name__)
+
+def segment_video(input_file: Path) -> bool:
+    """
+    Segment video into chunks for parallel encoding
+    
+    Args:
+        input_file: Path to input video file
+        
+    Returns:
+        bool: True if segmentation successful
+    """
+    from ...config import WORKING_DIR
+    segments_dir = WORKING_DIR / "segments"
+    segments_dir.mkdir(parents=True, exist_ok=True)
+    
+    try:
+        # Prepare segmentation parameters
+        hw_opt, scenes = _prepare_segmentation(input_file)
+        if not scenes:
+            raise SegmentationError("Scene detection failed; no scenes detected", module="segmentation")
+            
+        cmd = build_segment_command(input_file, segments_dir, scenes, hw_opt)
+        job = SegmentationJob(cmd)
+        job.execute()
+        
+        # Validate segments
+        validate_segments(input_file)
+        
+        return True
+        
+    except Exception as e:
+        if isinstance(e, (SegmentationError, ValidationError)):
+            raise
+        raise SegmentationError(f"Segmentation failed: {str(e)}", module="segmentation") from e
+
+def _prepare_segmentation(input_file: Path) -> tuple[str, list[float]]:
+    """
+    Prepare parameters for segmentation by checking for hardware acceleration and performing scene detection.
+
+    Args:
+        input_file: Path to the input video file.
+
+    Returns:
+        A tuple with the hardware option string and the list of scene change timestamps.
+    """
+    from ..hardware import check_hardware_acceleration, get_hwaccel_options
+    hw_type = check_hardware_acceleration()
+    hw_opt = get_hwaccel_options(hw_type)
+    scenes = detect_scenes(input_file)
+    return hw_opt, scenes

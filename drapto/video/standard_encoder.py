@@ -15,7 +15,7 @@ from ..config import WORKING_DIR
 from ..utils import run_cmd
 from ..formatting import print_check
 from .detection import detect_crop
-from .segmentation import segment_video
+from .segmentation.segmentation_main import segment_video
 from .segment_encoding import encode_segments
 from .concatenation import concatenate_segments
 from ..exceptions import (
