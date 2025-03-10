@@ -55,7 +55,7 @@ class TestFFProbeMedia(unittest.TestCase):
         # Simulate format info query
         mock_query.return_value = {"format": {"duration": "120.0"}}
         info = get_format_info(Path("/tmp/fake.mkv"))
-        self.assertEqual(info["format"]["duration"], "120.0")
+        self.assertEqual(info["duration"], "120.0")
 
     @patch("drapto.ffprobe.media.ffprobe_query")
     def test_get_subtitle_info(self, mock_query):
