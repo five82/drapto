@@ -77,26 +77,6 @@ from .encode_helpers import (
 # - Up to 8 concurrent SD segments (1 token each)
 MAX_MEMORY_TOKENS = 8
 
-def estimate_memory_weight(segment: Path, resolution_weights: dict) -> int:
-    """
-    Estimate memory weight based on segment resolution using dynamic weights
-    from warmup analysis.
-    """
-    try:
-        try:
-            with probe_session(segment) as probe:
-                width = int(probe.get("width", "video"))
-            if width >= 3840:  # 4K
-                return resolution_weights['4k']
-            elif width >= 1920:  # 1080p/2K
-                return resolution_weights['1080p']
-            return resolution_weights['SDR']  # SD/HD
-        except MetadataError as e:
-            logger.warning("Failed to get segment width: %s", e)
-            return resolution_weights['SDR']  # Default to SD/HD weight
-    except Exception as e:
-        logger.warning("Failed to get segment width, using minimum weight: %s", e)
-        return min(resolution_weights.values())
 
 from ..config import (
     PRESET, TARGET_VMAF, TARGET_VMAF_HDR, SVT_PARAMS, 
