@@ -12,6 +12,7 @@ import re
 import resource
 from pathlib import Path
 from typing import Optional, Tuple, Dict
+from ..exceptions import SegmentEncodingError
 
 from ..ffprobe.session import probe_session
 from ..ffprobe.media import get_duration, get_video_info, get_format_info
@@ -124,3 +125,21 @@ def log_segment_progress(stats: dict, output_logs: list, segment_name: str,
     capture_log("  Encoding time: %.2fs (%.2fx realtime)", 
              stats['encoding_time'], stats['speed_factor'])
     capture_log("  Resolution: %s @ %s", stats['resolution'], stats['framerate'])
+
+def handle_segment_retry(error: Exception, segment: Path, output_segment: Path, 
+                         crop_filter: Optional[str], retry_count: int,
+                         is_hdr: bool, dv_flag: bool) -> tuple[dict, list[str]]:
+    # Use a local import to avoid circular dependency
+    from .segment_encoding import encode_segment
+    MAX_RETRIES = 2
+    logger.warning("Encoding segment %s failed on attempt %d with error: %s", 
+                   segment.name, retry_count, str(error))
+    if retry_count < MAX_RETRIES:
+        retry_count += 1
+        logger.info("Retrying segment %s (attempt %d)", segment.name, retry_count)
+        return encode_segment(segment, output_segment, crop_filter, retry_count, is_hdr, dv_flag)
+    else:
+        raise SegmentEncodingError(
+            f"Segment {segment.name} failed after {MAX_RETRIES + 1} attempts: {error}",
+            module="segment_encoding"
+        )
