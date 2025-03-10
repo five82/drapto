@@ -215,16 +215,11 @@ def encode_segments(crop_filter: Optional[str] = None, is_hdr: bool = False, dv_
         DependencyError: If required dependencies are missing
     """
     from ..validation import validate_ab_av1
-    import psutil
-    import time
-    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from ..utils import check_dependencies
+    from .segment_encoding_scheduler import orchestrate_parallel_encoding
     
     check_dependencies()  # Will raise DependencyError if any issues
-    validate_ab_av1()     # Will raise DependencyError if ab-av1 missing
-
-    # Configure memory thresholds
-    MEMORY_THRESHOLD = 0.8  # Use up to 80% of available memory
-    BASE_MEMORY_PER_TOKEN = 512 * 1024 * 1024  # 512MB base memory per token
+    validate_ab_av1()    # Will raise DependencyError if ab-av1 missing
     
     segments_dir = WORKING_DIR / "segments"
     encoded_dir = WORKING_DIR / "encoded_segments"
@@ -236,8 +231,7 @@ def encode_segments(crop_filter: Optional[str] = None, is_hdr: bool = False, dv_
             logger.error("No segments found to encode")
             return False
 
-        # Log common ab-av1 encoding parameters once before warmup
-        # Use parameters corresponding to the first attempt:
+        # Log common encoding parameters
         sample_count = 3
         sample_duration_value = 1
         min_vmaf_value = str(TARGET_VMAF_HDR if is_hdr else TARGET_VMAF)
@@ -262,105 +256,18 @@ def encode_segments(crop_filter: Optional[str] = None, is_hdr: bool = False, dv_
         formatted_common_cmd = " \\\n    ".join(common_cmd)
         logger.info("Common ab-av1 encoding parameters:\n    %s", formatted_common_cmd)
 
-        # Warm-up: process first WARMUP_COUNT segments sequentially to gauge memory usage
-        warmup_results = []
-        for i in range(min(WARMUP_COUNT, len(segments))):
-            segment = segments[i]
-            output_segment = encoded_dir / segment.name
-            logger.info("Warm-up encoding for segment: %s", segment.name)
-            result = encode_segment(segment, output_segment, crop_filter, 0, is_hdr, dv_flag)
-            warmup_results.append(result)
-        next_segment_idx = min(WARMUP_COUNT, len(segments))
-
-        # Calculate dynamic memory requirements from warmup results
-        base_memory_per_token, resolution_weights = calculate_memory_requirements(warmup_results)
-        logger.info("Dynamic memory analysis:")
-        logger.info("  Base memory per token: %.2f MB", base_memory_per_token / (1024 * 1024))
-        logger.info("  Resolution weights: %s", resolution_weights)
-
-
-        # Initialize thread pool and scheduler
-        max_workers = psutil.cpu_count()
-        completed_results = []
-    
-        from ..scheduler import MemoryAwareScheduler
-        scheduler = MemoryAwareScheduler(base_memory_per_token, MAX_MEMORY_TOKENS, TASK_STAGGER_DELAY)
-
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            while next_segment_idx < len(segments) or scheduler.running_tasks:
-                # Check system memory and update completed tasks
-                if psutil.virtual_memory().percent >= 90:
-                    logger.info("High memory usage (%d%%); pausing task submissions...",
-                            psutil.virtual_memory().percent)
-                    time.sleep(1)
-                    scheduler.update_completed()
-                    continue
-
-                # Submit new tasks as long as there are segments remaining
-                while next_segment_idx < len(segments):
-                    segment = segments[next_segment_idx]
-                    output_segment = encoded_dir / segment.name
-                    memory_weight = estimate_memory_weight(segment, resolution_weights)
-                    estimated_memory = memory_weight * base_memory_per_token
-
-                    if scheduler.can_submit(estimated_memory):
-                        future = executor.submit(encode_segment, segment, output_segment,
-                                              crop_filter, 0, dv_flag)
-                        scheduler.add_task(next_segment_idx, future, memory_weight)
-                        next_segment_idx += 1
-                    else:
-                        break
-
-                # Check for completed tasks
-                for task_id, (future, _) in list(scheduler.running_tasks.items()):
-                    if future.done():
-                        try:
-                            result = future.result()
-                            completed_results.append(result)
-                            stats, log_messages = result
-                        
-                            # Print captured logs
-                            for msg in log_messages:
-                                logger.info(msg)
-                            logger.info("Successfully encoded segment: %s",
-                                    stats.get('segment'))
-                        except Exception as e:
-                            logger.error("Task failed: %s", e)
-                            return False
-
-                # Update completed tasks in scheduler
-                scheduler.update_completed()
-
-                # Short sleep before next loop iteration
-                if scheduler.running_tasks:
-                    time.sleep(0.1)
-                
-        # Print summary statistics
-        if completed_results:
-            segment_stats = [s for s, _ in completed_results]
-            total_duration = sum(s['duration'] for s in segment_stats)
-            total_size = sum(s['size_mb'] for s in segment_stats)
-            avg_bitrate = sum(s['bitrate_kbps'] for s in segment_stats) / len(segment_stats)
-            avg_speed = sum(s['speed_factor'] for s in segment_stats) / len(segment_stats)
-            
-            # Handle VMAF statistics safely
-            vmaf_stats = [s for s in segment_stats if s.get('vmaf_score') is not None]
-            if vmaf_stats:
-                avg_vmaf = sum(s['vmaf_score'] or 0 for s in vmaf_stats) / len(vmaf_stats)
-                min_vmaf = min(s['vmaf_min'] or float('inf') for s in vmaf_stats)
-                max_vmaf = max(s['vmaf_max'] or 0 for s in vmaf_stats)
-                
-            logger.info("Encoding Summary:")
-            logger.info("  Total Duration: %.2f seconds", total_duration)
-            logger.info("  Total Size: %.2f MB", total_size)
-            logger.info("  Average Bitrate: %.2f kbps", avg_bitrate)
-            logger.info("  Average Speed: %.2fx realtime", avg_speed)
-            if 'avg_vmaf' in locals():
-                logger.info("  VMAF Scores - Avg: %.2f, Min: %.2f, Max: %.2f",
-                         avg_vmaf, min_vmaf, max_vmaf)
+        # Orchestrate parallel encoding
+        success = orchestrate_parallel_encoding(
+            segments=segments,
+            encoded_dir=encoded_dir,
+            crop_filter=crop_filter,
+            is_hdr=is_hdr,
+            dv_flag=dv_flag,
+            encode_segment_fn=encode_segment
+        )
         
-        # Validate encoded segments
-        validate_encoded_segments(segments_dir)
+        if not success:
+            raise SegmentEncodingError("Parallel encoding failed", module="segment_encoding")
             
     except Exception as e:
         logger.error("Parallel encoding failed: %s", e)
