@@ -104,14 +104,25 @@ def validate_audio_streams(input_file: Path, output_file: Path, validation_repor
                     module="audio_validation"
                 )
                 
-            # Duration validation
+            # Duration validation with null checks
             in_dur = in_stream.get("duration")
             out_dur = out_stream.get("duration")
-            if abs(in_dur - out_dur) > 0.5:  # Allow 500ms difference
-                raise ValidationError(
-                    f"Track {idx} duration mismatch: input {in_dur:.1f}s vs output {out_dur:.1f}s",
-                    module="audio_validation"
-                )
+            
+            if in_dur is None:
+                logger.warning("Input audio track %d has no duration metadata", idx)
+            if out_dur is None:
+                logger.warning("Output audio track %d has no duration metadata", idx)
+                
+            if None not in (in_dur, out_dur):
+                try:
+                    duration_diff = abs(float(in_dur) - float(out_dur))
+                    if duration_diff > 0.5:  # Allow 500ms difference
+                        raise ValidationError(
+                            f"Track {idx} duration mismatch: input {float(in_dur):.1f}s vs output {float(out_dur):.1f}s",
+                            module="audio_validation"
+                        )
+                except (TypeError, ValueError) as e:
+                    logger.warning("Skipping duration validation for track %d: %s", idx, str(e))
         
         validation_report.append(f"Audio: {len(output_audio)} validated Opus streams")
         
