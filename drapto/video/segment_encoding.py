@@ -329,25 +329,6 @@ def encode_segments(crop_filter: Optional[str] = None, is_hdr: bool = False, dv_
         logger.info("  Base memory per token: %.2f MB", base_memory_per_token / (1024 * 1024))
         logger.info("  Resolution weights: %s", resolution_weights)
 
-        # Log encoding parameters
-        sample_cmd = [
-            "ab-av1", "auto-encode",
-            "--input", "<input_segment>",
-            "--output", "<output_segment>",
-            "--encoder", "libsvtav1",
-            "--min-vmaf", str(TARGET_VMAF),
-            "--preset", str(PRESET),
-            "--svt", SVT_PARAMS,
-            "--keyint", "10s",
-            "--samples", "<dynamic>",
-            "--sample-duration", "<dynamic: sec>",
-            "--vmaf", "n_subsample=8:pool=perc5_min",
-            "--pix-format", "yuv420p10le",
-        ]
-        if crop_filter:
-            sample_cmd.extend(["--vfilter", crop_filter])
-        formatted_sample = " \\\n    ".join(sample_cmd)
-        logger.info("Common ab-av1 encoding parameters:\n%s", formatted_sample)
 
         # Initialize thread pool and scheduler
         max_workers = psutil.cpu_count()
