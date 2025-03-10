@@ -22,8 +22,6 @@ This is a vibe coding experiment to see how far LLM tools can take this. Pull re
 - Python 3.8+
 - FFmpeg with support for libsvtav1, libvmaf, and libopus
 - mediainfo
-- [scenedetect](https://pypi.org/project/scenedetect/) (for scene detection)
-- [GNU Parallel](https://www.gnu.org/software/parallel/) (legacy—parallel encoding is now managed internally with Python's concurrent.futures)
 - ab-av1 (for quality-targeted encoding; install via Cargo: `cargo install ab-av1`)
 
 ## Installation
