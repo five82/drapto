@@ -59,7 +59,7 @@ def process_file(input_file: Path, output_file: Path, disable_crop: bool = False
     Returns:
         Optional[dict]: Dictionary containing encoding summary if successful
     """
-    file_handler, log_file = _setup_encode_logging(input_file)
+    file_handler, log_file = setup_encode_logging(input_file)
     
     try:
         start_time = time.time()
@@ -80,7 +80,7 @@ def process_file(input_file: Path, output_file: Path, disable_crop: bool = False
             from .utils import cleanup_working_dirs
             cleanup_working_dirs()
             
-            return _build_encode_summary(input_file, output_file, start_time)
+            return build_encode_summary(input_file, output_file, start_time)
             
         except (EncodingError, ValidationError) as e:
             logger.error("Encoding failed: %s", e)
