@@ -20,14 +20,14 @@ from .formatting import print_header, print_error, print_info, print_success
 from .pipeline import process_directory, process_file
 from .utils import check_dependencies
 
-def setup_logging(log_level: str = None):
+def _setup_logging(log_level: str = None):
     """Configure logging with rich output using the specified logging level"""
     from drapto.config import LOG_LEVEL
     configure_logging(log_level or LOG_LEVEL)
     logger = logging.getLogger("drapto")
     logger.info("Started new logging session")
 
-def parse_args():
+def _parse_args():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(
         description="Video encoding pipeline using AV1"
