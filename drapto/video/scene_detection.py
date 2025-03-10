@@ -1,8 +1,14 @@
-"""Scene detection utilities for video processing"""
+"""
+Scene Detection Module
+
+Responsibilities:
+  - Use PySceneDetect to identify candidate scene change timestamps in an input video.
+  - Filter and refine candidate scenes based on a minimum duration and a tolerance threshold.
+  - Insert artificial boundaries for long gaps where no scene change is detected.
+  - Provide utilities to validate segment boundaries against detected scene changes.
+"""
 
 import functools
-import logging
-logger = logging.getLogger(__name__)
 import logging
 import re
 from pathlib import Path
@@ -22,6 +28,76 @@ from ..config import (
 )
 
 logger = logging.getLogger(__name__)
+
+def _get_candidate_scenes(input_file: Path, threshold: float) -> list[float]:
+    """
+    Run PySceneDetect to obtain candidate scene change timestamps.
+
+    Args:
+        input_file: Path to the video file.
+        threshold: Detection threshold value (HDR vs. SDR).
+
+    Returns:
+        Sorted list of detected candidate scene timestamps.
+    """
+    candidates = detect(str(input_file), ContentDetector(threshold=threshold, min_scene_len=int(TARGET_MIN_SEGMENT_LENGTH)))
+    candidate_timestamps = []
+    for scene in candidates:
+        if hasattr(scene, "start_time"):
+            candidate_timestamps.append(scene.start_time.get_seconds())
+        elif isinstance(scene, (tuple, list)) and scene:
+            try:
+                candidate_timestamps.append(float(scene[0]))
+            except Exception:
+                continue
+    candidate_timestamps.sort()
+    return candidate_timestamps
+
+def _filter_scene_candidates(candidate_timestamps: list[float], min_gap: float = TARGET_MIN_SEGMENT_LENGTH) -> list[float]:
+    """
+    Filter out candidate scenes that are too close together.
+
+    Args:
+        candidate_timestamps: List of candidate timestamps.
+        min_gap: Minimum allowed gap between scenes.
+
+    Returns:
+        Filtered list of scene timestamps.
+    """
+    filtered = []
+    last_ts = 0.0
+    for ts in candidate_timestamps:
+        if ts - last_ts >= min_gap:
+            filtered.append(ts)
+            last_ts = ts
+    return filtered
+
+def _insert_artificial_boundaries(filtered_scenes: list[float], total_duration: float) -> list[float]:
+    """
+    Insert additional boundaries when there are gaps exceeding MAX_SEGMENT_LENGTH.
+
+    Args:
+        filtered_scenes: Sorted list of scene timestamps after filtering.
+        total_duration: Total duration of the video.
+
+    Returns:
+        Final sorted list of scene boundaries.
+    """
+    final_boundaries = []
+    prev_boundary = 0.0
+    for ts in filtered_scenes:
+        gap = ts - prev_boundary
+        if gap > MAX_SEGMENT_LENGTH:
+            num_inserts = int(gap // MAX_SEGMENT_LENGTH)
+            for i in range(1, num_inserts + 1):
+                final_boundaries.append(prev_boundary + i * MAX_SEGMENT_LENGTH)
+        final_boundaries.append(ts)
+        prev_boundary = ts
+    if total_duration - prev_boundary > MAX_SEGMENT_LENGTH:
+        num_inserts = int((total_duration - prev_boundary) // MAX_SEGMENT_LENGTH)
+        for i in range(1, num_inserts + 1):
+            final_boundaries.append(prev_boundary + i * MAX_SEGMENT_LENGTH)
+    return sorted(set(final_boundaries))
 
 @functools.lru_cache(maxsize=None)
 def detect_scenes(input_file: Path) -> List[float]:
@@ -79,53 +155,11 @@ def detect_scenes(input_file: Path) -> List[float]:
     except Exception:
         threshold_val = SCENE_THRESHOLD
 
-    # 4. Run candidate scene detection using PySceneDetect.
+    # Run scene detection using helper functions
     try:
-        candidates = detect(str(input_file), ContentDetector(threshold=threshold_val, min_scene_len=int(TARGET_MIN_SEGMENT_LENGTH)))
-        candidate_timestamps = []
-        for scene in candidates:
-            if hasattr(scene, "start_time"):
-                candidate_timestamps.append(scene.start_time.get_seconds())
-            elif isinstance(scene, (tuple, list)) and scene:
-                try:
-                    candidate_timestamps.append(float(scene[0]))
-                except Exception:
-                    continue
-        candidate_timestamps.sort()
-    except Exception as e:
-        logger.error("Candidate scene detection failed: %s", e)
-        candidate_timestamps = []
-
-    # Filter out scenes that are too close together
-    filtered_scenes = []
-    last_ts = 0.0
-    for ts in candidate_timestamps:
-        if ts - last_ts >= TARGET_MIN_SEGMENT_LENGTH:
-            filtered_scenes.append(ts)
-            last_ts = ts
-
-    # Insert artificial boundaries for gaps exceeding MAX_SEGMENT_LENGTH
-    final_boundaries = []
-    prev_boundary = 0.0
-    for ts in filtered_scenes:
-        gap = ts - prev_boundary
-        if gap > MAX_SEGMENT_LENGTH:
-            # Insert additional boundaries every MAX_SEGMENT_LENGTH seconds
-            num_inserts = int(gap // MAX_SEGMENT_LENGTH)
-            for i in range(1, num_inserts + 1):
-                final_boundaries.append(prev_boundary + i * MAX_SEGMENT_LENGTH)
-        final_boundaries.append(ts)
-        prev_boundary = ts
-    
-    # Check for potential gap after last scene to end of video
-    if total_duration - prev_boundary > MAX_SEGMENT_LENGTH:
-        remaining_gap = total_duration - prev_boundary
-        num_inserts = int(remaining_gap // MAX_SEGMENT_LENGTH)
-        for i in range(1, num_inserts + 1):
-            final_boundaries.append(prev_boundary + i * MAX_SEGMENT_LENGTH)
-
-    # Ensure boundaries are sorted and unique
-    final_boundaries = sorted(set(final_boundaries))
+        candidate_ts = _get_candidate_scenes(input_file, threshold_val)
+        filtered_ts = _filter_scene_candidates(candidate_ts)
+        final_boundaries = _insert_artificial_boundaries(filtered_ts, total_duration)
     logger.info("Detected %d scenes, final boundaries: %r", len(candidate_timestamps), final_boundaries)
     return final_boundaries
 

@@ -1,4 +1,12 @@
-"""Video segmentation and parallel encoding functions"""
+"""
+Video Segmentation Module
+
+Responsibilities:
+  - Divide input video files into segments based on detected scene changes.
+  - Validate individual segments (e.g., file size, duration, codec, and timestamp sanity).
+  - Merge segments to form the final video.
+  - Manage and trigger parallel encoding tasks for the segments.
+"""
 
 import logging
 from pathlib import Path
@@ -6,6 +14,44 @@ from typing import List, Optional
 
 from .scene_detection import detect_scenes, validate_segment_boundaries
 from .hardware import check_hardware_acceleration, get_hwaccel_options
+from ..exceptions import ValidationError
+
+def _validate_single_segment(segment: Path, min_size: int = 1024) -> float:
+    """
+    Validate a single video segment.
+
+    Args:
+        segment: Path to the segment file.
+        min_size: Minimum acceptable size for a segment in bytes.
+
+    Returns:
+        The segment duration as a float.
+
+    Raises:
+        ValidationError: If the segment is too small or has invalid properties.
+    """
+    if segment.stat().st_size < min_size:
+        raise ValidationError(f"Segment too small: {segment.name}", module="segmentation")
+    try:
+        duration = get_duration(segment)
+    except Exception as e:
+        raise ValidationError(f"Could not determine duration for {segment.name}: {str(e)}", module="segmentation")
+    return duration
+
+def _prepare_segmentation(input_file: Path) -> tuple[str, list[float]]:
+    """
+    Prepare parameters for segmentation by checking for hardware acceleration and performing scene detection.
+
+    Args:
+        input_file: Path to the input video file.
+
+    Returns:
+        A tuple with the hardware option string and the list of scene change timestamps.
+    """
+    hw_type = check_hardware_acceleration()
+    hw_opt = get_hwaccel_options(hw_type)
+    scenes = detect_scenes(input_file)
+    return hw_opt, scenes
 from .command_builders import build_segment_command
 from ..command_jobs import SegmentationJob
 from ..config import WORKING_DIR
@@ -100,14 +146,8 @@ def validate_segments(input_file: Path) -> bool:
     min_size = 1024  # 1KB minimum segment size
     
     for segment in segments:
-        # Check file size
-        if segment.stat().st_size < min_size:
-            msg = f"Segment too small: {segment.name}"
-            logger.error(msg)
-            raise ValidationError(msg, module="segmentation")
-    
         try:
-            duration = get_duration(segment)
+            duration = _validate_single_segment(segment)
             video_info = get_video_info(segment)
             codec = video_info.get("codec_name")
             video_start = video_info.get("start_time", 0.0)
@@ -173,11 +213,8 @@ def segment_video(input_file: Path) -> bool:
     segments_dir.mkdir(parents=True, exist_ok=True)
     
     try:
-        # Check for hardware decoding support
-        hw_type = check_hardware_acceleration()
-        hw_opt = get_hwaccel_options(hw_type)
-        
-        scenes = detect_scenes(input_file)
+        # Prepare segmentation parameters
+        hw_opt, scenes = _prepare_segmentation(input_file)
         if not scenes:
             raise SegmentationError("Scene detection failed; no scenes detected", module="segmentation")
             
