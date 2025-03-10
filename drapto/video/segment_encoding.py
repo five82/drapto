@@ -71,177 +71,6 @@ from ..utils import run_cmd, check_dependencies
 from ..formatting import print_check
 from ..validation import validate_ab_av1
 
-def _build_encode_command(
-    segment: Path,
-    output_segment: Path,
-    crop_filter: Optional[str],
-    retry_count: int,
-    is_hdr: bool,
-    dv_flag: bool
-) -> list[str]:
-    """Build the ab-av1 encode command with appropriate parameters."""
-    # Determine sampling parameters based on retry count
-    if retry_count == 0:
-        sample_count = 3
-        sample_duration_value = 1
-        min_vmaf_value = str(TARGET_VMAF_HDR if is_hdr else TARGET_VMAF)
-    elif retry_count == 1:
-        sample_count = 4
-        sample_duration_value = 2
-        min_vmaf_value = str(TARGET_VMAF_HDR if is_hdr else TARGET_VMAF)
-    else:  # retry_count == 2
-        sample_count = 4
-        sample_duration_value = 2
-        min_vmaf_value = "95"  # Force highest quality
-
-    cmd = [
-        "ab-av1", "auto-encode",
-        "--input", str(segment),
-        "--output", str(output_segment),
-        "--encoder", "libsvtav1",
-        "--min-vmaf", min_vmaf_value,
-        "--preset", str(PRESET),
-        "--svt", SVT_PARAMS,
-        "--keyint", "10s",
-        "--samples", str(sample_count),
-        "--sample-duration", f"{sample_duration_value}s",
-        "--vmaf", "n_subsample=8:pool=perc5_min",
-        "--pix-format", "yuv420p10le",
-    ]
-    if crop_filter:
-        cmd.extend(["--vfilter", crop_filter])
-    if dv_flag:
-        cmd.extend(["--enc", "dolbyvision=true"])
-    return cmd
-
-def _parse_vmaf_scores(stderr_output: str) -> tuple[Optional[float], Optional[float], Optional[float]]:
-    """Parse VMAF scores from encoder output."""
-    vmaf_values = []
-    for line in stderr_output.splitlines():
-        match = re.search(r"VMAF\s+([0-9.]+)", line)
-        if match:
-            try:
-                vmaf_values.append(float(match.group(1)))
-            except ValueError:
-                continue
-    if vmaf_values:
-        return (
-            sum(vmaf_values) / len(vmaf_values),  # average
-            min(vmaf_values),                     # minimum
-            max(vmaf_values)                      # maximum
-        )
-    return (None, None, None)
-
-def _get_retry_params(retry_count: int, is_hdr: bool) -> tuple[int, int, str]:
-    """Get encoding parameters based on retry count"""
-    if retry_count == 0:
-        return 3, 1, str(TARGET_VMAF_HDR if is_hdr else TARGET_VMAF)
-    elif retry_count == 1:
-        return 4, 2, str(TARGET_VMAF_HDR if is_hdr else TARGET_VMAF)
-    else:  # retry_count == 2
-        return 4, 2, "95"  # Force highest quality
-
-def _handle_segment_retry(e: Exception, segment: Path, output_segment: Path,
-                         crop_filter: Optional[str], retry_count: int,
-                         is_hdr: bool, dv_flag: bool) -> tuple[dict, list[str]]:
-    """Handle segment encoding retry logic"""
-    if retry_count < 2:
-        logger.warning("Retrying segment (%d): %s", retry_count + 1, e)
-        if output_segment.exists():
-            output_segment.unlink()
-        return encode_segment(segment, output_segment, crop_filter,
-                            retry_count + 1, is_hdr, dv_flag)
-    else:
-        logger.error("Segment encoding failed after %d retries", retry_count)
-        raise
-
-def _get_segment_properties(segment: Path) -> tuple[float, int]:
-    """Get input segment duration and width."""
-    try:
-        with probe_session(segment) as probe:
-            input_duration = float(probe.get("duration", "format"))
-            width = int(probe.get("width", "video"))
-            return input_duration, width
-    except MetadataError as e:
-        raise
-    except Exception as e:
-        logger.warning("Failed to parse width from video info: %s. Assuming non-4k.", e)
-        return 0.0, 0
-
-def _calculate_output_metrics(output_segment: Path, input_duration: float, encoding_time: float) -> dict:
-    """Calculate output metrics like bitrate and speed factor."""
-    video_info_out = get_video_info(output_segment)
-    format_info_out = get_format_info(output_segment)
-    output_duration = float(format_info_out.get("duration", 0))
-    output_size = int(format_info_out.get("size", 0))
-    
-    return {
-        'duration': output_duration,
-        'size_mb': output_size / (1024 * 1024),
-        'bitrate_kbps': (output_size * 8) / (output_duration * 1000),
-        'speed_factor': input_duration / encoding_time,
-        'resolution': f"{video_info_out.get('width', '0')}x{video_info_out.get('height', '0')}",
-        'framerate': video_info_out.get('r_frame_rate', 'unknown'),
-    }
-
-def _get_resolution_category(output_segment: Path) -> tuple[str, int]:
-    """Determine resolution category and width."""
-    try:
-        with probe_session(output_segment) as probe:
-            width = int(probe.get("width", "video"))
-    except (MetadataError, Exception) as e:
-        logger.warning("Could not determine output width, using fallback value: %s", e)
-        width = 1280  # Fallback
-
-    if width >= 3840:
-        return "4k", width
-    elif width >= 1920:
-        return "1080p", width
-    return "SDR", width
-
-def _log_segment_progress(stats: dict, output_logs: list, segment_name: str,
-                         vmaf_score: Optional[float] = None,
-                         vmaf_min: Optional[float] = None,
-                         vmaf_max: Optional[float] = None) -> None:
-    """Log segment encoding progress and stats."""
-    def capture_log(msg, *args):
-        formatted = msg % args
-        logger.info(formatted)
-        output_logs.append(formatted)
-
-    if vmaf_score is not None:
-        capture_log("Segment analysis complete: %s – VMAF Avg: %.2f, Min: %.2f, Max: %.2f (CRF target determined)",
-                   segment_name, vmaf_score, vmaf_min, vmaf_max)
-    else:
-        capture_log("Segment analysis complete: %s – No VMAF scores parsed", segment_name)
-    
-    capture_log("Segment encoding complete: %s", segment_name)
-    capture_log("  Duration: %.2fs", stats['duration'])
-    capture_log("  Size: %.2f MB", stats['size_mb'])
-    capture_log("  Bitrate: %.2f kbps", stats['bitrate_kbps'])
-    capture_log("  Encoding time: %.2fs (%.2fx realtime)", 
-             stats['encoding_time'], stats['speed_factor'])
-    capture_log("  Resolution: %s @ %s", stats['resolution'], stats['framerate'])
-
-def _compile_segment_stats(segment: Path, encoding_time: float, crop_filter: str,
-                         vmaf_metrics: tuple, metrics: dict) -> dict:
-    """Compile all segment statistics into a single dict."""
-    vmaf_score, vmaf_min, vmaf_max = vmaf_metrics
-    peak_memory_kb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-    resolution_category, output_width = _get_resolution_category(segment)
-    
-    return {
-        'segment': segment.name,
-        'encoding_time': encoding_time,
-        'crop_filter': crop_filter or "none",
-        'vmaf_score': vmaf_score,
-        'vmaf_min': vmaf_min,
-        'vmaf_max': vmaf_max,
-        'peak_memory_kb': peak_memory_kb,
-        'peak_memory_bytes': peak_memory_kb * 1024,
-        'resolution_category': resolution_category,
-        **metrics
-    }
 
 def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[str] = None,
                   retry_count: int = 0, is_hdr: bool = False, dv_flag: bool = False) -> tuple[dict, list[str]]:
@@ -268,28 +97,28 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
     
     try:
         # Get input properties
-        input_duration, width = _get_segment_properties(segment)
+        input_duration, width = get_segment_properties(segment)
     except MetadataError as e:
-        return _handle_segment_retry(e, segment, output_segment, crop_filter,
-                                   retry_count, is_hdr, dv_flag)
+        return handle_segment_retry(e, segment, output_segment, crop_filter,
+                                  retry_count, is_hdr, dv_flag)
     
     try:
         # Run encoding
-        cmd = _build_encode_command(segment, output_segment, crop_filter,
-                                  retry_count, is_hdr, dv_flag)
+        cmd = build_encode_command(segment, output_segment, crop_filter,
+                                 retry_count, is_hdr, dv_flag)
         result = run_cmd(cmd)
     except Exception as e:
-        return _handle_segment_retry(e, segment, output_segment, crop_filter,
-                                   retry_count, is_hdr, dv_flag)
+        return handle_segment_retry(e, segment, output_segment, crop_filter,
+                                  retry_count, is_hdr, dv_flag)
 
     # Calculate metrics
     encoding_time = time.time() - start_time
-    metrics = _calculate_output_metrics(output_segment, input_duration, encoding_time)
-    vmaf_metrics = _parse_vmaf_scores(result.stderr)
+    metrics = calculate_output_metrics(output_segment, input_duration, encoding_time)
+    vmaf_metrics = parse_vmaf_scores(result.stderr)
     
     # Compile stats and log progress
-    stats = _compile_segment_stats(output_segment, encoding_time, crop_filter, vmaf_metrics, metrics)
-    _log_segment_progress(stats, output_logs, segment.name, *vmaf_metrics)
+    stats = compile_segment_stats(output_segment, encoding_time, crop_filter, vmaf_metrics, metrics)
+    log_segment_progress(stats, output_logs, segment.name, *vmaf_metrics)
 
     return stats, output_logs
 
