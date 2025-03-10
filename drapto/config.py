@@ -33,7 +33,6 @@ DISABLE_CROP = False
 
 # Standard encoding settings
 # Fixed segmentation mode is removed; using only dynamic, scene-based segmentation.
-TARGET_VMAF = 93
 VMAF_SAMPLE_COUNT = 3
 VMAF_SAMPLE_LENGTH = 1
 
