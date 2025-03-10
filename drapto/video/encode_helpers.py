@@ -13,10 +13,9 @@ import resource
 from pathlib import Path
 from typing import Optional, Tuple, Dict
 
-from ..ffprobe.utils import (
-    probe_session, get_duration, MetadataError,
-    get_video_info, get_format_info
-)
+from ..ffprobe.session import probe_session
+from ..ffprobe.media import get_duration, get_video_info, get_format_info
+from ..ffprobe.exec import MetadataError
 
 logger = logging.getLogger(__name__)
 
