@@ -24,7 +24,7 @@ def build_segment_command(
     if hw_opt:
         cmd.extend(hw_opt.split())
         
-    segment_times = ",".join(f"{t:.2f}" for t in scene_times if t > 1.0)
+    segment_times = ",".join(f"{t:.2f}" for t in scene_times if t >= 1.0)
     cmd.extend([
         "-i", str(input_file),
         "-c:v", "copy",
