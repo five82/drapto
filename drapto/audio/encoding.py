@@ -26,6 +26,10 @@ def encode_audio_tracks(input_file: Path) -> List[Path]:
         AudioEncodingError: If encoding fails
     """
     try:
+        # Validate input audio streams first
+        from ..validation import validate_input_audio
+        validate_input_audio(input_file)
+
         # Get number of audio tracks from ffprobe_utils
         audio_info = get_all_audio_info(input_file)
         num_tracks = len(audio_info)
@@ -111,6 +115,10 @@ def encode_audio_track(input_file: Path, track_index: int) -> Path:
 
         job = AudioEncodeJob(cmd)
         job.execute(total_duration=audio_duration, log_interval=5.0)
+        
+        # Validate the encoded track
+        from ..validation import validate_encoded_audio
+        validate_encoded_audio(output_file, track_index)
         
         return output_file
         
