@@ -2,7 +2,7 @@
 
 AV1 video encoding ab-av1 wrapper with chunked encoding, parallel processing, and Dolby Vision support.
 
-This is a vibe coding experiment to see how far LLM tools can take this. Pull requests are welcome.
+This is a vibe coding experiment to see how far LLM tools can take this. Early work in progress. Pull requests are welcome.
 
 ## Features
 
