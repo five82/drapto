@@ -1,9 +1,16 @@
+"""Unit tests for audio encoding functionality
+
+This test suite verifies the behavior of audio track encoding,
+including stereo channel handling and command execution.
+"""
+
 import unittest
 from unittest.mock import patch, MagicMock
 from pathlib import Path
 from drapto.audio.encoding import encode_audio_track
 
 class TestAudioEncoding(unittest.TestCase):
+    """Test cases for audio encoding"""
     def setUp(self):
         # Use temporary file paths to simulate real files
         self.input_file = Path("/tmp/fake_input.mkv")

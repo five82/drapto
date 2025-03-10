@@ -1,3 +1,9 @@
+"""Unit tests for standard video encoding functionality
+
+This test suite verifies the behavior of the standard encoding pipeline,
+including successful encoding and error handling scenarios.
+"""
+
 import unittest
 from unittest.mock import patch
 from pathlib import Path
@@ -5,6 +11,7 @@ from drapto.video.standard_encoder import encode_standard
 from drapto.exceptions import EncodingError
 
 class TestStandardEncoder(unittest.TestCase):
+    """Test cases for standard video encoding"""
     @patch("drapto.video.standard_encoder.concatenate_segments")
     @patch("drapto.video.standard_encoder.encode_segments")
     @patch("drapto.video.standard_encoder.segment_video")

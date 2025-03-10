@@ -1,8 +1,15 @@
+"""Unit tests for command builder functionality
+
+This test suite verifies the construction of ffmpeg commands
+for various encoding operations including segmentation and audio encoding.
+"""
+
 import unittest
 from pathlib import Path
 from drapto.video.command_builders import build_segment_command, build_audio_encode_command
 
 class TestCommandBuilders(unittest.TestCase):
+    """Test cases for command builder utilities"""
     def test_build_segment_command(self):
         input_file = Path("/tmp/input.mkv")
         segments_dir = Path("/tmp/segments")

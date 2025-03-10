@@ -1,9 +1,16 @@
+"""Unit tests for command job functionality
+
+This test suite verifies the behavior of command execution abstractions,
+including success and failure scenarios for different job types.
+"""
+
 import unittest
 from unittest.mock import patch
 from drapto.command_jobs import CommandJob, ProgressCommandJob
 from drapto.exceptions import CommandExecutionError
 
 class DummyJob(CommandJob):
+    """Dummy job implementation for testing base CommandJob behavior"""
     pass  # Use the base behavior for testing
 
 class TestCommandJobs(unittest.TestCase):
