@@ -1,6 +1,8 @@
 # Drapto
 
-High-quality AV1 video encoding pipeline with intelligent chunked encoding and Dolby Vision support.
+AV1 video encoding ab-av1 wrapper with chunked encoding, parallel processing, and Dolby Vision support.
+
+This is a vibe coding experiment to see how far LLM tools can take this. Pull requests are welcome.
 
 ## Features
 
