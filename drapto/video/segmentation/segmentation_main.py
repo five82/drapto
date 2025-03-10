@@ -40,7 +40,7 @@ def _prepare_segmentation(input_file: Path) -> tuple[str, list[float]]:
 from ..command_builders import build_segment_command
 from ...command_jobs import SegmentationJob
 from ...config import WORKING_DIR
-from ..exceptions import (
+from ...exceptions import (
     SegmentationError, ValidationError,
     SegmentEncodingError
 )
