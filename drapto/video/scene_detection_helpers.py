@@ -11,7 +11,8 @@ from pathlib import Path
 from typing import List, Tuple
 
 from scenedetect import detect, ContentDetector
-from ..ffprobe.utils import get_duration, MetadataError
+from ..ffprobe.media import get_duration
+from ..ffprobe.exec import MetadataError
 from ..config import TARGET_MIN_SEGMENT_LENGTH, MAX_SEGMENT_LENGTH
 from ..formatting import print_check, print_warning
 
