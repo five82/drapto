@@ -1,34 +1,33 @@
 """
 Command-line interface for drapto video encoding pipeline
+
+Responsibilities:
+  - Parse command-line arguments to determine input/output paths and options.
+  - Set up logging configuration and check for dependencies.
+  - Trigger processing of files or directories via the encoding pipeline.
+  - Clean up log and temporary resources at completion.
 """
 import argparse
 import logging
 import sys
 from pathlib import Path
 
-from rich.logging import RichHandler
-
 from . import __version__
+from .config import LOG_DIR
+from .logging import configure_logging
+from .utils import get_timestamp
 from .formatting import print_header, print_error, print_info, print_success
 from .pipeline import process_directory, process_file
 from .utils import check_dependencies
 
-def setup_logging(log_level: str = None):
+def _setup_logging(log_level: str = None):
     """Configure logging with rich output using the specified logging level"""
     from drapto.config import LOG_LEVEL
-    # Use the provided log_level or fallback to the one in config.py
-    level = log_level if log_level is not None else LOG_LEVEL
-    # Convert the level (a string) to its numeric value using logging._nameToLevel
-    numeric_level = logging._nameToLevel.get(level.upper(), logging.INFO)
-    logging.basicConfig(
-        level=numeric_level,
-        format="%(message)s",
-        datefmt="[%X]",
-        handlers=[RichHandler(rich_tracebacks=True, show_path=False)]
-    )
-    # No explicit debug level for scene detection; use global level
+    configure_logging(log_level or LOG_LEVEL)
+    logger = logging.getLogger("drapto")
+    logger.info("Started new logging session")
 
-def parse_args():
+def _parse_args():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(
         description="Video encoding pipeline using AV1"
@@ -65,16 +64,16 @@ def parse_args():
 
 def main():
     """Main entry point"""
-    args = parse_args()
-    setup_logging(args.log_level)
+    args = _parse_args()
+    _setup_logging(args.log_level)
     
-    log = logging.getLogger("drapto")
+    logger = logging.getLogger("drapto")
     print_header(f"Starting drapto video encoder v{__version__}")
     print_info("Processing input...")
     
     # Check dependencies
     if not check_dependencies():
-        log.error("Missing required dependencies")
+        logger.error("Missing required dependencies")
         return 1
         
     # Process input
@@ -101,22 +100,22 @@ def main():
             if not args.output.suffix:
                 # Directory mode: pass both input and output directories to process_directory
                 if process_directory(args.input, args.output):
-                    log.info("Successfully processed directory %s", args.input)
+                    logger.info("Successfully processed directory %s", args.input)
                     return 0
             else:
-                log.error("Output must be a directory when input is a directory")
+                logger.error("Output must be a directory when input is a directory")
                 return 1
         else:
-            log.error("Input %s does not exist", args.input)
+            logger.error("Input %s does not exist", args.input)
             return 1
     except KeyboardInterrupt:
-        log.warning("Encoding interrupted by user")
+        logger.warning("Encoding interrupted by user")
         return 130
     except Exception as e:
-        log.exception("Encoding failed: %s", e)
+        logger.exception("Encoding failed: %s", e)
         return 1
         
-    log.error("Encoding failed")
+    logger.error("Encoding failed")
     return 1
 
 if __name__ == "__main__":

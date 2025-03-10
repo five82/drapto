@@ -1,4 +1,10 @@
-"""Memory-aware task scheduler for parallel encoding"""
+"""Memory-aware task scheduler for parallel encoding
+
+Responsibilities:
+  - Manage task submission based on estimated memory usage and available tokens.
+  - Monitor system memory and pause or schedule tasks accordingly.
+  - Enforce a stagger delay and track running tasks until completion.
+"""
 
 import time
 import psutil
@@ -6,7 +12,7 @@ import logging
 from concurrent.futures import Future
 from typing import Dict, Tuple
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 class MemoryAwareScheduler:
     def __init__(self, base_mem_per_token: int, max_tokens: int, task_stagger_delay: float):

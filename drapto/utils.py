@@ -1,4 +1,11 @@
-"""Utility functions for the drapto encoding pipeline"""
+"""Utility functions for the drapto encoding pipeline
+
+Responsibilities:
+  - Execute shell commands with or without progress reporting.
+  - Format file sizes, timestamps, and paths.
+  - Check for required dependencies and perform cleanup of working directories.
+  - Log command execution details to aid debugging.
+"""
 
 import subprocess
 import sys
@@ -6,6 +13,8 @@ import logging
 from datetime import datetime
 from pathlib import Path
 from typing import List, Union, Optional
+
+from .exceptions import DependencyError
 
 # (Removed basicConfig call so that __main__.py can fully control logging configuration)
 logger = logging.getLogger(__name__)
@@ -110,8 +119,8 @@ def get_file_size(path: Union[str, Path]) -> int:
     return Path(path).stat().st_size
 
 def get_timestamp() -> str:
-    """Get current timestamp in YYYYMMDD_HHMMSS format"""
-    return datetime.now().strftime("%Y%m%d_%H%M%S")
+    """Get current timestamp in YYYY-MM-DD_HH-MM-SS format"""
+    return datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
 def format_size(size: int) -> str:
     """Format file size for display"""
@@ -125,11 +134,16 @@ def check_dependencies() -> bool:
     """Check for required dependencies"""
     required = ['ffmpeg', 'ffprobe', 'mediainfo']
     import shutil
+    missing = []
     for cmd in required:
         if shutil.which(cmd) is None:
-            logger.error(f"Required dependency not found: {cmd}")
-            return False
+            missing.append(cmd)
     
+    if missing:
+        raise DependencyError(
+            f"Missing dependencies: {', '.join(missing)}",
+            module="dependencies"
+        )
     return True
 
 def cleanup_working_dirs():

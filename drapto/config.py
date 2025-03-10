@@ -1,4 +1,15 @@
-"""Configuration settings for the drapto encoding pipeline"""
+"""Configuration settings for the drapto encoding pipeline
+
+This module centralizes all configuration settings including:
+- Working directory paths and file locations
+- Encoding parameters and quality targets
+- Memory management thresholds
+- Hardware acceleration settings
+- Scene detection and segmentation parameters
+
+It provides both user-configurable settings via environment variables
+and internal constants used throughout the pipeline.
+"""
 
 import os
 from pathlib import Path
@@ -14,6 +25,8 @@ LOG_DIR = Path(os.environ.get("DRAPTO_LOG_DIR", str(Path.home() / "drapto_logs")
 PRESET = 6
 SVT_PARAMS = "tune=0:film-grain=0:film-grain-denoise=0"
 PIX_FMT = "yuv420p10le"
+TARGET_VMAF = 93
+TARGET_VMAF_HDR = 95  # New HDR-specific target
 
 # Memory management settings
 MEMORY_THRESHOLD = 0.7  # Lower threshold to reserve 30% free memory
@@ -31,7 +44,6 @@ DISABLE_CROP = False
 
 # Standard encoding settings
 # Fixed segmentation mode is removed; using only dynamic, scene-based segmentation.
-TARGET_VMAF = 93
 VMAF_SAMPLE_COUNT = 3
 VMAF_SAMPLE_LENGTH = 1
 

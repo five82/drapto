@@ -1,14 +1,74 @@
-"""Functions for encoding video segments in parallel"""
+"""Video segment encoding orchestration
+
+This module coordinates parallel video segment encoding with:
+
+High-Level Orchestration:
+- Parallel encoding job scheduling and monitoring
+- Memory-aware task distribution
+- Progress tracking and statistics aggregation
+- Overall encode validation
+
+Low-Level Operations (delegated to helpers):
+- Individual segment encoding via ab-av1
+- VMAF score parsing and analysis
+- Memory usage estimation
+- Hardware resource monitoring
+
+The separation ensures the main encode_segments() function focuses purely on
+orchestration while delegating implementation details to specialized helpers.
+"""
 
 import logging
-import re
+logger = logging.getLogger(__name__)
 import shutil
 import time
 import resource
 import psutil
 from pathlib import Path
-from typing import List, Optional, Dict
-from ..ffprobe_utils import get_video_info, get_format_info
+from typing import List, Optional, Dict, Tuple
+
+def _validate_single_encoded_segment(segment: Path, tolerance: float = 0.2) -> Tuple[bool, Optional[str]]:
+    """
+    Validate a single encoded segment's properties.
+    
+    Args:
+        segment: Path to the encoded segment
+        tolerance: Duration comparison tolerance in seconds
+        
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    try:
+        if not segment.exists() or segment.stat().st_size == 0:
+            return False, f"Missing or empty segment: {segment.name}"
+            
+        with probe_session(segment) as probe:
+            codec = probe.get("codec_name", "video")
+            if codec != "av1":
+                return False, f"Wrong codec '{codec}' in segment: {segment.name}"
+                
+            duration = float(probe.get("duration", "format"))
+            if duration <= 0:
+                return False, f"Invalid duration in segment: {segment.name}"
+                
+        return True, None
+        
+    except Exception as e:
+        return False, f"Failed to validate segment {segment.name}: {str(e)}"
+from ..ffprobe.media import get_video_info, get_format_info
+from ..ffprobe.exec import MetadataError, get_media_property
+from ..ffprobe.session import probe_session
+from ..exceptions import DependencyError, SegmentEncodingError
+from .encode_commands import build_encode_command
+from .encode_helpers import (
+    parse_vmaf_scores,
+    get_segment_properties,
+    calculate_output_metrics,
+    get_resolution_category,
+    compile_segment_stats,
+    log_segment_progress,
+    handle_segment_retry
+)
 
 # Maximum concurrent memory tokens (8 total):
 # - Up to 2 concurrent 4K segments (4 tokens each)
@@ -16,25 +76,9 @@ from ..ffprobe_utils import get_video_info, get_format_info
 # - Up to 8 concurrent SD segments (1 token each)
 MAX_MEMORY_TOKENS = 8
 
-def estimate_memory_weight(segment: Path, resolution_weights: dict) -> int:
-    """
-    Estimate memory weight based on segment resolution using dynamic weights
-    from warmup analysis.
-    """
-    try:
-        info = get_video_info(segment)
-        width = int(info.get("width", 0))
-        if width >= 3840:  # 4K
-            return resolution_weights['4k']
-        elif width >= 1920:  # 1080p/2K
-            return resolution_weights['1080p']
-        return resolution_weights['SDR']  # SD/HD
-    except Exception as e:
-        log.warning("Failed to get segment width, using minimum weight: %s", e)
-        return min(resolution_weights.values())
 
 from ..config import (
-    PRESET, TARGET_VMAF, SVT_PARAMS, 
+    PRESET, TARGET_VMAF, TARGET_VMAF_HDR, SVT_PARAMS, 
     VMAF_SAMPLE_COUNT, VMAF_SAMPLE_LENGTH,
     WORKING_DIR, TASK_STAGGER_DELAY
 )
@@ -42,189 +86,54 @@ from ..utils import run_cmd, check_dependencies
 from ..formatting import print_check
 from ..validation import validate_ab_av1
 
-log = logging.getLogger(__name__)
 
-def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[str] = None, retry_count: int = 0, dv_flag: bool = False) -> tuple[dict, list[str]]:
+def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[str] = None,
+                  retry_count: int = 0, is_hdr: bool = False, dv_flag: bool = False) -> tuple[dict, list[str]]:
     """
     Encode a single video segment using ab-av1.
     
+    Args:
+        segment: Input segment path
+        output_segment: Output segment path
+        crop_filter: Optional crop filter string
+        retry_count: Number of previous retry attempts
+        is_hdr: Whether input is HDR content
+        dv_flag: Whether input is Dolby Vision
+        
     Returns:
-        dict: Encoding statistics and metrics
+        Tuple of (encoding statistics dict, list of log messages)
+        
+    Raises:
+        SegmentEncodingError: If encoding fails
     """
     import time
-    output_logs = []  # List to collect detailed log messages
-    
-    def capture_log(msg, *args, **kwargs):
-        formatted = msg % args if args else msg
-        log.info(formatted)  # Pass only the formatted string
-        output_logs.append(formatted)
-        
+    output_logs = []
     start_time = time.time()
     
-    # Get input segment details
-    # Use ffprobe_utils to get segment info
-    video_info = get_video_info(segment)
-    format_info = get_format_info(segment)
-    input_duration = float(format_info.get("duration", 0))
     try:
-        width = int(video_info.get("width", 0))
-    except Exception as e:
-        log.warning("Failed to parse width from video info: %s. Assuming non-4k.", e)
-        width = 0
-
-    if retry_count == 0:
-        sample_count = 3
-        sample_duration_value = 1
-        if width >= 3840:
-            min_vmaf_value = "95"
-        else:
-            min_vmaf_value = str(TARGET_VMAF)
-    elif retry_count == 1:
-        # Second attempt: increase sample count and duration
-        sample_count = 4
-        sample_duration_value = 2
-        if width >= 3840:
-            min_vmaf_value = "95"
-        else:
-            min_vmaf_value = str(TARGET_VMAF)
-    elif retry_count == 2:
-        # Third attempt: keep increased sample settings but raise min_vmaf
-        sample_count = 4
-        sample_duration_value = 2
-        min_vmaf_value = "95"
+        # Get input properties
+        input_duration, width = get_segment_properties(segment)
+    except MetadataError as e:
+        return handle_segment_retry(e, segment, output_segment, crop_filter,
+                                  retry_count, is_hdr, dv_flag)
     
     try:
         # Run encoding
-        cmd = [
-            "ab-av1", "auto-encode",
-            "--input", str(segment),
-            "--output", str(output_segment),
-            "--encoder", "libsvtav1",
-            "--min-vmaf", min_vmaf_value,
-            "--preset", str(PRESET),
-            "--svt", SVT_PARAMS,
-            "--keyint", "10s",
-            "--samples", str(sample_count),
-            "--sample-duration", f"{sample_duration_value}s",
-            "--vmaf", "n_subsample=8:pool=perc5_min",
-            "--pix-format", "yuv420p10le",
-        ]
-        if crop_filter:
-            cmd.extend(["--vfilter", crop_filter])
-            
-        if dv_flag:
-            cmd.extend(["--enc", "dolbyvision=true"])
-        
+        cmd = build_encode_command(segment, output_segment, crop_filter,
+                                 retry_count, is_hdr, dv_flag)
         result = run_cmd(cmd)
     except Exception as e:
-        if retry_count < 2:  # Allow up to 2 retries (3 total attempts)
-            log.warning("Segment encoding failed, retrying (%d): %s", retry_count + 1, e)
-            # Remove failed output if it exists
-            if output_segment.exists():
-                output_segment.unlink()
-            # Retry with incremented retry count
-            return encode_segment(segment, output_segment, crop_filter, retry_count + 1, dv_flag)
-        else:
-            log.error("Segment encoding failed after %d retries", retry_count)
-            raise
-    end_time = time.time()
-    encoding_time = end_time - start_time
-    
-    # Get output details
-    video_info_out = get_video_info(output_segment)
-    format_info_out = get_format_info(output_segment)
-    output_duration = float(format_info_out.get("duration", 0))
-    output_size = int(format_info_out.get("size", 0))
-    
-    # Calculate bitrate and speed metrics
-    bitrate_kbps = (output_size * 8) / (output_duration * 1000)
-    speed_factor = input_duration / encoding_time
-    
-    # Parse VMAF scores from ab-av1 output if available
-    vmaf_score = None
-    vmaf_min = None
-    vmaf_max = None
-    vmaf_values = []
-    try:
-        for line in result.stderr.split('\n'):
-            # Use a regular expression to capture the VMAF value in lines like "... VMAF 88.72 ..."
-            match = re.search(r"VMAF\s+([0-9.]+)", line)
-            if match:
-                try:
-                    value = float(match.group(1))
-                    vmaf_values.append(value)
-                except Exception:
-                    continue
-        if vmaf_values:
-            vmaf_score = sum(vmaf_values) / len(vmaf_values)
-            vmaf_min = min(vmaf_values)
-            vmaf_max = max(vmaf_values)
-            # Removed duplicate VMAF score log:
-            # log.info("  VMAF scores - Avg: %.2f, Min: %.2f, Max: %.2f",
-            #          vmaf_score, vmaf_min, vmaf_max)
-            capture_log("Segment analysis complete: %s – VMAF Avg: %.2f, Min: %.2f, Max: %.2f (CRF target determined)",
-                     segment.name, vmaf_score, vmaf_min, vmaf_max)
-        else:
-            capture_log("Segment analysis complete: %s – No VMAF scores parsed", segment.name)
-    except Exception as e:
-        log.debug("Could not parse VMAF scores: %s", e)
-        log.info("Segment analysis complete: %s – No VMAF scores parsed", segment.name)
-    
-    # Compile segment statistics
-    stats = {
-        'segment': segment.name,
-        'duration': output_duration,
-        'size_mb': output_size / (1024 * 1024),
-        'bitrate_kbps': bitrate_kbps,
-        'encoding_time': encoding_time,
-        'speed_factor': speed_factor,
-        'resolution': f"{video_info_out.get('width', '0')}x{video_info_out.get('height', '0')}",
-        'framerate': video_info_out.get('r_frame_rate', 'unknown'),
-        'crop_filter': crop_filter or "none",
-        'vmaf_score': vmaf_score,
-        'vmaf_min': vmaf_min,
-        'vmaf_max': vmaf_max
-    }
-    
-    # Log detailed segment info
-    capture_log("Segment encoding complete: %s", segment.name)
-    capture_log("  Duration: %.2fs", stats['duration'])
-    capture_log("  Size: %.2f MB", stats['size_mb'])
-    capture_log("  Bitrate: %.2f kbps", stats['bitrate_kbps'])
-    capture_log("  Encoding time: %.2fs (%.2fx realtime)", 
-             stats['encoding_time'], stats['speed_factor'])
-    capture_log("  Resolution: %s @ %s", stats['resolution'], stats['framerate'])
-    
-    # Get peak memory usage (in kilobytes)
-    peak_memory_kb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        return handle_segment_retry(e, segment, output_segment, crop_filter,
+                                  retry_count, is_hdr, dv_flag)
 
-    # Determine resolution category from output width
-    try:
-        width_result = run_cmd([
-            "ffprobe", "-v", "error",
-            "-select_streams", "v:0",
-            "-show_entries", "stream=width",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(output_segment)
-        ])
-        width = int(width_result.stdout.strip())
-    except Exception:
-        width = 1280  # Fallback
-
-    if width >= 3840:
-        resolution_category = "4k"
-    elif width >= 1920:
-        resolution_category = "1080p"
-    else:
-        resolution_category = "SDR"
-
-    # Convert peak memory to bytes for later comparison
-    peak_memory_bytes = peak_memory_kb * 1024
-
-    # Record the dynamic values in the stats
-    stats['peak_memory_kb'] = peak_memory_kb
-    stats['peak_memory_bytes'] = peak_memory_bytes
-    stats['resolution_category'] = resolution_category
+    # Calculate metrics
+    encoding_time = time.time() - start_time
+    metrics = calculate_output_metrics(output_segment, input_duration, encoding_time)
+    vmaf_metrics = parse_vmaf_scores(result.stderr)
+    
+    # Compile stats and log progress
+    stats = compile_segment_stats(output_segment, encoding_time, crop_filter, vmaf_metrics, metrics)
+    log_segment_progress(stats, output_logs, segment.name, *vmaf_metrics)
 
     return stats, output_logs
 
@@ -272,7 +181,7 @@ def calculate_memory_requirements(warmup_results):
     
     return base_size, weights
 
-def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) -> bool:
+def encode_segments(crop_filter: Optional[str] = None, is_hdr: bool = False, dv_flag: bool = False) -> None:
     """
     Encode video segments in parallel with dynamic memory-aware scheduling
     
@@ -280,20 +189,16 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
         crop_filter: Optional ffmpeg crop filter string
         dv_flag: Whether this is Dolby Vision content
         
-    Returns:
-        bool: True if all segments encoded successfully
+    Raises:
+        SegmentEncodingError: If encoding fails
+        DependencyError: If required dependencies are missing
     """
     from ..validation import validate_ab_av1
-    import psutil
-    import time
-    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from ..utils import check_dependencies
+    from .segment_encoding_scheduler import orchestrate_parallel_encoding
     
-    if not check_dependencies() or not validate_ab_av1():
-        return False
-
-    # Configure memory thresholds
-    MEMORY_THRESHOLD = 0.8  # Use up to 80% of available memory
-    BASE_MEMORY_PER_TOKEN = 512 * 1024 * 1024  # 512MB base memory per token
+    check_dependencies()  # Will raise DependencyError if any issues
+    validate_ab_av1()    # Will raise DependencyError if ab-av1 missing
     
     segments_dir = WORKING_DIR / "segments"
     encoded_dir = WORKING_DIR / "encoded_segments"
@@ -302,134 +207,50 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
     try:
         segments = list(segments_dir.glob("*.mkv"))
         if not segments:
-            log.error("No segments found to encode")
+            logger.error("No segments found to encode")
             return False
 
-        # Warm-up: process first WARMUP_COUNT segments sequentially to gauge memory usage
-        warmup_results = []
-        for i in range(min(WARMUP_COUNT, len(segments))):
-            segment = segments[i]
-            output_segment = encoded_dir / segment.name
-            log.info("Warm-up encoding for segment: %s", segment.name)
-            result = encode_segment(segment, output_segment, crop_filter, 0, dv_flag)
-            warmup_results.append(result)
-        next_segment_idx = min(WARMUP_COUNT, len(segments))
-
-        # Calculate dynamic memory requirements from warmup results
-        base_memory_per_token, resolution_weights = calculate_memory_requirements(warmup_results)
-        log.info("Dynamic memory analysis:")
-        log.info("  Base memory per token: %.2f MB", base_memory_per_token / (1024 * 1024))
-        log.info("  Resolution weights: %s", resolution_weights)
-
-        # Log encoding parameters
-        sample_cmd = [
+        # Log common encoding parameters
+        sample_count = 3
+        sample_duration_value = 1
+        min_vmaf_value = str(TARGET_VMAF_HDR if is_hdr else TARGET_VMAF)
+        common_cmd = [
             "ab-av1", "auto-encode",
             "--input", "<input_segment>",
             "--output", "<output_segment>",
             "--encoder", "libsvtav1",
-            "--min-vmaf", str(TARGET_VMAF),
+            "--min-vmaf", min_vmaf_value,
             "--preset", str(PRESET),
             "--svt", SVT_PARAMS,
             "--keyint", "10s",
-            "--samples", "<dynamic>",
-            "--sample-duration", "<dynamic: sec>",
+            "--samples", str(sample_count),
+            "--sample-duration", f"{sample_duration_value}s",
             "--vmaf", "n_subsample=8:pool=perc5_min",
             "--pix-format", "yuv420p10le",
         ]
         if crop_filter:
-            sample_cmd.extend(["--vfilter", crop_filter])
-        formatted_sample = " \\\n    ".join(sample_cmd)
-        log.info("Common ab-av1 encoding parameters:\n%s", formatted_sample)
+            common_cmd.extend(["--vfilter", crop_filter])
+        if dv_flag:
+            common_cmd.extend(["--enc", "dolbyvision=true"])
+        formatted_common_cmd = " \\\n    ".join(common_cmd)
+        logger.info("Common ab-av1 encoding parameters:\n    %s", formatted_common_cmd)
 
-        # Initialize thread pool and scheduler
-        max_workers = psutil.cpu_count()
-        completed_results = []
-    
-        from ..scheduler import MemoryAwareScheduler
-        scheduler = MemoryAwareScheduler(base_memory_per_token, MAX_MEMORY_TOKENS, TASK_STAGGER_DELAY)
-
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            while next_segment_idx < len(segments) or scheduler.running_tasks:
-                # Check system memory and update completed tasks
-                if psutil.virtual_memory().percent >= 90:
-                    log.info("High memory usage (%d%%); pausing task submissions...",
-                            psutil.virtual_memory().percent)
-                    time.sleep(1)
-                    scheduler.update_completed()
-                    continue
-
-                # Submit new tasks as long as there are segments remaining
-                while next_segment_idx < len(segments):
-                    segment = segments[next_segment_idx]
-                    output_segment = encoded_dir / segment.name
-                    memory_weight = estimate_memory_weight(segment, resolution_weights)
-                    estimated_memory = memory_weight * base_memory_per_token
-
-                    if scheduler.can_submit(estimated_memory):
-                        future = executor.submit(encode_segment, segment, output_segment,
-                                              crop_filter, 0, dv_flag)
-                        scheduler.add_task(next_segment_idx, future, memory_weight)
-                        next_segment_idx += 1
-                    else:
-                        break
-
-                # Check for completed tasks
-                for task_id, (future, _) in list(scheduler.running_tasks.items()):
-                    if future.done():
-                        try:
-                            result = future.result()
-                            completed_results.append(result)
-                            stats, log_messages = result
-                        
-                            # Print captured logs
-                            for msg in log_messages:
-                                log.info(msg)
-                            log.info("Successfully encoded segment: %s",
-                                    stats.get('segment'))
-                        except Exception as e:
-                            log.error("Task failed: %s", e)
-                            return False
-
-                # Update completed tasks in scheduler
-                scheduler.update_completed()
-
-                # Short sleep before next loop iteration
-                if scheduler.running_tasks:
-                    time.sleep(0.1)
-                
-        # Print summary statistics
-        if completed_results:
-            segment_stats = [s for s, _ in completed_results]
-            total_duration = sum(s['duration'] for s in segment_stats)
-            total_size = sum(s['size_mb'] for s in segment_stats)
-            avg_bitrate = sum(s['bitrate_kbps'] for s in segment_stats) / len(segment_stats)
-            avg_speed = sum(s['speed_factor'] for s in segment_stats) / len(segment_stats)
-            
-            # Handle VMAF statistics safely
-            vmaf_stats = [s for s in segment_stats if s.get('vmaf_score') is not None]
-            if vmaf_stats:
-                avg_vmaf = sum(s['vmaf_score'] or 0 for s in vmaf_stats) / len(vmaf_stats)
-                min_vmaf = min(s['vmaf_min'] or float('inf') for s in vmaf_stats)
-                max_vmaf = max(s['vmaf_max'] or 0 for s in vmaf_stats)
-                
-            log.info("Encoding Summary:")
-            log.info("  Total Duration: %.2f seconds", total_duration)
-            log.info("  Total Size: %.2f MB", total_size)
-            log.info("  Average Bitrate: %.2f kbps", avg_bitrate)
-            log.info("  Average Speed: %.2fx realtime", avg_speed)
-            if 'avg_vmaf' in locals():
-                log.info("  VMAF Scores - Avg: %.2f, Min: %.2f, Max: %.2f",
-                         avg_vmaf, min_vmaf, max_vmaf)
+        # Orchestrate parallel encoding
+        success = orchestrate_parallel_encoding(
+            segments=segments,
+            encoded_dir=encoded_dir,
+            crop_filter=crop_filter,
+            is_hdr=is_hdr,
+            dv_flag=dv_flag,
+            encode_segment_fn=encode_segment
+        )
         
-        # Validate encoded segments
-        if not validate_encoded_segments(segments_dir):
-            return False
+        if not success:
+            raise SegmentEncodingError("Parallel encoding failed", module="segment_encoding")
             
-        return True
-        
     except Exception as e:
-        log.error("Parallel encoding failed: %s", e)
-        return False
+        logger.error("Parallel encoding failed: %s", e)
+        raise SegmentEncodingError(f"Parallel encoding failed: {str(e)}", module="segment_encoding") from e
 
 def validate_encoded_segments(segments_dir: Path) -> bool:
     """
@@ -446,65 +267,38 @@ def validate_encoded_segments(segments_dir: Path) -> bool:
     encoded_segments = sorted(encoded_dir.glob("*.mkv"))
     
     if len(encoded_segments) != len(original_segments):
-        log.error(
+        logger.error(
             "Encoded segment count (%d) doesn't match original (%d)",
             len(encoded_segments), len(original_segments)
         )
         return False
         
     for orig, encoded in zip(original_segments, encoded_segments):
+        is_valid, error_msg = _validate_single_encoded_segment(encoded)
+        if not is_valid:
+            logger.error(error_msg)
+            return False
+            
+        # Compare durations with original
         try:
-            # Check encoded segment exists and has size
-            if not encoded.exists() or encoded.stat().st_size == 0:
-                log.error("Missing or empty encoded segment: %s", encoded.name)
-                return False
+            with probe_session(orig) as probe:
+                orig_duration = float(probe.get("duration", "format"))
+            with probe_session(encoded) as probe:
+                enc_duration = float(probe.get("duration", "format"))
                 
-            # Verify AV1 codec and basic stream properties
-            result = run_cmd([
-                "ffprobe", "-v", "error",
-                "-show_entries", "stream=codec_name,width,height:format=duration",
-                "-of", "default=noprint_wrappers=1:nokey=1",
-                str(encoded)
-            ])
-            
-            lines = result.stdout.strip().split('\n')
-            if len(lines) < 4:  # codec, width, height, duration
-                log.error("Invalid encoded segment  %s", encoded.name)
-                return False
-                
-            codec, width, height, duration = lines
-            
-            # Verify codec
-            if codec != "av1":
-                log.error(
-                    "Wrong codec '%s' in encoded segment: %s",
-                    codec, encoded.name
-                )
-                return False
-                
-            # Compare durations (allow 0.1s difference)
-            orig_duration = float(run_cmd([
-                "ffprobe", "-v", "error",
-                "-show_entries", "format=duration",
-                "-of", "default=noprint_wrappers=1:nokey=1",
-                str(orig)
-            ]).stdout.strip())
-            
-            enc_duration = float(duration)
-            # Allow a relative tolerance of 5% (or at least 0.2 sec) to account for slight discrepancies
+            # Allow a relative tolerance of 5% (or at least 0.2 sec)
             tolerance = max(0.2, orig_duration * 0.05)
             if abs(orig_duration - enc_duration) > tolerance:
-                log.error(
+                logger.error(
                     "Duration mismatch in %s: %.2f vs %.2f (tolerance: %.2f)",
                     encoded.name, orig_duration, enc_duration, tolerance
                 )
                 return False
-                
         except Exception as e:
-            log.error("Failed to validate encoded segment %s: %s", encoded.name, e)
+            logger.error("Failed to compare segment durations: %s", e)
             return False
             
-    log.info("Successfully validated %d encoded segments", len(encoded_segments))
+    logger.info("Successfully validated %d encoded segments", len(encoded_segments))
     return True
 
 

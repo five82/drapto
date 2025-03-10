@@ -1,10 +1,16 @@
-"""Helper functions for building ffmpeg commands"""
+"""Helper functions for building ffmpeg commands
+
+Responsibilities:
+  - Construct ffmpeg commands for segmentation, audio encoding, muxing, and concatenation.
+  - Format command arguments based on file inputs and configuration settings.
+  - Log detailed command strings for debugging purposes.
+"""
 
 import logging
 from pathlib import Path
 from typing import List, Optional
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 def build_segment_command(
     input_file: Path,
@@ -85,11 +91,12 @@ def build_concat_command(
 ) -> List[str]:
     """Build ffmpeg command for concatenating segments"""
     return [
-        "ffmpeg", "-hide_banner", "-loglevel", "error",
-        "-fflags", "+genpts",
-        "-f", "concat",
-        "-safe", "0",
+        "ffmpeg", "-hide_banner", "-loglevel", "warning",
+        "-f", "concat", "-safe", "0",
         "-i", str(concat_file),
         "-c", "copy",
+        "-movflags", "+faststart",  # Ensure proper MP4 metadata
+        "-fflags", "+genpts",  # Generate missing PTS values
+        "-map_metadata", "0",  # Copy metadata from first input
         "-y", str(output_file)
     ]

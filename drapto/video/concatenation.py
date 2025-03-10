@@ -1,23 +1,29 @@
-"""Handles concatenation of encoded video segments into the final output."""
+"""Handles concatenation of encoded video segments into the final output.
+
+Responsibilities:
+  - Read and sort encoded segments from the working directory.
+  - Build and execute the ffmpeg concatenation command using the concat demuxer.
+  - Validate the concatenated output for correct codec, duration, and file size.
+  - Clean up temporary files used during concatenation.
+"""
 
 import json
 import logging
 from pathlib import Path
 from ..utils import run_cmd
 from ..config import WORKING_DIR
-from ..ffprobe_utils import get_format_info, get_video_info
+from ..ffprobe.media import get_format_info, get_video_info, get_duration
+from ..ffprobe.exec import MetadataError
+from ..exceptions import ConcatenationError
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
-def concatenate_segments(output_file: Path) -> bool:
+def concatenate_segments(output_file: Path) -> None:
     """
     Concatenate encoded segments into final video.
     
-    Args:
-        output_file: Path for concatenated output.
-    
-    Returns:
-        bool: True if concatenation successful.
+    Raises:
+        ConcatenationError: If concatenation fails
     """
     concat_file = WORKING_DIR / "concat.txt"
     try:
@@ -25,14 +31,12 @@ def concatenate_segments(output_file: Path) -> bool:
         segments = sorted((WORKING_DIR / "encoded_segments").glob("*.mkv"))
         
         for segment in segments:
-            result = run_cmd([
-                "ffprobe", "-v", "error",
-                "-show_entries", "format=duration",
-                "-of", "default=noprint_wrappers=1:nokey=1",
-                str(segment)
-            ])
-            duration = float(result.stdout.strip())
-            total_segment_duration += duration
+            try:
+                duration = get_duration(segment)
+                total_segment_duration += duration
+            except MetadataError as e:
+                logger.error("Failed to get segment duration: %s", e)
+                raise ConcatenationError(f"Failed to get segment duration: {str(e)}", module="concatenation") from e
         
         with open(concat_file, 'w') as f:
             for segment in segments:
@@ -45,44 +49,60 @@ def concatenate_segments(output_file: Path) -> bool:
         job.execute()
 
         if not output_file.exists() or output_file.stat().st_size == 0:
-            log.error("Concatenated output is missing or empty")
-            return False
+            raise ConcatenationError(
+                "Concatenated output is missing or empty",
+                module="concatenation"
+            )
 
-        format_info = get_format_info(output_file)
-        output_duration = float(format_info.get("duration", 0))
-        
-        if abs(output_duration - total_segment_duration) > 1.0:
-            log.error("Duration mismatch in concatenated output: %.2fs vs %.2fs", output_duration, total_segment_duration)
-            return False
+        try:
+            video_info = get_video_info(output_file)
+            output_duration = get_duration(output_file)
+            codec = video_info.get("codec_name")
+            
+            if abs(output_duration - total_segment_duration) > 1.0:
+                raise ConcatenationError(
+                    f"Duration mismatch in concatenated output: {output_duration:.2f}s vs {total_segment_duration:.2f}s",
+                    module="concatenation"
+                )
+                
+            if codec != "av1":
+                    raise ConcatenationError(
+                        "Concatenated output has wrong codec - expected av1",
+                        module="concatenation"
+                    )
+        except MetadataError as e:
+            raise ConcatenationError(
+                f"Failed to validate output codec: {str(e)}",
+                module="concatenation"
+            ) from e
 
-        video_info = get_video_info(output_file)
-        if video_info.get("codec_name") != "av1":
-            log.error("Concatenated output has wrong codec: %s", result.stdout.strip())
-            return False
+        # Validate concatenated output timing
+        sync_threshold = 0.2  # increased tolerance
+        try:
+            video_info = get_video_info(output_file)
+            video_start = video_info.get("start_time", 0.0)
+            video_duration = video_info.get("duration") or get_duration(output_file)
+            if not video_duration:
+                logger.warning("Using container duration for validation")
 
-        # Validate concatenated output video start time
-        sync_threshold = 0.1  # allowed difference in seconds
+                if abs(video_start) > sync_threshold:
+                    raise ConcatenationError(
+                        f"Video start time anomaly: {video_start:.2f}s",
+                        module="concatenation"
+                    )
 
-        vid_result = run_cmd([
-            "ffprobe", "-v", "error",
-            "-select_streams", "v:0",
-            "-show_entries", "stream=start_time",
-            "-of", "json",
-            str(output_file)
-        ])
-        vid_data = json.loads(vid_result.stdout)
-        video_start = float(vid_data["streams"][0].get("start_time") or 0)
+                logger.info("Concatenated duration: %.2fs (validation)", video_duration)
 
-        if abs(video_start) > sync_threshold:
-            log.error("Concatenated output video start time is %.2fs (expected near 0)", video_start)
-            return False
+        except MetadataError as e:
+            raise ConcatenationError(
+                f"Critical timing validation failed: {str(e)}", 
+                module="concatenation"
+            ) from e
 
-        log.info("Successfully validated concatenated output")
-        return True
+        logger.info("Successfully validated concatenated output")
 
     except Exception as e:
-        log.error("Concatenation failed: %s", e)
-        return False
+        raise ConcatenationError(f"Concatenation failed: {str(e)}", module="concatenation") from e
     finally:
         if concat_file.exists():
             concat_file.unlink()

@@ -1,4 +1,13 @@
-"""Audio encoding functions for drapto"""
+"""Audio encoding functions for drapto
+
+Responsibilities:
+  - Validate input audio streams before processing
+  - Encode individual audio tracks using libopus codec
+  - Select optimal bitrate and channel layout based on track properties
+  - Provide progress reporting during encoding operations
+  - Handle error conditions and validation of encoded outputs
+  - Manage audio stream metadata preservation
+"""
 
 import logging
 from pathlib import Path
@@ -9,72 +18,67 @@ logger = logging.getLogger(__name__)
 from ..config import WORKING_DIR
 from ..utils import run_cmd, run_cmd_with_progress
 from ..formatting import print_info
+from ..exceptions import AudioEncodingError
+from ..ffprobe.exec import MetadataError
+from ..ffprobe.media import get_all_audio_info, get_audio_channels, get_duration
 
-log = logging.getLogger(__name__)
-
-def encode_audio_tracks(input_file: Path) -> Optional[List[Path]]:
+def encode_audio_tracks(input_file: Path) -> List[Path]:
     """
     Encode all audio tracks from input file using libopus
     
-    Args:
-        input_file: Path to input video file
-        
     Returns:
-        Optional[List[Path]]: List of encoded audio track paths if successful
+        List[Path]: List of encoded audio track paths
+        
+    Raises:
+        AudioEncodingError: If encoding fails
     """
     try:
-        # Get number of audio tracks
-        result = run_cmd([
-            "ffprobe", "-v", "error",
-            "-select_streams", "a",
-            "-show_entries", "stream=index",
-            "-of", "csv=p=0",
-            str(input_file)
-        ])
-        num_tracks = len(result.stdout.strip().split('\n'))
+        # Validate input audio streams first
+        from ..validation import validate_input_audio
+        validate_input_audio(input_file)
+
+        # Get number of audio tracks from ffprobe_utils
+        audio_info = get_all_audio_info(input_file)
+        num_tracks = len(audio_info)
         
         if num_tracks == 0:
-            log.warning("No audio tracks found")
+            logger.warning("No audio tracks found")
             return []
             
         encoded_tracks = []
         for track_idx in range(num_tracks):
-            output_track = encode_audio_track(input_file, track_idx)
-            if output_track:
+            try:
+                output_track = encode_audio_track(input_file, track_idx)
                 encoded_tracks.append(output_track)
-            else:
-                log.error("Failed to encode audio track %d", track_idx)
-                return None
+            except Exception as e:
+                raise AudioEncodingError(
+                    f"Failed to encode audio track {track_idx}: {str(e)}",
+                    module="audio_encoding"
+                ) from e
                 
         return encoded_tracks
         
     except Exception as e:
-        log.error("Failed to process audio tracks: %s", e)
-        return None
+        raise AudioEncodingError(
+            f"Audio processing failed: {str(e)}", 
+            module="audio_encoding"
+        ) from e
 
-def encode_audio_track(input_file: Path, track_index: int) -> Optional[Path]:
+def encode_audio_track(input_file: Path, track_index: int) -> Path:
     """
     Encode a single audio track using libopus
     
-    Args:
-        input_file: Path to input video file
-        track_index: Index of audio track to encode
-        
     Returns:
-        Optional[Path]: Path to encoded audio file if successful
+        Path: Path to encoded audio file
+        
+    Raises:
+        AudioEncodingError: If encoding fails
     """
     output_file = WORKING_DIR / f"audio-{track_index}.mkv"
     
     try:
         # Get number of channels
-        result = run_cmd([
-            "ffprobe", "-v", "error",
-            "-select_streams", f"a:{track_index}",
-            "-show_entries", "stream=channels",
-            "-of", "csv=p=0",
-            str(input_file)
-        ])
-        num_channels = int(result.stdout.strip())
+        num_channels = get_audio_channels(input_file, track_index)
         
         # Determine bitrate based on channel count
         if num_channels == 1:
@@ -102,31 +106,32 @@ def encode_audio_track(input_file: Path, track_index: int) -> Optional[Path]:
         
         from ..video.command_builders import build_audio_encode_command
         from ..command_jobs import AudioEncodeJob
-        from ..video.command_builders import build_audio_encode_command
-        from ..command_jobs import AudioEncodeJob
         cmd = build_audio_encode_command(input_file, output_file, track_index, bitrate)
         formatted_cmd = " \\\n    ".join(cmd)
-        log.info("Audio encoding command for track %d:\n%s", track_index, formatted_cmd)
+        logger.info("Audio encoding command for track %d:\n%s", track_index, formatted_cmd)
         # Get audio duration for progress reporting
         try:
-            duration_result = run_cmd([
-                "ffprobe", "-v", "error",
-                "-select_streams", f"a:{track_index}",
-                "-show_entries", "format=duration",
-                "-of", "default=noprint_wrappers=1:nokey=1",
-                str(input_file)
-            ])
-            audio_duration = float(duration_result.stdout.strip())
-        except Exception as e:
-            logger.error("Could not get audio duration for progress reporting: %s", e)
+            try:
+                audio_duration = get_duration(input_file, "audio", track_index)
+            except MetadataError:
+                audio_duration = get_duration(input_file, "format")
+                logger.warning("Using container duration for audio progress reporting")
+        except MetadataError as e:
+            logger.error("Could not get audio duration: %s", e)
             audio_duration = None
 
         job = AudioEncodeJob(cmd)
-        if job.execute(total_duration=audio_duration, log_interval=5.0) != 0:
-            raise RuntimeError(f"Audio encoding failed for track {track_index}")
+        job.execute(total_duration=audio_duration, log_interval=5.0)
+        
+        # Validate the encoded track
+        from ..validation import validate_encoded_audio
+        validate_encoded_audio(output_file, track_index)
         
         return output_file
         
     except Exception as e:
-        log.error("Failed to encode audio track %d: %s", track_index, e)
-        return None
+        logger.error("Failed to encode audio track %d: %s", track_index, e)
+        raise AudioEncodingError(
+            f"Audio track {track_index} encoding failed: {str(e)}",
+            module="audio_encoding"
+        ) from e

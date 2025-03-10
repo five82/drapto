@@ -9,17 +9,21 @@ import shutil
 from pathlib import Path
 from typing import Optional
 
+logger = logging.getLogger(__name__)
+
 from ..config import WORKING_DIR
 from ..utils import run_cmd
 from ..formatting import print_check
 from .detection import detect_crop
-from .segmentation import segment_video
+from .segmentation.segmentation_main import segment_video
 from .segment_encoding import encode_segments
 from .concatenation import concatenate_segments
+from ..exceptions import (
+    EncodingError, SegmentationError,
+    SegmentEncodingError, ConcatenationError
+)
 
-log = logging.getLogger(__name__)
-
-def encode_standard(input_file: Path, disable_crop: bool = False, dv_flag: bool = False) -> Optional[Path]:
+def encode_standard(input_file: Path, disable_crop: bool = False, dv_flag: bool = False) -> Path:
     """
     Encode standard (non-Dolby Vision) content using the standard encoding pipeline.
     
@@ -27,7 +31,10 @@ def encode_standard(input_file: Path, disable_crop: bool = False, dv_flag: bool 
         input_file: Path to input video file
         
     Returns:
-        Optional[Path]: Path to encoded video file if successful
+        Path: Path to encoded video file
+        
+    Raises:
+        EncodingError: If any stage of encoding fails
     """
     # Ensure the working directory exists
     WORKING_DIR.mkdir(parents=True, exist_ok=True)
@@ -37,32 +44,28 @@ def encode_standard(input_file: Path, disable_crop: bool = False, dv_flag: bool 
     if output_file.exists():
         output_file.unlink()
     
-    # Detect crop values; disable if requested
-    crop_filter = detect_crop(input_file, disable_crop)
-    
     try:
-        # Step 1: Segment video
+        # Detect crop values and HDR status; disable if requested
+        crop_filter, is_hdr = detect_crop(input_file, disable_crop)
+        
+        # Step 1: Segment video 
         print_check("Segmenting video...")
-        if not segment_video(input_file):
-            return None
+        segment_video(input_file)  # Now raises exceptions directly
         print_check("Successfully segmented video")
             
         # Step 2: Encode segments
         print_check("Encoding segments in parallel...")
-        if not encode_segments(crop_filter, dv_flag):
-            return None
+        encode_segments(crop_filter, is_hdr, dv_flag)  # Pass HDR status through
             
         # Step 3: Concatenate segments
         print_check("Concatenating segments...")
-        if not concatenate_segments(output_file):
-            return None
+        concatenate_segments(output_file)  # Now raises exceptions directly
         print_check("Segments concatenated successfully")
             
         return output_file
         
     except Exception as e:
-        log.error("Failed to encode standard content: %s", e)
-        return None
+        raise EncodingError(f"Standard encoding failed: {str(e)}", module="standard_encoder") from e
     finally:
         print_check("Cleaning up temporary files...")
         for temp_dir in ["segments", "encoded_segments"]:
