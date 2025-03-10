@@ -53,7 +53,7 @@ from ..utils import run_cmd, check_dependencies
 from ..formatting import print_check
 from ..validation import validate_ab_av1
 
-def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[str] = None, retry_count: int = 0, dv_flag: bool = False) -> tuple[dict, list[str]]:
+def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[str] = None, retry_count: int = 0, is_hdr: bool = False, dv_flag: bool = False) -> tuple[dict, list[str]]:
     """
     Encode a single video segment using ab-av1.
     
@@ -87,21 +87,6 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
     if retry_count == 0:
         sample_count = 3
         sample_duration_value = 1
-        # HDR detection logic
-        try:
-            with probe_session(segment) as probe:
-                ct = probe.get("color_transfer") or ""
-                cp = probe.get("color_primaries") or ""
-                cs = probe.get("color_space") or ""
-                
-            is_hdr = any([
-                ct.lower() in {"smpte2084", "arib-std-b67", "smpte428", "bt2020-10", "bt2020-12"},
-                cp == "bt2020",
-                cs.lower() in {"bt2020nc", "bt2020c"}
-            ])
-        except MetadataError:
-            is_hdr = False
-            
         min_vmaf_value = str(TARGET_VMAF_HDR if is_hdr else TARGET_VMAF)
         
     elif retry_count == 1:
@@ -294,7 +279,7 @@ def calculate_memory_requirements(warmup_results):
     
     return base_size, weights
 
-def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) -> None:
+def encode_segments(crop_filter: Optional[str] = None, is_hdr: bool = False, dv_flag: bool = False) -> None:
     """
     Encode video segments in parallel with dynamic memory-aware scheduling
     
@@ -334,7 +319,7 @@ def encode_segments(crop_filter: Optional[str] = None, dv_flag: bool = False) ->
             segment = segments[i]
             output_segment = encoded_dir / segment.name
             logger.info("Warm-up encoding for segment: %s", segment.name)
-            result = encode_segment(segment, output_segment, crop_filter, 0, dv_flag)
+            result = encode_segment(segment, output_segment, crop_filter, 0, is_hdr, dv_flag)
             warmup_results.append(result)
         next_segment_idx = min(WARMUP_COUNT, len(segments))
 

@@ -45,17 +45,17 @@ def encode_standard(input_file: Path, disable_crop: bool = False, dv_flag: bool 
         output_file.unlink()
     
     try:
-        # Detect crop values; disable if requested
-        crop_filter = detect_crop(input_file, disable_crop)
+        # Detect crop values and HDR status; disable if requested
+        crop_filter, is_hdr = detect_crop(input_file, disable_crop)
         
-        # Step 1: Segment video
+        # Step 1: Segment video 
         print_check("Segmenting video...")
         segment_video(input_file)  # Now raises exceptions directly
         print_check("Successfully segmented video")
             
         # Step 2: Encode segments
         print_check("Encoding segments in parallel...")
-        encode_segments(crop_filter, dv_flag)  # Changed from boolean check
+        encode_segments(crop_filter, is_hdr, dv_flag)  # Pass HDR status through
             
         # Step 3: Concatenate segments
         print_check("Concatenating segments...")
