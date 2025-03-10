@@ -16,23 +16,17 @@ class TestAudioEncoding(unittest.TestCase):
         self.input_file = Path("/tmp/fake_input.mkv")
         self.fake_output = Path("/tmp/fake_output.mkv")
     
+    @patch("drapto.validation.validation_audio.validate_encoded_audio", return_value=None)
     @patch("drapto.audio.encoding.get_duration", return_value=60.0)
     @patch("drapto.audio.encoding.get_audio_channels")
     @patch("drapto.command_jobs.run_cmd_with_progress", return_value=0)
-    def test_encode_audio_track_stereo(self, mock_run_cmd_with_progress, mock_get_channels, mock_get_duration):
+    def test_encode_audio_track_stereo(self, mock_run_cmd_with_progress, mock_get_channels, mock_get_duration, mock_validate):
         # Set up to simulate stereo channel (2 channels)
         mock_get_channels.return_value = 2
-        
-        # The function uses build_audio_encode_command - you may want to patch it if needed.
-        # Simulate a successful run.
-        
-        # Patch validate_encoded_audio if needed
-        with patch("drapto.validation.validation_audio.validate_encoded_audio") as mock_validate:
-            output = encode_audio_track(self.input_file, 1)
-            self.assertTrue(isinstance(output, Path))
-            # Validate the bitrate chosen, if the command builder is visible.
-            # You can also check that run_cmd_with_progress was called.
-            mock_run_cmd_with_progress.assert_called()
+
+        output = encode_audio_track(self.input_file, 1)
+        self.assertTrue(isinstance(output, Path))
+        mock_run_cmd_with_progress.assert_called()
     
 if __name__ == "__main__":
     unittest.main()
