@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 from typing import Optional, Dict
 
-from .config import LOG_DIR
+from ..config import LOG_DIR
 from .exceptions import (
     DraptoError, EncodingError, ValidationError,
     ConcatenationError, SegmentEncodingError
