@@ -25,7 +25,7 @@ This package provides scene-based video segmentation functionality including:
 """
 
 from .segmentation_main import segment_video
-from .scene_detection_helpers import validate_segment_boundaries
+from ..scene_detection_helpers import validate_segment_boundaries
 from .validation import validate_encoded_segments
 
 __all__ = [
