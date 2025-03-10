@@ -75,9 +75,8 @@ def concatenate_segments(output_file: Path) -> None:
         try:
             video_info = get_video_info(output_file)
             video_start = video_info.get("start_time", 0.0)
-            video_duration = video_info.get("duration") or get_duration(output_file, "video")
+            video_duration = video_info.get("duration") or get_duration(output_file)
             if not video_duration:
-                video_duration = get_duration(output_file, "format")
                 logger.warning("Using container duration for validation")
 
                 if abs(video_start) > sync_threshold:
