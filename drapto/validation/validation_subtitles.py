@@ -9,7 +9,7 @@ import logging
 from pathlib import Path
 from typing import List
 
-from ..ffprobe.utils import get_subtitle_info
+from ..ffprobe.media import get_subtitle_info
 from ..exceptions import ValidationError
 
 logger = logging.getLogger(__name__)
