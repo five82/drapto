@@ -12,7 +12,7 @@ import logging
 from pathlib import Path
 from ..utils import run_cmd
 from ..config import WORKING_DIR
-from ..ffprobe_utils import (
+from ..ffprobe.utils import (
     get_format_info, get_video_info, MetadataError, get_duration
 )
 from ..exceptions import ConcatenationError

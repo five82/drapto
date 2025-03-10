@@ -13,7 +13,7 @@ import resource
 from pathlib import Path
 from typing import Optional, Tuple, Dict
 
-from ..ffprobe_utils import (
+from ..ffprobe.utils import (
     probe_session, get_duration, MetadataError,
     get_video_info, get_format_info
 )
