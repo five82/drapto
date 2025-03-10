@@ -17,7 +17,10 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 from ..utils import run_cmd
-from ..ffprobe_utils import get_video_info, get_media_property, MetadataError
+from ..ffprobe_utils import (
+    get_video_info, get_media_property, MetadataError,
+    probe_session
+)
 
 def _determine_crop_threshold(ct: str, cp: str, cs: str) -> Tuple[int, bool]:
     """
