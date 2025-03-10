@@ -6,8 +6,7 @@ from pathlib import Path
 from ..utils import run_cmd
 from ..config import WORKING_DIR
 from ..ffprobe_utils import (
-    get_format_info, get_video_info, get_media_property,
-    probe_session, MetadataError, get_duration
+    get_format_info, get_video_info, MetadataError, get_duration
 )
 from ..exceptions import ConcatenationError
 
@@ -51,7 +50,7 @@ def concatenate_segments(output_file: Path) -> None:
 
         try:
             video_info = get_video_info(output_file)
-            output_duration = get_duration(output_file, "format")
+            output_duration = get_duration(output_file)
             codec = video_info.get("codec_name")
             
             if abs(output_duration - total_segment_duration) > 1.0:

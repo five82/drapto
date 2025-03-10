@@ -157,8 +157,8 @@ def validate_segment_boundaries(
         
         for segment in segments:
             try:
-                # Get segment duration using probe session
-                duration = get_duration(segment, "format")
+                # Get segment duration via utility
+                duration = get_duration(segment)
                 
                 if duration < min_duration:
                     # Check if this segment boundary aligns with a scene change
