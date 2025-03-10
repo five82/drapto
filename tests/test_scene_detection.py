@@ -56,8 +56,9 @@ class TestSceneDetection(unittest.TestCase):
         # Should insert boundaries at 15.0 to break up the 20s gap
         self.assertEqual(boundaries, [0.0, 5.0, 15.0, 25.0])
 
+    @patch('drapto.video.scene_detection.get_duration', return_value=120.0)
     @patch('drapto.video.scene_detection_helpers.get_candidate_scenes')
-    def test_detect_scenes(self, mock_candidates):
+    def test_detect_scenes(self, mock_candidates, mock_get_duration):
         """Test scene detection workflow"""
         mock_candidates.return_value = [0.0, 1.0, 1.5, 5.0, 5.2, 10.0]
         
