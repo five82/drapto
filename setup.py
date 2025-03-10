@@ -6,7 +6,7 @@ setup(
     packages=find_packages(),
     install_requires=[
         "ffmpeg-python",
-        "rich",
+        "rich>=13.0.0",  # Explicit minimum version
         "scenedetect[opencv]",
         "psutil",
     ],
