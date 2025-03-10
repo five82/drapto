@@ -31,6 +31,7 @@ if __name__ == '__main__':
 """Unit tests for scene detection functionality"""
 
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 from drapto.video.scene_detection import (
     detect_scenes,
