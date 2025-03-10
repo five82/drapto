@@ -64,8 +64,8 @@ def _parse_args():
 
 def main():
     """Main entry point"""
-    args = parse_args()
-    setup_logging(args.log_level)
+    args = _parse_args()
+    _setup_logging(args.log_level)
     
     logger = logging.getLogger("drapto")
     print_header(f"Starting drapto video encoder v{__version__}")
