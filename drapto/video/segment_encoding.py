@@ -122,6 +122,9 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
             
         if dv_flag:
             cmd.extend(["--enc", "dolbyvision=true"])
+            
+        formatted_cmd = " \\\n    ".join(cmd)
+        logger.info("Common ab-av1 encoding parameters:\n    %s", formatted_cmd)
         
         result = run_cmd(cmd)
     except Exception as e:
