@@ -160,8 +160,11 @@ def detect_scenes(input_file: Path) -> List[float]:
         candidate_ts = _get_candidate_scenes(input_file, threshold_val)
         filtered_ts = _filter_scene_candidates(candidate_ts)
         final_boundaries = _insert_artificial_boundaries(filtered_ts, total_duration)
-    logger.info("Detected %d scenes, final boundaries: %r", len(candidate_timestamps), final_boundaries)
-    return final_boundaries
+        logger.info("Detected %d scenes, final boundaries: %r", len(final_boundaries), final_boundaries)
+        return final_boundaries
+    except Exception as e:
+        logger.error("Scene detection failed: %s", e)
+        return []
 
 def validate_segment_boundaries(
     segments_dir: Path,
