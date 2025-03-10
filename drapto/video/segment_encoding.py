@@ -24,7 +24,36 @@ import time
 import resource
 import psutil
 from pathlib import Path
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Tuple
+
+def _validate_single_encoded_segment(segment: Path, tolerance: float = 0.2) -> Tuple[bool, Optional[str]]:
+    """
+    Validate a single encoded segment's properties.
+    
+    Args:
+        segment: Path to the encoded segment
+        tolerance: Duration comparison tolerance in seconds
+        
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    try:
+        if not segment.exists() or segment.stat().st_size == 0:
+            return False, f"Missing or empty segment: {segment.name}"
+            
+        with probe_session(segment) as probe:
+            codec = probe.get("codec_name", "video")
+            if codec != "av1":
+                return False, f"Wrong codec '{codec}' in segment: {segment.name}"
+                
+            duration = float(probe.get("duration", "format"))
+            if duration <= 0:
+                return False, f"Invalid duration in segment: {segment.name}"
+                
+        return True, None
+        
+    except Exception as e:
+        return False, f"Failed to validate segment {segment.name}: {str(e)}"
 from ..ffprobe.utils import (
     get_video_info, get_format_info, get_media_property,
     probe_session, MetadataError
@@ -67,9 +96,6 @@ def estimate_memory_weight(segment: Path, resolution_weights: dict) -> int:
     except Exception as e:
         logger.warning("Failed to get segment width, using minimum weight: %s", e)
         return min(resolution_weights.values())
-
-import logging
-logger = logging.getLogger(__name__)
 
 from ..config import (
     PRESET, TARGET_VMAF, TARGET_VMAF_HDR, SVT_PARAMS, 
@@ -361,52 +387,29 @@ def validate_encoded_segments(segments_dir: Path) -> bool:
         return False
         
     for orig, encoded in zip(original_segments, encoded_segments):
+        is_valid, error_msg = _validate_single_encoded_segment(encoded)
+        if not is_valid:
+            logger.error(error_msg)
+            return False
+            
+        # Compare durations with original
         try:
-            # Check encoded segment exists and has size
-            if not encoded.exists() or encoded.stat().st_size == 0:
-                logger.error("Missing or empty encoded segment: %s", encoded.name)
+            with probe_session(orig) as probe:
+                orig_duration = float(probe.get("duration", "format"))
+            with probe_session(encoded) as probe:
+                enc_duration = float(probe.get("duration", "format"))
+                
+            # Allow a relative tolerance of 5% (or at least 0.2 sec)
+            tolerance = max(0.2, orig_duration * 0.05)
+            if abs(orig_duration - enc_duration) > tolerance:
+                logger.error(
+                    "Duration mismatch in %s: %.2f vs %.2f (tolerance: %.2f)",
+                    encoded.name, orig_duration, enc_duration, tolerance
+                )
                 return False
-                
-            # Verify AV1 codec and basic stream properties
-            try:
-                with probe_session(encoded) as probe:
-                    codec = probe.get("codec_name", "video")
-                    width = probe.get("width", "video")
-                    height = probe.get("height", "video")
-                    duration = probe.get("duration", "format")
-                
-                # Verify codec
-                if codec != "av1":
-                    logger.error(
-                        "Wrong codec '%s' in encoded segment: %s",
-                        codec, encoded.name
-                    )
-                    return False
-                
-            except MetadataError as e:
-                logger.error("Failed to get encoded segment properties: %s", e)
-                return False
-
-            # Compare durations (allow 0.1s difference)
-            try:
-                with probe_session(orig) as probe:
-                    orig_duration = float(probe.get("duration", "format"))
-                enc_duration = float(duration)
-                # Allow a relative tolerance of 5% (or at least 0.2 sec) to account for slight discrepancies
-                tolerance = max(0.2, orig_duration * 0.05)
-                if abs(orig_duration - enc_duration) > tolerance:
-                    logger.error(
-                        "Duration mismatch in %s: %.2f vs %.2f (tolerance: %.2f)",
-                        encoded.name, orig_duration, enc_duration, tolerance
-                    )
-                    return False
-            except Exception as e:
-                logger.error("Failed to compare segment durations: %s", e)
-                return False
-                
         except Exception as e:
-            logger.error("Failed to validate encoded segment %s: %s", encoded.name, e)
-            raise SegmentEncodingError("Failed to validate encoded segment", module="segment_encoding")
+            logger.error("Failed to compare segment durations: %s", e)
+            return False
             
     logger.info("Successfully validated %d encoded segments", len(encoded_segments))
     return True
