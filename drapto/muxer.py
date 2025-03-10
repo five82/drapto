@@ -1,4 +1,10 @@
-"""Handles muxing of video and audio streams"""
+"""Handles muxing of video and audio streams into the final output file
+
+Responsibilities:
+  - Build and execute the ffmpeg mux command.
+  - Validate muxed output for proper AV sync and correct stream properties.
+  - Log and raise errors upon muxing failure.
+"""
 
 import json
 import logging

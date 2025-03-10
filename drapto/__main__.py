@@ -1,5 +1,11 @@
 """
 Command-line interface for drapto video encoding pipeline
+
+Responsibilities:
+  - Parse command-line arguments to determine input/output paths and options.
+  - Set up logging configuration and check for dependencies.
+  - Trigger processing of files or directories via the encoding pipeline.
+  - Clean up log and temporary resources at completion.
 """
 import argparse
 import logging

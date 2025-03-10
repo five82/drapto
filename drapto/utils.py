@@ -1,4 +1,11 @@
-"""Utility functions for the drapto encoding pipeline"""
+"""Utility functions for the drapto encoding pipeline
+
+Responsibilities:
+  - Execute shell commands with or without progress reporting.
+  - Format file sizes, timestamps, and paths.
+  - Check for required dependencies and perform cleanup of working directories.
+  - Log command execution details to aid debugging.
+"""
 
 import subprocess
 import sys

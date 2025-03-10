@@ -1,4 +1,11 @@
-"""Handles concatenation of encoded video segments into the final output."""
+"""Handles concatenation of encoded video segments into the final output.
+
+Responsibilities:
+  - Read and sort encoded segments from the working directory.
+  - Build and execute the ffmpeg concatenation command using the concat demuxer.
+  - Validate the concatenated output for correct codec, duration, and file size.
+  - Clean up temporary files used during concatenation.
+"""
 
 import json
 import logging

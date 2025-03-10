@@ -1,4 +1,10 @@
-"""Memory-aware task scheduler for parallel encoding"""
+"""Memory-aware task scheduler for parallel encoding
+
+Responsibilities:
+  - Manage task submission based on estimated memory usage and available tokens.
+  - Monitor system memory and pause or schedule tasks accordingly.
+  - Enforce a stagger delay and track running tasks until completion.
+"""
 
 import time
 import psutil

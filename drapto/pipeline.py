@@ -1,4 +1,11 @@
-"""High-level pipeline orchestration for video encoding"""
+"""High-level pipeline orchestration for video encoding
+
+Responsibilities:
+  - Parse command-line arguments and configure logging.
+  - Orchestrate the processing of individual files or directories.
+  - Trigger the various encoding stages (segmentation, encoding, muxing).
+  - Aggregate and present a final summary of the encoding process.
+"""
 
 import logging
 import sys

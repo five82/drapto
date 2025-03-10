@@ -1,4 +1,10 @@
-"""Helper functions for building ffmpeg commands"""
+"""Helper functions for building ffmpeg commands
+
+Responsibilities:
+  - Construct ffmpeg commands for segmentation, audio encoding, muxing, and concatenation.
+  - Format command arguments based on file inputs and configuration settings.
+  - Log detailed command strings for debugging purposes.
+"""
 
 import logging
 from pathlib import Path

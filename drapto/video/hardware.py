@@ -1,4 +1,10 @@
-"""Hardware acceleration detection and configuration (for decoding only)"""
+"""Hardware acceleration detection and configuration (for decoding only)
+
+Responsibilities:
+  - Check for supported hardware decoding on the current platform (e.g., VideoToolbox on macOS).
+  - Return hardware acceleration options for use in the pipeline.
+  - Log relevant information and warnings during the detection process.
+"""
 
 import logging
 import platform
