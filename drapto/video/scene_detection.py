@@ -45,13 +45,13 @@ def detect_scenes(input_file: Path) -> List[float]:
     # 1. Get total duration of the video via ffprobe.
     try:
         try:
-            total_duration = get_duration(input_file, "format")
+            total_duration = get_duration(input_file)
             if total_duration <= 0:
                 logger.warning("Invalid duration %.2f, using fallback detection", total_duration)
                 return []
-        except MetadataError:
-            logger.warning("Could not get container duration, using video stream duration")
-            total_duration = get_duration(input_file, "video")
+        except MetadataError as e:
+            logger.error("Could not get video duration: %s", e)
+            return []
                 
             if total_duration < 2.0:  # Minimum duration for scene detection
                 logger.info("Skipping scene detection for ultra-short video")

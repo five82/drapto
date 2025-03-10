@@ -7,7 +7,7 @@ from typing import List, Optional
 
 from .utils import run_cmd
 from .exceptions import MuxingError
-from .ffprobe_utils import get_media_property, probe_session, MetadataError, get_duration
+from .ffprobe_utils import MetadataError, get_duration, get_video_info, get_audio_info
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,8 @@ def mux_tracks(
                 logger.warning("Using container duration for video validation")
 
             audio_duration = get_duration(output_file, "audio")
-            audio_start = 0.0  # Audio start time not available in utilities yet
+            audio_info = get_audio_info(output_file, 0)
+            audio_start = audio_info.get("start_time", 0.0)
                 if not audio_duration:
                     logger.warning("Using container duration for audio validation")
 
