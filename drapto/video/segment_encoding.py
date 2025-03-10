@@ -19,7 +19,6 @@ orchestration while delegating implementation details to specialized helpers.
 """
 
 import logging
-import re
 import shutil
 import time
 import resource
@@ -31,6 +30,16 @@ from ..ffprobe_utils import (
     probe_session, MetadataError
 )
 from ..exceptions import DependencyError, SegmentEncodingError
+from .encode_helpers import (
+    build_encode_command,
+    parse_vmaf_scores,
+    get_segment_properties,
+    calculate_output_metrics,
+    get_resolution_category,
+    compile_segment_stats,
+    log_segment_progress,
+    handle_segment_retry
+)
 
 # Maximum concurrent memory tokens (8 total):
 # - Up to 2 concurrent 4K segments (4 tokens each)
