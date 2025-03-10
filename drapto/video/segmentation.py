@@ -62,7 +62,7 @@ from ..command_jobs import SegmentationJob
 from ..config import WORKING_DIR
 from ..exceptions import (
     SegmentationError, ValidationError,
-    SegmentMergeError, SegmentEncodingError
+    SegmentEncodingError
 )
 from ..utils import run_cmd
 from ..formatting import print_check
