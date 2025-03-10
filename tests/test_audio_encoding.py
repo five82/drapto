@@ -16,7 +16,7 @@ class TestAudioEncoding(unittest.TestCase):
         self.input_file = Path("/tmp/fake_input.mkv")
         self.fake_output = Path("/tmp/fake_output.mkv")
     
-    @patch("drapto.validation.validation_audio.validate_encoded_audio", return_value=None)
+    @patch("drapto.validation.validate_encoded_audio", return_value=None)
     @patch("drapto.audio.encoding.get_duration", return_value=60.0)
     @patch("drapto.audio.encoding.get_audio_channels")
     @patch("drapto.command_jobs.run_cmd_with_progress", return_value=0)
