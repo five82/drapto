@@ -12,7 +12,8 @@ from typing import List
 
 from ..ffprobe.utils import (
     get_video_info, get_format_info, get_resolution,
-    get_media_property, MetadataError, probe_session
+    get_media_property, MetadataError, probe_session,
+    get_audio_info
 )
 from ..exceptions import ValidationError
 
