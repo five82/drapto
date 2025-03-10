@@ -123,9 +123,6 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
         if dv_flag:
             cmd.extend(["--enc", "dolbyvision=true"])
             
-        formatted_cmd = " \\\n    ".join(cmd)
-        logger.info("Common ab-av1 encoding parameters:\n    %s", formatted_cmd)
-        
         result = run_cmd(cmd)
     except Exception as e:
         if retry_count < 2:  # Allow up to 2 retries (3 total attempts)
@@ -315,6 +312,32 @@ def encode_segments(crop_filter: Optional[str] = None, is_hdr: bool = False, dv_
         if not segments:
             logger.error("No segments found to encode")
             return False
+
+        # Log common ab-av1 encoding parameters once before warmup
+        # Use parameters corresponding to the first attempt:
+        sample_count = 3
+        sample_duration_value = 1
+        min_vmaf_value = str(TARGET_VMAF_HDR if is_hdr else TARGET_VMAF)
+        common_cmd = [
+            "ab-av1", "auto-encode",
+            "--input", "<input_segment>",
+            "--output", "<output_segment>",
+            "--encoder", "libsvtav1",
+            "--min-vmaf", min_vmaf_value,
+            "--preset", str(PRESET),
+            "--svt", SVT_PARAMS,
+            "--keyint", "10s",
+            "--samples", str(sample_count),
+            "--sample-duration", f"{sample_duration_value}s",
+            "--vmaf", "n_subsample=8:pool=perc5_min",
+            "--pix-format", "yuv420p10le",
+        ]
+        if crop_filter:
+            common_cmd.extend(["--vfilter", crop_filter])
+        if dv_flag:
+            common_cmd.extend(["--enc", "dolbyvision=true"])
+        formatted_common_cmd = " \\\n    ".join(common_cmd)
+        logger.info("Common ab-av1 encoding parameters:\n    %s", formatted_common_cmd)
 
         # Warm-up: process first WARMUP_COUNT segments sequentially to gauge memory usage
         warmup_results = []
