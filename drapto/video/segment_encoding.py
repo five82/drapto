@@ -19,6 +19,7 @@ orchestration while delegating implementation details to specialized helpers.
 """
 
 import logging
+logger = logging.getLogger(__name__)
 import shutil
 import time
 import resource
