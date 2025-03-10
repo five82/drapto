@@ -1,8 +1,14 @@
-"""
-command_jobs.py
+"""Command execution abstractions for pipeline operations
 
-Defines a base class for command jobs and specialized implementations for
-various pipeline steps (e.g. segmentation, audio encoding, muxing).
+This module provides:
+- A base CommandJob class for executing shell commands
+- Specialized job implementations for different pipeline stages
+- Progress reporting capabilities for long-running operations
+- Consistent error handling and logging across command execution
+- Job-specific validation and cleanup operations
+
+The job abstractions ensure consistent command execution patterns
+and proper error propagation throughout the pipeline.
 """
 
 import logging

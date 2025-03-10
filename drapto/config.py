@@ -1,4 +1,15 @@
-"""Configuration settings for the drapto encoding pipeline"""
+"""Configuration settings for the drapto encoding pipeline
+
+This module centralizes all configuration settings including:
+- Working directory paths and file locations
+- Encoding parameters and quality targets
+- Memory management thresholds
+- Hardware acceleration settings
+- Scene detection and segmentation parameters
+
+It provides both user-configurable settings via environment variables
+and internal constants used throughout the pipeline.
+"""
 
 import os
 from pathlib import Path

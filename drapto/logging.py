@@ -1,4 +1,15 @@
-"""Centralized logging configuration for drapto"""
+"""Centralized logging configuration for drapto
+
+This module handles:
+- Setting up Rich-based console logging with proper formatting
+- Configuring file-based logging with rotation
+- Managing log levels and output destinations
+- Providing a LogTracker utility for capturing logs during operations
+- Coordinating logging across all pipeline components
+
+The logging configuration ensures consistent formatting and proper
+log aggregation throughout the encoding pipeline.
+"""
 
 import logging
 from rich.logging import RichHandler
