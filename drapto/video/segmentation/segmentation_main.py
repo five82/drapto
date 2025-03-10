@@ -46,7 +46,8 @@ from ...exceptions import (
 )
 from ...utils import run_cmd
 from ...formatting import print_check
-from ..ffprobe_utils import get_duration, get_video_info, MetadataError
+from ...ffprobe.media import get_duration, get_video_info
+from ...ffprobe.exec import MetadataError
 
 logger = logging.getLogger(__name__)
 
