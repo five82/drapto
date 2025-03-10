@@ -34,6 +34,73 @@ from .utils import get_timestamp, format_size, get_file_size
 
 logger = logging.getLogger(__name__)
 
+def _setup_encode_logging(input_file: Path) -> tuple[logging.FileHandler, Path]:
+    """Setup logging for an encode session."""
+    timestamp = get_timestamp()
+    log_file = LOG_DIR / f"{input_file.stem}_{timestamp}.log"
+    
+    file_handler = logging.FileHandler(log_file)
+    file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    logging.root.addHandler(file_handler)
+    
+    return file_handler, log_file
+
+def _run_encode_pipeline(input_file: Path, output_file: Path) -> None:
+    """Run the main encoding pipeline stages."""
+    # Override crop detection if disabled via command line
+    args = sys.argv
+    disable_crop = "--disable-crop" in args
+    
+    print_check("Checking for Dolby Vision...")
+    is_dolby_vision = detect_dolby_vision(input_file)
+    if is_dolby_vision:
+        print_success("Dolby Vision detected")
+    else:
+        print_check("Standard content detected")
+
+    # Replace boolean checks with exception handling
+    video_track = encode_standard(input_file, disable_crop, dv_flag=is_dolby_vision)
+    
+    # Process audio - will raise on error
+    audio_tracks = encode_audio_tracks(input_file)
+    
+    # Mux everything together - raises on error
+    mux_tracks(video_track, audio_tracks, output_file)
+    
+    # Validate output - raises ValidationError
+    validate_output(input_file, output_file)
+
+def _build_encode_summary(input_file: Path, output_file: Path, start_time: float) -> dict:
+    """Build the encoding summary dictionary."""
+    input_size = get_file_size(input_file)
+    output_size = get_file_size(output_file)
+    reduction = ((input_size - output_size) / input_size) * 100
+    
+    end_time = time.time()
+    elapsed = end_time - start_time
+    hours = int(elapsed // 3600)
+    minutes = int((elapsed % 3600) // 60)
+    seconds = int(elapsed % 60)
+    finished_time = time.strftime("%a %b %d %H:%M:%S %Z %Y", time.localtime(end_time))
+    
+    print_header("Encoding Summary")
+    print_success(f"Input size:  {format_size(input_size)}")
+    print_success(f"Output size: {format_size(output_size)}")
+    print_success(f"Reduction:   {reduction:.2f}%")
+    print_check(f"Completed: {input_file.name}")
+    print_check(f"Encoding time: {hours:02d}h {minutes:02d}m {seconds:02d}s")
+    print_check(f"Finished encode at {finished_time}")
+    print_separator()
+    
+    return {
+        "output_file": output_file,
+        "filename": input_file.name,
+        "input_size": input_size,
+        "output_size": output_size,
+        "reduction": reduction,
+        "encoding_time": elapsed
+    }
+
 def process_file(input_file: Path, output_file: Path) -> Optional[dict]:
     """
     Process a single input file through the encoding pipeline
@@ -45,14 +112,7 @@ def process_file(input_file: Path, output_file: Path) -> Optional[dict]:
     Returns:
         Optional[dict]: Dictionary containing encoding summary if successful
     """
-    timestamp = get_timestamp()
-    # Create log file name with video name and timestamp
-    log_file = LOG_DIR / f"{input_file.stem}_{timestamp}.log"
-    
-    # Configure file handler for this encode
-    file_handler = logging.FileHandler(log_file)
-    file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-    logging.root.addHandler(file_handler)
+    file_handler, log_file = _setup_encode_logging(input_file)
     
     try:
         start_time = time.time()
@@ -66,80 +126,22 @@ def process_file(input_file: Path, output_file: Path) -> Optional[dict]:
         # Ensure output directory exists
         output_file.parent.mkdir(parents=True, exist_ok=True)
         
-        # Override crop detection if disabled via command line
-        args = sys.argv
-        disable_crop = "--disable-crop" in args
-        
-        print_check("Checking for Dolby Vision...")
-        is_dolby_vision = detect_dolby_vision(input_file)
-        if is_dolby_vision:
-            print_success("Dolby Vision detected")
-        else:
-            print_check("Standard content detected")
-
         try:
-            try:
-                # Replace boolean checks with exception handling
-                video_track = encode_standard(input_file, disable_crop, dv_flag=is_dolby_vision)
-                
-                # Process audio - will raise on error
-                audio_tracks = encode_audio_tracks(input_file)
-                
-                # Mux everything together - raises on error
-                mux_tracks(video_track, audio_tracks, output_file)
-                
-                # Validate output - raises ValidationError
-                validate_output(input_file, output_file)
-
-            except EncodingError as e:
-                logger.error("Encoding failed: %s", e)
-                raise DraptoError("Encoding aborted") from e
-                
-            except ValidationError as e:
-                logger.error("Validation failed: %s", e)
-                raise DraptoError("Validation failed") from e
-            # Continue to produce the encoding summary regardless of validation results.
-                
-            # Get size info for summary
-            input_size = get_file_size(input_file)
-            output_size = get_file_size(output_file)
-            reduction = ((input_size - output_size) / input_size) * 100
+            _run_encode_pipeline(input_file, output_file)
             
-            # Clean up temporary working directories and files in /tmp after successful encode
+            # Clean up temporary working directories
             from .utils import cleanup_working_dirs
             cleanup_working_dirs()
             
-            end_time = time.time()
-            elapsed = end_time - start_time
-            hours = int(elapsed // 3600)
-            minutes = int((elapsed % 3600) // 60)
-            seconds = int(elapsed % 60)
-            finished_time = time.strftime("%a %b %d %H:%M:%S %Z %Y", time.localtime(end_time))
+            return _build_encode_summary(input_file, output_file, start_time)
             
-            print_header("Encoding Summary")
-            print_success(f"Input size:  {format_size(input_size)}")
-            print_success(f"Output size: {format_size(output_size)}")
-            print_success(f"Reduction:   {reduction:.2f}%")
-            print_check(f"Completed: {input_file.name}")
-            print_check(f"Encoding time: {hours:02d}h {minutes:02d}m {seconds:02d}s")
-            print_check(f"Finished encode at {finished_time}")
-            print_separator()
-            
-            # Return summary info as a dict for final summary
-            return {
-                "output_file": output_file,
-                "filename": input_file.name,
-                "input_size": input_size,
-                "output_size": output_size,
-                "reduction": reduction,
-                "encoding_time": elapsed
-            }
-            
+        except (EncodingError, ValidationError) as e:
+            logger.error("Encoding failed: %s", e)
+            raise DraptoError("Encoding aborted") from e
         except Exception as e:
             logger.exception("Error processing %s: %s", input_file.name, e)
             return None
     finally:
-        # Clean up the file handler
         logging.root.removeHandler(file_handler)
         file_handler.close()
         logger.info("Closed encode log: %s", log_file.name)

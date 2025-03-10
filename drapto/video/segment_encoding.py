@@ -223,6 +223,26 @@ def _log_segment_progress(stats: dict, output_logs: list, segment_name: str,
              stats['encoding_time'], stats['speed_factor'])
     capture_log("  Resolution: %s @ %s", stats['resolution'], stats['framerate'])
 
+def _compile_segment_stats(segment: Path, encoding_time: float, crop_filter: str,
+                         vmaf_metrics: tuple, metrics: dict) -> dict:
+    """Compile all segment statistics into a single dict."""
+    vmaf_score, vmaf_min, vmaf_max = vmaf_metrics
+    peak_memory_kb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    resolution_category, output_width = _get_resolution_category(segment)
+    
+    return {
+        'segment': segment.name,
+        'encoding_time': encoding_time,
+        'crop_filter': crop_filter or "none",
+        'vmaf_score': vmaf_score,
+        'vmaf_min': vmaf_min,
+        'vmaf_max': vmaf_max,
+        'peak_memory_kb': peak_memory_kb,
+        'peak_memory_bytes': peak_memory_kb * 1024,
+        'resolution_category': resolution_category,
+        **metrics
+    }
+
 def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[str] = None,
                   retry_count: int = 0, is_hdr: bool = False, dv_flag: bool = False) -> tuple[dict, list[str]]:
     """
@@ -265,30 +285,11 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
     # Calculate metrics
     encoding_time = time.time() - start_time
     metrics = _calculate_output_metrics(output_segment, input_duration, encoding_time)
+    vmaf_metrics = _parse_vmaf_scores(result.stderr)
     
-    # Parse VMAF scores
-    vmaf_score, vmaf_min, vmaf_max = _parse_vmaf_scores(result.stderr)
-    
-    # Get memory and resolution info
-    peak_memory_kb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-    resolution_category, output_width = _get_resolution_category(output_segment)
-
-    # Compile all stats
-    stats = {
-        'segment': segment.name,
-        'encoding_time': encoding_time,
-        'crop_filter': crop_filter or "none",
-        'vmaf_score': vmaf_score,
-        'vmaf_min': vmaf_min,
-        'vmaf_max': vmaf_max,
-        'peak_memory_kb': peak_memory_kb,
-        'peak_memory_bytes': peak_memory_kb * 1024,
-        'resolution_category': resolution_category,
-        **metrics
-    }
-    
-    # Log progress
-    _log_segment_progress(stats, output_logs, segment.name, vmaf_score, vmaf_min, vmaf_max)
+    # Compile stats and log progress
+    stats = _compile_segment_stats(output_segment, encoding_time, crop_filter, vmaf_metrics, metrics)
+    _log_segment_progress(stats, output_logs, segment.name, *vmaf_metrics)
 
     return stats, output_logs
 
