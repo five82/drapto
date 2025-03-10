@@ -26,19 +26,8 @@ def build_encode_command(
     dv_flag: bool
 ) -> List[str]:
     """Build the ab-av1 encode command with appropriate parameters."""
-    # Determine sampling parameters based on retry count
-    if retry_count == 0:
-        sample_count = 3
-        sample_duration_value = 1
-        min_vmaf_value = str(TARGET_VMAF_HDR if is_hdr else TARGET_VMAF)
-    elif retry_count == 1:
-        sample_count = 4
-        sample_duration_value = 2
-        min_vmaf_value = str(TARGET_VMAF_HDR if is_hdr else TARGET_VMAF)
-    else:  # retry_count == 2
-        sample_count = 4
-        sample_duration_value = 2
-        min_vmaf_value = "95"  # Force highest quality
+    # Get retry-specific parameters
+    sample_count, sample_duration_value, min_vmaf_value = get_retry_params(retry_count, is_hdr)
 
     cmd = [
         "ab-av1", "auto-encode",
