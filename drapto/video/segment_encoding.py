@@ -1,16 +1,21 @@
-"""
-Functions for encoding video segments in parallel.
+"""Video segment encoding orchestration
 
-Responsibilities:
-  - High-level orchestration of parallel segment encoding
-  - Building and executing the encoder command
-  - Parsing encoder output for quality metrics (e.g. VMAF) and timing
-  - Aggregating per-segment statistics
-  - Managing memory-aware task scheduling
-  - Validating encoded segment outputs
+This module coordinates parallel video segment encoding with:
 
-Note: Low-level tasks (like command construction and metric parsing) have been 
-factored out into helper functions.
+High-Level Orchestration:
+- Parallel encoding job scheduling and monitoring
+- Memory-aware task distribution
+- Progress tracking and statistics aggregation
+- Overall encode validation
+
+Low-Level Operations (delegated to helpers):
+- Individual segment encoding via ab-av1
+- VMAF score parsing and analysis
+- Memory usage estimation
+- Hardware resource monitoring
+
+The separation ensures the main encode_segments() function focuses purely on
+orchestration while delegating implementation details to specialized helpers.
 """
 
 import logging

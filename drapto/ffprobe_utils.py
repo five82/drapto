@@ -1,7 +1,21 @@
-"""
-ffprobe_utils.py
+"""FFProbe utilities for media file analysis
 
-Helper functions to query ffprobe and return parsed data.
+This module provides:
+- Low-level ffprobe command execution and JSON parsing
+- High-level media property extraction with type conversion
+- Caching and session management for efficient querying
+- Stream-specific metadata retrieval (video, audio, subtitle)
+- Duration calculation with multiple fallback methods
+- Error handling and validation for metadata queries
+
+The module separates concerns between:
+1. Raw ffprobe execution and JSON parsing
+2. Property extraction and type conversion
+3. Caching and session management
+4. High-level metadata aggregation
+
+This layered approach allows other modules to work with media properties
+without needing to understand the underlying ffprobe implementation.
 """
 
 import subprocess
