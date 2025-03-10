@@ -45,7 +45,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 from ..config import (
-    PRESET, TARGET_VMAF, SVT_PARAMS, 
+    PRESET, TARGET_VMAF, TARGET_VMAF_HDR, SVT_PARAMS, 
     VMAF_SAMPLE_COUNT, VMAF_SAMPLE_LENGTH,
     WORKING_DIR, TASK_STAGGER_DELAY
 )
