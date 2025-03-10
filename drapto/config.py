@@ -14,6 +14,8 @@ LOG_DIR = Path(os.environ.get("DRAPTO_LOG_DIR", str(Path.home() / "drapto_logs")
 PRESET = 6
 SVT_PARAMS = "tune=0:film-grain=0:film-grain-denoise=0"
 PIX_FMT = "yuv420p10le"
+TARGET_VMAF = 93
+TARGET_VMAF_HDR = 95  # New HDR-specific target
 
 # Memory management settings
 MEMORY_THRESHOLD = 0.7  # Lower threshold to reserve 30% free memory

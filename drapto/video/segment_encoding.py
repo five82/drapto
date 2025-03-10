@@ -87,23 +87,34 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
     if retry_count == 0:
         sample_count = 3
         sample_duration_value = 1
-        if width >= 3840:
-            min_vmaf_value = "95"
-        else:
-            min_vmaf_value = str(TARGET_VMAF)
+        # HDR detection logic
+        try:
+            with probe_session(segment) as probe:
+                ct = probe.get("color_transfer") or ""
+                cp = probe.get("color_primaries") or ""
+                cs = probe.get("color_space") or ""
+                
+            is_hdr = any([
+                ct.lower() in {"smpte2084", "arib-std-b67", "smpte428", "bt2020-10", "bt2020-12"},
+                cp == "bt2020",
+                cs.lower() in {"bt2020nc", "bt2020c"}
+            ])
+        except MetadataError:
+            is_hdr = False
+            
+        min_vmaf_value = str(TARGET_VMAF_HDR if is_hdr else TARGET_VMAF)
+        
     elif retry_count == 1:
-        # Second attempt: increase sample count and duration
+        # Second attempt settings
         sample_count = 4
         sample_duration_value = 2
-        if width >= 3840:
-            min_vmaf_value = "95"
-        else:
-            min_vmaf_value = str(TARGET_VMAF)
+        min_vmaf_value = str(TARGET_VMAF_HDR if is_hdr else TARGET_VMAF)
+        
     elif retry_count == 2:
-        # Third attempt: keep increased sample settings but raise min_vmaf
+        # Third attempt settings
         sample_count = 4
         sample_duration_value = 2
-        min_vmaf_value = "95"
+        min_vmaf_value = "95"  # Force highest quality
     
     try:
         # Run encoding
