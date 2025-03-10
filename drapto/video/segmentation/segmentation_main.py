@@ -44,7 +44,7 @@ from ...exceptions import (
     SegmentationError, ValidationError,
     SegmentEncodingError
 )
-from ..utils import run_cmd
+from ...utils import run_cmd
 from ..formatting import print_check
 from ..ffprobe_utils import get_duration, get_video_info, MetadataError
 
