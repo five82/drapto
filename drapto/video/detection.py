@@ -1,14 +1,61 @@
 """
 Video detection utilities for drapto
+
+This module provides low-level video detection utilities including:
+  - Identifying Dolby Vision content
+  - Analyzing color properties and running blackdetect via ffmpeg to compute crop filters
+  - Adjusting detection thresholds based on HDR content
+  - Orchestrating frame sampling and analysis for black bar detection
+
+It abstracts the orchestration of these tasks into helper functions.
 """
 import logging
 logger = logging.getLogger(__name__)
 import subprocess
+import re
 from pathlib import Path
 from typing import Optional, Tuple
 
 from ..utils import run_cmd
 from ..ffprobe_utils import get_video_info, get_media_property, MetadataError
+
+def _determine_crop_threshold(ct: str, cp: str, cs: str) -> Tuple[int, bool]:
+    """
+    Determine the crop detection threshold based on color properties.
+    Returns a tuple (crop_threshold, is_hdr).
+    """
+    crop_threshold = 16
+    is_hdr = False
+    if (re.match(r"^(smpte2084|arib-std-b67|smpte428|bt2020-10|bt2020-12)$", ct)
+            or cp == "bt2020"
+            or re.match(r"^(bt2020nc|bt2020c)$", cs)):
+        is_hdr = True
+        crop_threshold = 128
+        logger.info("HDR content detected, adjusting detection sensitivity")
+    return crop_threshold, is_hdr
+
+def _run_hdr_blackdetect(input_file: Path, crop_threshold: int) -> int:
+    """
+    Run a set of ffmpeg commands to sample black levels for HDR content.
+    Returns an updated crop threshold based on black level analysis.
+    """
+    try:
+        ffmpeg_cmd = [
+            "ffmpeg", "-hide_banner", "-i", str(input_file),
+            "-vf", "select='eq(n,0)+eq(n,100)+eq(n,200)',blackdetect=d=0:pic_th=0.1",
+            "-f", "null", "-"
+        ]
+        result = run_cmd(ffmpeg_cmd, capture_output=True)
+        output = result.stderr
+        matches = re.findall(r"black_level:\s*([0-9.]+)", output)
+        if matches:
+            avg_black_level = sum(float(x) for x in matches) / len(matches)
+            black_level = int(avg_black_level)
+            return int(black_level * 3 / 2)
+        return crop_threshold
+    except Exception as e:
+        logger.error("Error during HDR black level analysis: %s", e)
+        return crop_threshold
 
 
 def detect_dolby_vision(input_file: Path) -> bool:
@@ -78,36 +125,12 @@ def detect_crop(input_file: Path, disable_crop: bool = None) -> Tuple[Optional[s
         logger.error("Unable to read video color properties: %s", e)
         ct = cp = cs = ""
 
-    # Set initial crop threshold and adjust for HDR content
-    crop_threshold = 16
-    is_hdr = False
-    if (re.match(r"^(smpte2084|arib-std-b67|smpte428|bt2020-10|bt2020-12)$", ct)
-            or cp == "bt2020"
-            or re.match(r"^(bt2020nc|bt2020c)$", cs)):
-        is_hdr = True
-        crop_threshold = 128
-        logger.info("HDR content detected, adjusting detection sensitivity")
+    # Determine initial threshold based on color properties
+    crop_threshold, is_hdr = _determine_crop_threshold(ct, cp, cs)
 
-    # For HDR input, sample a few frames to find average black level and adjust threshold
+    # For HDR input, analyze black levels and adjust threshold
     if is_hdr:
-        try:
-            ffmpeg_cmd = [
-                "ffmpeg", "-hide_banner", "-i", str(input_file),
-                "-vf", "select='eq(n,0)+eq(n,100)+eq(n,200)',blackdetect=d=0:pic_th=0.1",
-                "-f", "null", "-"
-            ]
-            result = run_cmd(ffmpeg_cmd, capture_output=True)
-            # ffmpeg outputs blackdetect data on stderr
-            output = result.stderr
-            matches = re.findall(r"black_level:\s*([0-9.]+)", output)
-            if matches:
-                avg_black_level = sum(float(x) for x in matches) / len(matches)
-                black_level = int(avg_black_level)
-            else:
-                black_level = 128
-            crop_threshold = int(black_level * 3 / 2)
-        except Exception as e:
-            logger.error("Error during HDR black level analysis: %s", e)
+        crop_threshold = _run_hdr_blackdetect(input_file, crop_threshold)
 
     # Clamp crop_threshold within reasonable bounds
     if crop_threshold < 16:

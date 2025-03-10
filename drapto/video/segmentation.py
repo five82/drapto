@@ -1,11 +1,18 @@
 """
 Video Segmentation Module
 
+This module handles parallel, memory-aware encoding of video segments including:
+  - Warmup analysis to determine optimal memory usage per resolution
+  - Dynamic memory scheduling based on segment characteristics
+  - Parallel encoding task management with resource monitoring
+  - Detailed metric parsing and validation for each encoded segment
+  - Progress tracking and statistical aggregation
+
 Responsibilities:
-  - Divide input video files into segments based on detected scene changes.
-  - Validate individual segments (e.g., file size, duration, codec, and timestamp sanity).
-  - Merge segments to form the final video.
-  - Manage and trigger parallel encoding tasks for the segments.
+  - Divide input video files into segments based on detected scene changes
+  - Validate individual segments (e.g., file size, duration, codec, and timestamp sanity)
+  - Merge segments to form the final video
+  - Manage and trigger parallel encoding tasks for the segments
 """
 
 import logging
