@@ -79,24 +79,25 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
         logger.error("Failed to get segment info: %s", e)
         if retry_count < 2:
             logger.warning("Retrying segment due to metadata error")
-            return encode_segment(segment, output_segment, crop_filter, retry_count + 1, dv_flag)
+            return encode_segment(segment, output_segment, crop_filter, retry_count + 1, is_hdr, dv_flag)
     except Exception as e:
         logger.warning("Failed to parse width from video info: %s. Assuming non-4k.", e)
         width = 0
 
+    # Initial attempt: Standard sampling parameters
     if retry_count == 0:
         sample_count = 3
         sample_duration_value = 1
         min_vmaf_value = str(TARGET_VMAF_HDR if is_hdr else TARGET_VMAF)
         
+    # First retry: Increase samples and duration for more accurate analysis
     elif retry_count == 1:
-        # Second attempt settings
         sample_count = 4
         sample_duration_value = 2
         min_vmaf_value = str(TARGET_VMAF_HDR if is_hdr else TARGET_VMAF)
         
+    # Final retry: Force maximum quality to ensure successful encode
     elif retry_count == 2:
-        # Third attempt settings
         sample_count = 4
         sample_duration_value = 2
         min_vmaf_value = "95"  # Force highest quality
