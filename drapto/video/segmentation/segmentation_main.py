@@ -45,7 +45,7 @@ from ...exceptions import (
     SegmentEncodingError
 )
 from ...utils import run_cmd
-from ..formatting import print_check
+from ...formatting import print_check
 from ..ffprobe_utils import get_duration, get_video_info, MetadataError
 
 logger = logging.getLogger(__name__)
