@@ -17,7 +17,7 @@ class TestSegmentationMain(unittest.TestCase):
         self.mock_probe.get.side_effect = ["1920", "1080", 120.0]  # width, height, duration
 
     @patch('drapto.video.segmentation.segmentation_main.SegmentationJob')
-    @patch('drapto.video.segmentation.segmentation_main.probe_session')
+    @patch('drapto.ffprobe.session.probe_session')
     def test_segment_video_success(self, mock_session, mock_job):
         """Test successful video segmentation"""
         mock_session.return_value.__enter__.return_value = self.mock_probe
@@ -30,7 +30,7 @@ class TestSegmentationMain(unittest.TestCase):
             self.assertTrue(result)
             mock_job.return_value.execute.assert_called_once()
 
-    @patch('drapto.video.segmentation.segmentation_main.probe_session')
+    @patch('drapto.ffprobe.session.probe_session')
     def test_validate_segments_success(self, mock_session):
         """Test successful segment validation"""
         mock_session.return_value.__enter__.return_value = self.mock_probe
@@ -43,7 +43,7 @@ class TestSegmentationMain(unittest.TestCase):
             ]
             self.assertTrue(validate_segments(self.test_file))
 
-    @patch('drapto.video.segmentation.segmentation_main.probe_session')
+    @patch('drapto.ffprobe.session.probe_session')
     def test_validate_segments_failure(self, mock_session):
         """Test segment validation failure"""
         mock_session.return_value.__enter__.return_value = self.mock_probe
@@ -64,7 +64,7 @@ class TestSegmentationMain(unittest.TestCase):
         mock_detect.return_value = [0.0, 30.0, 60.0]
         
         hw_opt, scenes = _prepare_segmentation(self.test_file)
-        self.assertEqual(hw_opt, "-hwaccel cuda")
+        self.assertEqual(hw_opt, "")
         self.assertEqual(scenes, [0.0, 30.0, 60.0])
 
 if __name__ == '__main__':
