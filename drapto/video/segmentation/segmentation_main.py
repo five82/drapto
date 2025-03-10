@@ -94,7 +94,11 @@ def validate_segments(input_file: Path) -> bool:
     
     for segment in segments:
         try:
-            duration = validate_single_segment(segment)
+            valid, error_msg = validate_single_segment(segment)
+            if not valid:
+                raise ValidationError(f"Failed to validate segment {segment.name}: {error_msg}", module="segmentation")
+            # Now fetch the segment duration separately
+            duration = get_duration(segment)
             video_info = get_video_info(segment)
             codec = video_info.get("codec_name")
             video_start = video_info.get("start_time", 0.0)
@@ -104,14 +108,13 @@ def validate_segments(input_file: Path) -> bool:
                 logger.error(msg)
                 raise ValidationError(msg, module="segmentation")
 
-            # Validate video timestamps
             sync_threshold = 0.2  # increased allowed difference in seconds
             if abs(video_start) > sync_threshold:
                 raise ValidationError(
                     f"Segment {segment.name} timestamp issue: video_start={video_start:.2f}s is not near 0",
                     module="segmentation"
                 )
-            
+
             total_segment_duration += duration
             logger.info("Segment %s: duration=%.2fs, codec=%s", segment.name, duration, codec)
         except (MetadataError, ValidationError) as e:
