@@ -33,10 +33,7 @@ def validate_single_segment(segment: Path, tolerance: float = 0.2) -> Tuple[bool
             return False, f"Missing or empty segment: {segment.name}"
             
         with probe_session(segment) as probe:
-            codec = probe.get("codec_name", "video")
-            if codec != "av1":
-                return False, f"Wrong codec '{codec}' in segment: {segment.name}"
-                
+            # Do not enforce codec check here since segmentation uses -c:v copy
             duration = float(probe.get("duration", "format"))
             if duration <= 0:
                 return False, f"Invalid duration in segment: {segment.name}"
