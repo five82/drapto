@@ -1,4 +1,15 @@
-"""Validation utilities for checking encode output"""
+"""Validation utilities for checking encode output
+
+Responsibilities:
+  - Validate video stream properties (codec, resolution, color space)
+  - Verify audio stream count and properties match input
+  - Check container format integrity and stream synchronization
+  - Validate subtitle track preservation
+  - Verify crop dimensions if applied
+  - Check AV sync between audio and video streams
+  - Analyze quality metrics against target thresholds
+  - Coordinate multi-stage validation process
+"""
 
 import json
 import logging

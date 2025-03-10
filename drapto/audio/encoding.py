@@ -1,4 +1,13 @@
-"""Audio encoding functions for drapto"""
+"""Audio encoding functions for drapto
+
+Responsibilities:
+  - Validate input audio streams before processing
+  - Encode individual audio tracks using libopus codec
+  - Select optimal bitrate and channel layout based on track properties
+  - Provide progress reporting during encoding operations
+  - Handle error conditions and validation of encoded outputs
+  - Manage audio stream metadata preservation
+"""
 
 import logging
 from pathlib import Path

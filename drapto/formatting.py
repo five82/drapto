@@ -1,4 +1,12 @@
-"""Rich-based console formatting utilities"""
+"""Rich-based console formatting utilities
+
+Responsibilities:
+  - Provide consistent console output formatting using Rich
+  - Format success/warning/error messages with appropriate styling
+  - Create visual separators and headers for output sections
+  - Apply consistent color schemes and symbols across messages
+  - Handle Unicode symbols and styling for status indicators
+"""
 
 from rich.console import Console
 from rich.text import Text
