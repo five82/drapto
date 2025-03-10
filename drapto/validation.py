@@ -56,23 +56,9 @@ def validate_output(input_file: Path, output_file: Path) -> None:
         has_errors = True
         validation_report.append(f"ERROR: {e.message}")
     
-    # Print validation report
-    if validation_report:
-        print_header("Validation Report")
-        for entry in validation_report:
-            if entry.startswith("ERROR"):
-                print_error(entry[7:])
-            else:
-                print_check(entry)
-
-    # Raise validation exception if errors found
-    if any(entry.startswith("ERROR") for entry in validation_report) or has_errors:
-        raise ValidationError(
-            "Output validation failed with the above issues", 
-            module="validation"
-        )
-    
-    print_check("Output validation successful")
+    # Generate validation report
+    from .validation.validation_report import format_validation_report
+    format_validation_report(validation_report, has_errors)
 
 def validate_ab_av1() -> None:
     """Check if ab-av1 is available."""
