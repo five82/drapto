@@ -143,3 +143,17 @@ def handle_segment_retry(error: Exception, segment: Path, output_segment: Path,
             f"Segment {segment.name} failed after {MAX_RETRIES + 1} attempts: {error}",
             module="segment_encoding"
         )
+
+def estimate_memory_weight(segment: Path, resolution_weights: dict) -> int:
+    """
+    Estimate the memory weight for encoding a segment based on its resolution category.
+
+    Args:
+        segment: Path to the video segment.
+        resolution_weights: A dictionary mapping resolution categories ('SDR', '1080p', '4k') to weight values.
+
+    Returns:
+        An integer weight corresponding to the segment's resolution.
+    """
+    category, _ = get_resolution_category(segment)
+    return resolution_weights.get(category, 1)
