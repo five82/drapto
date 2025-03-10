@@ -132,7 +132,31 @@ def _parse_vmaf_scores(stderr_output: str) -> tuple[Optional[float], Optional[fl
         )
     return (None, None, None)
 
-def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[str] = None, retry_count: int = 0, is_hdr: bool = False, dv_flag: bool = False) -> tuple[dict, list[str]]:
+def _get_retry_params(retry_count: int, is_hdr: bool) -> tuple[int, int, str]:
+    """Get encoding parameters based on retry count"""
+    if retry_count == 0:
+        return 3, 1, str(TARGET_VMAF_HDR if is_hdr else TARGET_VMAF)
+    elif retry_count == 1:
+        return 4, 2, str(TARGET_VMAF_HDR if is_hdr else TARGET_VMAF)
+    else:  # retry_count == 2
+        return 4, 2, "95"  # Force highest quality
+
+def _handle_segment_retry(e: Exception, segment: Path, output_segment: Path,
+                         crop_filter: Optional[str], retry_count: int,
+                         is_hdr: bool, dv_flag: bool) -> tuple[dict, list[str]]:
+    """Handle segment encoding retry logic"""
+    if retry_count < 2:
+        logger.warning("Retrying segment (%d): %s", retry_count + 1, e)
+        if output_segment.exists():
+            output_segment.unlink()
+        return encode_segment(segment, output_segment, crop_filter,
+                            retry_count + 1, is_hdr, dv_flag)
+    else:
+        logger.error("Segment encoding failed after %d retries", retry_count)
+        raise
+
+def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[str] = None,
+                  retry_count: int = 0, is_hdr: bool = False, dv_flag: bool = False) -> tuple[dict, list[str]]:
     """
     Encode a single video segment using ab-av1.
     
@@ -166,108 +190,43 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
             input_duration = float(probe.get("duration", "format"))
             width = int(probe.get("width", "video"))
     except MetadataError as e:
-        logger.error("Failed to get segment info: %s", e)
-        if retry_count < 2:
-            logger.warning("Retrying segment due to metadata error")
-            return encode_segment(segment, output_segment, crop_filter, retry_count + 1, is_hdr, dv_flag)
+        return _handle_segment_retry(e, segment, output_segment, crop_filter,
+                                   retry_count, is_hdr, dv_flag)
     except Exception as e:
         logger.warning("Failed to parse width from video info: %s. Assuming non-4k.", e)
         width = 0
 
-    # Initial attempt: Standard sampling parameters
-    if retry_count == 0:
-        sample_count = 3
-        sample_duration_value = 1
-        min_vmaf_value = str(TARGET_VMAF_HDR if is_hdr else TARGET_VMAF)
-        
-    # First retry: Increase samples and duration for more accurate analysis
-    elif retry_count == 1:
-        sample_count = 4
-        sample_duration_value = 2
-        min_vmaf_value = str(TARGET_VMAF_HDR if is_hdr else TARGET_VMAF)
-        
-    # Final retry: Force maximum quality to ensure successful encode
-    elif retry_count == 2:
-        sample_count = 4
-        sample_duration_value = 2
-        min_vmaf_value = "95"  # Force highest quality
+    # Get encoding parameters based on retry count
+    sample_count, sample_duration_value, min_vmaf_value = _get_retry_params(retry_count, is_hdr)
     
     try:
-        # Run encoding
-        cmd = [
-            "ab-av1", "auto-encode",
-            "--input", str(segment),
-            "--output", str(output_segment),
-            "--encoder", "libsvtav1",
-            "--min-vmaf", min_vmaf_value,
-            "--preset", str(PRESET),
-            "--svt", SVT_PARAMS,
-            "--keyint", "10s",
-            "--samples", str(sample_count),
-            "--sample-duration", f"{sample_duration_value}s",
-            "--vmaf", "n_subsample=8:pool=perc5_min",
-            "--pix-format", "yuv420p10le",
-        ]
-        if crop_filter:
-            cmd.extend(["--vfilter", crop_filter])
-            
-        if dv_flag:
-            cmd.extend(["--enc", "dolbyvision=true"])
-            
+        # Run encoding with built command
+        cmd = _build_encode_command(segment, output_segment, crop_filter,
+                                  retry_count, is_hdr, dv_flag)
         result = run_cmd(cmd)
     except Exception as e:
-        if retry_count < 2:  # Allow up to 2 retries (3 total attempts)
-            logger.warning("Segment encoding failed, retrying (%d): %s", retry_count + 1, e)
-            # Remove failed output if it exists
-            if output_segment.exists():
-                output_segment.unlink()
-            # Retry with incremented retry count
-            return encode_segment(segment, output_segment, crop_filter, retry_count + 1, dv_flag)
-        else:
-            logger.error("Segment encoding failed after %d retries", retry_count)
-            raise
+        return _handle_segment_retry(e, segment, output_segment, crop_filter,
+                                   retry_count, is_hdr, dv_flag)
+
     end_time = time.time()
     encoding_time = end_time - start_time
     
-    # Get output details
+    # Get output details and calculate metrics
     video_info_out = get_video_info(output_segment)
     format_info_out = get_format_info(output_segment)
     output_duration = float(format_info_out.get("duration", 0))
     output_size = int(format_info_out.get("size", 0))
     
-    # Calculate bitrate and speed metrics
     bitrate_kbps = (output_size * 8) / (output_duration * 1000)
     speed_factor = input_duration / encoding_time
     
-    # Parse VMAF scores from ab-av1 output if available
-    vmaf_score = None
-    vmaf_min = None
-    vmaf_max = None
-    vmaf_values = []
-    try:
-        for line in result.stderr.split('\n'):
-            # Use a regular expression to capture the VMAF value in lines like "... VMAF 88.72 ..."
-            match = re.search(r"VMAF\s+([0-9.]+)", line)
-            if match:
-                try:
-                    value = float(match.group(1))
-                    vmaf_values.append(value)
-                except Exception:
-                    continue
-        if vmaf_values:
-            vmaf_score = sum(vmaf_values) / len(vmaf_values)
-            vmaf_min = min(vmaf_values)
-            vmaf_max = max(vmaf_values)
-            # Removed duplicate VMAF score log:
-            # log.info("  VMAF scores - Avg: %.2f, Min: %.2f, Max: %.2f",
-            #          vmaf_score, vmaf_min, vmaf_max)
-            capture_log("Segment analysis complete: %s – VMAF Avg: %.2f, Min: %.2f, Max: %.2f (CRF target determined)",
-                     segment.name, vmaf_score, vmaf_min, vmaf_max)
-        else:
-            capture_log("Segment analysis complete: %s – No VMAF scores parsed", segment.name)
-    except Exception as e:
-        logger.debug("Could not parse VMAF scores: %s", e)
-        logger.info("Segment analysis complete: %s – No VMAF scores parsed", segment.name)
+    # Parse VMAF scores
+    vmaf_score, vmaf_min, vmaf_max = _parse_vmaf_scores(result.stderr)
+    if vmaf_score is not None:
+        capture_log("Segment analysis complete: %s – VMAF Avg: %.2f, Min: %.2f, Max: %.2f (CRF target determined)",
+                   segment.name, vmaf_score, vmaf_min, vmaf_max)
+    else:
+        capture_log("Segment analysis complete: %s – No VMAF scores parsed", segment.name)
     
     # Compile segment statistics
     stats = {
