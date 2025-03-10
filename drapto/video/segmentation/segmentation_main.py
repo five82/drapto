@@ -92,7 +92,7 @@ def validate_segments(input_file: Path) -> bool:
     
     for segment in segments:
         try:
-            duration = _validate_single_segment(segment)
+            duration = validate_single_segment(segment)
             video_info = get_video_info(segment)
             codec = video_info.get("codec_name")
             video_start = video_info.get("start_time", 0.0)
