@@ -258,18 +258,23 @@ def validate_output(input_file: Path, output_file: Path) -> None:
         validation_report.append(f"ERROR: {e.message}")
     
     # Final check for any accumulated errors
-    if any(entry.startswith("ERROR") for entry in validation_report) or has_errors:
+    # First, print the entire validation report (if any entries exist)
+    if validation_report:
         print_header("Validation Report")
         for entry in validation_report:
             if entry.startswith("ERROR"):
                 print_error(entry[7:])
             else:
                 print_check(entry)
+
+    # If errors were encountered, raise the validation exception
+    if any(entry.startswith("ERROR") for entry in validation_report) or has_errors:
         raise ValidationError(
             "Output validation failed with the above issues", 
             module="validation"
         )
     
+    # Finally, print the success message
     print_check("Output validation successful")
 
 def validate_ab_av1() -> None:
