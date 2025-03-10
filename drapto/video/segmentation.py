@@ -21,27 +21,7 @@ from .scene_detection import detect_scenes, validate_segment_boundaries
 from .hardware import check_hardware_acceleration, get_hwaccel_options
 from ..exceptions import ValidationError
 
-def _validate_single_segment(segment: Path, min_size: int = 1024) -> float:
-    """
-    Validate a single video segment.
-
-    Args:
-        segment: Path to the segment file.
-        min_size: Minimum acceptable size for a segment in bytes.
-
-    Returns:
-        The segment duration as a float.
-
-    Raises:
-        ValidationError: If the segment is too small or has invalid properties.
-    """
-    if segment.stat().st_size < min_size:
-        raise ValidationError(f"Segment too small: {segment.name}", module="segmentation")
-    try:
-        duration = get_duration(segment)
-    except Exception as e:
-        raise ValidationError(f"Could not determine duration for {segment.name}: {str(e)}", module="segmentation")
-    return duration
+from .segmentation.validation import validate_single_segment, validate_encoded_segments
 
 def _prepare_segmentation(input_file: Path) -> tuple[str, list[float]]:
     """
