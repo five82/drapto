@@ -17,7 +17,7 @@ class TestMuxer(unittest.TestCase):
         self.audio_tracks = [Path("/tmp/audio1.mkv"), Path("/tmp/audio2.mkv")]
         self.output_file = Path("/tmp/output.mkv")
 
-    @patch("drapto.muxer.run_cmd")
+    @patch("drapto.command_jobs.run_cmd")
     @patch("drapto.muxer.get_video_info")
     @patch("drapto.muxer.get_audio_info")
     @patch("drapto.muxer.get_duration")
@@ -34,7 +34,7 @@ class TestMuxer(unittest.TestCase):
         # Verify command was executed
         mock_run_cmd.assert_called()
 
-    @patch("drapto.muxer.run_cmd")
+    @patch("drapto.command_jobs.run_cmd")
     @patch("drapto.muxer.get_video_info")
     def test_mux_tracks_av_sync_failure(self, mock_video_info, mock_run_cmd):
         """Test AV sync validation failure"""
@@ -48,7 +48,7 @@ class TestMuxer(unittest.TestCase):
             with self.assertRaises(MuxingError):
                 mux_tracks(self.video_track, self.audio_tracks, self.output_file)
 
-    @patch("drapto.muxer.run_cmd")
+    @patch("drapto.command_jobs.run_cmd")
     def test_mux_tracks_command_failure(self, mock_run_cmd):
         """Test command execution failure"""
         mock_run_cmd.side_effect = Exception("Command failed")
