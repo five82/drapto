@@ -155,6 +155,74 @@ def _handle_segment_retry(e: Exception, segment: Path, output_segment: Path,
         logger.error("Segment encoding failed after %d retries", retry_count)
         raise
 
+def _get_segment_properties(segment: Path) -> tuple[float, int]:
+    """Get input segment duration and width."""
+    try:
+        with probe_session(segment) as probe:
+            input_duration = float(probe.get("duration", "format"))
+            width = int(probe.get("width", "video"))
+            return input_duration, width
+    except MetadataError as e:
+        raise
+    except Exception as e:
+        logger.warning("Failed to parse width from video info: %s. Assuming non-4k.", e)
+        return 0.0, 0
+
+def _calculate_output_metrics(output_segment: Path, input_duration: float, encoding_time: float) -> dict:
+    """Calculate output metrics like bitrate and speed factor."""
+    video_info_out = get_video_info(output_segment)
+    format_info_out = get_format_info(output_segment)
+    output_duration = float(format_info_out.get("duration", 0))
+    output_size = int(format_info_out.get("size", 0))
+    
+    return {
+        'duration': output_duration,
+        'size_mb': output_size / (1024 * 1024),
+        'bitrate_kbps': (output_size * 8) / (output_duration * 1000),
+        'speed_factor': input_duration / encoding_time,
+        'resolution': f"{video_info_out.get('width', '0')}x{video_info_out.get('height', '0')}",
+        'framerate': video_info_out.get('r_frame_rate', 'unknown'),
+    }
+
+def _get_resolution_category(output_segment: Path) -> tuple[str, int]:
+    """Determine resolution category and width."""
+    try:
+        with probe_session(output_segment) as probe:
+            width = int(probe.get("width", "video"))
+    except (MetadataError, Exception) as e:
+        logger.warning("Could not determine output width, using fallback value: %s", e)
+        width = 1280  # Fallback
+
+    if width >= 3840:
+        return "4k", width
+    elif width >= 1920:
+        return "1080p", width
+    return "SDR", width
+
+def _log_segment_progress(stats: dict, output_logs: list, segment_name: str,
+                         vmaf_score: Optional[float] = None,
+                         vmaf_min: Optional[float] = None,
+                         vmaf_max: Optional[float] = None) -> None:
+    """Log segment encoding progress and stats."""
+    def capture_log(msg, *args):
+        formatted = msg % args
+        logger.info(formatted)
+        output_logs.append(formatted)
+
+    if vmaf_score is not None:
+        capture_log("Segment analysis complete: %s – VMAF Avg: %.2f, Min: %.2f, Max: %.2f (CRF target determined)",
+                   segment_name, vmaf_score, vmaf_min, vmaf_max)
+    else:
+        capture_log("Segment analysis complete: %s – No VMAF scores parsed", segment_name)
+    
+    capture_log("Segment encoding complete: %s", segment_name)
+    capture_log("  Duration: %.2fs", stats['duration'])
+    capture_log("  Size: %.2f MB", stats['size_mb'])
+    capture_log("  Bitrate: %.2f kbps", stats['bitrate_kbps'])
+    capture_log("  Encoding time: %.2fs (%.2fx realtime)", 
+             stats['encoding_time'], stats['speed_factor'])
+    capture_log("  Resolution: %s @ %s", stats['resolution'], stats['framerate'])
+
 def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[str] = None,
                   retry_count: int = 0, is_hdr: bool = False, dv_flag: bool = False) -> tuple[dict, list[str]]:
     """
@@ -175,32 +243,18 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
         SegmentEncodingError: If encoding fails
     """
     import time
-    output_logs = []  # List to collect detailed log messages
-    
-    def capture_log(msg, *args, **kwargs):
-        formatted = msg % args if args else msg
-        logger.info(formatted)
-        output_logs.append(formatted)
-        
+    output_logs = []
     start_time = time.time()
     
-    # Get input segment details using probe session
     try:
-        with probe_session(segment) as probe:
-            input_duration = float(probe.get("duration", "format"))
-            width = int(probe.get("width", "video"))
+        # Get input properties
+        input_duration, width = _get_segment_properties(segment)
     except MetadataError as e:
         return _handle_segment_retry(e, segment, output_segment, crop_filter,
                                    retry_count, is_hdr, dv_flag)
-    except Exception as e:
-        logger.warning("Failed to parse width from video info: %s. Assuming non-4k.", e)
-        width = 0
-
-    # Get encoding parameters based on retry count
-    sample_count, sample_duration_value, min_vmaf_value = _get_retry_params(retry_count, is_hdr)
     
     try:
-        # Run encoding with built command
+        # Run encoding
         cmd = _build_encode_command(segment, output_segment, crop_filter,
                                   retry_count, is_hdr, dv_flag)
         result = run_cmd(cmd)
@@ -208,80 +262,33 @@ def encode_segment(segment: Path, output_segment: Path, crop_filter: Optional[st
         return _handle_segment_retry(e, segment, output_segment, crop_filter,
                                    retry_count, is_hdr, dv_flag)
 
-    end_time = time.time()
-    encoding_time = end_time - start_time
-    
-    # Get output details and calculate metrics
-    video_info_out = get_video_info(output_segment)
-    format_info_out = get_format_info(output_segment)
-    output_duration = float(format_info_out.get("duration", 0))
-    output_size = int(format_info_out.get("size", 0))
-    
-    bitrate_kbps = (output_size * 8) / (output_duration * 1000)
-    speed_factor = input_duration / encoding_time
+    # Calculate metrics
+    encoding_time = time.time() - start_time
+    metrics = _calculate_output_metrics(output_segment, input_duration, encoding_time)
     
     # Parse VMAF scores
     vmaf_score, vmaf_min, vmaf_max = _parse_vmaf_scores(result.stderr)
-    if vmaf_score is not None:
-        capture_log("Segment analysis complete: %s – VMAF Avg: %.2f, Min: %.2f, Max: %.2f (CRF target determined)",
-                   segment.name, vmaf_score, vmaf_min, vmaf_max)
-    else:
-        capture_log("Segment analysis complete: %s – No VMAF scores parsed", segment.name)
     
-    # Compile segment statistics
+    # Get memory and resolution info
+    peak_memory_kb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    resolution_category, output_width = _get_resolution_category(output_segment)
+
+    # Compile all stats
     stats = {
         'segment': segment.name,
-        'duration': output_duration,
-        'size_mb': output_size / (1024 * 1024),
-        'bitrate_kbps': bitrate_kbps,
         'encoding_time': encoding_time,
-        'speed_factor': speed_factor,
-        'resolution': f"{video_info_out.get('width', '0')}x{video_info_out.get('height', '0')}",
-        'framerate': video_info_out.get('r_frame_rate', 'unknown'),
         'crop_filter': crop_filter or "none",
         'vmaf_score': vmaf_score,
         'vmaf_min': vmaf_min,
-        'vmaf_max': vmaf_max
+        'vmaf_max': vmaf_max,
+        'peak_memory_kb': peak_memory_kb,
+        'peak_memory_bytes': peak_memory_kb * 1024,
+        'resolution_category': resolution_category,
+        **metrics
     }
     
-    # Log detailed segment info
-    capture_log("Segment encoding complete: %s", segment.name)
-    capture_log("  Duration: %.2fs", stats['duration'])
-    capture_log("  Size: %.2f MB", stats['size_mb'])
-    capture_log("  Bitrate: %.2f kbps", stats['bitrate_kbps'])
-    capture_log("  Encoding time: %.2fs (%.2fx realtime)", 
-             stats['encoding_time'], stats['speed_factor'])
-    capture_log("  Resolution: %s @ %s", stats['resolution'], stats['framerate'])
-    
-    # Get peak memory usage (in kilobytes)
-    peak_memory_kb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-
-    # Determine resolution category from output width
-    try:
-        try:
-            with probe_session(output_segment) as probe:
-                width = int(probe.get("width", "video"))
-        except MetadataError:
-            logger.warning("Could not determine output width, using fallback value")
-            width = 1280  # Fallback
-    except Exception as e:
-        logger.error("Error determining resolution: %s", e)
-        width = 1280  # Fallback on any error
-
-    if width >= 3840:
-        resolution_category = "4k"
-    elif width >= 1920:
-        resolution_category = "1080p"
-    else:
-        resolution_category = "SDR"
-
-    # Convert peak memory to bytes for later comparison
-    peak_memory_bytes = peak_memory_kb * 1024
-
-    # Record the dynamic values in the stats
-    stats['peak_memory_kb'] = peak_memory_kb
-    stats['peak_memory_bytes'] = peak_memory_bytes
-    stats['resolution_category'] = resolution_category
+    # Log progress
+    _log_segment_progress(stats, output_logs, segment.name, vmaf_score, vmaf_min, vmaf_max)
 
     return stats, output_logs
 
