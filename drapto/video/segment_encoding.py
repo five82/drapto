@@ -25,7 +25,7 @@ import resource
 import psutil
 from pathlib import Path
 from typing import List, Optional, Dict
-from ..ffprobe_utils import (
+from ..ffprobe.utils import (
     get_video_info, get_format_info, get_media_property,
     probe_session, MetadataError
 )

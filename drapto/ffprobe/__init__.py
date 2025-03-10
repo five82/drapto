@@ -29,3 +29,6 @@ __all__ = [
     'get_resolution',
     'get_audio_channels'
 ]
+"""FFProbe utilities for media file analysis"""
+
+from .utils import *

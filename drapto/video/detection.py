@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 from ..utils import run_cmd
-from ..ffprobe_utils import (
+from ..ffprobe.utils import (
     get_video_info, get_media_property, MetadataError,
     probe_session
 )

@@ -19,7 +19,7 @@ from scenedetect.scene_manager import save_images
 
 from ..utils import run_cmd
 from ..formatting import print_check, print_warning
-from ..ffprobe_utils import (
+from ..ffprobe.utils import (
     probe_session, MetadataError, get_format_info,
     get_duration, get_video_info
 )
