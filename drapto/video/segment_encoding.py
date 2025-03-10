@@ -59,8 +59,8 @@ from ..ffprobe.media import get_video_info, get_format_info
 from ..ffprobe.exec import MetadataError, get_media_property
 from ..ffprobe.session import probe_session
 from ..exceptions import DependencyError, SegmentEncodingError
+from .encode_commands import build_encode_command
 from .encode_helpers import (
-    build_encode_command,
     parse_vmaf_scores,
     get_segment_properties,
     calculate_output_metrics,
