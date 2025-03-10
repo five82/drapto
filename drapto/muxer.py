@@ -40,8 +40,8 @@ def mux_tracks(
             audio_duration = get_duration(output_file, "audio")
             audio_info = get_audio_info(output_file, 0)
             audio_start = audio_info.get("start_time", 0.0)
-                if not audio_duration:
-                    logger.warning("Using container duration for audio validation")
+            if not audio_duration:
+                logger.warning("Using container duration for audio validation")
 
             start_diff = abs(video_start - audio_start)
             duration_diff = abs(video_duration - audio_duration)
