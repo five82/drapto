@@ -36,9 +36,12 @@ class FFProbeSession:
 @contextmanager
 def probe_session(path: Path) -> Generator[FFProbeSession, None, None]:
     """Context manager for probe sessions"""
+    session = FFProbeSession(path)
     try:
-        session = FFProbeSession(path)
         yield session
     except MetadataError as e:
         logger.error("Probe session failed: %s", e)
         raise
+    finally:
+        if hasattr(session, "_cache"):
+            del session._cache
