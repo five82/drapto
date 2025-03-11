@@ -23,7 +23,7 @@ class TestSegmentationMain(unittest.TestCase):
                else ("av1" if args[2] == 'codec_name'
                else (1920 if args[2] == 'width'
                else (1080 if args[2] == 'height'
-               else (2 if args[2] == 'channels' else None)))))
+               else (2 if args[2] == 'channels' else None))))))
     )
     @patch('drapto.video.segmentation.segmentation_main.SegmentationJob')
     @patch('drapto.ffprobe.session.probe_session')
