@@ -20,6 +20,17 @@ class FFProbeSession:
     def __init__(self, path: Path):
         self.path = path
         self._cache = {}
+        self._file_handle = None
+        
+    def __enter__(self):
+        # Open file handle in binary read mode
+        self._file_handle = open(self.path, 'rb')
+        return self
+        
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self._file_handle:
+            self._file_handle.close()
+            self._file_handle = None
 
     def get(self, property_name: str, stream_type: str = "video", stream_index: int = 0) -> Any:
         """Get a property, caching the result"""
@@ -45,3 +56,6 @@ def probe_session(path: Path) -> Generator[FFProbeSession, None, None]:
     finally:
         if hasattr(session, "_cache"):
             del session._cache
+        if hasattr(session, "_file_handle") and session._file_handle:
+            session._file_handle.close()
+            session._file_handle = None
