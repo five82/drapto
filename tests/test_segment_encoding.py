@@ -169,7 +169,7 @@ class TestSegmentEncoding(unittest.TestCase):
                     "r_frame_rate": "30/1",
                     "start_time": 0.0
                 }):
-                with patch('drapto.ffprobe.media.get_duration', return_value=10):
+                with patch('drapto.video.segment_encoding.get_duration', return_value=10):
                     self.assertTrue(validate_encoded_segments(segments_dir))
             
             # Test codec validation failure: simulate a codec mismatch.
@@ -180,7 +180,7 @@ class TestSegmentEncoding(unittest.TestCase):
                 "r_frame_rate": "30/1",
                 "start_time": 0.0
             }):
-                with patch('drapto.ffprobe.media.get_duration', return_value=10):
+                with patch('drapto.video.segment_encoding.get_duration', return_value=10):
                     with self.assertRaises(ValidationError):
                         validate_encoded_segments(segments_dir)
             with self.assertRaises(ValidationError):
