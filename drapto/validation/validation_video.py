@@ -63,7 +63,7 @@ def validate_av_sync(output_file: Path, validation_report: list) -> None:
         if not video_info:
             raise ValidationError("No video stream info found", module="validation")
         vid_start = video_info.get("start_time", 0.0)
-        vid_duration = float(video_info.get("duration", 0.0))
+        vid_duration = float(video_info.get("duration") or 0.0)
         
         audio_info = get_audio_info(output_file, 0)
         if not audio_info:
