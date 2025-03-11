@@ -69,7 +69,7 @@ def validate_av_sync(output_file: Path, validation_report: list) -> None:
         if not audio_info:
             raise ValidationError("No audio stream info found", module="validation")
         aud_start = audio_info.get("start_time", 0.0)
-        aud_duration = float(audio_info.get("duration", 0.0))
+        aud_duration = float(audio_info.get("duration") or 0.0)
         
         start_diff = abs(vid_start - aud_start)
         duration_diff = abs(vid_duration - aud_duration)
