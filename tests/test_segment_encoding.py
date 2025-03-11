@@ -162,13 +162,14 @@ class TestSegmentEncoding(unittest.TestCase):
 
             mock_glob.return_value = [mock_seg1, mock_seg2]
 
-            with patch('drapto.ffprobe.media.get_video_info', return_value={
-                    "codec_name": "av1", 
-                    "width": "1920", 
-                    "height": "1080", 
-                    "r_frame_rate": "30/1"
+            with patch('drapto.video.segment_encoding.get_video_info', return_value={
+                    "codec_name": "av1",
+                    "width": 1920,
+                    "height": 1080,
+                    "r_frame_rate": "30/1",
+                    "start_time": 0.0
                 }):
-                with patch('drapto.ffprobe.media.get_duration', return_value="10"):
+                with patch('drapto.ffprobe.media.get_duration', return_value=10):
                     self.assertTrue(validate_encoded_segments(segments_dir))
             
             # Test codec validation failure: simulate a codec mismatch.
