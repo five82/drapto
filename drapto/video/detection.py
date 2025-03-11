@@ -99,14 +99,13 @@ def _get_video_properties(input_file: Path) -> tuple[dict, tuple[int, int], floa
             }
             
             # Get dimensions
-            width = int(probe.get("width", "video"))
-            height = int(probe.get("height", "video"))
+            width, height = probe.get_resolution()
             
             # Get duration
             duration = float(probe.get("duration", "format"))
             
             return color_props, (width, height), duration
-    except MetadataError as e:
+    except (MetadataError, ValueError) as e:
         logger.error("Failed to get video properties: %s", e)
         return {}, (0, 0), 0.0
 

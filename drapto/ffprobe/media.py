@@ -126,14 +126,13 @@ def get_duration(path: Path, stream_type: str = "video", stream_index: int = 0) 
             raise MetadataError(f"All duration methods failed: {str(e)}") from e
 
 def get_resolution(path: Path) -> Tuple[int, int]:
-    """Get video resolution"""
+    """Get video resolution as integers"""
     try:
-        return (
-            get_media_property(path, "video", "width"),
-            get_media_property(path, "video", "height")
-        )
-    except MetadataError as e:
-        raise MetadataError(f"Failed to get resolution: {str(e)}") from e
+        width = int(get_media_property(path, "video", "width"))
+        height = int(get_media_property(path, "video", "height"))
+        return (width, height)
+    except (MetadataError, ValueError) as e:
+        raise MetadataError(f"Failed to get valid resolution: {str(e)}") from e
 
 def get_audio_channels(path: Path, track_index: int = 0) -> int:
     """Get number of audio channels"""
