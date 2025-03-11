@@ -13,7 +13,7 @@ from drapto.video.encode_helpers import (
     estimate_memory_weight
 )
 from drapto.video.encode_commands import (
-    _build_encode_command
+    build_encode_command
 )
 from drapto.exceptions import SegmentEncodingError, ValidationError
 
@@ -28,22 +28,22 @@ class TestSegmentEncoding(unittest.TestCase):
     def test_build_encode_command(self):
         """Test command building with various parameters"""
         # Test basic command
-        cmd = _build_encode_command(self.test_segment, self.test_output, None, 0, False, False)
+        cmd = build_encode_command(self.test_segment, self.test_output, None, 0, False, False)
         self.assertIn("--min-vmaf", cmd)
         self.assertIn("--preset", cmd)
         
         # Test with crop filter
         crop_filter = "crop=1920:800:0:140"
-        cmd = _build_encode_command(self.test_segment, self.test_output, crop_filter, 0, False, False)
+        cmd = build_encode_command(self.test_segment, self.test_output, crop_filter, 0, False, False)
         self.assertIn("--vfilter", cmd)
         self.assertIn(crop_filter, cmd)
         
         # Test HDR parameters
-        cmd = _build_encode_command(self.test_segment, self.test_output, None, 0, True, False)
+        cmd = build_encode_command(self.test_segment, self.test_output, None, 0, True, False)
         self.assertIn("95", cmd)  # HDR VMAF target
         
         # Test retry parameters
-        cmd = _build_encode_command(self.test_segment, self.test_output, None, 2, False, False)
+        cmd = build_encode_command(self.test_segment, self.test_output, None, 2, False, False)
         self.assertIn("--samples", cmd)
         self.assertIn("4", cmd)  # Increased samples on final retry
 
