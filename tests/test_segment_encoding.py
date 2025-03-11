@@ -160,14 +160,25 @@ class TestSegmentEncoding(unittest.TestCase):
 
             mock_glob.return_value = [mock_seg1, mock_seg2]
 
-            with patch('drapto.video.encode_helpers.probe_session') as mock_session:
-                mock_session.return_value.__enter__.return_value = self.mock_probe
-                with patch('drapto.ffprobe.media.get_video_info', return_value={"codec_name": "av1", "start_time": 0.0, "width": 1920, "height": 1080}):
-                    with patch('drapto.ffprobe.media.get_duration', return_value=10.0):
-                        self.assertTrue(validate_encoded_segments(segments_dir))
+            with patch('drapto.video.encode_helpers.probe_session') as inner_mock_session:
+                inner_mock_session.return_value.__enter__.return_value = self.mock_probe
+                # Set the probe's get() to return appropriate values:
+                self.mock_probe.get.side_effect = lambda prop, stream_type="video": {
+                    'codec_name': 'av1',
+                    'width': '1920',
+                    'height': '1080',
+                    'duration': '10'
+                }[prop]
+                self.assertTrue(validate_encoded_segments(segments_dir))
             
-            # Test codec validation failure
-            self.mock_probe.get.side_effect = ["h264", 1920, 1080, 10.0]
+            # Test codec validation failure: simulate a codec mismatch.
+            self.mock_probe.get.side_effect = lambda prop, stream_type="video": (
+                'h264' if prop == 'codec_name' else {
+                    'width': '1920',
+                    'height': '1080',
+                    'duration': '10'
+                }[prop]
+            )
             with self.assertRaises(ValidationError):
                 validate_encoded_segments(segments_dir)
 
