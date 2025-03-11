@@ -16,8 +16,8 @@ class TestSegmentationMain(unittest.TestCase):
         self.mock_probe = MagicMock()
         self.mock_probe.get.side_effect = ["1920", "1080", 120.0]  # width, height, duration
 
-    @patch('drapto.ffprobe.media.get_media_property', side_effect=lambda path, stream_type, property_name, stream_index=0:
-        120.0 if property_name == 'duration' and path == self.test_file else
+    @patch('drapto.ffprobe.media.get_media_property', side_effect=lambda path, stream_type, property_name, stream_index=0, test_file=self.test_file:
+        120.0 if property_name == 'duration' and path == test_file else
         ("av1" if property_name == 'codec_name' else
          (1920 if property_name == 'width' else
           (1080 if property_name == 'height' else
@@ -45,8 +45,8 @@ class TestSegmentationMain(unittest.TestCase):
                 self.assertTrue(result)
                 mock_job.return_value.execute.assert_called_once()
 
-    @patch('drapto.ffprobe.media.get_media_property', side_effect=lambda path, stream_type, property_name, stream_index=0:
-        120.0 if property_name == 'duration' and path == self.test_file else
+    @patch('drapto.ffprobe.media.get_media_property', side_effect=lambda path, stream_type, property_name, stream_index=0, test_file=self.test_file:
+        120.0 if property_name == 'duration' and path == test_file else
         ("av1" if property_name == 'codec_name' else
          (1920 if property_name == 'width' else
           (1080 if property_name == 'height' else
@@ -70,8 +70,8 @@ class TestSegmentationMain(unittest.TestCase):
             # (You might want to adjust the return values as needed to pass the tolerance check.)
             self.assertTrue(validate_segments(self.test_file))
 
-    @patch('drapto.ffprobe.media.get_media_property', side_effect=lambda path, stream_type, property_name, stream_index=0:
-        120.0 if property_name == 'duration' and path == self.test_file else
+    @patch('drapto.ffprobe.media.get_media_property', side_effect=lambda path, stream_type, property_name, stream_index=0, test_file=self.test_file:
+        120.0 if property_name == 'duration' and path == test_file else
         ("av1" if property_name == 'codec_name' else
          (1920 if property_name == 'width' else
           (1080 if property_name == 'height' else
