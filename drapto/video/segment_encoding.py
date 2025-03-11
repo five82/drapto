@@ -42,23 +42,23 @@ def _validate_single_encoded_segment(segment: Path, tolerance: float = 0.2) -> T
         if not segment.exists() or segment.stat().st_size == 0:
             return False, f"Missing or empty segment: {segment.name}"
             
-        with probe_session(segment) as probe:
-            codec = probe.get("codec_name", "video")
-            if codec != "av1":
-                return False, f"Wrong codec '{codec}' in segment: {segment.name}"
-                
-            duration = float(probe.get("duration", "format"))
-            if duration <= 0:
-                return False, f"Invalid duration in segment: {segment.name}"
-                
+        info = get_video_info(segment)
+        codec = info.get("codec_name")
+        if codec != "av1":
+            raise ValidationError(f"Wrong codec '{codec}' in segment: {segment.name}")
+
+        duration = float(info.get("duration", 0))
+        if duration <= 0:
+            raise ValidationError(f"Invalid duration in segment: {segment.name}")
+            
         return True, None
         
     except Exception as e:
-        return False, f"Failed to validate segment {segment.name}: {str(e)}"
+        raise ValidationError(f"Failed to validate segment {segment.name}: {str(e)}")
 from ..ffprobe.media import get_video_info, get_format_info
 from ..ffprobe.exec import MetadataError, get_media_property
 from ..ffprobe.session import probe_session
-from ..exceptions import DependencyError, SegmentEncodingError
+from ..exceptions import DependencyError, SegmentEncodingError, ValidationError
 from .encode_commands import build_encode_command
 from .encode_helpers import (
     parse_vmaf_scores,
