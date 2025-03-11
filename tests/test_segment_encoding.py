@@ -162,8 +162,8 @@ class TestSegmentEncoding(unittest.TestCase):
 
             with patch('drapto.video.encode_helpers.probe_session') as mock_session:
                 mock_session.return_value.__enter__.return_value = self.mock_probe
-                with patch('drapto.video.segment_encoding.get_video_info', return_value={"codec_name": "av1", "start_time": 0.0, "width": 1920, "height": 1080}):
-                    with patch('drapto.video.segment_encoding.get_duration', return_value=10.0):
+                with patch('drapto.ffprobe.media.get_video_info', return_value={"codec_name": "av1", "start_time": 0.0, "width": 1920, "height": 1080}):
+                    with patch('drapto.ffprobe.media.get_duration', return_value=10.0):
                         self.assertTrue(validate_encoded_segments(segments_dir))
             
             # Test codec validation failure
