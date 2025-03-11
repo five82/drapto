@@ -82,9 +82,10 @@ class TestSegmentEncoding(unittest.TestCase):
             with patch('drapto.video.encode_helpers.probe_session') as mock_session:
                 mock_session.return_value.__enter__.return_value = self.mock_probe
                 mock_session.return_value.__exit__.return_value = None
-
-                # Should succeed on retry
-                stats, logs = encode_segment(self.test_segment, self.test_output, None, 0, False, False)
+                with patch('drapto.video.encode_helpers.get_format_info', return_value={'duration': '30', 'size': '100000'}):
+                    with patch('drapto.video.encode_helpers.get_video_info', return_value={'width': 1920, 'height': 1080, 'r_frame_rate': '30/1'}):
+                        # Should succeed on retry
+                        stats, logs = encode_segment(self.test_segment, self.test_output, None, 0, False, False)
             self.assertEqual(mock_run_cmd.call_count, 2)
             self.assertIn("retry", logs[0].lower())
             
@@ -149,11 +150,13 @@ class TestSegmentEncoding(unittest.TestCase):
             dummy_stat = MagicMock()
             dummy_stat.st_size = 2048  # > 1KB
             mock_seg1.stat.return_value = dummy_stat
+            mock_seg1.__lt__.side_effect = lambda other: mock_seg1.name < other.name
 
             mock_seg2 = MagicMock(spec=Path)
             mock_seg2.name = "seg2.mkv"
             mock_seg2.exists.return_value = True
             mock_seg2.stat.return_value = dummy_stat
+            mock_seg2.__lt__.side_effect = lambda other: mock_seg2.name < other.name
 
             mock_glob.return_value = [mock_seg1, mock_seg2]
 
