@@ -78,12 +78,13 @@ class TestSegmentEncoding(unittest.TestCase):
             MagicMock(stderr="VMAF score: 95.0")
         ]
         
-        with patch('drapto.video.segment_encoding.probe_session') as mock_session:
-            mock_session.return_value.__enter__.return_value = self.mock_probe
-            mock_session.return_value.__exit__.return_value = None
-            
-            # Should succeed on retry
-            stats, logs = encode_segment(self.test_segment, self.test_output, None, 0, False, False)
+        with patch('drapto.video.encode_helpers.get_segment_properties', return_value=(30.0, 1920)):
+            with patch('drapto.video.encode_helpers.probe_session') as mock_session:
+                mock_session.return_value.__enter__.return_value = self.mock_probe
+                mock_session.return_value.__exit__.return_value = None
+
+                # Should succeed on retry
+                stats, logs = encode_segment(self.test_segment, self.test_output, None, 0, False, False)
             self.assertEqual(mock_run_cmd.call_count, 2)
             self.assertIn("retry", logs[0].lower())
             
@@ -98,7 +99,7 @@ class TestSegmentEncoding(unittest.TestCase):
         """Test memory weight calculation based on resolution"""
         weights = {'SDR': 1, '1080p': 2, '4k': 4}
         
-        with patch('drapto.video.segment_encoding.probe_session') as mock_session:
+        with patch('drapto.video.encode_helpers.probe_session') as mock_session:
             # Test 4K weight
             self.mock_probe.get.return_value = "3840"
             mock_session.return_value.__enter__.return_value = self.mock_probe
@@ -134,22 +135,33 @@ class TestSegmentEncoding(unittest.TestCase):
         self.assertEqual(weights['SDR'], 1)
         self.assertTrue(weights['4k'] > weights['1080p'])
 
-    @patch('drapto.video.segment_encoding.probe_session')
+    @patch('drapto.video.encode_helpers.probe_session')
     def test_validate_encoded_segments(self, mock_session):
         """Test encoded segment validation"""
         mock_session.return_value.__enter__.return_value = self.mock_probe
         segments_dir = Path("/tmp/segments")
         
         with patch('pathlib.Path.glob') as mock_glob:
-            # Mock segment files
-            mock_glob.return_value = [
-                Path("/tmp/segments/seg1.mkv"),
-                Path("/tmp/segments/seg2.mkv")
-            ]
-            
-            # Test successful validation
-            self.mock_probe.get.side_effect = ["av1", 1920, 1080, 10.0]
-            self.assertTrue(validate_encoded_segments(segments_dir))
+            # Create two mock segments with valid stat() results
+            mock_seg1 = MagicMock(spec=Path)
+            mock_seg1.name = "seg1.mkv"
+            mock_seg1.exists.return_value = True
+            dummy_stat = MagicMock()
+            dummy_stat.st_size = 2048  # > 1KB
+            mock_seg1.stat.return_value = dummy_stat
+
+            mock_seg2 = MagicMock(spec=Path)
+            mock_seg2.name = "seg2.mkv"
+            mock_seg2.exists.return_value = True
+            mock_seg2.stat.return_value = dummy_stat
+
+            mock_glob.return_value = [mock_seg1, mock_seg2]
+
+            with patch('drapto.video.encode_helpers.probe_session') as mock_session:
+                mock_session.return_value.__enter__.return_value = self.mock_probe
+                # Simulate probe calls for each segment (e.g. codec, width, height, duration)
+                self.mock_probe.get.side_effect = ["av1", 1920, 1080, 10.0]
+                self.assertTrue(validate_encoded_segments(segments_dir))
             
             # Test codec validation failure
             self.mock_probe.get.side_effect = ["h264", 1920, 1080, 10.0]
