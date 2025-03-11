@@ -5,11 +5,15 @@ from unittest.mock import patch, MagicMock, call
 from pathlib import Path
 from drapto.video.segment_encoding import (
     encode_segment,
-    estimate_memory_weight,
     validate_encoded_segments,
-    _build_encode_command,
-    _parse_vmaf_scores,
     calculate_memory_requirements
+)
+from drapto.video.encode_helpers import (
+    _parse_vmaf_scores,
+    estimate_memory_weight
+)
+from drapto.video.encode_commands import (
+    _build_encode_command
 )
 from drapto.exceptions import SegmentEncodingError, ValidationError
 
