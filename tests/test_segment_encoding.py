@@ -172,13 +172,16 @@ class TestSegmentEncoding(unittest.TestCase):
                     self.assertTrue(validate_encoded_segments(segments_dir))
             
             # Test codec validation failure: simulate a codec mismatch.
-            self.mock_probe.get.side_effect = lambda prop, stream_type="video": (
-                'h264' if prop == 'codec_name' else {
-                    'width': '1920',
-                    'height': '1080',
-                    'duration': '10'
-                }[prop]
-            )
+            with patch('drapto.video.segment_encoding.get_video_info', return_value={
+                "codec_name": "h264",
+                "width": 1920,
+                "height": 1080,
+                "r_frame_rate": "30/1",
+                "start_time": 0.0
+            }):
+                with patch('drapto.ffprobe.media.get_duration', return_value=10):
+                    with self.assertRaises(ValidationError):
+                        validate_encoded_segments(segments_dir)
             with self.assertRaises(ValidationError):
                 validate_encoded_segments(segments_dir)
 
