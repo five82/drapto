@@ -16,13 +16,14 @@ class TestSegmentationMain(unittest.TestCase):
         self.mock_probe = MagicMock()
         self.mock_probe.get.side_effect = ["1920", "1080", 120.0]  # width, height, duration
 
-    @patch('drapto.ffprobe.media.get_media_property', side_effect=lambda path, stream_type, property_name, stream_index=0, test_file=Path("/tmp/test.mkv"):
-        120.0 if (property_name == 'duration' and path == test_file) else
-        (30.0 if property_name == 'duration' else
-         ("av1" if property_name == 'codec_name' else
-          (1920 if property_name == 'width' else
-           (1080 if property_name == 'height' else
-            (2 if property_name == 'channels' else None)))))
+    @patch('drapto.ffprobe.media.get_media_property',
+           side_effect=lambda *args, **kwargs: (
+               120.0 if args[2] == 'duration' and args[0] == Path("/tmp/test.mkv")
+               else (30.0 if args[2] == 'duration'
+               else ("av1" if args[2] == 'codec_name'
+               else (1920 if args[2] == 'width'
+               else (1080 if args[2] == 'height'
+               else (2 if args[2] == 'channels' else None)))))
     )
     @patch('drapto.video.segmentation.segmentation_main.SegmentationJob')
     @patch('drapto.ffprobe.session.probe_session')
@@ -91,12 +92,13 @@ class TestSegmentationMain(unittest.TestCase):
         with patch('pathlib.Path.glob', return_value=[fake_seg1, fake_seg2]):
             self.assertTrue(validate_segments(self.test_file))
 
-    @patch('drapto.ffprobe.media.get_media_property', side_effect=lambda path, stream_type, property_name, stream_index=0, test_file=Path("/tmp/test.mkv"):
-        120.0 if property_name == 'duration' and path == test_file else
-        ("av1" if property_name == 'codec_name' else
-         (1920 if property_name == 'width' else
-          (1080 if property_name == 'height' else
-           (2 if property_name == 'channels' else None))))
+    @patch('drapto.ffprobe.media.get_media_property',
+           side_effect=lambda *args, **kwargs: (
+               120.0 if args[2] == 'duration' and args[0] == Path("/tmp/test.mkv")
+               else ("av1" if args[2] == 'codec_name'
+               else (1920 if args[2] == 'width'
+               else (1080 if args[2] == 'height'
+               else (2 if args[2] == 'channels' else None)))))
     )
     @patch('drapto.ffprobe.session.probe_session')
     def test_validate_segments_failure(self, mock_session, mock_get_media):
