@@ -1,5 +1,34 @@
 """Unit tests for video segmentation functionality"""
 
+def fake_get_media_property(*args, **kwargs):
+    """
+    Fake get_media_property for tests. Expected signature:
+      get_media_property(path: Path, stream_type: str, property_name: str, stream_index: int = 0)
+    """
+    # Unpack expected arguments.
+    # We assume: args[0] is path, args[1] is stream_type, args[2] is property_name,
+    # and args[3] is stream_index if provided.
+    path = args[0]
+    stream_type = args[1] if len(args) > 1 else kwargs.get('stream_type')
+    property_name = args[2] if len(args) > 2 else kwargs.get('property_name')
+    stream_index = args[3] if len(args) > 3 else kwargs.get('stream_index', 0)
+    
+    # If the requested property is duration
+    if property_name == 'duration':
+        if path == Path("/tmp/test.mkv"):
+            return 120.0
+        else:
+            return 30.0
+    elif property_name == 'codec_name':
+        return "av1"
+    elif property_name == 'width':
+        return 1920
+    elif property_name == 'height':
+        return 1080
+    elif property_name == 'channels':
+        return 2
+    return None
+
 import unittest
 from unittest.mock import patch, MagicMock
 from pathlib import Path
@@ -16,14 +45,7 @@ class TestSegmentationMain(unittest.TestCase):
         self.mock_probe = MagicMock()
         self.mock_probe.get.side_effect = ["1920", "1080", 120.0]  # width, height, duration
 
-    @patch('drapto.ffprobe.media.get_media_property',
-           side_effect=lambda *args, **kwargs: (
-               120.0 if args[2] == 'duration' and args[0] == Path("/tmp/test.mkv")
-               else (30.0 if args[2] == 'duration'
-               else ("av1" if args[2] == 'codec_name'
-               else (1920 if args[2] == 'width'
-               else (1080 if args[2] == 'height'
-               else (2 if args[2] == 'channels' else None))))))
+    @patch('drapto.ffprobe.media.get_media_property', side_effect=fake_get_media_property)
     )
     @patch('drapto.video.segmentation.segmentation_main.SegmentationJob')
     @patch('drapto.ffprobe.session.probe_session')
@@ -92,13 +114,7 @@ class TestSegmentationMain(unittest.TestCase):
         with patch('pathlib.Path.glob', return_value=[fake_seg1, fake_seg2]):
             self.assertTrue(validate_segments(self.test_file))
 
-    @patch('drapto.ffprobe.media.get_media_property',
-           side_effect=lambda *args, **kwargs: (
-               120.0 if args[2] == 'duration' and args[0] == Path("/tmp/test.mkv")
-               else ("av1" if args[2] == 'codec_name'
-               else (1920 if args[2] == 'width'
-               else (1080 if args[2] == 'height'
-               else (2 if args[2] == 'channels' else None)))))
+    @patch('drapto.ffprobe.media.get_media_property', side_effect=fake_get_media_property)
     )
     @patch('drapto.ffprobe.session.probe_session')
     def test_validate_segments_failure(self, mock_session, mock_get_media):
