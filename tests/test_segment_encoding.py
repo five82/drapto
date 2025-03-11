@@ -136,7 +136,7 @@ class TestSegmentEncoding(unittest.TestCase):
         self.assertEqual(weights['SDR'], 1)
         self.assertTrue(weights['4k'] > weights['1080p'])
 
-    @patch('drapto.video.encode_helpers.probe_session')
+    @patch('drapto.video.segment_encoding.probe_session')
     def test_validate_encoded_segments(self, mock_session):
         """Test encoded segment validation"""
         mock_session.return_value.__enter__.return_value = self.mock_probe
