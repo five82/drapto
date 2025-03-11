@@ -83,36 +83,31 @@ def get_all_audio_info(path: Path) -> list:
 
 def get_duration(path: Path, stream_type: str = "video", stream_index: int = 0) -> float:
     """Get duration with multiple fallback methods"""
+    # First, try to get duration from the overall video info.
+    try:
+        info = get_video_info(path)
+        if info.get("duration") is not None:
+            duration = float(info["duration"])
+            if duration > 0:
+                return duration
+    except Exception as e:
+        logger.warning("Failed to get duration from video info for %s: %s", path, e)
+    
+    # Fall back to direct property queries.
     try:
         duration = get_media_property(path, stream_type, "duration", stream_index)
         if duration > 0:
             return duration
         raise MetadataError("Invalid duration value")
     except MetadataError:
-        format_duration = get_media_property(path, "format", "duration")
-        if format_duration > 0:
-            return format_duration
-            
-        # Try fallback methods...
         try:
-            nb_frames = get_media_property(path, stream_type, "nb_frames", stream_index)
-            time_base = get_media_property(path, stream_type, "time_base", stream_index)
-            
-            if nb_frames and time_base:
-                numerator, denominator = map(float, time_base.split('/'))
-                return nb_frames * numerator / denominator
-        except (MetadataError, ValueError):
+            format_duration = get_media_property(path, "format", "duration")
+            if format_duration > 0:
+                return format_duration
+        except MetadataError:
             pass
 
-        try:
-            bit_rate = float(get_media_property(path, stream_type, "bit_rate", stream_index))
-            stream_size = get_media_property(path, stream_type, "size", stream_index)
-            
-            if bit_rate > 0 and stream_size > 0:
-                return (stream_size * 8) / bit_rate
-        except (MetadataError, ValueError):
-            pass
-
+        # Last resort: try packet durations
         try:
             args = (
                 "-select_streams", f"{stream_type[0]}:{stream_index}",
@@ -121,9 +116,12 @@ def get_duration(path: Path, stream_type: str = "video", stream_index: int = 0) 
             )
             data = ffprobe_query(path, args)
             total = sum(float(p["duration_time"]) for p in data.get("packets", []))
-            return round(total, 3)
+            if total > 0:
+                return round(total, 3)
         except Exception as e:
-            raise MetadataError(f"All duration methods failed: {str(e)}") from e
+            pass
+
+        raise MetadataError(f"All duration methods failed for {path}")
 
 def get_resolution(path: Path) -> Tuple[int, int]:
     """Get video resolution as integers"""
