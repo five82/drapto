@@ -46,7 +46,6 @@ class TestSegmentationMain(unittest.TestCase):
         self.mock_probe.get.side_effect = ["1920", "1080", 120.0]  # width, height, duration
 
     @patch('drapto.ffprobe.media.get_media_property', side_effect=fake_get_media_property)
-    )
     @patch('drapto.video.segmentation.segmentation_main.SegmentationJob')
     @patch('drapto.ffprobe.session.probe_session')
     def test_segment_video_success(self, mock_session, mock_job, mock_get_media):
@@ -115,7 +114,6 @@ class TestSegmentationMain(unittest.TestCase):
             self.assertTrue(validate_segments(self.test_file))
 
     @patch('drapto.ffprobe.media.get_media_property', side_effect=fake_get_media_property)
-    )
     @patch('drapto.ffprobe.session.probe_session')
     def test_validate_segments_failure(self, mock_session, mock_get_media):
         """Test segment validation failure"""
