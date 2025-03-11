@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 from ..utils import run_cmd
-from ..ffprobe.media import get_video_info, get_media_property
+from ..ffprobe.media import get_video_info, get_media_property, get_resolution
 from ..ffprobe.exec import MetadataError
 from ..ffprobe.session import probe_session
 
@@ -98,15 +98,14 @@ def _get_video_properties(input_file: Path) -> tuple[dict, tuple[int, int], floa
                 'space': probe.get("color_space", "video")
             }
             
-            # Get dimensions
-            width = int(probe.get("width", "video"))
-            height = int(probe.get("height", "video"))
+            # Get dimensions using the module-level function instead of session method
+            width, height = get_resolution(input_file)
             
             # Get duration
             duration = float(probe.get("duration", "format"))
             
             return color_props, (width, height), duration
-    except MetadataError as e:
+    except (MetadataError, ValueError) as e:
         logger.error("Failed to get video properties: %s", e)
         return {}, (0, 0), 0.0
 

@@ -138,6 +138,8 @@ def orchestrate_parallel_encoding(
         logger.info("Warm-up encoding for segment: %s", segment.name)
         result = encode_segment_fn(segment, output_segment, crop_filter, 0, is_hdr, dv_flag)
         warmup_results.append(result)
+        for msg in result[1]:
+            logger.info(msg)
     next_segment_idx = min(WARMUP_COUNT, len(segments))
 
     # Calculate dynamic memory requirements

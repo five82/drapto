@@ -7,6 +7,7 @@ Responsibilities:
 """
 
 import logging
+import math
 from pathlib import Path
 from typing import List, Tuple
 
@@ -54,8 +55,14 @@ def filter_scene_candidates(candidate_timestamps: list[float], min_gap: float = 
         Filtered list of scene timestamps.
     """
     filtered = []
-    last_ts = 0.0
-    for ts in candidate_timestamps:
+    if candidate_timestamps and candidate_timestamps[0] == 0.0:
+        filtered.append(0.0)
+        last_ts = 0.0
+        start_index = 1
+    else:
+        last_ts = 0.0
+        start_index = 0
+    for ts in candidate_timestamps[start_index:]:
         if ts - last_ts >= min_gap:
             filtered.append(ts)
             last_ts = ts
@@ -73,20 +80,26 @@ def insert_artificial_boundaries(filtered_scenes: list[float], total_duration: f
         Final sorted list of scene boundaries.
     """
     final_boundaries = []
-    prev_boundary = 0.0
-    for ts in filtered_scenes:
+    if not filtered_scenes:
+        return final_boundaries
+    final_boundaries.append(filtered_scenes[0])
+    prev_boundary = filtered_scenes[0]
+    for ts in filtered_scenes[1:]:
         gap = ts - prev_boundary
         if gap > MAX_SEGMENT_LENGTH:
-            num_inserts = int(gap // MAX_SEGMENT_LENGTH)
+            num_inserts = math.ceil(gap / MAX_SEGMENT_LENGTH) - 1
             for i in range(1, num_inserts + 1):
-                final_boundaries.append(prev_boundary + i * MAX_SEGMENT_LENGTH)
+                inserted = prev_boundary + (gap * i / (num_inserts + 1))
+                final_boundaries.append(inserted)
         final_boundaries.append(ts)
         prev_boundary = ts
     if total_duration - prev_boundary > MAX_SEGMENT_LENGTH:
-        num_inserts = int((total_duration - prev_boundary) // MAX_SEGMENT_LENGTH)
+        gap = total_duration - prev_boundary
+        num_inserts = math.ceil(gap / MAX_SEGMENT_LENGTH) - 1
         for i in range(1, num_inserts + 1):
-            final_boundaries.append(prev_boundary + i * MAX_SEGMENT_LENGTH)
-    return sorted(set(final_boundaries))
+            inserted = prev_boundary + (gap * i / (num_inserts + 1))
+            final_boundaries.append(inserted)
+    return sorted(final_boundaries)
 
 def validate_segment_boundaries(
     segments_dir: Path,

@@ -106,10 +106,9 @@ def log_segment_progress(stats: dict, output_logs: list, segment_name: str,
                       vmaf_score: Optional[float] = None,
                       vmaf_min: Optional[float] = None,
                       vmaf_max: Optional[float] = None) -> None:
-    """Log segment encoding progress and stats."""
+    """Build segment encoding progress messages and append to output_logs."""
     def capture_log(msg, *args):
         formatted = msg % args
-        logger.info(formatted)
         output_logs.append(formatted)
 
     if vmaf_score is not None:

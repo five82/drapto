@@ -6,10 +6,15 @@ setup(
     packages=find_packages(),
     install_requires=[
         "ffmpeg-python",
-        "rich",
+        "rich>=13.0.0",  # Explicit minimum version
         "scenedetect[opencv]",
         "psutil",
     ],
+    extras_require={
+        "dev": [
+            "rich>=13.0.0",
+        ],
+    },
     entry_points={
         "console_scripts": [
             "drapto=drapto.__main__:main",
