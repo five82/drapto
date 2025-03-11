@@ -47,7 +47,10 @@ def _validate_single_encoded_segment(segment: Path, tolerance: float = 0.2) -> T
         if codec != "av1":
             raise ValidationError(f"Wrong codec '{codec}' in segment: {segment.name}")
 
-        duration = float(info.get("duration", 0))
+        duration = info.get("duration")
+        if duration is None or float(duration) <= 0:
+            # Fallback: query duration using ffprobe media module
+            duration = float(get_duration(segment, stream_type="video", stream_index=0))
         if duration <= 0:
             raise ValidationError(f"Invalid duration in segment: {segment.name}")
             
@@ -55,7 +58,7 @@ def _validate_single_encoded_segment(segment: Path, tolerance: float = 0.2) -> T
         
     except Exception as e:
         raise ValidationError(f"Failed to validate segment {segment.name}: {str(e)}")
-from ..ffprobe.media import get_video_info, get_format_info
+from ..ffprobe.media import get_video_info, get_format_info, get_duration
 from ..ffprobe.exec import MetadataError, get_media_property
 from ..ffprobe.session import probe_session
 from ..exceptions import DependencyError, SegmentEncodingError, ValidationError
