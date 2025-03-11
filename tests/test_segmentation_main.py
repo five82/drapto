@@ -30,18 +30,20 @@ class TestSegmentationMain(unittest.TestCase):
         """Test successful video segmentation"""
         from unittest.mock import MagicMock
         
-        # Create mock segment files
+        # Create mock segment files with ordering support
         fake_seg1 = MagicMock(spec=Path)
         fake_seg1.name = "seg1.mkv"
         fake_seg1.exists.return_value = True
         fake_stat = MagicMock()
         fake_stat.st_size = 2048  # >1024 bytes
         fake_seg1.stat.return_value = fake_stat
+        fake_seg1.__lt__ = lambda other: fake_seg1.name < other.name  # Enable ordering
 
         fake_seg2 = MagicMock(spec=Path)
         fake_seg2.name = "seg2.mkv"
         fake_seg2.exists.return_value = True
         fake_seg2.stat.return_value = fake_stat
+        fake_seg2.__lt__ = lambda other: fake_seg2.name < other.name  # Enable ordering
 
         mock_session.return_value.__enter__.return_value = self.mock_probe
         mock_job.return_value.execute.return_value = None
@@ -68,18 +70,20 @@ class TestSegmentationMain(unittest.TestCase):
         """Test successful segment validation"""
         from unittest.mock import MagicMock
         
-        # Create mock segment files
+        # Create mock segment files with ordering support
         fake_seg1 = MagicMock(spec=Path)
         fake_seg1.name = "seg1.mkv"
         fake_seg1.exists.return_value = True
         fake_stat = MagicMock()
         fake_stat.st_size = 2048  # >1024 bytes
         fake_seg1.stat.return_value = fake_stat
+        fake_seg1.__lt__ = lambda other: fake_seg1.name < other.name  # Enable ordering
 
         fake_seg2 = MagicMock(spec=Path)
         fake_seg2.name = "seg2.mkv"
         fake_seg2.exists.return_value = True
         fake_seg2.stat.return_value = fake_stat
+        fake_seg2.__lt__ = lambda other: fake_seg2.name < other.name  # Enable ordering
 
         mock_session.return_value.__enter__.return_value = self.mock_probe
 
