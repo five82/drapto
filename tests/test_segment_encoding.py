@@ -151,12 +151,14 @@ class TestSegmentEncoding(unittest.TestCase):
             dummy_stat.st_size = 2048  # > 1KB
             mock_seg1.stat.return_value = dummy_stat
             mock_seg1.__lt__.side_effect = lambda other: mock_seg1.name < other.name
+            mock_seg1.__str__.return_value = "/tmp/segments/seg1.mkv"
 
             mock_seg2 = MagicMock(spec=Path)
             mock_seg2.name = "seg2.mkv"
             mock_seg2.exists.return_value = True
             mock_seg2.stat.return_value = dummy_stat
             mock_seg2.__lt__.side_effect = lambda other: mock_seg2.name < other.name
+            mock_seg2.__str__.return_value = "/tmp/segments/seg2.mkv"
 
             mock_glob.return_value = [mock_seg1, mock_seg2]
 
