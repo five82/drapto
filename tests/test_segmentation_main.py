@@ -77,9 +77,12 @@ class TestSegmentationMain(unittest.TestCase):
             mock_detect.return_value = [0.0, 30.0, 60.0, 90.0, 120.0]
             # Patch Path.glob to return our mock segment files
             with patch('pathlib.Path.glob', return_value=[fake_seg1, fake_seg2]):
-                result = segment_video(self.test_file)
-                self.assertTrue(result)
-                mock_job.return_value.execute.assert_called_once()
+                with patch('drapto.video.segmentation.segmentation_main.validate_single_segment', return_value=(True, None)):
+                    with patch('drapto.video.segmentation.segmentation_main.get_duration', return_value=30.0):
+                        with patch('drapto.video.segmentation.segmentation_main.get_video_info', return_value={"codec_name": "av1", "start_time": 0.0}):
+                            result = segment_video(self.test_file)
+                            self.assertTrue(result)
+                            mock_job.return_value.execute.assert_called_once()
 
     @patch('drapto.ffprobe.media.get_media_property', side_effect=lambda path, stream_type, property_name, stream_index=0, test_file=Path("/tmp/test.mkv"):
         120.0 if (property_name == 'duration' and path == test_file) else
@@ -113,7 +116,10 @@ class TestSegmentationMain(unittest.TestCase):
 
         # Patch Path.glob to return our mock segment files
         with patch('pathlib.Path.glob', return_value=[fake_seg1, fake_seg2]):
-            self.assertTrue(validate_segments(self.test_file))
+            with patch('drapto.video.segmentation.segmentation_main.validate_single_segment', return_value=(True, None)):
+                with patch('drapto.video.segmentation.segmentation_main.get_duration', return_value=30.0):
+                    with patch('drapto.video.segmentation.segmentation_main.get_video_info', return_value={"codec_name": "av1", "start_time": 0.0}):
+                        self.assertTrue(validate_segments(self.test_file))
 
     @patch('drapto.ffprobe.media.get_media_property', side_effect=fake_get_media_property)
     @patch('drapto.ffprobe.session.probe_session')
