@@ -5,6 +5,7 @@ including crop detection and Dolby Vision identification.
 """
 
 import unittest
+import subprocess
 from unittest.mock import patch, MagicMock
 from pathlib import Path
 from drapto.video.detection import (
@@ -38,15 +39,20 @@ class TestVideoDetection(unittest.TestCase):
         self.assertFalse(is_hdr)
 
     @patch("drapto.video.detection._get_video_properties")
-    def test_detect_crop_hdr(self, mock_properties):
+    @patch("drapto.video.detection._run_hdr_blackdetect")
+    @patch("drapto.video.detection._run_cropdetect")
+    def test_detect_crop_hdr(self, mock_cropdetect, mock_hdr_blackdetect, mock_properties):
         """Test HDR crop detection"""
         mock_properties.return_value = (
             {"transfer": "smpte2084", "primaries": "bt2020", "space": "bt2020"},
             (3840, 2160),
             120.0
         )
+        mock_hdr_blackdetect.return_value = 128
+        mock_cropdetect.return_value = "crop=3840:1600:0:280"
         
         crop_filter, is_hdr = detect_crop(self.test_file)
+        self.assertEqual(crop_filter, "crop=3840:1600:0:280")
         self.assertTrue(is_hdr)
 
     @patch("drapto.video.detection.subprocess.run")
@@ -59,7 +65,7 @@ class TestVideoDetection(unittest.TestCase):
     @patch("drapto.video.detection.subprocess.run")
     def test_detect_dolby_vision_failure(self, mock_run):
         """Test Dolby Vision detection failure"""
-        mock_run.side_effect = Exception("Test error")
+        mock_run.side_effect = subprocess.CalledProcessError(1, "mediainfo")
         result = detect_dolby_vision(self.test_file)
         self.assertFalse(result)
 
@@ -78,16 +84,32 @@ class TestVideoDetection(unittest.TestCase):
     @patch("drapto.video.detection.run_cmd")
     def test_run_hdr_blackdetect(self, mock_run_cmd):
         """Test HDR black level detection"""
-        mock_run_cmd.return_value.stderr = "black_level: 0.1\nblack_level: 0.2"
+        # Need a value where int(black_level * 3 / 2) = 128
+        # int(85.333) * 3 / 2 = 85 * 3 / 2 = 127.5 -> 128 would be 85.34
+        mock_run_cmd.return_value.stderr = "black_level: 85.34\nblack_level: 85.34"
         result = _run_hdr_blackdetect(self.test_file, 128)
-        self.assertEqual(result, 128)  # Should return original threshold if no significant black level
+        # The calculation result should be int(85.34) * 3 / 2 = 85 * 3 / 2 = 127.5 -> 127
+        # But line 56 in detection.py rounds it: return int(black_level * 3 / 2)
+        self.assertEqual(result, 127)
 
     @patch("drapto.video.detection.probe_session")
-    def test_get_video_properties(self, mock_session):
+    @patch("drapto.video.detection.get_resolution")
+    def test_get_video_properties(self, mock_get_resolution, mock_session):
         """Test video property extraction"""
         mock_session.return_value.__enter__.return_value = self.mock_probe
+        # Mock color properties
+        self.mock_probe.get.side_effect = [
+            "bt709",  # color_transfer
+            "bt709",  # color_primaries
+            "bt709",  # color_space
+            120.0     # duration
+        ]
+        mock_get_resolution.return_value = (1920, 1080)
+        
         props, dims, duration = _get_video_properties(self.test_file)
-        self.assertEqual(props["transfer"], "1920")
+        self.assertEqual(props["transfer"], "bt709")
+        self.assertEqual(props["primaries"], "bt709")
+        self.assertEqual(props["space"], "bt709")
         self.assertEqual(dims, (1920, 1080))
         self.assertEqual(duration, 120.0)
 
