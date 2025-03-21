@@ -1,0 +1,30 @@
+[workspace]
+members = [
+    "drapto-core",
+    "drapto-cli",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["drapto contributors"]
+description = "Video encoding tool with parallel processing capabilities"
+license = "MIT"
+repository = "https://github.com/yourusername/drapto"
+keywords = ["video", "encoding", "av1", "ffmpeg"]
+categories = ["multimedia", "command-line-utilities"]
+
+[workspace.dependencies]
+ffmpeg-the-third = "3.0.1"
+clap = { version = "4.4", features = ["derive"] }
+log = "0.4"
+env_logger = "0.10"
+rayon = "1.8"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.36", features = ["full"] }
+anyhow = "1.0"
+thiserror = "1.0"
+regex = "1.10"
+num_cpus = "1.16"

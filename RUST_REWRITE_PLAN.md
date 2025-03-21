@@ -49,3 +49,4 @@
 6. Focus on minimalism and performance
 7. Avoid scope creap and bloat. Only implement drapto application functionality that is already in the Python implementation
 8. Look at the old python code for context.
+9. Use proper rust file and directory structure according to Rust best practices.
