@@ -62,3 +62,6 @@ site/
 .dmypy.json
 dmypy.json
 .aider*
+
+# Rust
+target/
