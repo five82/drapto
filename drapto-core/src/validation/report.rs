@@ -184,8 +184,13 @@ impl ValidationReport {
                 "✅ PASSED"
             };
             
-            lines.push(format!("  {} - {}: {} error(s), {} warning(s)", 
-                status, category, errors, warnings));
+            // Only show error and warning counts if there are any
+            if *errors > 0 || *warnings > 0 {
+                lines.push(format!("  {} - {}: {} error(s), {} warning(s)", 
+                    status, category, errors, warnings));
+            } else {
+                lines.push(format!("  {} - {}", status, category));
+            }
         }
         
         lines.push("".to_string());

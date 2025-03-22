@@ -332,6 +332,15 @@ pub fn execute_encode_directory(
     for entry in fs::read_dir(&input_dir)? {
         let entry = entry?;
         let path = entry.path();
+        
+        // Skip hidden files (those that start with a dot)
+        if let Some(file_name) = path.file_name() {
+            let file_name_str = file_name.to_string_lossy();
+            if file_name_str.starts_with(".") {
+                continue;
+            }
+        }
+        
         if path.is_file() {
             if let Some(ext) = path.extension() {
                 let ext_str = ext.to_string_lossy().to_lowercase();

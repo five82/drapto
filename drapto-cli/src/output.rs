@@ -101,14 +101,22 @@ pub fn print_validation_report(report: &ValidationReport) {
             "PASSED".bright_green().bold()
         };
         
-        println!("  {} {} {}: {} {}, {} {}", 
-            status,
-            status_text,
-            category.bright_cyan().bold(),
-            errors.to_string().bright_red().bold(),
-            "error(s)".bright_red(),
-            warnings.to_string().yellow().bold(),
-            "warning(s)".yellow());
+        // Only show error and warning counts if there are any
+        if *errors > 0 || *warnings > 0 {
+            println!("  {} {} {}: {} {}, {} {}", 
+                status,
+                status_text,
+                category.bright_cyan().bold(),
+                errors.to_string().bright_red().bold(),
+                "error(s)".bright_red(),
+                warnings.to_string().yellow().bold(),
+                "warning(s)".yellow());
+        } else {
+            println!("  {} {} {}", 
+                status,
+                status_text,
+                category.bright_cyan().bold());
+        }
     }
     
     // Group by category for detailed reporting
