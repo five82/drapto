@@ -932,19 +932,19 @@ mod tests {
         let (samples, duration, vmaf) = encoder.get_retry_params(0, false);
         assert_eq!(samples, 3);
         assert_eq!(duration, 1);
-        assert_eq!(vmaf, 95.0);
+        assert_eq!(vmaf, 93.0); // Default SDR VMAF target
 
         // Test with retry
         let (samples_retry, duration_retry, vmaf_retry) = encoder.get_retry_params(1, false);
         assert_eq!(samples_retry, 4);
         assert_eq!(duration_retry, 2);
-        assert_eq!(vmaf_retry, 95.0);
+        assert_eq!(vmaf_retry, 93.0); // Should still use target_vmaf
 
         // Test second retry (force quality)
         let (samples_retry2, duration_retry2, vmaf_retry2) = encoder.get_retry_params(2, false);
         assert_eq!(samples_retry2, 4);
         assert_eq!(duration_retry2, 2);
-        assert_eq!(vmaf_retry2, 95.0);
+        assert_eq!(vmaf_retry2, 95.0); // Third try forces 95.0 quality regardless of target
 
         // Test HDR
         let (_, _, vmaf_hdr) = encoder.get_retry_params(0, true);

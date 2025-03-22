@@ -1,10 +1,8 @@
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
-use log::{info, warn, error};
+use log::info;
 use env_logger::Env;
 
-use drapto_core::encoding::memory::MemoryTracker;
 use drapto_core::encoding::parallel::{ParallelEncoder, EncodingProgress, VideoEncoder};
 use drapto_core::error::Result;
 

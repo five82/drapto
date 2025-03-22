@@ -18,11 +18,11 @@ fn test_build_concat_command() {
     let copy_arg = OsString::from("copy");
     let y_arg = OsString::from("-y");
     
-    assert!(args.contains(&f_arg));
-    assert!(args.contains(&concat_arg));
-    assert!(args.contains(&c_arg));
-    assert!(args.contains(&copy_arg));
-    assert!(args.contains(&y_arg));
+    assert!(args.iter().any(|a| a == &f_arg));
+    assert!(args.iter().any(|a| a == &concat_arg));
+    assert!(args.iter().any(|a| a == &c_arg));
+    assert!(args.iter().any(|a| a == &copy_arg));
+    assert!(args.iter().any(|a| a == &y_arg));
     
     // Check that we have all the expected arguments
     let expected_args = [
@@ -37,7 +37,7 @@ fn test_build_concat_command() {
     
     for arg in expected_args {
         let os_arg = OsString::from(arg);
-        assert!(args.contains(&os_arg), "Missing argument: {}", arg);
+        assert!(args.iter().any(|a| a == &os_arg), "Missing argument: {}", arg);
     }
 }
 

@@ -106,8 +106,10 @@ fn test_build_mux_command() {
     // Verify command structure
     assert!(args.contains(&"-map".to_string()));
     assert!(args.contains(&"0:v:0".to_string()));
-    assert!(args.contains(&"1:a:0".to_string()));
-    assert!(args.contains(&"2:a:0".to_string()));
+    
+    // The actual mapping uses "1:a:0?" (question mark makes the mapping optional)
+    assert!(args.iter().any(|a| a.contains("1:a:0")));
+    assert!(args.iter().any(|a| a.contains("2:a:0")));
     assert!(args.contains(&"copy".to_string()));
     assert!(args.contains(&output_path.to_string_lossy().to_string()));
 }
@@ -156,7 +158,7 @@ fn test_full_mux_with_ffmpeg() -> Result<(), Box<dyn std::error::Error>> {
     let audio_paths: Vec<&Path> = vec![audio_path.as_path()];
     
     // Perform muxing
-    let result = muxer.mux_tracks(&video_path, &audio_paths, &output_path, None);
+    let result = muxer.mux_tracks(&video_path, &audio_paths, &output_path, &muxer.options);
     
     // Verify result
     assert!(result.is_ok(), "Muxing failed: {:?}", result.err());
@@ -186,7 +188,7 @@ fn test_invalid_path_handling() {
     let audio_paths: Vec<&Path> = vec![audio_path];
     
     // Test should return invalid path error
-    let result = muxer.mux_tracks(video_path, &audio_paths, &output_path, None);
+    let result = muxer.mux_tracks(video_path, &audio_paths, &output_path, &muxer.options);
     
     assert!(result.is_err());
     let error = result.unwrap_err();

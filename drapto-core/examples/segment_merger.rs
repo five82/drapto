@@ -18,7 +18,7 @@ use drapto_core::util::logging;
 
 fn main() -> Result<()> {
     // Initialize logging
-    logging::init_logger(LevelFilter::Info);
+    logging::init_with_level(LevelFilter::Info, false);
     
     // Parse command line arguments
     let args: Vec<String> = env::args().collect();
@@ -96,7 +96,7 @@ fn main() -> Result<()> {
 
 /// Segment a video file into multiple parts
 fn segment_video(input_file: &Path, temp_dir: &Path) -> Result<Vec<PathBuf>> {
-    // Create simple config for segmentation
+    // Create simple config for segmentation that will be used later
     let config = Config::default();
     
     // Force some scene times for this example
@@ -115,29 +115,13 @@ fn segment_video(input_file: &Path, temp_dir: &Path) -> Result<Vec<PathBuf>> {
     
     info!("Creating {} segments at times: {:?}", segment_count, scene_times);
     
-    // Build segmentation command
-    let mut cmd = segmentation::build_segment_command(
+    // Build segmentation command and execute it directly
+    let segments = segmentation::segment_video_at_scenes(
         input_file,
         temp_dir,
         &scene_times,
-        None,
-    );
-    
-    // Execute segmentation
-    drapto_core::util::command::run_command(&mut cmd)?;
-    
-    // Get segment list
-    let mut segments = Vec::new();
-    for entry in std::fs::read_dir(temp_dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_file() && path.extension().map_or(false, |ext| ext == "mkv") {
-            segments.push(path);
-        }
-    }
-    
-    // Sort segments by name
-    segments.sort();
+        &config,
+    )?;
     
     info!("Created {} segments", segments.len());
     
@@ -153,9 +137,9 @@ fn print_media_info(file_path: &Path) -> Result<()> {
     
     // Format information
     if let Some(format) = &info.format {
-        println!("Format: {} ({})", format.format_name, format.format_long_name);
+        println!("Format: {} ({})", format.format_name, format.format_long_name.as_deref().unwrap_or("unknown"));
         println!("Duration: {:.2} seconds", info.duration().unwrap_or(0.0));
-        println!("Size: {:.2} MB", format.size as f64 / (1024.0 * 1024.0));
+        println!("Size: {:.2} MB", format.size.unwrap_or(0) as f64 / (1024.0 * 1024.0));
         println!("Bit rate: {} kb/s", format.bit_rate.unwrap_or(0) / 1000);
     }
     

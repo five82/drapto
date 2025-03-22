@@ -7,7 +7,7 @@ use drapto_core::util::logging;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize logging
-    logging::init_logger(LevelFilter::Debug);
+    logging::init_with_level(LevelFilter::Debug, false);
     
     // Parse command line arguments
     let args: Vec<String> = env::args().collect();
@@ -47,7 +47,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     info!("   to output: {}", output_file);
     
-    match muxer.mux_tracks(video_file, &audio_files, output_file, None) {
+    match muxer.mux_tracks(video_file, &audio_files, output_file, &muxer.options) {
         Ok(output_path) => {
             info!("Successfully muxed tracks to: {}", output_path.display());
             Ok(())

@@ -13,7 +13,6 @@
 
 use std::path::PathBuf;
 use drapto_core::encoding::video::{AbAv1Encoder, AbAv1Config};
-use drapto_core::config::Config;
 use drapto_core::error::Result;
 use std::time::Instant;
 use clap::Parser;
@@ -89,7 +88,7 @@ fn main() -> Result<()> {
     let encoder = AbAv1Encoder::with_config(config);
     
     // Check if ab-av1 is available
-    match AbAv1Encoder::check_availability() {
+    match encoder.check_availability() {
         Ok(_) => info!("ab-av1 is available"),
         Err(e) => {
             error!("ab-av1 check failed: {}", e);

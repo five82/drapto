@@ -19,7 +19,7 @@ fn main() -> Result<()> {
         
         println!("Running comprehensive validation on: {}", file_path.display());
         
-        let report = comprehensive_validation(file_path)?;
+        let report = comprehensive_validation(file_path, None)?;
         
         println!("\n{}\n", report);
         
@@ -37,7 +37,7 @@ fn main() -> Result<()> {
         println!("Comparing input: {} with output: {}", 
                 input_path.display(), output_path.display());
         
-        let report = validate_output(input_path, output_path)?;
+        let report = validate_output(input_path, output_path, None)?;
         
         println!("\n{}\n", report);
         
