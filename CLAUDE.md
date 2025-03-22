@@ -1,5 +1,6 @@
 We are implementing a rewrite of the Python drapto in rust
 Rewrite plan is RUST_REWRITE_PLAN.md
+Python code is in drapto/
 
 ## Principles
 1. Follow Rust idioms over direct Python translation
