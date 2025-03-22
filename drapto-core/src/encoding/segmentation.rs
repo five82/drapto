@@ -66,6 +66,7 @@ where
         return Err(DraptoError::Segmentation(SegmentationError::NoScenesDetected));
     }
     
+    crate::logging::log_subsection("SCENE DETECTION");
     info!("Segmenting video with {} detected scene boundaries", scenes.len());
     
     // Build segmentation command
@@ -89,7 +90,7 @@ where
 /// # Returns
 ///
 /// * `Result<Vec<PathBuf>>` - List of segment file paths if successful
-fn segment_video_at_scenes<P1, P2>(
+pub fn segment_video_at_scenes<P1, P2>(
     input_file: P1,
     segments_dir: P2,
     scene_times: &[f64],
@@ -164,6 +165,8 @@ where
     // Sort segments by name (should be numbered sequentially)
     segments.sort();
     
+    crate::logging::log_section("SEGMENTATION");
+    crate::logging::log_subsection("SEGMENT CREATION");
     info!("Created {} video segments", segments.len());
     
     if segments.is_empty() {
@@ -251,6 +254,7 @@ fn validate_segments_integrity<P: AsRef<Path>>(
         }
     }
     
+    crate::logging::log_subsection("SEGMENT VALIDATION");
     info!("Successfully validated {} segments", segments.len());
     Ok(())
 }

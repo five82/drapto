@@ -95,14 +95,15 @@ fn test_format_function() {
     let formatted = report.format();
     
     // Check that important parts are included
-    assert!(formatted.contains("Validation Report - FAILED"));
+    assert!(formatted.contains("VALIDATION REPORT SUMMARY - ❌ FAILED"));
     assert!(formatted.contains("Category: Category A"));
-    assert!(formatted.contains("[INFO] Test info message"));
+    assert!(formatted.contains("ℹ️ [INFO] Test info message"));
     assert!(formatted.contains("Category: Category B"));
-    assert!(formatted.contains("[WARNING] Test warning message"));
+    assert!(formatted.contains("⚠️ [WARNING] Test warning message"));
     assert!(formatted.contains("Category: Category C"));
-    assert!(formatted.contains("[ERROR] Test error message"));
-    assert!(formatted.contains("Summary: 1 error(s), 1 warning(s), 1 info message(s)"));
+    assert!(formatted.contains("❌ [ERROR] Test error message"));
+    assert!(formatted.contains("OVERALL SUMMARY: 1 error(s), 1 warning(s), 1 info message(s)"));
+    assert!(formatted.contains("VALIDATION BY CATEGORY"));
 }
 
 #[test]

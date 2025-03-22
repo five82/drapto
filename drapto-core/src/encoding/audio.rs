@@ -109,10 +109,55 @@ impl OpusEncoder {
         track_index: usize,
         bitrate: &str,
     ) -> Command {
+        // Get media info to find the actual stream index
+        let media_info = match MediaInfo::from_path(input_file.as_ref()) {
+            Ok(info) => info,
+            Err(_) => {
+                // If we can't get media info, use the track_index directly
+                let mut cmd = Command::new("ffmpeg");
+                cmd.args(["-hide_banner", "-loglevel", "warning"])
+                   .arg("-i").arg(input_file.as_ref())
+                   .arg("-map").arg(format!("0:a:{}", track_index))
+                   .arg("-c:a").arg("libopus")
+                   .arg("-af").arg("aformat=channel_layouts=7.1|5.1|stereo|mono")
+                   .arg("-application").arg(&self.config.application)
+                   .arg("-vbr").arg(if self.config.vbr { "on" } else { "off" })
+                   .arg("-compression_level").arg(self.config.compression_level.to_string())
+                   .arg("-frame_duration").arg(self.config.frame_duration.to_string())
+                   .arg("-b:a").arg(bitrate)
+                   .arg("-avoid_negative_ts").arg("make_zero")
+                   .arg("-y").arg(output_file.as_ref());
+                return cmd;
+            }
+        };
+        
+        let audio_streams = media_info.audio_streams();
+        
+        // If the track_index is out of bounds or we have no audio streams, use the simple mapping
+        if track_index >= audio_streams.len() {
+            let mut cmd = Command::new("ffmpeg");
+            cmd.args(["-hide_banner", "-loglevel", "warning"])
+               .arg("-i").arg(input_file.as_ref())
+               .arg("-map").arg(format!("0:a:{}", track_index))
+               .arg("-c:a").arg("libopus")
+               .arg("-af").arg("aformat=channel_layouts=7.1|5.1|stereo|mono")
+               .arg("-application").arg(&self.config.application)
+               .arg("-vbr").arg(if self.config.vbr { "on" } else { "off" })
+               .arg("-compression_level").arg(self.config.compression_level.to_string())
+               .arg("-frame_duration").arg(self.config.frame_duration.to_string())
+               .arg("-b:a").arg(bitrate)
+               .arg("-avoid_negative_ts").arg("make_zero")
+               .arg("-y").arg(output_file.as_ref());
+            return cmd;
+        }
+        
+        // Get the actual stream index
+        let actual_index = audio_streams[track_index].index;
+        
         let mut cmd = Command::new("ffmpeg");
         cmd.args(["-hide_banner", "-loglevel", "warning"])
            .arg("-i").arg(input_file.as_ref())
-           .arg("-map").arg(format!("0:a:{}", track_index))
+           .arg("-map").arg(format!("0:{}", actual_index))  // Use the actual stream index
            .arg("-c:a").arg("libopus")
            .arg("-af").arg("aformat=channel_layouts=7.1|5.1|stereo|mono")
            .arg("-application").arg(&self.config.application)
@@ -155,11 +200,15 @@ impl OpusEncoder {
             ));
         }
         
-        let stream = audio_streams.iter()
-            .find(|s| s.index == track_index)
-            .ok_or_else(|| DraptoError::Encoding(
+        // Check if the track_index is within bounds of the audio streams
+        if track_index >= audio_streams.len() {
+            return Err(DraptoError::Encoding(
                 AudioEncodingError::InvalidTrackIndex(track_index).to_string()
-            ))?;
+            ));
+        }
+        
+        // Get stream by position in the audio streams array, not by its index property
+        let stream = &audio_streams[track_index];
         
         let channels = stream.properties.get("channels")
             .and_then(|v| v.as_u64())
@@ -187,16 +236,30 @@ impl OpusEncoder {
         input_file: impl AsRef<Path>,
         track_index: usize
     ) -> Result<PathBuf> {
+        // Log subsection header
+        info!("");
+        crate::logging::log_subsection(&format!("AUDIO TRACK {}", track_index));
+        info!("");
+        
         // Get track information for encoding
         let track_info = self.get_audio_track_info(&input_file, track_index)?;
         
         // Create output file path
         let output_file = self.config.temp_dir.join(format!("audio-{}.mkv", track_index));
         
-        info!(
-            "Configuring audio track {}:\nChannels: {}\nLayout: {}\nBitrate: {}",
-            track_index, track_info.channels, track_info.layout, track_info.target_bitrate
-        );
+        // Log audio encoding parameters section
+        crate::logging::log_subsection("AUDIO ENCODING PARAMETERS");
+        info!("");
+        info!("Opus audio encoding parameters:");
+        info!("  Codec: libopus");
+        info!("  Track: {}", track_index);
+        info!("  Channels: {}", track_info.channels);
+        info!("  Layout: {}", track_info.layout);
+        info!("  Bitrate: {}", track_info.target_bitrate);
+        info!("  Application: {}", self.config.application);
+        info!("  VBR: {}", if self.config.vbr { "on" } else { "off" });
+        info!("  Compression Level: {}", self.config.compression_level);
+        info!("  Frame Duration: {}ms", self.config.frame_duration);
         
         // Build and execute encoding command
         let mut cmd = self.build_encode_command(
@@ -206,19 +269,27 @@ impl OpusEncoder {
             &track_info.target_bitrate
         );
         
-        info!("Encoding audio track {} with command: {:?}", track_index, cmd);
+        // Get the command as a string for debugging
+        let args: Vec<String> = cmd.get_args()
+            .map(|arg| arg.to_string_lossy().to_string())
+            .collect();
+        let cmd_str = format!("ffmpeg {}", args.join(" "));
+        debug!("FFmpeg audio encoding command:");
+        debug!("  {}", cmd_str.replace(" -", "\n  -"));
         
         // Progress callback for logging
         let progress_callback = if let Some(duration) = track_info.duration {
             let track_idx = track_index;
             Some(Box::new(move |progress: f32| {
-                info!(
-                    "Audio encoding progress (track {}): {:.1}% ({:.1}/{:.1}s)",
-                    track_idx,
-                    progress * 100.0,
-                    progress * duration as f32,
-                    duration
-                );
+                if progress > 0.0 && (progress * 100.0).round() % 10.0 == 0.0 {
+                    info!(
+                        "Audio track {} encoding: {:.0}% complete ({:.1}/{:.1}s)",
+                        track_idx,
+                        progress * 100.0,
+                        progress * duration as f32,
+                        duration
+                    );
+                }
             }) as command::ProgressCallback)
         } else {
             None
@@ -241,6 +312,9 @@ impl OpusEncoder {
         &self,
         input_file: impl AsRef<Path>
     ) -> Result<Vec<PathBuf>> {
+        // Log section header
+        crate::logging::log_section("AUDIO ENCODING");
+        
         // Validate input audio first
         self.validate_input_audio(&input_file)?;
         
@@ -256,18 +330,36 @@ impl OpusEncoder {
         info!("Found {} audio streams in input", audio_streams.len());
         
         let mut encoded_tracks = Vec::new();
-        for stream in audio_streams {
-            match self.encode_audio_track(&input_file, stream.index) {
+        // Iterate through audio streams by their position in the array (0, 1, 2, etc.)
+        for (i, _stream) in audio_streams.iter().enumerate() {
+            match self.encode_audio_track(&input_file, i) {
                 Ok(output_track) => {
                     encoded_tracks.push(output_track);
                 },
                 Err(e) => {
-                    error!("Failed to encode audio track {}: {}", stream.index, e);
+                    error!("Failed to encode audio track {}: {}", i, e);
                     return Err(DraptoError::Encoding(
-                        format!("Failed to encode audio track {}: {}", stream.index, e)
+                        format!("Failed to encode audio track {}: {}", i, e)
                     ));
                 }
             }
+        }
+        
+        // Show audio encoding summary
+        crate::logging::log_subsection("AUDIO ENCODING SUMMARY");
+        if encoded_tracks.is_empty() {
+            warn!("No audio tracks were encoded");
+        } else {
+            for (i, track) in encoded_tracks.iter().enumerate() {
+                let size = std::fs::metadata(track)
+                    .map(|m| m.len())
+                    .unwrap_or(0);
+                
+                let size_mb = size as f64 / (1024.0 * 1024.0);
+                info!("  Track {}: Opus audio, {:.2} MB", i, size_mb);
+            }
+            info!("");
+            info!("Successfully encoded {} audio tracks to Opus format", encoded_tracks.len());
         }
         
         Ok(encoded_tracks)
@@ -415,6 +507,12 @@ impl OpusEncoder {
 pub struct AudioEncodingOptions {
     /// Working directory for temporary files
     pub working_dir: PathBuf,
+    
+    /// Target quality (0-100%, codec-specific)
+    pub quality: Option<f32>,
+    
+    /// Hardware acceleration options for FFmpeg (for decoding only)
+    pub hw_accel_option: Option<String>,
 }
 
 /// Encode audio streams from a video file
@@ -431,20 +529,28 @@ pub fn encode_audio(input: &Path, options: &AudioEncodingOptions) -> Result<Vec<
     info!("Starting audio encoding: {}", input.display());
     debug!("Audio encoding options: {:?}", options);
     
-    // In a real implementation, we would extract and encode all audio tracks
-    // For testing, we'll just copy the input file to fake audio tracks
-    let mut outputs = Vec::new();
+    // Create encoder with proper configuration
+    let config = AudioEncoderConfig {
+        compression_level: 10,
+        frame_duration: 20,
+        vbr: true,
+        application: "audio".to_string(),
+        temp_dir: options.working_dir.clone(),
+    };
     
-    // Create audio tracks
-    let output1 = options.working_dir.join("audio_0.mka");
+    let encoder = OpusEncoder::with_config(config);
     
-    // Copy the input file as our test audio
-    std::fs::copy(input, &output1)?;
-    
-    outputs.push(output1);
-    
-    info!("Audio encoding complete: {} tracks", outputs.len());
-    Ok(outputs)
+    // Encode all audio tracks
+    match encoder.encode_audio_tracks(input) {
+        Ok(tracks) => {
+            info!("Audio encoding complete: {} tracks", tracks.len());
+            Ok(tracks)
+        },
+        Err(e) => {
+            error!("Audio encoding failed: {}", e);
+            Err(e)
+        }
+    }
 }
 
 #[cfg(test)]

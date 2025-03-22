@@ -40,6 +40,7 @@ fn main() -> Result<()> {
             keep_temp,
             temp_dir,
             disable_crop,
+            memory_per_job,
         } => {
             if input.is_file() {
                 // File to file encoding
@@ -53,6 +54,7 @@ fn main() -> Result<()> {
                     temp_dir.clone(),
                     *disable_crop,
                     cli.verbose,
+                    *memory_per_job,
                 )
             } else if input.is_dir() {
                 // Directory to directory encoding
@@ -75,6 +77,7 @@ fn main() -> Result<()> {
                     temp_dir.clone(),
                     *disable_crop,
                     cli.verbose,
+                    *memory_per_job,
                 )
             } else {
                 error!("Input path does not exist: {}", input.display());

@@ -32,3 +32,5 @@ tempfile = "3.8"
 sysinfo = "0.30.5"
 uuid = { version = "1.4", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
+colored = "2.0"
+indicatif = "0.17"

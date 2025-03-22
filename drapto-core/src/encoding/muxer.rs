@@ -83,18 +83,39 @@ impl Muxer {
         let video_path = video_track.as_ref();
         let output_path = output_file.as_ref();
         
-        info!("Muxing tracks to: {}", output_path.display());
+        // Determine the final output path
+        let final_output_path = if output_path.is_dir() || 
+                               (output_path.extension().is_none() && !output_path.exists()) {
+            // If output is a directory or has no extension and doesn't exist yet, 
+            // use it as a directory and append the input filename
+            let video_name = video_path.file_name()
+                .ok_or_else(|| MuxingError::InvalidPath("Invalid video filename".to_string()))?;
+                
+            // Create directory if it doesn't exist
+            if !output_path.exists() {
+                std::fs::create_dir_all(output_path).map_err(|e| {
+                    MuxingError::InvalidPath(format!("Failed to create directory: {}", e))
+                })?;
+            }
+            
+            output_path.join(video_name)
+        } else {
+            // Otherwise use the specified output path as-is (file with extension)
+            output_path.to_path_buf()
+        };
+        
+        info!("Muxing tracks to: {}", final_output_path.display());
         
         // Build mux command
-        let mut cmd = self.build_mux_command(video_path, audio_tracks, output_path)?;
+        let mut cmd = self.build_mux_command(video_path, audio_tracks, &final_output_path)?;
         
         // Execute command
         run_command(&mut cmd)?;
         
         // Validate AV sync in muxed output
-        self.validate_output(output_path)?;
+        self.validate_output(&final_output_path)?;
         
-        Ok(output_path.to_path_buf())
+        Ok(final_output_path)
     }
     
     /// Build FFmpeg command for muxing tracks

@@ -112,15 +112,33 @@ fn validate_audio_duration(media_info: &MediaInfo, report: &mut ValidationReport
     }
     
     for (i, stream) in audio_streams.iter().enumerate() {
-        let duration = stream.properties.get("duration")
+        // Try multiple methods to get duration, similar to the Python implementation
+        
+        // Method 1: Get duration directly from stream properties
+        let stream_duration = stream.properties.get("duration")
             .and_then(|d| d.as_str())
             .and_then(|d| d.parse::<f64>().ok());
         
-        if let Some(duration) = duration {
-            report.add_info(
-                format!("Audio stream #{} duration: {:.3} seconds", i, duration),
-                "Audio Duration"
-            );
+        // Method 2: Fall back to format duration if stream duration is not available
+        let format_duration = if stream_duration.is_none() {
+            media_info.duration()
+        } else {
+            None
+        };
+        
+        if let Some(duration) = stream_duration.or(format_duration) {
+            // Log the source of the duration for debugging
+            if stream_duration.is_some() {
+                report.add_info(
+                    format!("Audio stream #{} duration: {:.3} seconds", i, duration),
+                    "Audio Duration"
+                );
+            } else {
+                report.add_info(
+                    format!("Audio stream #{} duration: {:.3} seconds (using format duration)", i, duration),
+                    "Audio Duration"
+                );
+            }
             
             // Check for very short audio
             if duration < 0.5 {

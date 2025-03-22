@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use std::fs;
 use std::time::Instant;
 use log::{info, debug};
+use chrono;
 use drapto_core::error::Result;
 use drapto_core::Config;
 use drapto_core::media::MediaInfo;
@@ -12,7 +13,8 @@ use drapto_core::encoding::audio::{encode_audio, AudioEncodingOptions};
 use drapto_core::encoding::muxer::{Muxer, MuxOptions};
 use num_cpus;
 
-use crate::output::{print_heading, print_section, print_info, print_error, print_success, print_progress, print_separator, print_warning};
+use crate::output::{print_heading, print_section, print_info, print_error, print_success, 
+                   print_progress, print_separator, print_warning, print_validation_report};
 
 /// Execute the encode command for a single file
 pub fn execute_encode(
@@ -25,6 +27,7 @@ pub fn execute_encode(
     temp_dir: Option<PathBuf>,
     disable_crop: bool,
     verbose: bool,
+    memory_per_job: Option<usize>,
 ) -> Result<()> {
     let start_time = Instant::now();
     
@@ -56,6 +59,11 @@ pub fn execute_encode(
         disable_crop,
         ..Default::default()
     };
+    
+    // Apply memory limit if provided via CLI
+    if let Some(memory_mb) = memory_per_job {
+        config.memory_per_job = memory_mb;
+    }
     
     // Validate configuration
     info!("Validating configuration");
@@ -122,6 +130,27 @@ pub fn execute_encode(
     }
     
     // Detect scenes - this is a key part of the drapto pipeline
+    // Get hardware acceleration options if enabled
+    let hw_accel_option = if config.hardware_acceleration {
+        // Set automatically based on platform using FFprobe 
+        let ffprobe = drapto_core::media::probe::FFprobe::new();
+        match ffprobe.check_hardware_decoding() {
+            Ok(Some(option)) => {
+                print_info("Hardware Acceleration", "Enabled");
+                print_info("Hardware Decoder", if option.contains("vaapi") { "VAAPI" } else { "VideoToolbox" });
+                Some(option)
+            },
+            _ => {
+                print_info("Hardware Acceleration", "Enabled");
+                print_info("Hardware Decoder", "None available");
+                None
+            }
+        }
+    } else {
+        print_info("Hardware Acceleration", "Disabled");
+        None
+    };
+    
     print_section("Scene Detection");
     info!("Detecting scenes in video");
     
@@ -175,12 +204,11 @@ pub fn execute_encode(
     // Encode video
     print_section("Video Encoding");
     print_info("Parallel Jobs", config.parallel_jobs);
-    print_info("Hardware Acceleration", if config.hardware_acceleration { "Enabled" } else { "Disabled" });
     
     let video_options = VideoEncodingOptions {
         quality: config.target_quality,
         parallel_jobs: config.parallel_jobs,
-        hardware_acceleration: config.hardware_acceleration,
+        hw_accel_option: hw_accel_option.clone(), // Clone here to avoid move
         crop_filter,
         scenes: Some(scenes),
         is_hdr,
@@ -198,6 +226,8 @@ pub fn execute_encode(
     print_section("Audio Encoding");
     let audio_options = AudioEncodingOptions {
         working_dir: working_dir.clone(),
+        quality: None, // Use default quality
+        hw_accel_option: hw_accel_option.clone(), // Reuse the same hardware decoder settings
     };
     
     print_progress("Encoding audio tracks...")?;
@@ -210,21 +240,11 @@ pub fn execute_encode(
     let mux_options = MuxOptions::default();
     
     print_progress("Muxing tracks...")?;
-    muxer.mux_tracks(&video_output, &audio_outputs, &output, &mux_options)?;
-    print_success(&format!("Successfully muxed to: {}", output.display()));
+    let muxed_file = muxer.mux_tracks(&video_output, &audio_outputs, &output, &mux_options)?;
+    print_success(&format!("Successfully muxed to: {}", muxed_file.display()));
     
-    // Validate output file
-    print_section("Validation");
-    print_progress("Validating output...")?;
-    
-    // In a real implementation, we would do more validation here
-    let output_size = fs::metadata(&output)?.len();
-    let input_size = fs::metadata(&input)?.len();
-    let size_reduction = (1.0 - (output_size as f64 / input_size as f64)) * 100.0;
-    
-    print_info("Input Size", format_size(input_size));
-    print_info("Output Size", format_size(output_size));
-    print_info("Size Reduction", format!("{:.2}%", size_reduction));
+    // IMPORTANT: Use the muxed_file path returned by the muxer for all subsequent operations
+    // This is critical as the muxer may have modified the output path
     
     // Cleanup
     if !config.keep_temp_files {
@@ -234,13 +254,52 @@ pub fn execute_encode(
         }
     }
     
+    // Validate output file - do this after cleanup to ensure file is finalized
+    print_section("Validation");
+    print_progress("Validating output...")?;
+    
+    // Ensure the output file exists and is readable
+    if !muxed_file.exists() {
+        return Err(drapto_core::error::DraptoError::Other(
+            format!("Output file not found: {}", muxed_file.display())
+        ));
+    }
+    
+    // Get file sizes using standard filesystem metadata
+    let input_size = get_file_size(&input)?;
+    let output_size = get_file_size(&muxed_file)?;
+    let size_reduction = (1.0 - (output_size as f64 / input_size as f64)) * 100.0;
+    
+    print_info("Input Size", format_size(input_size));
+    print_info("Output Size", format_size(output_size));
+    print_info("Size Reduction", format!("{:.2}%", size_reduction));
+    
+    // Run comprehensive validation and print the report
+    let validation_report = drapto_core::validation::validate_output(&input, &muxed_file, None)?;
+    print_validation_report(&validation_report);
+    
     // Calculate elapsed time
     let elapsed = start_time.elapsed();
+    
+    // Generate and display encoding summary
+    print_heading("Encoding Summary");
+    
+    print_info("Input File", input.file_name().unwrap_or_default().to_string_lossy());
+    print_info("Input Size", format_size(input_size));
+    print_info("Output Size", format_size(output_size));
+    print_info("Size Reduction", format!("{:.2}%", size_reduction));
+    
+    // Format encoding time
     let hours = elapsed.as_secs() / 3600;
     let minutes = (elapsed.as_secs() % 3600) / 60;
     let seconds = elapsed.as_secs() % 60;
+    print_info("Encoding Time", format!("{:02}h {:02}m {:02}s", hours, minutes, seconds));
     
-    print_section("Summary");
+    // Use the finished timestamp
+    let finished_time = chrono::Local::now().format("%a %b %d %H:%M:%S %Z %Y").to_string();
+    print_info("Finished At", finished_time);
+    
+    print_separator();
     print_success(&format!("Encoding complete in {:02}h {:02}m {:02}s", hours, minutes, seconds));
     
     Ok(())
@@ -257,6 +316,7 @@ pub fn execute_encode_directory(
     temp_dir: Option<PathBuf>,
     disable_crop: bool,
     verbose: bool,
+    memory_per_job: Option<usize>,
 ) -> Result<()> {
     print_heading("Directory Encoding");
     print_info("Input Directory", input_dir.display());
@@ -293,6 +353,12 @@ pub fn execute_encode_directory(
     // Process each file
     let mut successful_files = 0;
     let mut failed_files = 0;
+    let batch_start_time = Instant::now();
+    
+    // Store encoding summaries for each file
+    let mut encoding_summaries = Vec::new();
+    let mut total_input_size = 0;
+    let mut total_output_size = 0;
     
     for (index, input_file) in video_files.iter().enumerate() {
         let filename = input_file.file_name().unwrap_or_default();
@@ -302,7 +368,7 @@ pub fn execute_encode_directory(
         
         match execute_encode(
             input_file.clone(),
-            output_file,
+            output_file.clone(),
             quality,
             jobs,
             no_hwaccel,
@@ -310,8 +376,40 @@ pub fn execute_encode_directory(
             temp_dir.clone(),
             disable_crop,
             verbose,
+            memory_per_job,
         ) {
             Ok(_) => {
+                // Store summary information
+                // We need to get the actual file paths from the last successful encode
+                let actual_output_file = if let Ok(entries) = std::fs::read_dir(&output_dir) {
+                    let mut output_file_path = output_file.clone();
+                    for entry in entries {
+                        if let Ok(entry) = entry {
+                            if entry.file_name().to_string_lossy() == filename.to_string_lossy() {
+                                output_file_path = entry.path();
+                                break;
+                            }
+                        }
+                    }
+                    output_file_path
+                } else {
+                    output_file.clone()
+                };
+                
+                if let (Ok(input_size), Ok(output_size)) = (get_file_size(input_file), get_file_size(&actual_output_file)) {
+                    let reduction = ((input_size as f64 - output_size as f64) / input_size as f64) * 100.0;
+                    
+                    encoding_summaries.push((
+                        filename.to_string_lossy().to_string(),
+                        input_size,
+                        output_size,
+                        reduction
+                    ));
+                    
+                    total_input_size += input_size;
+                    total_output_size += output_size;
+                }
+                
                 print_success(&format!("Successfully encoded {}", filename.to_string_lossy()));
                 successful_files += 1;
             },
@@ -324,14 +422,47 @@ pub fn execute_encode_directory(
         print_separator();
     }
     
-    // Print summary
-    print_heading("Directory Encoding Summary");
-    print_success(&format!("Total files processed: {}", video_files.len()));
-    print_success(&format!("Successfully encoded: {}", successful_files));
+    // Calculate total batch duration
+    let batch_elapsed = batch_start_time.elapsed();
+    let batch_hours = batch_elapsed.as_secs() / 3600;
+    let batch_minutes = (batch_elapsed.as_secs() % 3600) / 60;
+    let batch_seconds = batch_elapsed.as_secs() % 60;
     
+    // Calculate overall reduction
+    let overall_reduction = if total_input_size > 0 {
+        ((total_input_size as f64 - total_output_size as f64) / total_input_size as f64) * 100.0
+    } else {
+        0.0
+    };
+    
+    // Print final batch summary
+    print_heading("Final Encoding Summary");
+    
+    // Print individual file summaries
+    for (filename, input_size, output_size, reduction) in &encoding_summaries {
+        print_separator();
+        print_info("File", filename);
+        print_info("Input Size", format_size(*input_size));
+        print_info("Output Size", format_size(*output_size));
+        print_info("Reduction", format!("{:.2}%", reduction));
+    }
+    
+    print_separator();
+    
+    // Print overall batch stats
+    print_info("Total Files Processed", video_files.len());
+    print_info("Successfully Encoded", successful_files);
     if failed_files > 0 {
         print_error(&format!("Failed to encode: {}", failed_files));
     }
+    
+    print_info("Total Input Size", format_size(total_input_size));
+    print_info("Total Output Size", format_size(total_output_size));
+    print_info("Overall Reduction", format!("{:.2}%", overall_reduction));
+    print_info("Total Execution Time", format!("{:02}h {:02}m {:02}s", batch_hours, batch_minutes, batch_seconds));
+    
+    print_separator();
+    print_success(&format!("Batch encoding complete in {:02}h {:02}m {:02}s", batch_hours, batch_minutes, batch_seconds));
     
     Ok(())
 }
@@ -350,5 +481,14 @@ fn format_size(size: u64) -> String {
         format!("{:.2} KB", size as f64 / KB as f64)
     } else {
         format!("{} B", size)
+    }
+}
+
+/// Get file size using the filesystem's stat (same method used in the Python code)
+fn get_file_size(path: &PathBuf) -> Result<u64> {
+    // Simple stat approach, matching the Python implementation
+    match fs::metadata(path) {
+        Ok(metadata) => Ok(metadata.len()),
+        Err(e) => Err(drapto_core::error::DraptoError::Io(e))
     }
 }

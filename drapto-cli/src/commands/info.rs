@@ -82,13 +82,40 @@ pub fn execute_ffmpeg_info() -> Result<()> {
             }
             
             // Check hardware acceleration
-            print_section("Hardware Acceleration");
+            print_section("Hardware Acceleration (For Decoding Only)");
             match ffprobe.get_hwaccels() {
                 Ok(hwaccels) => {
                     if hwaccels.is_empty() {
                         print_info("Available Hardware Accelerators", "None");
                     } else {
                         print_info("Available Hardware Accelerators", hwaccels.join(", "));
+                        
+                        // Check for specific decoders we support
+                        let has_vaapi = hwaccels.iter().any(|h| h == "vaapi");
+                        let has_videotoolbox = hwaccels.iter().any(|h| h == "videotoolbox");
+                        
+                        if has_vaapi {
+                            print_info("VAAPI (Linux)", "Available");
+                        }
+                        
+                        if has_videotoolbox {
+                            print_info("VideoToolbox (macOS)", "Available");
+                        }
+                        
+                        if !has_vaapi && !has_videotoolbox {
+                            print_info("Supported Hardware Decoders", "None");
+                        }
+                        
+                        // Check what we'll actually use
+                        match ffprobe.check_hardware_decoding() {
+                            Ok(Some(option)) => {
+                                print_info("Selected Hardware Decoder", 
+                                    if option.contains("vaapi") { "VAAPI" } else { "VideoToolbox" });
+                            },
+                            _ => {
+                                print_info("Selected Hardware Decoder", "None");
+                            }
+                        }
                     }
                 },
                 Err(e) => print_error(&format!("Failed to get hardware accelerators: {}", e)),

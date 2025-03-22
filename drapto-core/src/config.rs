@@ -12,14 +12,14 @@ pub struct Config {
     /// Output file path
     pub output: PathBuf,
     
-    /// Enable hardware acceleration if available
+    /// Enable hardware acceleration for decoding if available
     pub hardware_acceleration: bool,
     
     /// Hardware acceleration options for FFmpeg
     #[serde(default)]
     pub hw_accel_option: String,
     
-    /// Target VMAF quality (0-100)
+    /// Target quality (0-100) - Currently not used as VMAF is disabled
     pub target_quality: Option<f32>,
     
     /// Number of parallel encoding jobs
@@ -62,9 +62,9 @@ pub struct Config {
     #[serde(default)]
     pub use_segmentation: bool,
     
-    /// Enable hardware encoding (if available)
-    #[serde(default)]
-    pub use_hardware_encoding: bool,
+    /// Memory limit per encoding job in MB (0 = auto)
+    #[serde(default = "default_memory_per_job")]
+    pub memory_per_job: usize,
 }
 
 fn default_parallel_jobs() -> usize {
@@ -91,6 +91,11 @@ fn default_max_segment_length() -> f32 {
     15.0
 }
 
+fn default_memory_per_job() -> usize {
+    // Default to 2GB per job, will be adjusted based on resolution and encoder
+    2048
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -109,7 +114,7 @@ impl Default for Config {
             max_segment_length: default_max_segment_length(),
             disable_crop: false,
             use_segmentation: true,
-            use_hardware_encoding: true,
+            memory_per_job: default_memory_per_job(),
         }
     }
 }
@@ -180,11 +185,12 @@ impl Config {
         self
     }
     
-    /// Set whether to use hardware encoding
-    pub fn with_hardware_encoding(mut self, enable: bool) -> Self {
-        self.use_hardware_encoding = enable;
+    /// Set memory limit per encoding job
+    pub fn with_memory_per_job(mut self, memory_mb: usize) -> Self {
+        self.memory_per_job = memory_mb;
         self
     }
+    
     
     /// Validate configuration parameters
     pub fn validate(&self) -> Result<()> {

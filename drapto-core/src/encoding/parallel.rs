@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use log::{debug, info};
+use log::{info, warn};
 use rayon::prelude::*;
 
 use crate::error::{Result, DraptoError};
@@ -10,8 +10,9 @@ use crate::encoding::memory::MemoryTracker;
 pub type ProgressCallback = Box<dyn Fn(f32) + Send + Sync>;
 
 /// Progress tracking for encoding operations
+#[derive(Clone)]
 pub struct EncodingProgress {
-    callback: Box<dyn Fn(f32) + Send + Sync>,
+    callback: Arc<dyn Fn(f32) + Send + Sync>,
 }
 
 impl EncodingProgress {
@@ -21,7 +22,7 @@ impl EncodingProgress {
         F: Fn(f32) + Send + Sync + 'static,
     {
         Self {
-            callback: Box::new(callback),
+            callback: Arc::new(callback),
         }
     }
     
@@ -104,17 +105,52 @@ impl ParallelEncoder {
             std::fs::create_dir_all(&temp_dir)?;
         }
         
-        // Setup memory tracker
-        let memory_tracker = MemoryTracker::new(self.memory_per_job);
-        let available_jobs = memory_tracker.max_concurrent_jobs().min(self.max_concurrent_jobs);
+        // Setup memory tracker with SVT-AV1-specific requirements
+        // AB-AV1 is a tool that uses SVT-AV1 encoder, not a separate encoder
+        let encoder_type = "svtav1"; // Always using SVT-AV1 encoder (possibly via AB-AV1 tool)
+        let adjusted_memory = if let Some(first_segment) = segments.first() {
+            // SVT-AV1 is our encoder (could be used directly or via AB-AV1 tool)
+            let encoder_str = "libsvtav1";
+            
+            // Get resolution category of first segment to estimate memory needs
+            if let Ok((category, width)) = crate::encoding::memory::get_resolution_category(first_segment) {
+                info!("Encoding video with {} encoder, resolution: {}, width: {}px", 
+                      encoder_type, category.as_str(), width);
+                      
+                // Calculate memory per job based on resolution and encoder
+                let adjusted = crate::encoding::memory::calculate_memory_per_job(&category, encoder_str, self.memory_per_job);
+                
+                // Provide more detailed logging about memory adjustments
+                if adjusted != self.memory_per_job {
+                    info!("Adjusted memory per job: {}MB → {}MB for {} encoding of {} content", 
+                          self.memory_per_job, adjusted, encoder_type, category.as_str());
+                }
+                
+                adjusted
+            } else {
+                // Default to base memory if resolution detection fails
+                info!("Unable to detect resolution, using base memory per job");
+                self.memory_per_job
+            }
+        } else {
+            self.memory_per_job
+        };
         
-        info!("Starting parallel encoding with {} concurrent jobs (max allowed: {})",
-              available_jobs, self.max_concurrent_jobs);
+        let memory_tracker = MemoryTracker::new(adjusted_memory);
+        
+        // Determine job count based on memory and configured limit
+        let safe_job_count = memory_tracker.current_safe_job_count();
+        let available_jobs = safe_job_count.min(self.max_concurrent_jobs);
+        
+        // Log job configuration as a subsection
+        crate::logging::log_subsection("JOB CONFIGURATION");
+        info!("Starting parallel encoding with {} concurrent jobs (max configured: {}, memory per job: {}MB, encoder: {})",
+              available_jobs, self.max_concurrent_jobs, adjusted_memory, encoder_type);
         
         // Set up thread pool with limited parallelism
-        rayon::ThreadPoolBuilder::new()
+        let pool = rayon::ThreadPoolBuilder::new()
             .num_threads(available_jobs)
-            .build_global()
+            .build()
             .map_err(|e| DraptoError::Other(format!("Failed to initialize thread pool: {}", e)))?;
         
         // Progress tracking
@@ -122,19 +158,19 @@ impl ParallelEncoder {
         let completed = Arc::new(Mutex::new(0usize));
         let results = Arc::new(Mutex::new(Vec::with_capacity(segments.len())));
         
-        // Process segments in parallel
-        segments.par_iter().try_for_each(|segment| -> Result<()> {
-            // Acquire memory for this job
-            let _memory_handle = memory_tracker.acquire_memory()?;
-            
-            // Generate output path
+        // Process segments in parallel using our local pool
+        pool.install(|| segments.par_iter().try_for_each(|segment| -> Result<()> {
+            // Generate segment name for reporting
             let segment_name = segment.file_name()
                 .ok_or_else(|| DraptoError::InvalidPath("Invalid segment filename".to_string()))?;
+            let segment_name_str = segment_name.to_string_lossy().to_string();
                 
-            let output_path = output_dir.join(segment_name);
-            let _temp_file = temp_dir.join(format!("temp_{}", segment_name.to_string_lossy()));
+            // Acquire memory for this job with segment identifier for better tracking
+            let _memory_handle = memory_tracker.acquire_memory()?.with_id(format!("segment {}", segment_name_str));
             
-            debug!("Encoding segment {:?} to {:?}", segment, output_path);
+            // Generate output path
+            let output_path = output_dir.join(segment_name);
+            let _temp_file = temp_dir.join(format!("temp_{}", segment_name_str));
             
             // Create progress callback if needed
             let progress_cb = if let Some(ref cb) = self.on_progress {
@@ -151,24 +187,58 @@ impl ParallelEncoder {
                 None
             };
             
-            // Run the encoding
-            self.encoder.encode_video(
-                segment, 
-                &output_path,
-                progress_cb
-            )?;
+            // Run the encoding with retry logic
+            let max_retries = 2;
+            let mut attempt = 0;
             
-            // Track completion
-            {
-                let mut completed_count = completed.lock().unwrap();
-                *completed_count += 1;
+            loop {
+                match self.encoder.encode_video(segment, &output_path, progress_cb.clone()) {
+                    Ok(_) => {
+                        // Successfully encoded
+                        info!("Segment encoding complete: {}", segment_name_str);
+                        
+                        // Check output file exists and has valid size
+                        if let Ok(metadata) = std::fs::metadata(&output_path) {
+                            if metadata.len() > 1024 {  // Ensure output is at least 1KB
+                                // Track completion
+                                {
+                                    let mut completed_count = completed.lock().unwrap();
+                                    *completed_count += 1;
+                                    
+                                    let mut results_vec = results.lock().unwrap();
+                                    results_vec.push(output_path.clone());
+                                }
+                                break;
+                            } else {
+                                warn!("Encoding result for {} is too small ({} bytes), retrying", 
+                                      segment_name_str, metadata.len());
+                            }
+                        } else {
+                            warn!("Cannot access output file for {}, retrying", segment_name_str);
+                        }
+                    },
+                    Err(e) => {
+                        // Encoding failed
+                        warn!("Encoding segment {} failed on attempt {} with error: {}", 
+                              segment_name_str, attempt, e);
+                    }
+                }
                 
-                let mut results_vec = results.lock().unwrap();
-                results_vec.push(output_path);
+                // Handle retries or fail permanently
+                attempt += 1;
+                if attempt >= max_retries {
+                    return Err(DraptoError::Other(format!(
+                        "Failed to encode segment {} after {} attempts", 
+                        segment_name_str, max_retries)));
+                }
+                
+                // Wait before retry to avoid memory contention
+                std::thread::sleep(std::time::Duration::from_millis(1000));
+                info!("Retrying segment {} (attempt {})", segment_name_str, attempt);
             }
             
             Ok(())
-        })?;
+        }))?;
         
         // Get the final results
         let encoded_segments = Arc::try_unwrap(results)
@@ -180,6 +250,7 @@ impl ParallelEncoder {
         let mut sorted_segments = encoded_segments;
         sorted_segments.sort();
         
+        crate::logging::log_section("SEGMENT ENCODING COMPLETE");
         info!("Successfully encoded {} segments", sorted_segments.len());
         
         Ok(sorted_segments)

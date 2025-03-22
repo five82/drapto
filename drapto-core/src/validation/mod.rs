@@ -3,6 +3,7 @@ use log::{info, error, warn};
 
 use crate::error::{DraptoError, Result};
 use crate::media::MediaInfo;
+use crate::logging;
 
 pub mod video;
 pub mod audio;
@@ -15,46 +16,83 @@ pub mod quality;
 pub use report::{ValidationMessage, ValidationLevel, ValidationReport};
 
 /// Validate a media file
-pub fn validate_media<P: AsRef<Path>>(path: P) -> Result<ValidationReport> {
-    let mut report = ValidationReport::new();
-    let media_info = MediaInfo::from_path(path)?;
+pub fn validate_media<P: AsRef<Path>>(
+    path: P,
+    config: Option<&crate::config::Config>
+) -> Result<ValidationReport> {
+    let path_ref = path.as_ref();
+    logging::log_section("MEDIA VALIDATION");
+    info!("Validating media file: {}", path_ref.display());
     
-    // Run various validations
+    let mut report = ValidationReport::new();
+    let media_info = MediaInfo::from_path(path_ref)?;
+    
+    // Run various validations with section headers
+    logging::log_subsection("AUDIO VALIDATION");
     audio::validate_audio(&media_info, &mut report);
+    
+    logging::log_subsection("VIDEO VALIDATION");
     video::validate_video(&media_info, &mut report);
+    
+    logging::log_subsection("SUBTITLES VALIDATION");
     subtitles::validate_subtitles(&media_info, &mut report);
+    
+    logging::log_subsection("A/V SYNC VALIDATION");
     sync::validate_sync(&media_info, &mut report);
     
+    // Validate codecs with config
+    logging::log_subsection("CODEC VALIDATION");
+    validate_codecs(&media_info, &mut report, config);
+    
+    // Log overall result
+    logging::log_subsection("VALIDATION SUMMARY");
     if !report.passed {
-        error!("Validation failed: {}", report);
+        error!("Validation failed: {} error(s), {} warning(s)", 
+               report.errors().len(), report.warnings().len());
         return Err(DraptoError::Validation(
             format!("Media validation failed: {} error(s)", report.errors().len())
         ));
     }
     
-    info!("Validation passed: {}", report);
+    info!("Validation passed: {} warning(s)", report.warnings().len());
     Ok(report)
 }
 
 /// Run comprehensive validation on a media file
 /// 
 /// This performs all available validations and returns a detailed report
-pub fn comprehensive_validation<P: AsRef<Path>>(path: P) -> Result<ValidationReport> {
+pub fn comprehensive_validation<P: AsRef<Path>>(
+    path: P,
+    config: Option<&crate::config::Config>
+) -> Result<ValidationReport> {
     let path_ref = path.as_ref();
     let mut report = ValidationReport::new();
     
+    logging::log_section("COMPREHENSIVE VALIDATION");
     info!("Running comprehensive validation on: {}", path_ref.display());
     
     // Get media info
     let media_info = MediaInfo::from_path(path_ref)?;
     
-    // Basic validation categories
+    // Basic validation categories with subsections
+    logging::log_subsection("AUDIO VALIDATION");
     audio::validate_audio(&media_info, &mut report);
+    
+    logging::log_subsection("VIDEO VALIDATION");
     video::validate_video(&media_info, &mut report);
+    
+    logging::log_subsection("SUBTITLES VALIDATION");
     subtitles::validate_subtitles(&media_info, &mut report);
+    
+    logging::log_subsection("A/V SYNC VALIDATION");
     sync::validate_sync(&media_info, &mut report);
     
+    // Validate codecs with config
+    logging::log_subsection("CODEC VALIDATION");
+    validate_codecs(&media_info, &mut report, config);
+    
     // Additional validation for format detection
+    logging::log_subsection("FORMAT DETECTION");
     if let Some(video) = media_info.primary_video_stream() {
         // Check HDR/Dolby Vision
         if quality::is_hdr_content(&media_info) {
@@ -75,6 +113,7 @@ pub fn comprehensive_validation<P: AsRef<Path>>(path: P) -> Result<ValidationRep
         }
         
         // Check color properties
+        logging::log_subsection("COLOR PROPERTIES");
         if let Some(color_space) = video.properties.get("color_space").and_then(|v| v.as_str()) {
             report.add_info(
                 format!("Color space: {}", color_space),
@@ -98,6 +137,7 @@ pub fn comprehensive_validation<P: AsRef<Path>>(path: P) -> Result<ValidationRep
     }
     
     // Check for container issues
+    logging::log_subsection("CONTAINER VALIDATION");
     if let Some(format) = &media_info.format {
         report.add_info(
             format!("Container: {} ({})", 
@@ -139,6 +179,7 @@ pub fn comprehensive_validation<P: AsRef<Path>>(path: P) -> Result<ValidationRep
     }
     
     // Set overall pass/fail status
+    logging::log_subsection("VALIDATION SUMMARY");
     if report.errors().is_empty() {
         report.passed = true;
         info!("Comprehensive validation passed: {} warnings", report.warnings().len());
@@ -152,15 +193,24 @@ pub fn comprehensive_validation<P: AsRef<Path>>(path: P) -> Result<ValidationRep
 }
 
 /// Validate A/V synchronization
-pub fn validate_av_sync<P: AsRef<Path>>(path: P) -> Result<ValidationReport> {
+pub fn validate_av_sync<P: AsRef<Path>>(
+    path: P,
+    _config: Option<&crate::config::Config>
+) -> Result<ValidationReport> {
+    let path_ref = path.as_ref();
+    logging::log_section("A/V SYNC VALIDATION");
+    info!("Validating A/V sync in: {}", path_ref.display());
+    
     let mut report = ValidationReport::new();
-    let media_info = MediaInfo::from_path(path)?;
+    let media_info = MediaInfo::from_path(path_ref)?;
     
     // Use the sync module to check AV synchronization
     sync::validate_sync(&media_info, &mut report);
     
+    // Log summary
+    logging::log_subsection("SYNC VALIDATION SUMMARY");
     if !report.passed {
-        error!("A/V sync validation failed: {}", report);
+        error!("A/V sync validation failed: {} error(s)", report.errors().len());
         return Err(DraptoError::Validation(
             format!("A/V sync validation failed: {} error(s)", report.errors().len())
         ));
@@ -183,11 +233,16 @@ pub fn validate_av_sync<P: AsRef<Path>>(path: P) -> Result<ValidationReport> {
 ///
 /// * `input_file` - Original input file path
 /// * `output_file` - Encoded output file path
+/// * `config` - Optional configuration for validation settings
 ///
 /// # Returns
 ///
 /// * `Result<ValidationReport>` - Validation report 
-pub fn validate_output<P1, P2>(input_file: P1, output_file: P2) -> Result<ValidationReport>
+pub fn validate_output<P1, P2>(
+    input_file: P1, 
+    output_file: P2, 
+    config: Option<&crate::config::Config>
+) -> Result<ValidationReport>
 where
     P1: AsRef<Path>,
     P2: AsRef<Path>,
@@ -195,6 +250,7 @@ where
     let input_path = input_file.as_ref();
     let output_path = output_file.as_ref();
     
+    logging::log_section("OUTPUT VALIDATION");
     info!("Validating output: {}", output_path.display());
     
     // Ensure output file exists and has content
@@ -240,36 +296,45 @@ where
         "File"
     );
     
-    // Run each validation component
+    // Run each validation component with clear section headers
     
     // 1. Duration validation
+    logging::log_subsection("DURATION VALIDATION");
     validate_duration(&input_info, &output_info, &mut report)?;
     
     // 2. Video validation
+    logging::log_subsection("VIDEO VALIDATION");
     video::validate_video(&output_info, &mut report);
     
     // 3. Audio validation
+    logging::log_subsection("AUDIO VALIDATION");
     audio::validate_audio(&output_info, &mut report);
     
     // 4. A/V sync validation
+    logging::log_subsection("A/V SYNC VALIDATION");
     sync::validate_sync(&output_info, &mut report);
     
     // 5. Codec compliance
-    validate_codecs(&output_info, &mut report);
+    logging::log_subsection("CODEC VALIDATION");
+    validate_codecs(&output_info, &mut report, config);
     
     // 6. Pixel format validation
+    logging::log_subsection("PIXEL FORMAT VALIDATION");
     quality::validate_pixel_format(&input_info, &output_info, &mut report)?;
     
     // 7. Subtitles validation
+    logging::log_subsection("SUBTITLES VALIDATION");
     subtitles::validate_subtitles(&output_info, &mut report);
     
     // 8. Compare subtitles between input and output
+    logging::log_subsection("SUBTITLES COMPARISON");
     subtitles::compare_subtitles(input_path, output_path, &mut report)?;
     
-    // 9. Quality validation (enabled, but with size checks)
+    // Quality validation is disabled but function is kept to maintain API compatibility
     quality::validate_quality(input_path, output_path, &mut report)?;
     
     // Set overall pass/fail status
+    logging::log_subsection("VALIDATION SUMMARY");
     if report.errors().is_empty() {
         report.passed = true;
         info!("Validation passed: {} warnings", report.warnings().len());
@@ -327,7 +392,11 @@ fn validate_duration(
 }
 
 /// Validate codec compliance
-fn validate_codecs(output_info: &MediaInfo, report: &mut ValidationReport) {
+fn validate_codecs(
+    output_info: &MediaInfo, 
+    report: &mut ValidationReport,
+    _config: Option<&crate::config::Config>,
+) {
     // Check video codec is AV1
     if let Some(video_stream) = output_info.primary_video_stream() {
         let codec = &video_stream.codec_name;
@@ -349,12 +418,24 @@ fn validate_codecs(output_info: &MediaInfo, report: &mut ValidationReport) {
         let codec = &audio.codec_name;
         
         if codec != "opus" {
-            report.add_warning(
-                format!("Audio track {} has non-opus codec: {}", i, codec),
+            // All audio tracks should be encoded to Opus, this is always an error
+            // since our encoder only produces Opus audio
+            report.add_error(
+                format!("Audio track {} has non-opus codec: {} (all audio must be encoded to opus)", i, codec),
                 "Codec"
             );
         } else {
             report.add_info(format!("Audio track {}: Opus", i), "Codec");
+            
+            // Check for opus-specific parameters
+            if let Some(application) = audio.properties.get("application").and_then(|v| v.as_str()) {
+                if application != "audio" {
+                    report.add_warning(
+                        format!("Audio track {} has application={} (expected 'audio')", i, application),
+                        "Codec"
+                    );
+                }
+            }
         }
     }
 }

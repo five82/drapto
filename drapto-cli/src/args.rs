@@ -83,6 +83,13 @@ pub enum Commands {
             default_value = "false"
         )]
         disable_crop: bool,
+
+        /// Memory limit per encoding job in MB
+        #[arg(
+            long,
+            help = "Memory limit per encoding job in MB (default: 2048, auto-adjusted based on encoder and resolution)"
+        )]
+        memory_per_job: Option<usize>,
     },
     
     /// Check if FFmpeg is available and print details about capabilities

@@ -86,8 +86,15 @@ impl ValidationReport {
         }
     }
     
-    /// Add a validation message
+    /// Add a validation message with immediate logging
     pub fn add_message(&mut self, message: ValidationMessage) {
+        // Log the validation message immediately
+        match message.level {
+            ValidationLevel::Info => log::info!("[{}] {}: {}", message.level, message.category, message.message),
+            ValidationLevel::Warning => log::warn!("[{}] {}: {}", message.level, message.category, message.message),
+            ValidationLevel::Error => log::error!("[{}] {}: {}", message.level, message.category, message.message),
+        }
+        
         if message.level == ValidationLevel::Error {
             self.passed = false;
         }
@@ -138,10 +145,16 @@ impl ValidationReport {
     pub fn format(&self) -> String {
         let mut lines = Vec::new();
         
-        lines.push(format!("Validation Report - {}", 
-            if self.passed { "PASSED" } else { "FAILED" }
+        // Create a more prominent header
+        lines.push("=".repeat(80));
+        lines.push(format!("VALIDATION REPORT SUMMARY - {}", 
+            if self.passed { 
+                "✅ PASSED" 
+            } else { 
+                "❌ FAILED" 
+            }
         ));
-        lines.push("-".repeat(80));
+        lines.push("=".repeat(80));
         
         // Group messages by category
         let mut categories = std::collections::HashMap::new();
@@ -152,7 +165,34 @@ impl ValidationReport {
                 .push(msg);
         }
         
-        // Print messages by category
+        // Count errors and warnings by category
+        let mut category_stats = std::collections::HashMap::new();
+        for (category, messages) in &categories {
+            let error_count = messages.iter().filter(|m| m.level == ValidationLevel::Error).count();
+            let warning_count = messages.iter().filter(|m| m.level == ValidationLevel::Warning).count();
+            category_stats.insert(category.clone(), (error_count, warning_count));
+        }
+        
+        // Print validation summary by category first
+        lines.push("VALIDATION BY CATEGORY:".to_string());
+        for (category, (errors, warnings)) in &category_stats {
+            let status = if *errors > 0 {
+                "❌ FAILED"
+            } else if *warnings > 0 {
+                "⚠️ PASSED WITH WARNINGS"
+            } else {
+                "✅ PASSED"
+            };
+            
+            lines.push(format!("  {} - {}: {} error(s), {} warning(s)", 
+                status, category, errors, warnings));
+        }
+        
+        lines.push("".to_string());
+        lines.push("DETAILED REPORT:".to_string());
+        lines.push("-".repeat(80));
+        
+        // Print detailed messages by category
         for (category, messages) in categories {
             lines.push(format!("Category: {}", category));
             
@@ -165,7 +205,12 @@ impl ValidationReport {
             });
             
             for msg in sorted_messages {
-                lines.push(format!("  [{}] {}", msg.level, msg.message));
+                let prefix = match msg.level {
+                    ValidationLevel::Error => "❌",
+                    ValidationLevel::Warning => "⚠️",
+                    ValidationLevel::Info => "ℹ️",
+                };
+                lines.push(format!("  {} [{}] {}", prefix, msg.level, msg.message));
             }
             
             lines.push("".to_string());
@@ -176,10 +221,22 @@ impl ValidationReport {
         let warning_count = self.warnings().len();
         let info_count = self.infos().len();
         
-        lines.push("-".repeat(80));
-        lines.push(format!("Summary: {} error(s), {} warning(s), {} info message(s)",
+        lines.push("=".repeat(80));
+        lines.push(format!("OVERALL SUMMARY: {} error(s), {} warning(s), {} info message(s)",
             error_count, warning_count, info_count
         ));
+        
+        // Status conclusion
+        if self.passed {
+            if warning_count > 0 {
+                lines.push("⚠️ VALIDATION PASSED WITH WARNINGS - Output may have minor issues".to_string());
+            } else {
+                lines.push("✅ VALIDATION PASSED - Output meets all quality criteria".to_string());
+            }
+        } else {
+            lines.push("❌ VALIDATION FAILED - Output has quality issues that should be addressed".to_string());
+        }
+        lines.push("=".repeat(80));
         
         lines.join("\n")
     }

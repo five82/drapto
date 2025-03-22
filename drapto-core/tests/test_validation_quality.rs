@@ -1,13 +1,5 @@
 use std::path::Path;
 use drapto_core::validation::{ValidationReport, comprehensive_validation};
-use drapto_core::validation::quality;
-
-#[test]
-fn test_is_vmaf_available() {
-    // This test just checks that the function runs without crashing
-    let available = quality::is_vmaf_available();
-    println!("VMAF available: {}", available);
-}
 
 /// This test requires real media files to validate, so it's disabled by default
 #[test]
@@ -21,7 +13,7 @@ fn test_comprehensive_validation_with_files() {
         return;
     }
     
-    match comprehensive_validation(test_file) {
+    match comprehensive_validation(test_file, None) {
         Ok(report) => {
             println!("Validation report:\n{}", report);
             

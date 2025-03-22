@@ -180,4 +180,40 @@ impl FFprobe {
         
         Ok(hwaccels)
     }
+    
+    /// Check if hardware decoding is supported on this platform
+    /// Returns the appropriate hardware acceleration option for FFmpeg
+    pub fn check_hardware_decoding(&self) -> Result<Option<String>> {
+        // On MacOS, check for VideoToolbox
+        if cfg!(target_os = "macos") {
+            match self.get_hwaccels()? {
+                hwaccels if hwaccels.iter().any(|h| h == "videotoolbox") => {
+                    log::info!("Found VideoToolbox hardware decoding on macOS");
+                    return Ok(Some("-hwaccel videotoolbox".to_string()));
+                }
+                _ => {
+                    log::info!("VideoToolbox not available on macOS");
+                    return Ok(None);
+                }
+            }
+        }
+        
+        // On Linux, check for VAAPI
+        if cfg!(target_os = "linux") {
+            match self.get_hwaccels()? {
+                hwaccels if hwaccels.iter().any(|h| h == "vaapi") => {
+                    log::info!("Found VAAPI hardware decoding on Linux");
+                    return Ok(Some("-hwaccel vaapi".to_string()));
+                }
+                _ => {
+                    log::info!("VAAPI not available on Linux");
+                    return Ok(None);
+                }
+            }
+        }
+        
+        // No supported hardware decoding for other platforms
+        log::info!("No supported hardware decoding on this platform");
+        Ok(None)
+    }
 }

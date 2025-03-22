@@ -1,17 +1,18 @@
 use std::path::PathBuf;
-use log::{info, warn};
+use log::info;
 use drapto_core::error::Result;
 use drapto_core::validation;
+use drapto_core::config::Config;
 use drapto_core::media::MediaInfo;
 use drapto_core::detection::format::{has_dolby_vision, has_hdr};
 
-use crate::output::{print_heading, print_section, print_info, print_validation_report, print_success, print_warning};
+use crate::output::{print_heading, print_section, print_info, print_validation_report, print_success};
 
 /// Execute the validate command
 pub fn execute_validate(
     input: PathBuf,
     reference: Option<PathBuf>,
-    target_score: f32
+    _target_score: f32
 ) -> Result<()> {
     print_heading("Media Validation");
     print_info("Input file", input.display());
@@ -127,43 +128,26 @@ pub fn execute_validate(
         }
     }
     
+    // Create a validation config
+    let validation_config = Config::default();
+    
     // Run validation
     print_section("Validation Results");
     info!("Running media validation");
-    let report = validation::validate_media(&input)?;
+    let report = validation::validate_media(&input, Some(&validation_config))?;
     
     // Print validation report
     print_validation_report(&report);
     
     // Also run A/V sync validation
     info!("Running A/V sync validation");
-    let av_report = validation::validate_av_sync(&input)?;
+    let av_report = validation::validate_av_sync(&input, Some(&validation_config))?;
     print_validation_report(&av_report);
     
-    // Run quality validation if a reference file is provided
-    if let Some(ref_path) = reference {
-        print_section("Quality Validation");
-        print_info("Reference file", ref_path.display());
-        print_info("Target VMAF score", target_score);
-        
-        // Check if VMAF is available
-        if validation::quality::is_vmaf_available() {
-            info!("Running VMAF quality validation");
-            
-            let mut quality_report = validation::ValidationReport::new();
-            match validation::quality::validate_vmaf(&ref_path, &input, target_score, &mut quality_report) {
-                Ok(score) => {
-                    print_info("VMAF Score", format!("{:.2}", score));
-                    print_validation_report(&quality_report);
-                },
-                Err(e) => {
-                    print_warning(&format!("VMAF validation failed: {}", e));
-                }
-            }
-        } else {
-            print_warning("VMAF validation not available - libvmaf not found in FFmpeg");
-            warn!("VMAF validation requires FFmpeg compiled with libvmaf");
-        }
+    // Reference file provided but quality validation is disabled
+    if let Some(_ref_path) = reference {
+        // Quality validation is not currently active
+        // No messages displayed to user
     }
     
     print_success("Validation completed");

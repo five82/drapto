@@ -10,6 +10,7 @@ use std::sync::Arc;
 use chrono::Local;
 use log::{info, warn, error};
 use thiserror::Error;
+use crate::validation::ValidationLevel;
 
 use crate::error::{DraptoError, Result};
 use crate::config::Config;
@@ -97,16 +98,51 @@ pub struct ValidationSummary {
     
     /// A/V sync validation passed
     pub sync_passed: bool,
+
+    /// Subtitles validation passed
+    pub subtitles_passed: bool,
+    
+    /// Duration validation passed
+    pub duration_passed: bool,
+    
+    /// Codec validation passed
+    pub codec_passed: bool,
+    
+    /// Quality validation passed
+    pub quality_passed: bool,
+    
+    /// Overall validation status
+    pub overall_passed: bool,
+    
+    /// Category-specific warnings and errors
+    pub category_stats: std::collections::HashMap<String, (usize, usize)>,
 }
 
 impl From<&ValidationReport> for ValidationSummary {
     fn from(report: &ValidationReport) -> Self {
+        // Count errors and warnings by category
+        let mut category_stats = std::collections::HashMap::new();
+        for msg in &report.messages {
+            let entry = category_stats.entry(msg.category.clone()).or_insert((0, 0));
+            match msg.level {
+                ValidationLevel::Error => entry.0 += 1,
+                ValidationLevel::Warning => entry.1 += 1,
+                _ => {}
+            }
+        }
+        
         Self {
             warning_count: report.warnings().len(),
             error_count: report.errors().len(),
             video_passed: !report.errors().iter().any(|e| e.category == "Video"),
             audio_passed: !report.errors().iter().any(|e| e.category == "Audio"),
             sync_passed: !report.errors().iter().any(|e| e.category == "A/V Sync"),
+            subtitles_passed: !report.errors().iter().any(|e| e.category == "Subtitles"),
+            duration_passed: !report.errors().iter().any(|e| e.category == "Duration"),
+            codec_passed: !report.errors().iter().any(|e| e.category == "Codec"),
+            quality_passed: !report.errors().iter().any(|e| e.category == "Quality"),
+            overall_passed: report.passed,
+            category_stats,
         }
     }
 }
@@ -222,11 +258,13 @@ impl EncodingPipeline {
         
         // 1. Detect format (Dolby Vision, HDR, etc.)
         self.report_progress(0.05, "Detecting format");
+        crate::logging::log_section("FORMAT DETECTION");
         let is_dolby_vision = detect_dolby_vision(input_file);
         info!("Dolby Vision: {}", if is_dolby_vision { "Yes" } else { "No" });
         
         // 2. Segment the video if needed
         self.report_progress(0.1, "Analyzing video");
+        crate::logging::log_section("VIDEO SEGMENTATION");
         let segments = if self.options.config.use_segmentation {
             info!("Using segmented encoding");
             segment_video(input_file, &segments_dir, &self.options.config)?
@@ -237,6 +275,7 @@ impl EncodingPipeline {
         
         // 3. Encode video (either directly or via segments)
         self.report_progress(0.2, "Encoding video");
+        crate::logging::log_section("VIDEO ENCODING");
         let video_track = if segments.len() > 1 {
             // Use parallel encoding for segments
             self.encode_segments(input_file, &segments, &encoded_segments_dir)?
@@ -249,7 +288,11 @@ impl EncodingPipeline {
                 crop_filter: None, // TODO: implement crop detection
                 parallel_jobs: self.options.config.parallel_jobs,
                 quality: self.options.config.target_quality,
-                hardware_acceleration: self.options.config.use_hardware_encoding,
+                hw_accel_option: if self.options.config.hardware_acceleration { 
+                    Some(self.options.config.hw_accel_option.clone()) 
+                } else { 
+                    None 
+                },
                 scenes: None,
             };
             
@@ -258,13 +301,21 @@ impl EncodingPipeline {
 
         // 4. Encode audio
         self.report_progress(0.7, "Encoding audio");
+        crate::logging::log_section("AUDIO ENCODING");
         let audio_options = AudioEncodingOptions {
             working_dir: temp_dir.clone(),
+            quality: None, // Use default quality
+            hw_accel_option: if self.options.config.hardware_acceleration { 
+                Some(self.options.config.hw_accel_option.clone()) 
+            } else { 
+                None 
+            },
         };
         let audio_tracks = encode_audio(input_file, &audio_options)?;
         
         // 5. Mux tracks
         self.report_progress(0.85, "Muxing tracks");
+        crate::logging::log_section("MUXING AND FINALIZATION");
         let muxer = Muxer::new();
         let muxed_file = muxer.mux_tracks(
             video_track, 
@@ -275,8 +326,45 @@ impl EncodingPipeline {
         
         // 6. Validate output
         self.report_progress(0.95, "Validating output");
-        let validation_report = validation::validate_output(input_file, &muxed_file)?;
+        crate::logging::log_section("VALIDATION");
+        info!("Running comprehensive validation of encoding output");
+        
+        let validation_report = validation::validate_output(input_file, &muxed_file, None)?;
         let validation_summary = ValidationSummary::from(&validation_report);
+        
+        // Log validation summary by category
+        crate::logging::log_subsection("VALIDATION CATEGORIES SUMMARY");
+        for (category, (errors, warnings)) in &validation_summary.category_stats {
+            let status_icon = if *errors > 0 {
+                "❌"
+            } else if *warnings > 0 {
+                "⚠️"
+            } else {
+                "✅"
+            };
+            
+            if *errors > 0 {
+                error!("{} {} validation: {} error(s), {} warning(s)", 
+                      status_icon, category, errors, warnings);
+            } else if *warnings > 0 {
+                warn!("{} {} validation: {} warning(s)", 
+                     status_icon, category, warnings);
+            } else {
+                info!("{} {} validation: Passed", status_icon, category);
+            }
+        }
+        
+        // Log overall validation result
+        crate::logging::log_subsection("OVERALL VALIDATION RESULT");
+        if validation_summary.overall_passed {
+            if validation_summary.warning_count > 0 {
+                warn!("⚠️ Validation passed with {} warning(s)", validation_summary.warning_count);
+            } else {
+                info!("✅ Validation passed - all quality checks successful");
+            }
+        } else {
+            error!("❌ Validation failed with {} error(s)", validation_summary.error_count);
+        }
         
         // Calculate statistics
         let encoding_time = start_time.elapsed().as_secs_f64();
@@ -441,13 +529,18 @@ impl EncodingPipeline {
             crop_filter: None, // TODO: implement crop detection
             parallel_jobs: self.options.config.parallel_jobs,
             quality: self.options.config.target_quality,
-            hardware_acceleration: self.options.config.use_hardware_encoding,
+            hw_accel_option: if self.options.config.hardware_acceleration { 
+                Some(self.options.config.hw_accel_option.clone()) 
+            } else { 
+                None 
+            },
             scenes: None,
         };
         
         // Use the real encoder implementation
         let output_path = encode_video(input_file, &video_options)?;
         
+        crate::logging::log_subsection("CONCATENATION");
         info!("Encoded segments merged to {}", output_path.display());
         
         Ok(output_path)
@@ -488,7 +581,7 @@ pub fn validate_pipeline_output(
     input_file: &Path,
     output_file: &Path
 ) -> Result<ValidationReport> {
-    validation::validate_output(input_file, output_file)
+    validation::validate_output(input_file, output_file, None)
 }
 
 #[cfg(test)]
@@ -514,5 +607,16 @@ mod tests {
         assert!(summary.video_passed);
         assert!(!summary.audio_passed);
         assert!(summary.sync_passed);
+        assert!(summary.subtitles_passed);
+        assert!(summary.duration_passed);
+        assert!(summary.codec_passed);
+        assert!(summary.quality_passed);
+        assert!(!summary.overall_passed);
+        
+        // Check category stats
+        let stats = &summary.category_stats;
+        assert_eq!(stats.len(), 2);
+        assert_eq!(stats.get("Video"), Some(&(0, 1)));
+        assert_eq!(stats.get("Audio"), Some(&(1, 0)));
     }
 }

@@ -73,6 +73,22 @@ pub struct ValidationResult {
     
     /// A/V sync validation passed
     pub sync_passed: bool,
+    
+    /// Subtitles validation passed
+    pub subtitles_passed: bool,
+    
+    /// Duration validation passed
+    pub duration_passed: bool,
+    
+    /// Codec validation passed
+    pub codec_passed: bool,
+    
+    /// Quality validation passed
+    pub quality_passed: bool,
+    
+    /// Category-specific validation details
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub categories: Option<std::collections::HashMap<String, (usize, usize)>>,
 }
 
 impl EncodingSummary {
@@ -93,12 +109,17 @@ impl EncodingSummary {
             input_format: None,
             output_format: None,
             validation: ValidationResult {
-                passed: stats.validation_summary.error_count == 0,
+                passed: stats.validation_summary.overall_passed,
                 errors: stats.validation_summary.error_count,
                 warnings: stats.validation_summary.warning_count,
                 video_passed: stats.validation_summary.video_passed,
                 audio_passed: stats.validation_summary.audio_passed,
                 sync_passed: stats.validation_summary.sync_passed,
+                subtitles_passed: stats.validation_summary.subtitles_passed,
+                duration_passed: stats.validation_summary.duration_passed,
+                codec_passed: stats.validation_summary.codec_passed,
+                quality_passed: stats.validation_summary.quality_passed,
+                categories: Some(stats.validation_summary.category_stats.clone()),
             },
         }
     }
@@ -133,6 +154,17 @@ impl EncodingSummary {
         
         // Create validation result
         let validation = if let Some(report) = validation_report {
+            // Count errors and warnings by category
+            let mut categories = std::collections::HashMap::new();
+            for msg in &report.messages {
+                let entry = categories.entry(msg.category.clone()).or_insert((0, 0));
+                match msg.level {
+                    crate::validation::ValidationLevel::Error => entry.0 += 1,
+                    crate::validation::ValidationLevel::Warning => entry.1 += 1,
+                    _ => {}
+                }
+            }
+            
             ValidationResult {
                 passed: report.passed,
                 errors: report.errors().len(),
@@ -140,6 +172,11 @@ impl EncodingSummary {
                 video_passed: !report.errors().iter().any(|e| e.category == "Video"),
                 audio_passed: !report.errors().iter().any(|e| e.category == "Audio"),
                 sync_passed: !report.errors().iter().any(|e| e.category == "A/V Sync"),
+                subtitles_passed: !report.errors().iter().any(|e| e.category == "Subtitles"),
+                duration_passed: !report.errors().iter().any(|e| e.category == "Duration"),
+                codec_passed: !report.errors().iter().any(|e| e.category == "Codec"),
+                quality_passed: !report.errors().iter().any(|e| e.category == "Quality"),
+                categories: Some(categories),
             }
         } else {
             ValidationResult {
@@ -149,6 +186,11 @@ impl EncodingSummary {
                 video_passed: true,
                 audio_passed: true,
                 sync_passed: true,
+                subtitles_passed: true,
+                duration_passed: true,
+                codec_passed: true,
+                quality_passed: true,
+                categories: None,
             }
         };
         
@@ -234,13 +276,45 @@ impl fmt::Display for EncodingSummary {
         writeln!(f, "Audio tracks: {}", self.audio_track_count)?;
         writeln!(f, "Completed:    {}", self.completion_time.format("%Y-%m-%d %H:%M:%S"))?;
         
-        writeln!(f, "\n--- Validation Results ---")?;
-        writeln!(f, "Status:       {}", if self.validation.passed { "✅ PASSED" } else { "❌ FAILED" })?;
+        writeln!(f, "\n=== Validation Results ===")?;
+        writeln!(f, "Status:       {}", if self.validation.passed { 
+            if self.validation.warnings > 0 {
+                "⚠️ PASSED WITH WARNINGS"
+            } else {
+                "✅ PASSED" 
+            }
+        } else { 
+            "❌ FAILED" 
+        })?;
         writeln!(f, "Errors:       {}", self.validation.errors)?;
         writeln!(f, "Warnings:     {}", self.validation.warnings)?;
+        
+        writeln!(f, "\n--- Validation by Category ---")?;
         writeln!(f, "Video:        {}", if self.validation.video_passed { "✅ OK" } else { "❌ FAILED" })?;
         writeln!(f, "Audio:        {}", if self.validation.audio_passed { "✅ OK" } else { "❌ FAILED" })?;
         writeln!(f, "A/V Sync:     {}", if self.validation.sync_passed { "✅ OK" } else { "❌ FAILED" })?;
+        writeln!(f, "Subtitles:    {}", if self.validation.subtitles_passed { "✅ OK" } else { "❌ FAILED" })?;
+        writeln!(f, "Duration:     {}", if self.validation.duration_passed { "✅ OK" } else { "❌ FAILED" })?;
+        writeln!(f, "Codec:        {}", if self.validation.codec_passed { "✅ OK" } else { "❌ FAILED" })?;
+        writeln!(f, "Quality:      {}", if self.validation.quality_passed { "✅ OK" } else { "❌ FAILED" })?;
+        
+        // Show detailed category stats if available
+        if let Some(categories) = &self.validation.categories {
+            if !categories.is_empty() {
+                writeln!(f, "\n--- Validation Details ---")?;
+                for (category, (errors, warnings)) in categories {
+                    let status = if *errors > 0 {
+                        "❌"
+                    } else if *warnings > 0 {
+                        "⚠️"
+                    } else {
+                        "✅"
+                    };
+                    writeln!(f, "{} {}: {} error(s), {} warning(s)", 
+                            status, category, errors, warnings)?;
+                }
+            }
+        }
         
         Ok(())
     }

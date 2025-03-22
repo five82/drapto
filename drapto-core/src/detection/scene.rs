@@ -58,15 +58,17 @@ pub fn detect_scenes<P: AsRef<Path>>(
         return Ok(vec![total_duration]);
     }
     
-    // Determine scene detection threshold based on HDR status
-    let is_hdr = media_info.is_hdr();
-    let threshold = if is_hdr {
-        info!("Using HDR scene threshold: {}", hdr_scene_threshold);
-        hdr_scene_threshold
+    // Determine threshold to use based on parameter values, not content type
+    // When scene_threshold == hdr_scene_threshold, we're already using HDR threshold (set by CLI)
+    let is_using_hdr_threshold = scene_threshold == hdr_scene_threshold;
+    let threshold = scene_threshold;
+    
+    // Log which threshold we're using
+    if is_using_hdr_threshold {
+        info!("Using HDR scene threshold: {}", threshold);
     } else {
-        info!("Using standard scene threshold: {}", scene_threshold);
-        scene_threshold
-    };
+        info!("Using SDR scene threshold: {}", threshold);
+    }
     
     // Get candidate scenes
     match get_candidate_scenes(&input_file, threshold) {

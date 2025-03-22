@@ -24,6 +24,8 @@ num_cpus = { workspace = true }
 sysinfo = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
+colored = { workspace = true }
+indicatif = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

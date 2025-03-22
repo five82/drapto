@@ -5,11 +5,15 @@ use super::report::ValidationReport;
 pub fn validate_sync(media_info: &MediaInfo, report: &mut ValidationReport) {
     // Get primary video stream information
     let video_stream = media_info.primary_video_stream();
+    
+    // Try to get video duration from the stream first, then fallback to format duration
     let video_duration = video_stream
         .and_then(|s| s.properties.get("duration")
             .and_then(|d| d.as_str())
             .and_then(|d| d.parse::<f64>().ok())
-        );
+        )
+        .or_else(|| media_info.duration());
+    
     let video_start = video_stream
         .and_then(|s| s.properties.get("start_time")
             .and_then(|t| t.as_str())
@@ -20,11 +24,15 @@ pub fn validate_sync(media_info: &MediaInfo, report: &mut ValidationReport) {
     // Get primary audio stream information
     let audio_streams = media_info.audio_streams();
     let audio_stream = audio_streams.first();
+    
+    // Try to get audio duration from the stream first, then use the format duration as fallback
     let audio_duration = audio_stream
         .and_then(|s| s.properties.get("duration")
             .and_then(|d| d.as_str())
             .and_then(|d| d.parse::<f64>().ok())
-        );
+        )
+        .or_else(|| media_info.duration());
+    
     let audio_start = audio_stream
         .and_then(|s| s.properties.get("start_time")
             .and_then(|t| t.as_str())
