@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::fs;
 use std::time::Instant;
-use log::{info, warn, debug};
+use log::{info, debug};
 use drapto_core::error::Result;
 use drapto_core::Config;
 use drapto_core::media::MediaInfo;
@@ -102,7 +102,6 @@ pub fn execute_encode(
     let is_dolby_vision = detect_dolby_vision(&input);
     if is_dolby_vision {
         print_info("Dolby Vision", "Yes");
-        warn!("Dolby Vision content detected. This may affect encoding quality.");
     } else {
         print_info("Dolby Vision", "No");
     }
