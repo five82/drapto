@@ -347,21 +347,70 @@ impl MediaInfo {
     
     /// Check if the media contains Dolby Vision content
     pub fn is_dolby_vision(&self) -> bool {
-        self.primary_video_stream()
-            .map(|stream| {
-                // Check codec and/or Dolby Vision metadata
-                let is_dv_codec = stream.codec_name.contains("dvh1") 
-                    || stream.codec_name.contains("dolby");
-                
-                // Check for specific Dolby Vision tags
-                let has_dv_tag = stream.tags.iter().any(|(k, v)| {
-                    k.to_lowercase().contains("dolby_vision") || 
-                    v.to_lowercase().contains("dolby vision")
-                });
-                
-                is_dv_codec || has_dv_tag
-            })
-            .unwrap_or(false)
+        // Check format tags first
+        if let Some(format) = &self.format {
+            if format.tags.iter().any(|(k, v)| {
+                let k_lower = k.to_lowercase();
+                let v_lower = v.to_lowercase();
+                k_lower.contains("dolby_vision") || 
+                k_lower.contains("dovi") ||
+                v_lower.contains("dolby vision") ||
+                v_lower.contains("dv")
+            }) {
+                return true;
+            }
+        }
+        
+        // Then check video stream
+        if let Some(stream) = self.primary_video_stream() {
+            // Check codec names
+            let codec_name = stream.codec_name.to_lowercase();
+            if codec_name.contains("dvh") || 
+               codec_name.contains("dolby") || 
+               codec_name.contains("dovi") {
+                return true;
+            }
+            
+            // Check stream tags
+            if stream.tags.iter().any(|(k, v)| {
+                let k_lower = k.to_lowercase();
+                let v_lower = v.to_lowercase();
+                k_lower.contains("dolby_vision") || 
+                k_lower.contains("dovi") ||
+                k_lower.contains("dv_profile") ||
+                k_lower.contains("dv_level") ||
+                v_lower.contains("dolby vision") ||
+                v_lower.contains("dv")
+            }) {
+                return true;
+            }
+            
+            // Check codec tag
+            if let Some(codec_tag) = stream.properties.get("codec_tag_string")
+                .and_then(|v| v.as_str()) {
+                let codec_tag_lower = codec_tag.to_lowercase();
+                if codec_tag_lower == "dovi" || 
+                   codec_tag_lower.contains("dvh") {
+                    return true;
+                }
+            }
+            
+            // Check for specialized metadata
+            if let Some(side_data_list) = stream.properties.get("side_data_list")
+                .and_then(|v| v.as_array()) {
+                for side_data in side_data_list {
+                    if let Some(side_data_type) = side_data.get("side_data_type")
+                        .and_then(|v| v.as_str()) {
+                        if side_data_type.contains("DOVI") || 
+                           side_data_type.contains("Dolby Vision") {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        
+        false
     }
 
     /// Get the bitrate in bits per second

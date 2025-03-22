@@ -95,6 +95,7 @@ fn run_hdr_blackdetect<P: AsRef<Path>>(input_file: P, crop_threshold: i32) -> i3
 pub fn detect_dolby_vision<P: AsRef<Path>>(input_file: P) -> bool {
     let input_path = input_file.as_ref();
     
+    // First attempt: Use mediainfo which is the most reliable for Dolby Vision detection
     let mut cmd = Command::new("mediainfo");
     cmd.arg(input_path);
     
@@ -104,18 +105,34 @@ pub fn detect_dolby_vision<P: AsRef<Path>>(input_file: P) -> bool {
             let detected = output_stdout.contains("Dolby Vision");
             
             if detected {
-                info!("Dolby Vision detected");
-            } else {
-                info!("Dolby Vision not detected");
+                info!("Dolby Vision detected via mediainfo");
+                return true;
             }
-            
-            detected
         },
         Err(e) => {
             warn!("Failed to run mediainfo on {}: {}", input_path.display(), e);
-            false
+            // Fall through to FFprobe-based detection
         }
     }
+    
+    // Second attempt: Check using ffprobe via MediaInfo struct
+    let media_info = match MediaInfo::from_path(input_path) {
+        Ok(info) => info,
+        Err(e) => {
+            warn!("Failed to get media info for Dolby Vision detection: {}", e);
+            return false;
+        }
+    };
+    
+    let is_dv = has_dolby_vision(&media_info);
+    
+    if is_dv {
+        info!("Dolby Vision detected via ffprobe");
+    } else {
+        info!("Dolby Vision not detected");
+    }
+    
+    is_dv
 }
 
 /// Get video properties from media info
@@ -380,29 +397,67 @@ pub fn has_hdr(media_info: &MediaInfo) -> bool {
 ///
 /// * `bool` - True if Dolby Vision content is detected
 pub fn has_dolby_vision(media_info: &MediaInfo) -> bool {
-    // Check for Dolby Vision in tags
+    // Check for Dolby Vision in format tags
     if let Some(format) = &media_info.format {
         for (key, value) in &format.tags {
-            if key.to_lowercase().contains("dolby_vision") || 
-               value.to_lowercase().contains("dolby vision") {
+            let key_lower = key.to_lowercase();
+            let value_lower = value.to_lowercase();
+            
+            if key_lower.contains("dolby_vision") || 
+               key_lower.contains("dovi") ||
+               value_lower.contains("dolby vision") ||
+               value_lower.contains("dv") {
+                info!("Dolby Vision detected in format tags: {}={}", key, value);
                 return true;
             }
         }
     }
     
-    // Check for Dolby Vision in stream tags
+    // Check for Dolby Vision in stream tags and properties
     if let Some(video_stream) = media_info.primary_video_stream() {
+        // Check stream tags
         for (key, value) in &video_stream.tags {
-            if key.to_lowercase().contains("dolby_vision") || 
-               value.to_lowercase().contains("dolby vision") {
+            let key_lower = key.to_lowercase();
+            let value_lower = value.to_lowercase();
+            
+            if key_lower.contains("dolby_vision") || 
+               key_lower.contains("dovi") ||
+               value_lower.contains("dolby vision") ||
+               value_lower.contains("dv") ||
+               key_lower.contains("dv_profile") ||
+               key_lower.contains("dv_level") {
+                info!("Dolby Vision detected in video stream tags: {}={}", key, value);
                 return true;
             }
         }
         
+        // Check codec and codec tags
+        let codec_name = video_stream.codec_name.to_lowercase();
+        if codec_name.contains("dvh") || 
+           codec_name.contains("dolby") || 
+           codec_name.contains("dovi") {
+            info!("Dolby Vision detected from codec name: {}", video_stream.codec_name);
+            return true;
+        }
+        
         // Check for dovi codec tag
         if let Some(codec_tag) = video_stream.properties.get("codec_tag_string").and_then(|v| v.as_str()) {
-            if codec_tag == "dovi" {
+            let codec_tag_lower = codec_tag.to_lowercase();
+            if codec_tag_lower == "dovi" || codec_tag_lower.contains("dvh") {
+                info!("Dolby Vision detected from codec tag: {}", codec_tag);
                 return true;
+            }
+        }
+        
+        // Check for SEI and other metadata that indicates Dolby Vision
+        if let Some(side_data_list) = video_stream.properties.get("side_data_list").and_then(|v| v.as_array()) {
+            for side_data in side_data_list {
+                if let Some(side_data_type) = side_data.get("side_data_type").and_then(|v| v.as_str()) {
+                    if side_data_type.contains("DOVI") || side_data_type.contains("Dolby Vision") {
+                        info!("Dolby Vision detected from side data: {}", side_data_type);
+                        return true;
+                    }
+                }
             }
         }
     }
