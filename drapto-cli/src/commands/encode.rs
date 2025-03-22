@@ -5,7 +5,7 @@ use log::{info, warn, debug};
 use drapto_core::error::Result;
 use drapto_core::Config;
 use drapto_core::media::MediaInfo;
-use drapto_core::detection::format::{has_dolby_vision, has_hdr, detect_crop};
+use drapto_core::detection::format::{detect_dolby_vision, has_hdr, detect_crop};
 use drapto_core::detection::scene::detect_scenes;
 use drapto_core::encoding::video::{encode_video, VideoEncodingOptions};
 use drapto_core::encoding::audio::{encode_audio, AudioEncodingOptions};
@@ -98,7 +98,8 @@ pub fn execute_encode(
         print_info("HDR", "No");
     }
     
-    let is_dolby_vision = has_dolby_vision(&media_info);
+    // Use dedicated mediainfo-based Dolby Vision detection
+    let is_dolby_vision = detect_dolby_vision(&input);
     if is_dolby_vision {
         print_info("Dolby Vision", "Yes");
         warn!("Dolby Vision content detected. This may affect encoding quality.");
@@ -192,7 +193,7 @@ pub fn execute_encode(
     print_progress("Encoding video...")?;
     
     let video_output = encode_video(&input, &video_options)?;
-    print_success(&format!("Video encoded to: {}", video_output.display()));
+    print_success(&format!("Video encoded to: {} (preserving original filename)", video_output.display()));
     
     // Encode audio
     print_section("Audio Encoding");

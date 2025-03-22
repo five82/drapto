@@ -95,7 +95,7 @@ fn run_hdr_blackdetect<P: AsRef<Path>>(input_file: P, crop_threshold: i32) -> i3
 pub fn detect_dolby_vision<P: AsRef<Path>>(input_file: P) -> bool {
     let input_path = input_file.as_ref();
     
-    // First attempt: Use mediainfo which is the most reliable for Dolby Vision detection
+    // Use mediainfo which is the most reliable for Dolby Vision detection
     let mut cmd = Command::new("mediainfo");
     cmd.arg(input_path);
     
@@ -105,34 +105,18 @@ pub fn detect_dolby_vision<P: AsRef<Path>>(input_file: P) -> bool {
             let detected = output_stdout.contains("Dolby Vision");
             
             if detected {
-                info!("Dolby Vision detected via mediainfo");
-                return true;
+                info!("Dolby Vision detected");
+            } else {
+                info!("Dolby Vision not detected");
             }
+            
+            detected
         },
         Err(e) => {
             warn!("Failed to run mediainfo on {}: {}", input_path.display(), e);
-            // Fall through to FFprobe-based detection
+            false
         }
     }
-    
-    // Second attempt: Check using ffprobe via MediaInfo struct
-    let media_info = match MediaInfo::from_path(input_path) {
-        Ok(info) => info,
-        Err(e) => {
-            warn!("Failed to get media info for Dolby Vision detection: {}", e);
-            return false;
-        }
-    };
-    
-    let is_dv = has_dolby_vision(&media_info);
-    
-    if is_dv {
-        info!("Dolby Vision detected via ffprobe");
-    } else {
-        info!("Dolby Vision not detected");
-    }
-    
-    is_dv
 }
 
 /// Get video properties from media info
