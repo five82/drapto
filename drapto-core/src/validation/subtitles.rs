@@ -1,5 +1,7 @@
+use std::path::Path;
 use crate::media::MediaInfo;
 use crate::media::StreamInfo;
+use crate::error::Result;
 use super::ValidationReport;
 
 /// Validate subtitle streams
@@ -105,6 +107,112 @@ fn validate_subtitle_stream(index: usize, stream: &StreamInfo, report: &mut Vali
             );
         }
     }
+}
+
+/// Compare subtitle tracks between original and encoded files
+pub fn compare_subtitles<P1, P2>(
+    input_path: P1,
+    output_path: P2,
+    report: &mut ValidationReport
+) -> Result<()>
+where
+    P1: AsRef<Path>,
+    P2: AsRef<Path>,
+{
+    // Get media info for both files
+    let input_media = MediaInfo::from_path(input_path.as_ref())?;
+    let output_media = MediaInfo::from_path(output_path.as_ref())?;
+    
+    // Get subtitle streams
+    let input_subs = input_media.subtitle_streams();
+    let output_subs = output_media.subtitle_streams();
+    
+    // Check if subtitle tracks were preserved
+    if !input_subs.is_empty() && output_subs.is_empty() {
+        if input_subs.len() == 1 {
+            report.add_error(
+                "Subtitle track was lost during encoding",
+                "Subtitles"
+            );
+        } else {
+            report.add_error(
+                format!("All {} subtitle tracks were lost during encoding", input_subs.len()),
+                "Subtitles"
+            );
+        }
+        return Ok(());
+    }
+    
+    // Compare number of subtitle tracks
+    if input_subs.len() != output_subs.len() {
+        report.add_warning(
+            format!(
+                "Subtitle track count changed: {} → {}",
+                input_subs.len(),
+                output_subs.len()
+            ),
+            "Subtitles"
+        );
+    } else {
+        report.add_info(
+            format!("{} subtitle tracks preserved", input_subs.len()),
+            "Subtitles"
+        );
+    }
+    
+    // Compare language tags
+    let mut input_langs = Vec::new();
+    let mut output_langs = Vec::new();
+    
+    for stream in &input_subs {
+        if let Some(lang) = stream.tags.get("language") {
+            input_langs.push(lang.clone());
+        }
+    }
+    
+    for stream in &output_subs {
+        if let Some(lang) = stream.tags.get("language") {
+            output_langs.push(lang.clone());
+        }
+    }
+    
+    // Check if all languages are preserved
+    let mut missing_langs = Vec::new();
+    for lang in &input_langs {
+        if !output_langs.contains(lang) {
+            missing_langs.push(lang.clone());
+        }
+    }
+    
+    if !missing_langs.is_empty() {
+        report.add_warning(
+            format!("Missing subtitle language(s): {}", missing_langs.join(", ")),
+            "Subtitles"
+        );
+    }
+    
+    // Check for forced subtitles
+    let input_has_forced = input_subs.iter().any(|s| {
+        s.tags.get("DISPOSITION:forced").map(|v| v == "1").unwrap_or(false)
+    });
+    
+    let output_has_forced = output_subs.iter().any(|s| {
+        s.tags.get("DISPOSITION:forced").map(|v| v == "1").unwrap_or(false)
+    });
+    
+    if input_has_forced && !output_has_forced {
+        report.add_warning(
+            "Forced subtitle flag was lost during encoding",
+            "Subtitles"
+        );
+    } else if input_has_forced && output_has_forced {
+        report.add_info(
+            "Forced subtitle flag preserved",
+            "Subtitles"
+        );
+    }
+    
+    Ok(())
 }
 
 #[cfg(test)]

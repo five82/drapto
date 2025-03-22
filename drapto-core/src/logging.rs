@@ -1,6 +1,8 @@
 use log::{debug, info, warn, LevelFilter};
 use std::io::Write;
 use std::process::Command;
+use std::fs;
+use std::path::Path;
 
 /// Initialize the logger for drapto
 ///
@@ -11,7 +13,14 @@ pub fn init(verbose: bool) {
     } else {
         LevelFilter::Info
     };
+    
+    init_with_level(level, verbose);
+}
 
+/// Initialize the logger with a specific log level
+///
+/// Sets up an env_logger with appropriate formatting and the specified log level
+pub fn init_with_level(level: LevelFilter, _verbose: bool) {
     env_logger::Builder::new()
         .format(|buf, record| {
             let timestamp = buf.timestamp();
@@ -35,6 +44,19 @@ pub fn init(verbose: bool) {
         .init();
     
     debug!("Logger initialized with level: {}", level);
+}
+
+/// Initialize a file logger for a specific encoding session
+///
+/// Creates a log file and returns a file handle to it
+pub fn init_file_logger<P: AsRef<Path>>(file_name: P) -> std::io::Result<fs::File> {
+    // Make sure the parent directory exists
+    if let Some(parent) = file_name.as_ref().parent() {
+        fs::create_dir_all(parent)?;
+    }
+    
+    let file = fs::File::create(file_name)?;
+    Ok(file)
 }
 
 /// Log an encoding progress update

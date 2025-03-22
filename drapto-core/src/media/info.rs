@@ -363,4 +363,44 @@ impl MediaInfo {
             })
             .unwrap_or(false)
     }
+
+    /// Get the bitrate in bits per second
+    pub fn bitrate(&self) -> Option<u64> {
+        // First try to get from format info
+        if let Some(bitrate) = self.format.as_ref().and_then(|f| f.bit_rate) {
+            return Some(bitrate);
+        }
+        
+        // If not available at format level, sum stream bitrates
+        let mut total_bitrate = 0;
+        let mut found_bitrate = false;
+        
+        for stream in &self.streams {
+            if let Some(bit_rate) = stream.properties.get("bit_rate")
+                .and_then(|v| v.as_str())
+                .and_then(|v| v.parse::<u64>().ok()) {
+                total_bitrate += bit_rate;
+                found_bitrate = true;
+            }
+        }
+        
+        if found_bitrate {
+            Some(total_bitrate)
+        } else {
+            // As a fallback, estimate from file size and duration
+            if let (Some(size), Some(duration)) = (
+                self.format.as_ref().and_then(|f| f.size),
+                self.duration()
+            ) {
+                if duration > 0.0 {
+                    // Convert bytes to bits and divide by duration
+                    let bits = size * 8;
+                    let bitrate = (bits as f64 / duration) as u64;
+                    return Some(bitrate);
+                }
+            }
+            
+            None
+        }
+    }
 }

@@ -1,8 +1,13 @@
 //! Encoding module for drapto
 //!
-//! This module will contain functionality for video and audio encoding.
-//! It's currently a placeholder that will be implemented in future phases.
+//! This module contains functionality for video and audio encoding,
+//! including segmentation, parallel encoding, and media processing pipelines.
 
 pub mod video;
 pub mod audio;
 pub mod pipeline;
+pub mod segmentation;
+pub mod memory;
+pub mod parallel;
+pub mod merger;
+pub mod muxer;

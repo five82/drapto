@@ -16,6 +16,7 @@ log = { workspace = true }
 env_logger = { workspace = true }
 anyhow = { workspace = true }
 num_cpus = { workspace = true }
+uuid = { version = "1.6", features = ["v4"] }
 
 [[bin]]
 name = "drapto"

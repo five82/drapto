@@ -12,6 +12,11 @@ pub fn print_section(text: &str) {
     println!("\n--- {} ---", text);
 }
 
+/// Print a separator line
+pub fn print_separator() {
+    println!("\n------------------------------------------------");
+}
+
 /// Print an info line with label and value
 pub fn print_info<T: Display>(label: &str, value: T) {
     println!("{}: {}", label, value);

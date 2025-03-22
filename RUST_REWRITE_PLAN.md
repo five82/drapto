@@ -19,15 +19,15 @@
 4. Create memory-aware scheduler for parallel encoding. parallel chunk encoding tasks can use a significant amount of memory per task depending on the video being encoded. So we need to properly manage tasks so we do not exhaust physical memory.
 
 ## Phase 4: Encoding Implementation
-1. Implement video encoding modules
-2. Build audio encoding functionality
+1. Implement ab-av1 video encoding modules
+2. Build ffmpeg audio encoding functionality
 3. Develop segment merger/concatenation
 4. Create muxing system
 
 ## Phase 5: CLI and Integration
 1. Implement command-line interface
 2. Set up pipeline orchestration
-3. Add validation and quality checks
+3. Add validation and quality checks. Only add quality checks that are already in the python code.
 4. Create summary reporting
 
 ## Key Rust Dependencies

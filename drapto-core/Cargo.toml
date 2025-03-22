@@ -21,3 +21,11 @@ anyhow = { workspace = true }
 thiserror = { workspace = true }
 regex = { workspace = true }
 num_cpus = { workspace = true }
+sysinfo = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+clap = { workspace = true }
+env_logger = { workspace = true }

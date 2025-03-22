@@ -5,7 +5,10 @@
 
 pub mod command;
 pub mod jobs;
+pub mod scheduler;
+pub mod logging;
 
 // Re-export commonly used types and functions
 pub use command::{run_command, run_command_with_progress, ProgressCallback, CommandError};
 pub use jobs::{CommandJob, FFmpegEncodeJob, FFprobeJob, AudioEncodeJob, SegmentationJob, ConcatenationJob};
+pub use scheduler::{MemoryAwareScheduler, SchedulerBuilder, TaskState, TaskStatus, calculate_memory_requirements};

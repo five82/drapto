@@ -16,18 +16,25 @@ pub struct Cli {
     /// Enable verbose logging
     #[arg(short, long, help = "Enable detailed logging output")]
     pub verbose: bool,
+
+    /// Set log level
+    #[arg(
+        long, 
+        help = "Set logging level (debug, info, warn, error)", 
+        value_parser=["debug", "info", "warn", "error"],
+        default_value = "info"
+    )]
+    pub log_level: String,
 }
 
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Encode a video file with optimal settings
+    /// Encode a video file or directory with optimal settings
     Encode {
-        /// Input file path
-        #[arg(short, long, help = "Path to the input video file")]
+        /// Input file or directory path
         input: PathBuf,
         
-        /// Output file path
-        #[arg(short, long, help = "Path where the encoded video will be saved")]
+        /// Output file or directory path
         output: PathBuf,
         
         /// Target VMAF quality (0-100)
@@ -68,11 +75,19 @@ pub enum Commands {
             help = "Directory to store temporary files during encoding (default: system temp dir)"
         )]
         temp_dir: Option<PathBuf>,
+
+        /// Disable automatic crop detection
+        #[arg(
+            long,
+            help = "Disable automatic crop detection",
+            default_value = "false"
+        )]
+        disable_crop: bool,
     },
     
     /// Check if FFmpeg is available and print details about capabilities
     #[command(
-        name = "ffmpeg-info",
+        name = "info",
         about = "Display information about the FFmpeg installation and capabilities"
     )]
     FfmpegInfo,
@@ -80,11 +95,6 @@ pub enum Commands {
     /// Validate a media file for encoding compatibility
     Validate {
         /// Input file path
-        #[arg(
-            short,
-            long,
-            help = "Path to the media file to validate"
-        )]
         input: PathBuf,
         
         /// Reference file for VMAF validation

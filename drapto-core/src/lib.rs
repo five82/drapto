@@ -17,8 +17,11 @@ pub mod detection;
 // Validation functionality
 pub mod validation;
 
-// Encoding functionality (placeholder for future phases)
+// Encoding functionality
 pub mod encoding;
+
+// Reporting and summary
+pub mod reporting;
 
 // Utility functions
 pub mod util;
@@ -31,3 +34,4 @@ pub use error::{DraptoError, Result};
 pub use config::Config;
 pub use media::{MediaInfo, StreamInfo, FormatInfo, StreamType};
 pub use validation::{ValidationReport, ValidationLevel, ValidationMessage};
+pub use reporting::{EncodingSummary, BatchSummary, TimedSummary};

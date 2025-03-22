@@ -39,7 +39,7 @@ pub fn validate_sync(media_info: &MediaInfo, report: &mut ValidationReport) {
     }
     
     if audio_stream.is_none() {
-        report.add_error("No audio stream found for A/V sync validation", "AV Sync");
+        report.add_warning("No audio stream found for A/V sync validation", "AV Sync");
         return;
     }
     
