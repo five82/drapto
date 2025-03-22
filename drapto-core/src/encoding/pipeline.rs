@@ -422,7 +422,7 @@ impl EncodingPipeline {
     /// Encode video segments in parallel and merge them
     fn encode_segments(
         &self, 
-        _input_file: &Path,
+        input_file: &Path,
         segments: &[PathBuf],
         output_dir: &Path,
     ) -> Result<PathBuf> {
@@ -433,12 +433,20 @@ impl EncodingPipeline {
             std::fs::create_dir_all(output_dir)?;
         }
         
-        // TODO: Replace this placeholder implementation with actual segment encoding and merging
-        info!("In a real implementation, would encode segments in parallel here");
+        // Create video encoding options
+        let video_options = VideoEncodingOptions {
+            working_dir: output_dir.to_path_buf(),
+            is_dolby_vision: detect_dolby_vision(input_file),
+            is_hdr: false, // TODO: detect HDR
+            crop_filter: None, // TODO: implement crop detection
+            parallel_jobs: self.options.config.parallel_jobs,
+            quality: self.options.config.target_quality,
+            hardware_acceleration: self.options.config.use_hardware_encoding,
+            scenes: None,
+        };
         
-        // Create mock output to simulate encoding
-        let output_path = output_dir.join("merged_video.mkv");
-        std::fs::copy(segments[0].as_path(), &output_path)?;
+        // Use the real encoder implementation
+        let output_path = encode_video(input_file, &video_options)?;
         
         info!("Encoded segments merged to {}", output_path.display());
         

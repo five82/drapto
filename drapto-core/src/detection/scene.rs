@@ -91,15 +91,151 @@ pub fn detect_scenes<P: AsRef<Path>>(
 pub fn get_candidate_scenes<P: AsRef<Path>>(input_file: P, threshold: f32) -> Result<Vec<f64>> {
     let input_path = input_file.as_ref();
     
-    // Build FFmpeg scene detection command
-    // We'll use the "select" filter with the "scdet" option
-    let scene_filter = format!("select=gte(scene\\,{})", threshold / 100.0);
+    // Try first with a basic scene detection approach
+    if let Ok(scenes) = detect_with_basic_method(input_path, threshold) {
+        if !scenes.is_empty() {
+            debug!("Scene detection successful with basic method, found {} scenes", scenes.len());
+            return Ok(scenes);
+        }
+    }
     
+    // If that fails, try with the more complex scdet filter
+    debug!("Basic scene detection didn't find scenes, trying with scdet filter");
+    let scdet_scenes = detect_with_scdet(input_path, threshold)?;
+    
+    // If still no scenes, try one more method
+    if scdet_scenes.is_empty() {
+        debug!("scdet filter didn't find scenes, trying blackframe detection");
+        detect_with_blackframe(input_path)
+    } else {
+        Ok(scdet_scenes)
+    }
+}
+
+/// Detect scenes using basic frame difference method
+fn detect_with_basic_method<P: AsRef<Path>>(input_path: P, threshold: f32) -> Result<Vec<f64>> {
+    let input_path = input_path.as_ref();
+    let threshold_normalized = threshold / 100.0;
+    
+    // Use a simple showinfo filter to get frame info and manually detect scenes
+    // This is more reliable across different FFmpeg versions
     let mut cmd = Command::new("ffmpeg");
     cmd.args([
         "-hide_banner",
         "-i", input_path.to_str().unwrap_or_default(),
+        "-vf", "showinfo",  // Just show all frame info
+        "-loglevel", "info",
+        "-f", "null", "-"
+    ]);
+    
+    // Run command and parse output
+    let output = command::run_command(&mut cmd)?;
+    let output_str = String::from_utf8_lossy(&output.stderr);
+    
+    // For debugging
+    debug!("Basic method FFmpeg output (truncated): {:.500}", output_str);
+    
+    // With showinfo filter, we get details about each frame
+    // We want to extract the pts_time (timestamp) of each frame
+    let pts_re = Regex::new(r"pts_time:(\d+\.\d+)").unwrap();
+    
+    // Also extract information about pixel differences between frames
+    // We'll use this to detect scene changes
+    let pkt_size_re = Regex::new(r"size=(\d+)").unwrap();
+    
+    let mut frames = Vec::new();
+    let mut pts_values = Vec::new();
+    let mut pkt_sizes = Vec::new();
+    
+    // First extract all PTS values (timestamps)
+    for cap in pts_re.captures_iter(&output_str) {
+        if let Some(ts) = cap.get(1) {
+            if let Ok(time) = ts.as_str().parse::<f64>() {
+                pts_values.push(time);
+            }
+        }
+    }
+    
+    // Extract all packet sizes (rough indicator of frame complexity)
+    for cap in pkt_size_re.captures_iter(&output_str) {
+        if let Some(size) = cap.get(1) {
+            if let Ok(size_val) = size.as_str().parse::<u32>() {
+                pkt_sizes.push(size_val);
+            }
+        }
+    }
+    
+    debug!("Found {} pts values and {} packet sizes", pts_values.len(), pkt_sizes.len());
+    
+    // Create a list of frames with timestamps
+    let frame_count = pts_values.len().min(pkt_sizes.len());
+    for i in 0..frame_count {
+        frames.push((pts_values[i], pkt_sizes[i]));
+    }
+    
+    // Now analyze frames to detect scene changes based on packet size changes
+    // This is similar to content-based scene detection
+    let mut scene_timestamps = Vec::new();
+    if frames.len() >= 5 { // Need at least a few frames to detect changes
+        let mut prev_sizes: Vec<u32> = Vec::new();
+        for i in 5..frames.len() {
+            // Calculate average of previous 5 frames' sizes
+            prev_sizes.clear();
+            for j in (i-5)..i {
+                prev_sizes.push(frames[j].1);
+            }
+            let avg_prev = prev_sizes.iter().sum::<u32>() as f64 / 5.0;
+            
+            // If current frame is significantly different from previous average
+            // (threshold% change), consider it a scene change
+            let current = frames[i].1 as f64;
+            let change_ratio = (current - avg_prev).abs() / avg_prev;
+            
+            if change_ratio > threshold_normalized as f64 {
+                debug!("Detected scene change at {}: change ratio {}, threshold {}", 
+                       frames[i].0, change_ratio, threshold_normalized);
+                scene_timestamps.push(frames[i].0);
+            }
+        }
+    }
+    
+    // Minimum 1 second between scene changes (filter out rapid flashes)
+    let mut filtered_timestamps = Vec::new();
+    if !scene_timestamps.is_empty() {
+        filtered_timestamps.push(scene_timestamps[0]);
+        let mut last = scene_timestamps[0];
+        
+        for &ts in &scene_timestamps[1..] {
+            if ts - last > 1.0 {
+                filtered_timestamps.push(ts);
+                last = ts;
+            }
+        }
+    }
+    
+    debug!("Basic method detected {} raw scene changes, {} after filtering", 
+          scene_timestamps.len(), filtered_timestamps.len());
+    
+    debug!("Basic method found {} scenes", filtered_timestamps.len());
+    Ok(filtered_timestamps)
+}
+
+/// Detect scenes using the scdet filter
+fn detect_with_scdet<P: AsRef<Path>>(input_path: P, threshold: f32) -> Result<Vec<f64>> {
+    let input_path = input_path.as_ref();
+    let threshold_normalized = threshold / 100.0;
+    
+    // Use scdet filter which is specifically designed for scene detection
+    // Note: 's' is a boolean parameter, not a resolution parameter
+    let scene_filter = format!("scdet=threshold={}:sc_pass=1,metadata=print", threshold_normalized);
+    
+    let mut cmd = Command::new("ffmpeg");
+    cmd.args([
+        "-hide_banner",
+        "-loglevel", "info",
+        "-i", input_path.to_str().unwrap_or_default(),
         "-vf", &scene_filter,
+        "-fps_mode", "passthrough",
         "-f", "null", "-"
     ]);
     
@@ -108,15 +244,52 @@ pub fn get_candidate_scenes<P: AsRef<Path>>(input_file: P, threshold: f32) -> Re
     
     // Parse the output to extract scene change timestamps
     let output_str = String::from_utf8_lossy(&output.stderr);
-    let re = Regex::new(r"pts_time:(\d+\.\d+)").unwrap();
     
-    let mut scene_timestamps = Vec::new();
-    for cap in re.captures_iter(&output_str) {
+    // The scdet filter with metadata=print outputs information about scene changes
+    // We need to look for these patterns in the output
+    let time_re = Regex::new(r"lavfi\.time=(\d+\.\d+)").unwrap();
+    let scene_re = Regex::new(r"lavfi\.scdet\.scene_score=(\d+\.\d+)").unwrap();
+    
+    // First collect all timestamps and scores
+    let mut timestamps = Vec::new();
+    let mut scores = Vec::new();
+    
+    for cap in time_re.captures_iter(&output_str) {
         if let Some(ts_match) = cap.get(1) {
             if let Ok(timestamp) = ts_match.as_str().parse::<f64>() {
-                scene_timestamps.push(timestamp);
+                timestamps.push(timestamp);
             }
         }
+    }
+    
+    for cap in scene_re.captures_iter(&output_str) {
+        if let Some(score_match) = cap.get(1) {
+            if let Ok(score) = score_match.as_str().parse::<f64>() {
+                scores.push(score);
+            }
+        }
+    }
+    
+    // Build scene timestamps from matching pairs
+    let mut scene_timestamps = Vec::new();
+    let min_score = (threshold / 100.0) as f64;
+    
+    debug!("Found {} timestamps and {} scores", timestamps.len(), scores.len());
+    
+    // Use whichever set is smaller to avoid index out of bounds
+    let len = timestamps.len().min(scores.len());
+    for i in 0..len {
+        if scores[i] >= min_score {
+            debug!("Detected scene at timestamp: {} with score {}", timestamps[i], scores[i]);
+            scene_timestamps.push(timestamps[i]);
+        }
+    }
+    
+    // If no scenes were detected, log the output for debugging
+    if scene_timestamps.is_empty() {
+        debug!("No scenes detected with scdet. Raw FFmpeg stderr output (truncated): {:.500}", output_str);
+        debug!("No timestamps found. Regex patterns used: time='{}', scene='{}'", 
+               r"lavfi\.time=(\d+\.\d+)", r"lavfi\.scdet\.scene_score=(\d+\.\d+)");
     }
     
     // Ensure timestamps are sorted
@@ -124,6 +297,56 @@ pub fn get_candidate_scenes<P: AsRef<Path>>(input_file: P, threshold: f32) -> Re
     
     debug!("Found {} raw scene candidates", scene_timestamps.len());
     Ok(scene_timestamps)
+}
+
+/// Detect scenes using blackframe detection
+fn detect_with_blackframe<P: AsRef<Path>>(input_path: P) -> Result<Vec<f64>> {
+    let input_path = input_path.as_ref();
+    
+    // Use blackframe filter with more lenient settings to detect more potential transitions
+    // Try to detect frames that are at least 80% black, with a higher noise threshold
+    // This works well for more modern content without strict black frame transitions
+    let mut cmd = Command::new("ffmpeg");
+    cmd.args([
+        "-hide_banner",
+        "-loglevel", "info",
+        "-i", input_path.to_str().unwrap_or_default(),
+        "-vf", "blackframe=amount=0.80:threshold=48",
+        "-f", "null", "-"
+    ]);
+    
+    // Run command and parse output
+    let output = command::run_command(&mut cmd)?;
+    let output_str = String::from_utf8_lossy(&output.stderr);
+    
+    // Blackframe filter reports frames like: [Parsed_blackframe_0 @ 0x7f8a2c0008c0] frame:120 pblack:98 pts:120 t:4.800000
+    let re = Regex::new(r"frame:\d+.*t:(\d+\.\d+)").unwrap();
+    let mut timestamps = Vec::new();
+    
+    for cap in re.captures_iter(&output_str) {
+        if let Some(ts) = cap.get(1) {
+            if let Ok(time) = ts.as_str().parse::<f64>() {
+                timestamps.push(time);
+            }
+        }
+    }
+    
+    debug!("Blackframe method found {} scenes", timestamps.len());
+    
+    // Post-process blackframes to remove ones too close together
+    let mut filtered = Vec::new();
+    if !timestamps.is_empty() {
+        filtered.push(timestamps[0]);
+        let mut last = timestamps[0];
+        for &ts in &timestamps[1..] {
+            if ts - last > 1.0 { // Minimum 1 second between scene changes
+                filtered.push(ts);
+                last = ts;
+            }
+        }
+    }
+    
+    Ok(filtered)
 }
 
 /// Filter scene candidates to ensure minimum distance between scenes
@@ -135,20 +358,18 @@ pub fn filter_scene_candidates(candidate_timestamps: Vec<f64>, min_gap: f32) -> 
         return filtered;
     }
     
-    // Always include the first timestamp if it's close to 0.0
-    let start_index;
-    let mut last_ts;
+    // Always include 0.0 as the first timestamp
+    // This matches the Python implementation's behavior
+    filtered.push(0.0);
+    let mut last_ts = 0.0;
     
-    if candidate_timestamps[0] < 0.1 {
-        filtered.push(0.0); // Normalize to exact 0.0
-        last_ts = 0.0;
-        start_index = 1;
+    // Skip the first timestamp if it's very close to 0.0
+    let start_index = if !candidate_timestamps.is_empty() && candidate_timestamps[0] < 0.1 {
+        debug!("First timestamp {} is close to 0.0, using exact 0.0 instead", candidate_timestamps[0]);
+        1
     } else {
-        // Add 0.0 as the first scene timestamp if not present
-        filtered.push(0.0);
-        last_ts = 0.0;
-        start_index = 0;
-    }
+        0
+    };
     
     // Add timestamps that are at least min_gap apart
     for ts in candidate_timestamps.into_iter().skip(start_index) {

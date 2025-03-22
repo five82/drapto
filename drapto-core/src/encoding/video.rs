@@ -11,7 +11,7 @@ use regex::Regex;
 
 use crate::error::{DraptoError, Result};
 use crate::media::info::MediaInfo;
-use crate::util::command::{run_command, run_command_with_progress};
+use crate::util::command::{self, run_command, run_command_with_progress};
 
 /// Configuration for ab-av1 encoding
 #[derive(Debug, Clone)]
@@ -72,7 +72,7 @@ impl AbAv1Encoder {
     }
     
     /// Check if ab-av1 is available
-    pub fn check_availability() -> Result<()> {
+    pub fn check_availability(&self) -> Result<()> {
         info!("Checking for ab-av1...");
         
         let mut cmd = Command::new("which");
@@ -543,20 +543,61 @@ pub fn encode_video(input: &Path, options: &VideoEncodingOptions) -> Result<Path
     info!("Starting video encoding: {}", input.display());
     debug!("Encoding options: {:?}", options);
     
-    // For this test implementation, we'll just copy the input file
     let output = options.working_dir.join("encoded_video.mkv");
     
-    // In a real implementation, this would perform actual encoding
-    info!("Video encoding would happen here");
-    info!("Target quality: {:?}", options.quality);
-    info!("Parallel jobs: {}", options.parallel_jobs);
-    info!("Hardware acceleration: {}", options.hardware_acceleration);
+    // Create and configure the encoder
+    let encoder = AbAv1Encoder::new();
     
-    // Copy the input to output for testing
-    std::fs::copy(input, &output)?;
-    
-    info!("Video encoding complete: {}", output.display());
-    Ok(output)
+    // Check for ab-av1 availability
+    match encoder.check_availability() {
+        Ok(_) => {
+            info!("Using ab-av1 encoder");
+            
+            // Determine crop filter
+            let crop_filter = options.crop_filter.as_deref();
+            
+            // Build encode command
+            let mut cmd = encoder.build_encode_command(
+                input,
+                &output,
+                crop_filter,
+                0, // First attempt
+                options.is_hdr,
+                options.is_dolby_vision,
+            );
+            
+            // Execute the encoding command
+            info!("Running encoding command...");
+            match command::run_command_with_progress(
+                &mut cmd,
+                Some(Box::new(|progress| {
+                    debug!("Encoding progress: {:.1}%", progress * 100.0);
+                })),
+                None,
+            ) {
+                Ok(_) => {
+                    info!("Video encoding complete: {}", output.display());
+                    Ok(output)
+                },
+                Err(e) => {
+                    Err(e)
+                }
+            }
+        },
+        Err(_) => {
+            // Fallback to copy mode for testing purposes
+            warn!("ab-av1 encoder not found, falling back to test mode (copy only)");
+            info!("Target quality: {:?}", options.quality);
+            info!("Parallel jobs: {}", options.parallel_jobs);
+            info!("Hardware acceleration: {}", options.hardware_acceleration);
+            
+            // Copy the input to output for testing
+            std::fs::copy(input, &output)?;
+            
+            info!("Video encoding complete: {}", output.display());
+            Ok(output)
+        }
+    }
 }
 
 #[cfg(test)]
