@@ -144,6 +144,7 @@ impl ParallelEncoder {
         
         // Log job configuration as a subsection
         crate::logging::log_subsection("JOB CONFIGURATION");
+        info!("");
         info!("Starting parallel encoding with {} concurrent jobs (max configured: {}, memory per job: {}MB, encoder: {})",
               available_jobs, self.max_concurrent_jobs, adjusted_memory, encoder_type);
         

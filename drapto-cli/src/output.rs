@@ -12,22 +12,24 @@ pub fn print_heading(text: &str) {
     
     println!("\n{}", line);
     println!("{}", heading);
-    println!("{}\n", line);
+    println!("{}", line);
 }
 
 /// Print a section heading (smaller than main heading) with colored styling
 pub fn print_section(text: &str) {
     let section = format!(" {} ", text).bold().white();
-    let line = "-".repeat(40).blue();
+    let line = "-".repeat(50).blue();
     
     println!("\n{}", line);
     println!("{}", section);
     println!("{}", line);
+    println!("");
 }
 
 /// Print a separator line
 pub fn print_separator() {
-    println!("\n{}", "-".repeat(50).bright_blue());
+    println!("\n{}", "-".repeat(50).blue());
+    println!("");
 }
 
 /// Print an info line with label and value, with the label colored
@@ -38,13 +40,13 @@ pub fn print_info<T: Display>(label: &str, value: T) {
 /// Print a message with a specific color based on severity
 pub fn print_message(message: &ValidationMessage) {
     match message.level {
-        ValidationLevel::Info => println!("ℹ️  {}: {}", 
+        ValidationLevel::Info => println!("  ℹ️  {}: {}", 
             message.category.bright_cyan().bold(), 
             message.message),
-        ValidationLevel::Warning => println!("⚠️  {}: {}", 
+        ValidationLevel::Warning => println!("  ⚠️  {}: {}", 
             message.category.yellow().bold(), 
             message.message),
-        ValidationLevel::Error => println!("❌ {}: {}", 
+        ValidationLevel::Error => println!("  ❌ {}: {}", 
             message.category.bright_red().bold(), 
             message.message),
     }

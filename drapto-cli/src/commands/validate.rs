@@ -57,7 +57,7 @@ pub fn execute_validate(
                 stream.properties.get("width").and_then(|w| w.as_u64()),
                 stream.properties.get("height").and_then(|h| h.as_u64())
             ) {
-                print_info(&format!("  Resolution"), &format!("{}x{}", width, height));
+                print_info(&format!("Resolution"), &format!("{}x{}", width, height));
             }
             
             if let Some(fps) = stream.properties.get("r_frame_rate").and_then(|r| r.as_str()) {
@@ -65,7 +65,7 @@ pub fn execute_validate(
                     if let Some((num, den)) = fps.split_once("/") {
                         if let (Ok(n), Ok(d)) = (num.parse::<f64>(), den.parse::<f64>()) {
                             if d > 0.0 {
-                                print_info(&format!("  Framerate"), &format!("{:.2} fps", n / d));
+                                print_info(&format!("Framerate"), &format!("{:.2} fps", n / d));
                             }
                         }
                     }
@@ -74,43 +74,43 @@ pub fn execute_validate(
             
             // Check HDR info
             if has_hdr(&media_info) {
-                print_info(&format!("  HDR"), "Yes");
+                print_info(&format!("HDR"), "Yes");
                 
                 // Print color space info if available
                 if let Some(color_space) = stream.properties.get("color_space").and_then(|c| c.as_str()) {
-                    print_info(&format!("  Color Space"), color_space);
+                    print_info(&format!("Color Space"), color_space);
                 }
                 
                 if let Some(color_transfer) = stream.properties.get("color_transfer").and_then(|c| c.as_str()) {
-                    print_info(&format!("  Color Transfer"), color_transfer);
+                    print_info(&format!("Color Transfer"), color_transfer);
                 }
                 
                 if let Some(color_primaries) = stream.properties.get("color_primaries").and_then(|c| c.as_str()) {
-                    print_info(&format!("  Color Primaries"), color_primaries);
+                    print_info(&format!("Color Primaries"), color_primaries);
                 }
             }
             
             // Check Dolby Vision
             if has_dolby_vision(&media_info) {
-                print_info(&format!("  Dolby Vision"), "Yes");
+                print_info(&format!("Dolby Vision"), "Yes");
             }
         }
         
         // Print additional details for audio streams
         if stream.codec_type == drapto_core::media::StreamType::Audio {
             if let Some(channels) = stream.properties.get("channels").and_then(|c| c.as_u64()) {
-                print_info(&format!("  Channels"), channels);
+                print_info(&format!("Channels"), channels);
             }
             
             if let Some(sample_rate) = stream.properties.get("sample_rate").and_then(|s| s.as_str()) {
                 if let Ok(rate) = sample_rate.parse::<u32>() {
-                    print_info(&format!("  Sample Rate"), &format!("{} Hz", rate));
+                    print_info(&format!("Sample Rate"), &format!("{} Hz", rate));
                 }
             }
             
             // Print language if available
             if let Some(lang) = stream.tags.get("language") {
-                print_info(&format!("  Language"), lang);
+                print_info(&format!("Language"), lang);
             }
         }
         
@@ -118,12 +118,12 @@ pub fn execute_validate(
         if stream.codec_type == drapto_core::media::StreamType::Subtitle {
             // Print language if available
             if let Some(lang) = stream.tags.get("language") {
-                print_info(&format!("  Language"), lang);
+                print_info(&format!("Language"), lang);
             }
             
             // Print title if available
             if let Some(title) = stream.tags.get("title") {
-                print_info(&format!("  Title"), title);
+                print_info(&format!("Title"), title);
             }
         }
     }

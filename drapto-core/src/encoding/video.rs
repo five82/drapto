@@ -647,6 +647,9 @@ pub fn encode_video(input: &Path, options: &VideoEncodingOptions) -> Result<Path
             // Check if we have scene data for segmentation
             if let Some(ref scenes) = options.scenes {
                 if !scenes.is_empty() {
+                    // Section header for segmentation
+                    crate::logging::log_section("SEGMENTATION");
+
                     info!("Using scene-based segmentation for parallel encoding");
                     info!(
                         "Creating {} scene-based segments for parallel encoding...",
@@ -676,10 +679,6 @@ pub fn encode_video(input: &Path, options: &VideoEncodingOptions) -> Result<Path
                     if segment_files.is_empty() {
                         info!("Segmentation produced no segments, falling back to single-file encoding");
                     } else {
-                        info!(
-                            "Segmented video into {} parts for parallel encoding",
-                            segment_files.len()
-                        );
 
                         // Set up parallel encoder
                         use crate::encoding::parallel::{

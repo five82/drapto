@@ -165,8 +165,6 @@ where
     // Sort segments by name (should be numbered sequentially)
     segments.sort();
     
-    crate::logging::log_section("SEGMENTATION");
-    crate::logging::log_subsection("SEGMENT CREATION");
     info!("Created {} video segments", segments.len());
     
     if segments.is_empty() {
