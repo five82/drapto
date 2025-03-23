@@ -20,17 +20,18 @@ impl ResolutionCategory {
     /// Convert resolution category to string representation
     pub fn as_str(&self) -> &'static str {
         match self {
-            Self::SD => "SDR",
-            Self::HD => "1080p",
-            Self::UHD => "4k",
+            Self::SD => "SD",  // Changed from "SDR" for consistency
+            Self::HD => "HD",  // Changed from "1080p" for consistency
+            Self::UHD => "UHD", // Changed from "4k" for consistency
         }
     }
     
     /// Convert string to resolution category
     pub fn from_str(s: &str) -> Self {
         match s {
-            "4k" => Self::UHD,
-            "1080p" => Self::HD,
+            "UHD" | "4k" | "4K" => Self::UHD,
+            "HD" | "1080p" => Self::HD,
+            // Default to SD for all other values
             _ => Self::SD,
         }
     }
@@ -96,9 +97,9 @@ pub fn estimate_memory_weight<P: AsRef<Path>>(
 /// Default memory weights for different resolutions
 pub fn default_memory_weights() -> HashMap<String, usize> {
     let mut weights = HashMap::new();
-    weights.insert("SDR".to_string(), 1);
-    weights.insert("1080p".to_string(), 2);
-    weights.insert("4k".to_string(), 4);
+    weights.insert("SD".to_string(), 1);
+    weights.insert("HD".to_string(), 2);
+    weights.insert("UHD".to_string(), 4);
     weights
 }
 
@@ -455,13 +456,21 @@ mod tests {
     
     #[test]
     fn test_resolution_category_conversion() {
-        assert_eq!(ResolutionCategory::SD.as_str(), "SDR");
-        assert_eq!(ResolutionCategory::HD.as_str(), "1080p");
-        assert_eq!(ResolutionCategory::UHD.as_str(), "4k");
+        assert_eq!(ResolutionCategory::SD.as_str(), "SD");
+        assert_eq!(ResolutionCategory::HD.as_str(), "HD");
+        assert_eq!(ResolutionCategory::UHD.as_str(), "UHD");
         
+        // Test primary names
+        assert_eq!(ResolutionCategory::from_str("SD"), ResolutionCategory::SD);
+        assert_eq!(ResolutionCategory::from_str("HD"), ResolutionCategory::HD);
+        assert_eq!(ResolutionCategory::from_str("UHD"), ResolutionCategory::UHD);
+        
+        // Test legacy names
         assert_eq!(ResolutionCategory::from_str("SDR"), ResolutionCategory::SD);
         assert_eq!(ResolutionCategory::from_str("1080p"), ResolutionCategory::HD);
         assert_eq!(ResolutionCategory::from_str("4k"), ResolutionCategory::UHD);
+        
+        // Test fallback
         assert_eq!(ResolutionCategory::from_str("unknown"), ResolutionCategory::SD);
     }
     
@@ -469,9 +478,9 @@ mod tests {
     fn test_default_memory_weights() {
         let weights = default_memory_weights();
         
-        assert_eq!(*weights.get("SDR").unwrap(), 1);
-        assert_eq!(*weights.get("1080p").unwrap(), 2);
-        assert_eq!(*weights.get("4k").unwrap(), 4);
+        assert_eq!(*weights.get("SD").unwrap(), 1);
+        assert_eq!(*weights.get("HD").unwrap(), 2);
+        assert_eq!(*weights.get("UHD").unwrap(), 4);
     }
     
     #[test]
