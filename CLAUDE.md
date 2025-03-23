@@ -1,15 +1,15 @@
-We are implementing a rewrite of the Python drapto in rust
-Rewrite plan is RUST_REWRITE_PLAN.md
-Python code is in drapto/
+We have implemented a rewrite of the Python drapto in rust
+Rewrite plan is reference/RUST_REWRITE_PLAN.md
+Python code is in reference/
 
 ## Principles
-1. Follow Rust idioms over direct Python translation
+1. Follow Rust idioms
 2. Use strong typing and Results for error handling
 3. Leverage Rust's ownership model for memory safety
 4. Use traits to define interfaces between components
 5. Implement concurrency with Rust's safety guarantees
 6. Focus on minimalism and performance
-7. Avoid scope creap and bloat. Only implement drapto application functionality that is already in the Python implementation
+7. Avoid scope creap and bloat.
 8. Look at the old python code for context.
 9. Use proper rust file and directory structure according to Rust best practices.
 
