@@ -9,8 +9,21 @@ use std::fmt;
 use chrono::{DateTime, Local};
 use serde::{Serialize, Deserialize};
 
+/// Simplified validation message for summary reports
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ValidationMessageSummary {
+    /// Message text
+    pub message: String,
+    
+    /// Validation severity level
+    pub level: String,
+    
+    /// Validation category
+    pub category: String,
+}
+
 use crate::error::{DraptoError, Result};
-use crate::validation::ValidationReport;
+use crate::validation::{ValidationLevel, ValidationReport};
 use crate::encoding::pipeline::PipelineStats;
 
 /// Summary of an encoding job with detailed statistics
@@ -89,6 +102,10 @@ pub struct ValidationResult {
     /// Category-specific validation details
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub categories: Option<std::collections::HashMap<String, (usize, usize)>>,
+    
+    /// Detailed validation messages
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub messages: Vec<ValidationMessageSummary>,
 }
 
 impl EncodingSummary {
@@ -120,6 +137,18 @@ impl EncodingSummary {
                 codec_passed: stats.validation_summary.codec_passed,
                 quality_passed: stats.validation_summary.quality_passed,
                 categories: Some(stats.validation_summary.category_stats.clone()),
+                messages: if let Some(messages) = &stats.validation_messages {
+                    messages.iter()
+                        .filter(|msg| matches!(msg.level, ValidationLevel::Error | ValidationLevel::Warning))
+                        .map(|msg| ValidationMessageSummary {
+                            message: msg.message.clone(),
+                            level: msg.level.to_string(),
+                            category: msg.category.clone(),
+                        })
+                        .collect()
+                } else {
+                    Vec::new()
+                },
             },
         }
     }
@@ -165,6 +194,16 @@ impl EncodingSummary {
                 }
             }
             
+            // Collect validation messages
+            let messages = report.messages.iter()
+                .filter(|msg| matches!(msg.level, ValidationLevel::Error | ValidationLevel::Warning))
+                .map(|msg| ValidationMessageSummary {
+                    message: msg.message.clone(),
+                    level: msg.level.to_string(),
+                    category: msg.category.clone(),
+                })
+                .collect();
+            
             ValidationResult {
                 passed: report.passed,
                 errors: report.errors().len(),
@@ -177,6 +216,7 @@ impl EncodingSummary {
                 codec_passed: !report.errors().iter().any(|e| e.category == "Codec"),
                 quality_passed: !report.errors().iter().any(|e| e.category == "Quality"),
                 categories: Some(categories),
+                messages,
             }
         } else {
             ValidationResult {
@@ -191,6 +231,7 @@ impl EncodingSummary {
                 codec_passed: true,
                 quality_passed: true,
                 categories: None,
+                messages: Vec::new(),
             }
         };
         
@@ -279,24 +320,24 @@ impl fmt::Display for EncodingSummary {
         writeln!(f, "\n=== Validation Results ===")?;
         writeln!(f, "Status:       {}", if self.validation.passed { 
             if self.validation.warnings > 0 {
-                "⚠️ PASSED WITH WARNINGS"
+                "⚠ PASSED WITH WARNINGS"
             } else {
-                "✅ PASSED" 
+                "✓ PASSED" 
             }
         } else { 
-            "❌ FAILED" 
+            "✗ FAILED" 
         })?;
         writeln!(f, "Errors:       {}", self.validation.errors)?;
         writeln!(f, "Warnings:     {}", self.validation.warnings)?;
         
         writeln!(f, "\n--- Validation by Category ---")?;
-        writeln!(f, "Video:        {}", if self.validation.video_passed { "✅ OK" } else { "❌ FAILED" })?;
-        writeln!(f, "Audio:        {}", if self.validation.audio_passed { "✅ OK" } else { "❌ FAILED" })?;
-        writeln!(f, "A/V Sync:     {}", if self.validation.sync_passed { "✅ OK" } else { "❌ FAILED" })?;
-        writeln!(f, "Subtitles:    {}", if self.validation.subtitles_passed { "✅ OK" } else { "❌ FAILED" })?;
-        writeln!(f, "Duration:     {}", if self.validation.duration_passed { "✅ OK" } else { "❌ FAILED" })?;
-        writeln!(f, "Codec:        {}", if self.validation.codec_passed { "✅ OK" } else { "❌ FAILED" })?;
-        writeln!(f, "Quality:      {}", if self.validation.quality_passed { "✅ OK" } else { "❌ FAILED" })?;
+        writeln!(f, "Video:        {}", if self.validation.video_passed { "✓ OK" } else { "✗ FAILED" })?;
+        writeln!(f, "Audio:        {}", if self.validation.audio_passed { "✓ OK" } else { "✗ FAILED" })?;
+        writeln!(f, "A/V Sync:     {}", if self.validation.sync_passed { "✓ OK" } else { "✗ FAILED" })?;
+        writeln!(f, "Subtitles:    {}", if self.validation.subtitles_passed { "✓ OK" } else { "✗ FAILED" })?;
+        writeln!(f, "Duration:     {}", if self.validation.duration_passed { "✓ OK" } else { "✗ FAILED" })?;
+        writeln!(f, "Codec:        {}", if self.validation.codec_passed { "✓ OK" } else { "✗ FAILED" })?;
+        writeln!(f, "Quality:      {}", if self.validation.quality_passed { "✓ OK" } else { "✗ FAILED" })?;
         
         // Show detailed category stats if available
         if let Some(categories) = &self.validation.categories {
@@ -304,11 +345,11 @@ impl fmt::Display for EncodingSummary {
                 writeln!(f, "\n--- Validation Details ---")?;
                 for (category, (errors, warnings)) in categories {
                     let status = if *errors > 0 {
-                        "❌"
+                        "✗"
                     } else if *warnings > 0 {
-                        "⚠️"
+                        "⚠"
                     } else {
-                        "✅"
+                        "✓"
                     };
                     writeln!(f, "{} {}: {} error(s), {} warning(s)", 
                             status, category, errors, warnings)?;
@@ -408,7 +449,27 @@ impl fmt::Display for BatchSummary {
             
             for (i, summary) in self.summaries.iter().enumerate() {
                 write!(f, "{}. ", i + 1)?;
-                writeln!(f, "{}", summary.as_compact_line())?;
+                let status_icon = if !summary.validation.passed {
+                    "✗"
+                } else if summary.validation.warnings > 0 {
+                    "⚠"
+                } else {
+                    "✓"
+                };
+                writeln!(f, "{} {}", status_icon, summary.as_compact_line())?;
+                
+                // Display validation issues for this file if there are any
+                if summary.validation.errors > 0 || summary.validation.warnings > 0 {
+                    writeln!(f, "   Validation: {} error(s), {} warning(s)", 
+                        summary.validation.errors, summary.validation.warnings)?;
+                    
+                    // Display detailed messages
+                    for msg in &summary.validation.messages {
+                        let icon = if msg.level == "ERROR" { "✗" } else { "⚠" };
+                        writeln!(f, "   {} [{}] {}: {}", 
+                            icon, msg.level, msg.category, msg.message)?;
+                    }
+                }
             }
         }
         
@@ -478,6 +539,7 @@ mod tests {
     use std::fs::File;
     use std::io::Write;
     use tempfile::tempdir;
+    use crate::validation::ValidationReport;
     
     #[test]
     fn test_format_size() {
@@ -526,5 +588,167 @@ mod tests {
         assert_eq!(summary.reduction_percent, 50.0);
         assert_eq!(summary.encoding_time, 60.0);
         assert!(summary.validation.passed);
+    }
+    
+    #[test]
+    fn test_summary_with_validation_messages() {
+        let temp_dir = tempdir().unwrap();
+        let input_path = temp_dir.path().join("input.mp4");
+        let output_path = temp_dir.path().join("output.mkv");
+        
+        // Create dummy files
+        let mut input_file = File::create(&input_path).unwrap();
+        let mut output_file = File::create(&output_path).unwrap();
+        
+        // Write data to files
+        input_file.write_all(&vec![0; 1024 * 1024]).unwrap();
+        output_file.write_all(&vec![0; 512 * 1024]).unwrap();
+        
+        // Create a validation report with messages
+        let mut report = ValidationReport::new();
+        report.add_warning("Low bitrate detected", "Video");
+        report.add_error("Audio sync issues", "Audio");
+        
+        // Create a summary with validation
+        let summary = EncodingSummary::new(
+            &input_path,
+            &output_path,
+            Duration::from_secs(60),
+            Some(&report)
+        ).unwrap();
+        
+        // Check validation values
+        assert!(!summary.validation.passed);
+        assert_eq!(summary.validation.errors, 1);
+        assert_eq!(summary.validation.warnings, 1);
+        assert!(summary.validation.video_passed);
+        assert!(!summary.validation.audio_passed);
+        
+        // Check validation messages
+        assert_eq!(summary.validation.messages.len(), 2);
+        
+        // Get message by content for easier testing
+        let warning_msg = summary.validation.messages.iter()
+            .find(|m| m.level == "WARNING").unwrap();
+        let error_msg = summary.validation.messages.iter()
+            .find(|m| m.level == "ERROR").unwrap();
+            
+        assert_eq!(warning_msg.category, "Video");
+        assert_eq!(warning_msg.message, "Low bitrate detected");
+        assert_eq!(error_msg.category, "Audio");
+        assert_eq!(error_msg.message, "Audio sync issues");
+    }
+    
+    #[test]
+    fn test_batch_summary_with_validation() {
+        let temp_dir = tempdir().unwrap();
+        
+        // Create two summaries with validation issues
+        let mut report1 = ValidationReport::new();
+        report1.add_warning("Low bitrate detected", "Video");
+        
+        let mut report2 = ValidationReport::new();
+        report2.add_error("Audio sync issues", "Audio");
+        
+        let file1 = temp_dir.path().join("file1.mp4");
+        let file2 = temp_dir.path().join("file2.mp4");
+        let out1 = temp_dir.path().join("out1.mkv");
+        let out2 = temp_dir.path().join("out2.mkv");
+        
+        // Create dummy files
+        File::create(&file1).unwrap().write_all(&vec![0; 1024 * 1024]).unwrap();
+        File::create(&file2).unwrap().write_all(&vec![0; 2048 * 1024]).unwrap();
+        File::create(&out1).unwrap().write_all(&vec![0; 512 * 1024]).unwrap();
+        File::create(&out2).unwrap().write_all(&vec![0; 1024 * 1024]).unwrap();
+        
+        // Create summaries
+        let summary1 = EncodingSummary::new(
+            &file1, &out1, Duration::from_secs(60), Some(&report1)
+        ).unwrap();
+        
+        let summary2 = EncodingSummary::new(
+            &file2, &out2, Duration::from_secs(120), Some(&report2)
+        ).unwrap();
+        
+        // Create batch summary
+        let start_time = Local::now();
+        let batch_summary = BatchSummary::new(vec![summary1, summary2], start_time);
+        
+        // Check batch stats
+        assert_eq!(batch_summary.success_count, 1);  // One passed with warnings
+        assert_eq!(batch_summary.failure_count, 1);  // One failed with errors
+        assert_eq!(batch_summary.summaries.len(), 2);
+        
+        // Validate that summaries retain their validation messages
+        let warning_summary = &batch_summary.summaries[0];
+        let error_summary = &batch_summary.summaries[1];
+        
+        assert_eq!(warning_summary.validation.warnings, 1);
+        assert_eq!(warning_summary.validation.errors, 0);
+        assert_eq!(error_summary.validation.warnings, 0);
+        assert_eq!(error_summary.validation.errors, 1);
+        
+        // Check that messages are preserved
+        assert_eq!(warning_summary.validation.messages.len(), 1);
+        assert_eq!(error_summary.validation.messages.len(), 1);
+        assert_eq!(warning_summary.validation.messages[0].category, "Video");
+        assert_eq!(error_summary.validation.messages[0].category, "Audio");
+    }
+    
+    #[test]
+    fn test_batch_summary_without_validation_issues() {
+        let temp_dir = tempdir().unwrap();
+        
+        // Create clean validation reports with no issues
+        let report1 = ValidationReport::new(); // Clean report
+        let report2 = ValidationReport::new(); // Clean report
+        
+        let file1 = temp_dir.path().join("clean1.mp4");
+        let file2 = temp_dir.path().join("clean2.mp4");
+        let out1 = temp_dir.path().join("clean_out1.mkv");
+        let out2 = temp_dir.path().join("clean_out2.mkv");
+        
+        // Create dummy files
+        File::create(&file1).unwrap().write_all(&vec![0; 1024 * 1024]).unwrap();
+        File::create(&file2).unwrap().write_all(&vec![0; 2048 * 1024]).unwrap();
+        File::create(&out1).unwrap().write_all(&vec![0; 512 * 1024]).unwrap();
+        File::create(&out2).unwrap().write_all(&vec![0; 1024 * 1024]).unwrap();
+        
+        // Create summaries with clean validation
+        let summary1 = EncodingSummary::new(
+            &file1, &out1, Duration::from_secs(45), Some(&report1)
+        ).unwrap();
+        
+        let summary2 = EncodingSummary::new(
+            &file2, &out2, Duration::from_secs(90), Some(&report2)
+        ).unwrap();
+        
+        // Create batch summary
+        let start_time = Local::now();
+        let batch_summary = BatchSummary::new(vec![summary1, summary2], start_time);
+        
+        // Check batch stats
+        assert_eq!(batch_summary.success_count, 2);  // Both should succeed
+        assert_eq!(batch_summary.failure_count, 0);  // No failures
+        assert_eq!(batch_summary.summaries.len(), 2);
+        
+        // Validate that there are no validation issues
+        for summary in &batch_summary.summaries {
+            assert!(summary.validation.passed);
+            assert_eq!(summary.validation.errors, 0);
+            assert_eq!(summary.validation.warnings, 0);
+            assert!(summary.validation.messages.is_empty());
+        }
+        
+        // Format the batch summary as a string
+        let formatted = batch_summary.to_string();
+        
+        // Verify it contains success indicators but no validation details
+        assert!(formatted.contains("✓"));
+        assert!(!formatted.contains("✗"));
+        assert!(!formatted.contains("⚠"));
+        assert!(!formatted.contains("error(s)"));
+        assert!(!formatted.contains("warning(s)"));
+        assert!(!formatted.contains("Validation:"));
     }
 }

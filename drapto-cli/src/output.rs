@@ -150,12 +150,21 @@ pub fn print_validation_report(report: &ValidationReport) {
     
     // Print summary with colors
     print_section("Validation Summary");
-    println!("  {} {}", 
-        errors.len().to_string().bold().bright_red(), 
-        "error(s)".bright_red());
-    println!("  {} {}", 
-        warnings.len().to_string().bold().yellow(), 
-        "warning(s)".yellow());
+    
+    // Only show errors if there are any
+    if !errors.is_empty() {
+        println!("  {} {}", 
+            errors.len().to_string().bold().bright_red(), 
+            "error(s)".bright_red());
+    }
+    
+    // Only show warnings if there are any
+    if !warnings.is_empty() {
+        println!("  {} {}", 
+            warnings.len().to_string().bold().yellow(), 
+            "warning(s)".yellow());
+    }
+    
     println!("  {} {}", 
         infos.len().to_string().bold().bright_cyan(), 
         "info message(s)".bright_cyan());

@@ -79,6 +79,9 @@ pub struct PipelineStats {
     
     /// Validation summary
     pub validation_summary: ValidationSummary,
+    
+    /// Raw validation messages
+    pub validation_messages: Option<Vec<crate::validation::ValidationMessage>>,
 }
 
 /// Summary of validation results
@@ -336,11 +339,11 @@ impl EncodingPipeline {
         crate::logging::log_subsection("VALIDATION CATEGORIES SUMMARY");
         for (category, (errors, warnings)) in &validation_summary.category_stats {
             let status_icon = if *errors > 0 {
-                "❌"
+                "✗"
             } else if *warnings > 0 {
-                "⚠️"
+                "⚠"
             } else {
-                "✅"
+                "✓"
             };
             
             if *errors > 0 {
@@ -358,12 +361,12 @@ impl EncodingPipeline {
         crate::logging::log_subsection("OVERALL VALIDATION RESULT");
         if validation_summary.overall_passed {
             if validation_summary.warning_count > 0 {
-                warn!("⚠️ Validation passed with {} warning(s)", validation_summary.warning_count);
+                warn!("⚠ Validation passed with {} warning(s)", validation_summary.warning_count);
             } else {
-                info!("✅ Validation passed - all quality checks successful");
+                info!("✓ Validation passed - all quality checks successful");
             }
         } else {
-            error!("❌ Validation failed with {} error(s)", validation_summary.error_count);
+            error!("✗ Validation failed with {} error(s)", validation_summary.error_count);
         }
         
         // Calculate statistics
@@ -373,6 +376,13 @@ impl EncodingPipeline {
             ((input_size as f64 - output_size as f64) / input_size as f64 * 100.0) as f32
         } else {
             0.0
+        };
+        
+        // Clone validation messages for detailed reporting
+        let validation_messages = if !validation_report.messages.is_empty() {
+            Some(validation_report.messages.clone())
+        } else {
+            None
         };
         
         let stats = PipelineStats {
@@ -386,6 +396,7 @@ impl EncodingPipeline {
             segment_count: segments.len(),
             audio_track_count: audio_tracks.len(),
             validation_summary,
+            validation_messages,
         };
         
         // Create and save summary report
