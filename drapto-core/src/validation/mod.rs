@@ -322,6 +322,10 @@ where
     logging::log_subsection("PIXEL FORMAT VALIDATION");
     quality::validate_pixel_format(&input_info, &output_info, &mut report)?;
     
+    // 6.1 HDR consistency validation
+    logging::log_subsection("HDR VALIDATION");
+    quality::validate_hdr_consistency(&input_info, &output_info, &mut report)?;
+    
     // 7. Subtitles validation
     logging::log_subsection("SUBTITLES VALIDATION");
     subtitles::validate_subtitles(&output_info, &mut report);

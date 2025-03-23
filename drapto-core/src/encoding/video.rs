@@ -8,6 +8,7 @@ use regex::Regex;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Instant;
+use crate::config::{VideoEncodingConfig, SceneDetectionConfig};
 
 use crate::error::{DraptoError, Result};
 use crate::media::info::MediaInfo;
@@ -663,12 +664,30 @@ pub fn encode_video(input: &Path, options: &VideoEncodingOptions) -> Result<Path
                     // Create config for segmentation
                     let config = crate::config::Config {
                         input: input.to_path_buf(),
-                        hw_accel_option: options.hw_accel_option.clone().unwrap_or_default(),
-                        scene_threshold: 40.0,
-                        hdr_scene_threshold: 30.0,
-                        min_segment_length: 5.0,
-                        max_segment_length: 15.0,
-                        ..Default::default()
+                        directories: Default::default(),
+                        video: VideoEncodingConfig {
+                            hw_accel_option: options.hw_accel_option.clone().unwrap_or_default(),
+                            hardware_acceleration: true,
+                            target_quality: None,
+                            target_quality_hdr: None,
+                            preset: 6,
+                            svt_params: String::new(),
+                            pix_fmt: String::new(),
+                            disable_crop: false,
+                            use_segmentation: true,
+                            vmaf_sample_count: 3,
+                            vmaf_sample_length: 1.0,
+                        },
+                        scene_detection: SceneDetectionConfig {
+                            scene_threshold: 40.0,
+                            hdr_scene_threshold: 30.0,
+                            min_segment_length: 5.0,
+                            max_segment_length: 15.0,
+                        },
+                        audio: Default::default(),
+                        resources: Default::default(),
+                        logging: Default::default(),
+                        output: PathBuf::new()
                     };
 
                     // Segment the video

@@ -47,22 +47,20 @@ pub fn execute_encode(
     }
     
     // Create configuration
-    let mut config = Config {
-        input: input.clone(),
-        output: output.clone(),
-        hardware_acceleration: !no_hwaccel,
-        target_quality: quality,
-        parallel_jobs: jobs.unwrap_or_else(num_cpus::get),
-        verbose,
-        keep_temp_files: keep_temp,
-        temp_dir: temp_dir.unwrap_or_else(std::env::temp_dir),
-        disable_crop,
-        ..Default::default()
-    };
+    let mut config = Config::default();
+    config.input = input.clone();
+    config.output = output.clone();
+    config.video.hardware_acceleration = !no_hwaccel;
+    config.video.target_quality = quality;
+    config.resources.parallel_jobs = jobs.unwrap_or_else(num_cpus::get);
+    config.logging.verbose = verbose;
+    config.directories.keep_temp_files = keep_temp;
+    config.directories.temp_dir = temp_dir.unwrap_or_else(std::env::temp_dir);
+    config.video.disable_crop = disable_crop;
     
     // Apply memory limit if provided via CLI
     if let Some(memory_mb) = memory_per_job {
-        config.memory_per_job = memory_mb;
+        config.resources.memory_per_job = memory_mb;
     }
     
     // Validate configuration
@@ -101,7 +99,7 @@ pub fn execute_encode(
     if is_hdr {
         print_info("HDR", "Yes");
         // Adjust scene detection threshold for HDR content
-        config.scene_threshold = config.hdr_scene_threshold;
+        config.scene_detection.scene_threshold = config.scene_detection.hdr_scene_threshold;
     } else {
         print_info("HDR", "No");
     }
@@ -116,7 +114,7 @@ pub fn execute_encode(
     
     // Detect black bars for cropping if not disabled
     let mut crop_filter = None;
-    if !config.disable_crop {
+    if !config.video.disable_crop {
         print_info("Analyzing video for black bars", "");
         let crop_result = detect_crop(&input, None)?;
         if let (Some(filter), _) = crop_result {
@@ -131,7 +129,7 @@ pub fn execute_encode(
     
     // Detect scenes - this is a key part of the drapto pipeline
     // Get hardware acceleration options if enabled
-    let hw_accel_option = if config.hardware_acceleration {
+    let hw_accel_option = if config.video.hardware_acceleration {
         // Set automatically based on platform using FFprobe 
         let ffprobe = drapto_core::media::probe::FFprobe::new();
         match ffprobe.check_hardware_decoding() {
@@ -154,18 +152,18 @@ pub fn execute_encode(
     print_section("Scene Detection");
     info!("Detecting scenes in video");
     
-    print_info("Scene Detection Threshold", config.scene_threshold);
-    print_info("Minimum Segment Length", format!("{} seconds", config.min_segment_length));
-    print_info("Maximum Segment Length", format!("{} seconds", config.max_segment_length));
+    print_info("Scene Detection Threshold", config.scene_detection.scene_threshold);
+    print_info("Minimum Segment Length", format!("{} seconds", config.scene_detection.min_segment_length));
+    print_info("Maximum Segment Length", format!("{} seconds", config.scene_detection.max_segment_length));
     
     print_progress("Detecting scenes...")?;
     
     let scenes = detect_scenes(
         &input, 
-        config.scene_threshold,
-        config.hdr_scene_threshold,
-        config.min_segment_length,
-        config.max_segment_length
+        config.scene_detection.scene_threshold,
+        config.scene_detection.hdr_scene_threshold,
+        config.scene_detection.min_segment_length,
+        config.scene_detection.max_segment_length
     )?;
     
     print_info("Detected Scenes", scenes.len());
@@ -197,17 +195,17 @@ pub fn execute_encode(
     }
     
     // Prepare temp directories
-    let working_dir = config.temp_dir.join(format!("drapto_{}", uuid::Uuid::new_v4()));
+    let working_dir = config.directories.temp_dir.join(format!("drapto_{}", uuid::Uuid::new_v4()));
     fs::create_dir_all(&working_dir)?;
     debug!("Created working directory: {}", working_dir.display());
     
     // Encode video
     print_section("Video Encoding");
-    print_info("Parallel Jobs", config.parallel_jobs);
+    print_info("Parallel Jobs", config.resources.parallel_jobs);
     
     let video_options = VideoEncodingOptions {
-        quality: config.target_quality,
-        parallel_jobs: config.parallel_jobs,
+        quality: config.video.target_quality,
+        parallel_jobs: config.resources.parallel_jobs,
         hw_accel_option: hw_accel_option.clone(), // Clone here to avoid move
         crop_filter,
         scenes: Some(scenes),
@@ -247,7 +245,7 @@ pub fn execute_encode(
     // This is critical as the muxer may have modified the output path
     
     // Cleanup
-    if !config.keep_temp_files {
+    if !config.directories.keep_temp_files {
         print_progress("Cleaning up temporary files...")?;
         if let Err(e) = fs::remove_dir_all(&working_dir) {
             print_warning(&format!("Failed to clean up temporary files: {}", e));

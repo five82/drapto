@@ -104,7 +104,7 @@ where
     let segments_path = segments_dir.as_ref();
     
     // Get hardware acceleration option from config
-    let hw_opt = &config.hw_accel_option;
+    let hw_opt = &config.video.hw_accel_option;
     
     // Format scene times for FFmpeg segment_times option
     // Skip times < 1.0 to avoid FFmpeg issues with very early splits
@@ -239,7 +239,7 @@ fn validate_segments_integrity<P: AsRef<Path>>(
     }
     
     // Validate segment boundaries against scene changes
-    let min_segment_duration = config.min_segment_length as f64;
+    let min_segment_duration = config.scene_detection.min_segment_length as f64;
     
     if let Ok(short_segments) = validate_segments(segments[0].parent().unwrap(), scene_times, min_segment_duration) {
         let problematic_segments = short_segments.iter()

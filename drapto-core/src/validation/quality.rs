@@ -130,6 +130,102 @@ where
     Ok(())
 }
 
+/// Validate HDR consistency between input and output
+pub fn validate_hdr_consistency(
+    original_info: &MediaInfo,
+    encoded_info: &MediaInfo,
+    report: &mut ValidationReport,
+) -> Result<()> {
+    // Perform a more thorough check for HDR content
+    let input_is_hdr = crate::detection::format::has_hdr(original_info);
+    let output_is_hdr = crate::detection::format::has_hdr(encoded_info);
+    
+    report.add_info(
+        format!(
+            "HDR detection: input={}, output={}",
+            if input_is_hdr { "Yes" } else { "No" },
+            if output_is_hdr { "Yes" } else { "No" }
+        ),
+        "HDR"
+    );
+    
+    // If input is HDR, validate that output is also HDR
+    if input_is_hdr && !output_is_hdr {
+        report.add_error(
+            "HDR to SDR conversion detected. Input is HDR but output is not HDR.",
+            "HDR"
+        );
+    }
+    
+    // Perform a more thorough check for Dolby Vision
+    // Using a more focused implementation specific to detection in video properties
+    let input_is_dv = explicitly_check_dolby_vision(original_info);
+    let output_is_dv = explicitly_check_dolby_vision(encoded_info);
+    
+    // Include the DV status in the report only if DV was detected in input
+    if input_is_dv || output_is_dv {
+        report.add_info(
+            format!(
+                "Dolby Vision detection: input={}, output={}",
+                if input_is_dv { "Yes" } else { "No" },
+                if output_is_dv { "Yes" } else { "No" }
+            ),
+            "HDR"
+        );
+    }
+    
+    // Only warn about Dolby Vision conversion if the input actually has Dolby Vision
+    if input_is_dv && !output_is_dv {
+        report.add_warning(
+            "Dolby Vision to HDR10/SDR conversion detected. Input has Dolby Vision but output does not.",
+            "HDR"
+        );
+    }
+    
+    Ok(())
+}
+
+/// Perform a more explicit check for Dolby Vision presence in stream properties
+/// This is a more conservative detector than the general has_dolby_vision function
+fn explicitly_check_dolby_vision(media_info: &MediaInfo) -> bool {
+    if let Some(video_stream) = media_info.primary_video_stream() {
+        // Check for explicit DV codec
+        let codec_name = video_stream.codec_name.to_lowercase();
+        if codec_name.contains("dvh") || codec_name.contains("dovi") {
+            return true;
+        }
+        
+        // Check for explicit DV codec tag
+        if let Some(codec_tag) = video_stream.properties.get("codec_tag_string").and_then(|v| v.as_str()) {
+            let codec_tag_lower = codec_tag.to_lowercase();
+            if codec_tag_lower == "dovi" || codec_tag_lower.contains("dvh") {
+                return true;
+            }
+        }
+        
+        // Check for explicit Dolby Vision tags
+        for (key, _) in &video_stream.tags {
+            let key_lower = key.to_lowercase();
+            if key_lower == "dovi" || key_lower == "dolby_vision" || key_lower == "dv_profile" {
+                return true;
+            }
+        }
+        
+        // Check for explicit Dolby Vision side data
+        if let Some(side_data_list) = video_stream.properties.get("side_data_list").and_then(|v| v.as_array()) {
+            for side_data in side_data_list {
+                if let Some(side_data_type) = side_data.get("side_data_type").and_then(|v| v.as_str()) {
+                    if side_data_type.contains("DOVI") || side_data_type.contains("Dolby Vision") {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

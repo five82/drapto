@@ -40,8 +40,8 @@ fn main() -> Result<()> {
     
     // Create pipeline configuration
     let mut config = Config::default();
-    config.parallel_jobs = num_cpus::get();
-    config.use_segmentation = false;
+    config.resources.parallel_jobs = num_cpus::get();
+    config.video.use_segmentation = false;
     
     let options = PipelineOptions {
         config,

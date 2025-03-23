@@ -1,0 +1,89 @@
+# Drapto Configuration Example
+# 
+# This is an example configuration file for drapto. You can use this as a starting point
+# for your own configuration. Copy this file to drapto.toml and modify it to suit your needs.
+#
+# All settings have sensible defaults, so you only need to set values that differ from defaults.
+# Settings can also be overridden with environment variables like DRAPTO_SCENE_THRESHOLD=35.0
+
+# Directory configuration
+[directories]
+# Base directory for all temporary files
+temp_dir = "/tmp/drapto"
+# Keep temporary files after encoding (useful for debugging)
+keep_temp_files = false
+# Directory for segmented files
+segments_dir = "/tmp/drapto/segments"
+# Directory for encoded segments
+encoded_segments_dir = "/tmp/drapto/encoded_segments"
+# Working directory for temporary processing
+working_dir = "/tmp/drapto/working"
+
+# Video encoding settings
+[video]
+# Enable hardware acceleration
+hardware_acceleration = true
+# Hardware acceleration options (if needed)
+hw_accel_option = ""
+# Target VMAF quality score (0-100)
+target_quality = 93.0
+# Target VMAF for HDR content
+target_quality_hdr = 95.0
+# Encoder preset (0-13, lower = slower/better quality)
+preset = 6
+# SVT-AV1 encoder parameters
+svt_params = "tune=0:film-grain=0:film-grain-denoise=0"
+# Pixel format for encoding
+pix_fmt = "yuv420p10le"
+# Disable automatic crop detection
+disable_crop = false
+# Use scene-based segmentation and parallel encoding
+use_segmentation = true
+# VMAF sample count for quality estimation
+vmaf_sample_count = 3
+# VMAF sample length in seconds
+vmaf_sample_length = 1.0
+
+# Audio encoding settings
+[audio]
+# Audio codec to use
+codec = "aac"
+# Audio bitrate in kbps
+bitrate = 128
+# Enable audio normalization
+normalize = true
+# Target loudness level in LUFS
+target_loudness = -23.0
+
+# Scene detection configuration
+[scene_detection]
+# Scene detection threshold for SDR content (0-100)
+scene_threshold = 40.0
+# Scene detection threshold for HDR content (0-100)
+hdr_scene_threshold = 30.0
+# Minimum segment length in seconds
+min_segment_length = 5.0
+# Maximum segment length in seconds
+max_segment_length = 15.0
+
+# Resource management settings
+[resources]
+# Number of parallel encoding jobs (0 = auto-detect based on CPU cores)
+parallel_jobs = 0
+# Memory threshold as fraction of total system memory
+memory_threshold = 0.7
+# Maximum memory tokens for concurrent operations
+max_memory_tokens = 8
+# Task stagger delay in seconds (prevents launching all jobs at once)
+task_stagger_delay = 0.2
+# Memory limit per encoding job in MB (0 = auto)
+memory_per_job = 2048
+
+# Logging configuration
+[logging]
+# Enable verbose logging
+verbose = false
+# Log level (DEBUG, INFO, WARNING, ERROR)
+log_level = "INFO"
+# Log directory
+log_dir = "~/drapto_logs"

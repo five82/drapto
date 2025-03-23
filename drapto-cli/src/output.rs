@@ -40,13 +40,13 @@ pub fn print_info<T: Display>(label: &str, value: T) {
 /// Print a message with a specific color based on severity
 pub fn print_message(message: &ValidationMessage) {
     match message.level {
-        ValidationLevel::Info => println!("  ℹ️  {}: {}", 
+        ValidationLevel::Info => println!("  ℹ {}: {}", 
             message.category.bright_cyan().bold(), 
             message.message),
-        ValidationLevel::Warning => println!("  ⚠️  {}: {}", 
+        ValidationLevel::Warning => println!("  ⚠ {}: {}", 
             message.category.yellow().bold(), 
             message.message),
-        ValidationLevel::Error => println!("  ❌ {}: {}", 
+        ValidationLevel::Error => println!("  ✗ {}: {}", 
             message.category.bright_red().bold(), 
             message.message),
     }
@@ -57,12 +57,12 @@ pub fn print_validation_report(report: &ValidationReport) {
     // Use the appropriate title with status indicators
     let title_status = if report.passed {
         if !report.warnings().is_empty() {
-            "⚠️ Validation PASSED WITH WARNINGS".yellow().bold()
+            "⚠ Validation PASSED WITH WARNINGS".yellow().bold()
         } else {
-            "✅ Validation PASSED".bright_green().bold() 
+            "✓ Validation PASSED".bright_green().bold() 
         }
     } else { 
-        "❌ Validation FAILED".bright_red().bold() 
+        "✗ Validation FAILED".bright_red().bold() 
     };
     
     print_heading(&title_status.to_string());
@@ -86,11 +86,11 @@ pub fn print_validation_report(report: &ValidationReport) {
     print_section("Validation by Category");
     for (category, (errors, warnings)) in &category_stats {
         let status = if *errors > 0 {
-            "❌".bright_red()
+            "✗".bright_red()
         } else if *warnings > 0 {
-            "⚠️".yellow()
+            "⚠".yellow()
         } else {
-            "✅".bright_green()
+            "✓".bright_green()
         };
         
         let status_text = if *errors > 0 {
@@ -163,12 +163,12 @@ pub fn print_validation_report(report: &ValidationReport) {
     // Print overall status
     if report.passed {
         if !warnings.is_empty() {
-            println!("\n⚠️ {}", "VALIDATION PASSED WITH WARNINGS - Output may have minor issues".yellow().bold());
+            println!("\n⚠ {}", "VALIDATION PASSED WITH WARNINGS - Output may have minor issues".yellow().bold());
         } else {
-            println!("\n✅ {}", "VALIDATION PASSED - Output meets all quality criteria".bright_green().bold());
+            println!("\n✓ {}", "VALIDATION PASSED - Output meets all quality criteria".bright_green().bold());
         }
     } else {
-        println!("\n❌ {}", "VALIDATION FAILED - Output has quality issues that should be addressed".bright_red().bold());
+        println!("\n✗ {}", "VALIDATION FAILED - Output has quality issues that should be addressed".bright_red().bold());
     }
 }
 
@@ -207,12 +207,12 @@ pub fn print_error(message: &str) {
 
 /// Print a success message with green styling and a checkmark
 pub fn print_success(message: &str) {
-    println!("{} {}", "✅".green(), message);
+    println!("{} {}", "✓".green(), message);
 }
 
 /// Print a warning message with yellow styling
 pub fn print_warning(message: &str) {
-    println!("{} {}", "⚠️".yellow(), message.yellow());
+    println!("{} {}", "⚠".yellow(), message.yellow());
 }
 
 /// Print a status update with appropriate coloring based on status type
@@ -220,19 +220,19 @@ pub fn print_warning(message: &str) {
 pub fn print_status(status_type: &str, message: &str) {
     match status_type.to_lowercase().as_str() {
         "start" | "starting" | "begin" => {
-            println!("{} {} {}", "🚀".cyan(), status_type.cyan().bold(), message);
+            println!("{} {} {}", ">".cyan(), status_type.cyan().bold(), message);
         }
         "processing" | "running" => {
-            println!("{} {} {}", "🔄".blue(), status_type.blue().bold(), message);
+            println!("{} {} {}", ">".blue(), status_type.blue().bold(), message);
         }
         "complete" | "completed" | "success" => {
-            println!("{} {} {}", "✅".green(), status_type.green().bold(), message);
+            println!("{} {} {}", "✓".green(), status_type.green().bold(), message);
         }
         "warning" => {
-            println!("{} {} {}", "⚠️".yellow(), status_type.yellow().bold(), message);
+            println!("{} {} {}", "⚠".yellow(), status_type.yellow().bold(), message);
         }
         "error" | "failed" | "failure" => {
-            println!("{} {} {}", "❌".bright_red(), status_type.bright_red().bold(), message);
+            println!("{} {} {}", "✗".bright_red(), status_type.bright_red().bold(), message);
         }
         _ => {
             println!("{} {} {}", "•".bright_white(), status_type.white().bold(), message);

@@ -30,11 +30,11 @@ fn test_video_segmentation() {
     }
     
     // Create test config with standard values
-    let config = Config::default()
-        .with_scene_threshold(25.0)
-        .with_hdr_scene_threshold(15.0)
-        .with_min_segment_length(1.0)
-        .with_max_segment_length(30.0);
+    let mut config = Config::default();
+    config.scene_detection.scene_threshold = 25.0;
+    config.scene_detection.hdr_scene_threshold = 15.0;
+    config.scene_detection.min_segment_length = 1.0;
+    config.scene_detection.max_segment_length = 30.0;
     
     // Create temp directory for segments
     let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");

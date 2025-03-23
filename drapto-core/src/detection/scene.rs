@@ -450,10 +450,10 @@ pub fn detect_scenes_with_config<P: AsRef<Path>>(
 ) -> Result<Vec<f64>> {
     detect_scenes(
         input_file,
-        config.scene_threshold,
-        config.hdr_scene_threshold,
-        config.min_segment_length,
-        config.max_segment_length,
+        config.scene_detection.scene_threshold,
+        config.scene_detection.hdr_scene_threshold,
+        config.scene_detection.min_segment_length,
+        config.scene_detection.max_segment_length,
     )
 }
 

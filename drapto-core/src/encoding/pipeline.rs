@@ -265,7 +265,7 @@ impl EncodingPipeline {
         // 2. Segment the video if needed
         self.report_progress(0.1, "Analyzing video");
         crate::logging::log_section("VIDEO SEGMENTATION");
-        let segments = if self.options.config.use_segmentation {
+        let segments = if self.options.config.video.use_segmentation {
             info!("Using segmented encoding");
             segment_video(input_file, &segments_dir, &self.options.config)?
         } else {
@@ -286,10 +286,10 @@ impl EncodingPipeline {
                 is_dolby_vision,
                 is_hdr: false, // TODO: detect HDR
                 crop_filter: None, // TODO: implement crop detection
-                parallel_jobs: self.options.config.parallel_jobs,
-                quality: self.options.config.target_quality,
-                hw_accel_option: if self.options.config.hardware_acceleration { 
-                    Some(self.options.config.hw_accel_option.clone()) 
+                parallel_jobs: self.options.config.resources.parallel_jobs,
+                quality: self.options.config.video.target_quality,
+                hw_accel_option: if self.options.config.video.hardware_acceleration { 
+                    Some(self.options.config.video.hw_accel_option.clone()) 
                 } else { 
                     None 
                 },
@@ -305,8 +305,8 @@ impl EncodingPipeline {
         let audio_options = AudioEncodingOptions {
             working_dir: temp_dir.clone(),
             quality: None, // Use default quality
-            hw_accel_option: if self.options.config.hardware_acceleration { 
-                Some(self.options.config.hw_accel_option.clone()) 
+            hw_accel_option: if self.options.config.video.hardware_acceleration { 
+                Some(self.options.config.video.hw_accel_option.clone()) 
             } else { 
                 None 
             },
@@ -527,10 +527,10 @@ impl EncodingPipeline {
             is_dolby_vision: detect_dolby_vision(input_file),
             is_hdr: false, // TODO: detect HDR
             crop_filter: None, // TODO: implement crop detection
-            parallel_jobs: self.options.config.parallel_jobs,
-            quality: self.options.config.target_quality,
-            hw_accel_option: if self.options.config.hardware_acceleration { 
-                Some(self.options.config.hw_accel_option.clone()) 
+            parallel_jobs: self.options.config.resources.parallel_jobs,
+            quality: self.options.config.video.target_quality,
+            hw_accel_option: if self.options.config.video.hardware_acceleration { 
+                Some(self.options.config.video.hw_accel_option.clone()) 
             } else { 
                 None 
             },

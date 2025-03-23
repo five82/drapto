@@ -9,7 +9,11 @@
 ## Phase 2: Core Modules
 1. Implement media inspection (FFprobe wrapper)
 2. Build command execution system
-3. Create config management module
+3. Create config management module with layered configuration:
+   - Default values defined in code
+   - TOML configuration file support
+   - Environment variable overrides 
+   - Command-line argument precedence
 4. Develop validation framework
 
 ## Phase 3: Processing Pipelines
@@ -36,6 +40,8 @@
 - log + env_logger: Logging
 - rayon: Parallel computing
 - serde: Serialization/deserialization
+- toml: Configuration file parsing
+- dirs: Cross-platform directory paths
 - tokio: Async runtime for I/O operations
 - ctor: For resource cleanup
 - anyhow/thiserror: Error handling

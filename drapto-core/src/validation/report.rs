@@ -149,9 +149,9 @@ impl ValidationReport {
         lines.push("=".repeat(80));
         lines.push(format!("VALIDATION REPORT SUMMARY - {}", 
             if self.passed { 
-                "✅ PASSED" 
+                "✓ PASSED" 
             } else { 
-                "❌ FAILED" 
+                "✗ FAILED" 
             }
         ));
         lines.push("=".repeat(80));
@@ -177,11 +177,11 @@ impl ValidationReport {
         lines.push("VALIDATION BY CATEGORY:".to_string());
         for (category, (errors, warnings)) in &category_stats {
             let status = if *errors > 0 {
-                "❌ FAILED"
+                "✗ FAILED"
             } else if *warnings > 0 {
-                "⚠️ PASSED WITH WARNINGS"
+                "⚠ PASSED WITH WARNINGS"
             } else {
-                "✅ PASSED"
+                "✓ PASSED"
             };
             
             // Only show error and warning counts if there are any
@@ -211,9 +211,9 @@ impl ValidationReport {
             
             for msg in sorted_messages {
                 let prefix = match msg.level {
-                    ValidationLevel::Error => "❌",
-                    ValidationLevel::Warning => "⚠️",
-                    ValidationLevel::Info => "ℹ️",
+                    ValidationLevel::Error => "✗",
+                    ValidationLevel::Warning => "⚠",
+                    ValidationLevel::Info => "ℹ",
                 };
                 lines.push(format!("  {} [{}] {}", prefix, msg.level, msg.message));
             }
@@ -234,12 +234,12 @@ impl ValidationReport {
         // Status conclusion
         if self.passed {
             if warning_count > 0 {
-                lines.push("⚠️ VALIDATION PASSED WITH WARNINGS - Output may have minor issues".to_string());
+                lines.push("⚠ VALIDATION PASSED WITH WARNINGS - Output may have minor issues".to_string());
             } else {
-                lines.push("✅ VALIDATION PASSED - Output meets all quality criteria".to_string());
+                lines.push("✓ VALIDATION PASSED - Output meets all quality criteria".to_string());
             }
         } else {
-            lines.push("❌ VALIDATION FAILED - Output has quality issues that should be addressed".to_string());
+            lines.push("✗ VALIDATION FAILED - Output has quality issues that should be addressed".to_string());
         }
         lines.push("=".repeat(80));
         

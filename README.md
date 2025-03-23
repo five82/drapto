@@ -1,92 +1,100 @@
 # Drapto
 
-AV1 video encoding ab-av1 wrapper with chunked encoding, parallel processing, and Dolby Vision support.
+ab-av1 video encoding wrapper with scene-based segmentation, parallel processing, and Dolby Vision support.
 
-This is a vibe coding experiment to see how far LLM tools can take this. Early work in progress. Pull requests are welcome.
+This is a vibe coding experiment to see how far LLM tools can take this
 
 ## Features
 
-- **AV1 Encoding with SVT-AV1:** High-quality encoding using libsvtav1 with configurable presets.
-- **Intelligent Scene-Based Segmentation:** Automatically segments the input video using adaptive scene detection. (Configurable parameters such as SCENE_THRESHOLD, HDR_SCENE_THRESHOLD, TARGET_MIN_SEGMENT_LENGTH, and MAX_SEGMENT_LENGTH in config.py.)
-- **ab-av1 Target Quality VMAF Encoding:** Adjusts segment encoding parameters on retries (e.g. increased sample count/duration, raised min_vmaf).
-- **Parallel Encoding Pipeline:** Encodes segments in parallel using a dynamic memory‐aware scheduler that performs a warm-up analysis to optimally balance resource usage with adaptive retries. (See parameters MEMORY_THRESHOLD, MAX_MEMORY_TOKENS, and TASK_STAGGER_DELAY in config.py.)
-- **Enhanced Output Validation:** Performs comprehensive validation of video/audio streams, container integrity, and crop dimensions, outputting a detailed validation report.
-- **Dolby Vision Support:** Automatic detection and transcoding of Dolby Vision content.
-- **Automatic Black Bar Detection and Cropping:** Detects black bars via ffprobe/ffmpeg and applies appropriate crop filters.
-- **Opus Audio Encoding:** Dynamically determines the bitrate and layout for multiple audio tracks.
-- **Hardware Acceleration:** Supports hardware decoding (e.g., VideoToolbox on macOS) when available.
-- **Comprehensive Output Validation:** Validates video and audio streams, container integrity, crop dimensions, and quality targets.
+- **AV1 Encoding with SVT-AV1:** High-quality encoding using libsvtav1 with configurable presets
+- **Intelligent Scene-Based Segmentation:** Automatically segments videos using adaptive scene detection
+- **Quality-Targeted Encoding:** Uses ab-av1 to achieve consistent quality with VMAF metrics
+- **Parallel Encoding Pipeline:** Encodes segments concurrently with memory-aware scheduling
+- **Enhanced Output Validation:** Performs comprehensive validation of video/audio streams, container integrity, and quality targets
+- **Dolby Vision Support:** Automatic detection and handling of Dolby Vision content
+- **Automatic Black Bar Detection and Cropping:** Detects black bars and applies appropriate crop filters
+- **Quality Audio Encoding:** Intelligent audio encoding for optimal quality
+- **Hardware Acceleration:** Supports hardware decoding when available
 
 ## Requirements
 
-- Python 3.8+
-- FFmpeg with support for libsvtav1, libvmaf, and libopus
-- mediainfo
-- ab-av1 (for quality-targeted encoding; install via Cargo: `cargo install ab-av1`)
+- Rust 1.76+
+- FFmpeg 7.0+ with support for libsvtav1, libvmaf, and libopus
+- ab-av1 (for quality-targeted encoding)
 
 ## Installation
 
 ```bash
-# Install using pipx (recommended)
-pipx install .
+# Clone the repository
+git clone https://github.com/yourusername/drapto.git
+cd drapto
 
-# Or install in development mode
-pipx install -e .
+# Build with cargo
+cargo build --release
+
+# Install locally
+cargo install --path .
 ```
 
 ## Usage
 
-### Usage
-
 ```bash
 # Encode a single file
-drapto input.mkv output.mkv
+drapto encode --input input.mkv --output output.mkv
 
-# Encode all videos in a directory
-drapto input_dir/ output_dir/
+# Get information about a media file
+drapto info input.mkv
+
+# Validate an encoded file
+drapto validate --input encoded.mp4 --reference original.mkv
 ```
 
-Drapto automatically detects Dolby Vision and routes such content through a dedicated encoding pipeline. For standard (non‑Dolby Vision) content, the pipeline performs:
-- **Segmentation:** The video is segmented using dynamic, scene-based detection.
-- **Dynamic, Memory-Aware Parallel Encoding:** Segments are encoded in parallel utilizing a warm-up phase to gauge resource usage. Adaptive retry strategies are applied on failures.
-- **Concatenation & Enhanced Validation:** The encoded segments are concatenated and thoroughly validated (including checks on codec, duration, crop, and VMAF quality metrics), with a detailed report produced.
+Drapto automatically detects Dolby Vision and routes such content through a dedicated encoding pipeline. For standard content, the pipeline performs:
+- **Segmentation:** The video is segmented using dynamic, scene-based detection
+- **Memory-Aware Parallel Encoding:** Segments are encoded in parallel with adaptive retry strategies
+- **Concatenation & Validation:** The encoded segments are concatenated and thoroughly validated
 
-### Configuration
+## Configuration
 
-The encoder can be configured by modifying settings in `drapto/config.py`. Notable parameters include:
+Drapto supports a flexible configuration system with multiple methods:
 
-- `PRESET`: Encoding speed preset (0 to 13; default: 6).
-- `TARGET_VMAF`: Target VMAF for quality-targeted standard encoding.
-- `VMAF_SAMPLE_COUNT` and `VMAF_SAMPLE_LENGTH`: Parameters used for quality analysis of segments.
-- `TARGET_SEGMENT_LENGTH`: Target segment duration (in seconds) used as a guideline by the scene detection algorithm.
-- (Note: A fixed segmentation mode is no longer supported.)
-- Additional parameters for cropping, Dolby Vision handling, and hardware acceleration.
+1. A TOML configuration file (`drapto.toml`)
+2. Environment variables
+3. Command-line arguments
 
-These settings allow you to finely tune the balance between encoding speed and output quality.
+### Example Configuration
 
-- **Memory Management:** Configure `MEMORY_THRESHOLD`, `MAX_MEMORY_TOKENS`, and `TASK_STAGGER_DELAY` to control resource allocation during parallel encoding.
-- **Scene Detection Tuning:** Adjust `SCENE_THRESHOLD`, `MIN_SCENE_INTERVAL`, `CLUSTER_WINDOW`, `TARGET_SEGMENT_LENGTH`, and `MAX_SEGMENT_LENGTH` to fine-tune segmentation performance.
+```toml
+# Basic input/output paths
+input = "input.mkv"
+output = "output.mp4"
 
-### Features
+[video]
+# Target VMAF quality (0-100)
+target_quality = 93.0
+# Encoder preset (0-13, lower is slower but better quality)
+preset = 6
+# Enable/disable scene-based segmentation
+use_segmentation = true
 
-1. **Intelligent Quality Control**
-   - Resolution-based CRF selection
-   - VMAF-targeted chunked encoding
-   - Dolby Vision preservation
+[scene_detection]
+# Content threshold for scene detection (0-100)
+scene_threshold = 40.0
+# Minimum segment length in seconds
+min_segment_length = 5.0
 
-2. **Performance Optimization**
-   - Parallel chunk processing
-   - Hardware acceleration when available
-   - Efficient audio encoding
+[resources]
+# Number of parallel encoding jobs (0 = auto-detect CPU cores)
+parallel_jobs = 0
+# Memory threshold as fraction of system RAM
+memory_threshold = 0.7
+```
 
-3. **Quality Preservation**
-   - Black bar detection and removal
-   - High-quality Opus audio encoding
-   - Stream copy for subtitles
+For detailed configuration options, see the [Configuration Guide](docs/configuration.md).
 
 ## Development & Troubleshooting
 
-- **Logging:** Drapto employs Rich for enhanced log formatting. Detailed logs are saved in the `LOG_DIR` (default: `$HOME/drapto_logs`), which can be used for diagnosing issues.
-- **Temporary Files:** Automatic cleanup is performed on temporary directories (located in `/tmp/drapto` by default) after encoding.
-- **Hardware Acceleration:** On macOS, VideoToolbox is used for decoding if available.
-- **Common Issues:** Check dependency versions, ensure input videos are valid, and verify sufficient disk space for temporary files.
+- **Logging:** Detailed logs are saved in the configured log directory
+- **Temporary Files:** Temporary directories are automatically cleaned up after encoding (unless keep_temp_files is enabled)
+- **Hardware Acceleration:** Automatically detected if available and enabled
+- **Common Issues:** Check dependency versions, ensure input videos are valid, and verify sufficient disk space for temporary files
