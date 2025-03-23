@@ -386,83 +386,6 @@ impl SchedulerBuilder {
     }
 }
 
-/// Calculate memory requirements based on warmup results
-///
-/// This function analyzes the memory usage of warmup encoding tasks and
-/// determines appropriate token weights for different video resolutions.
-///
-/// # Arguments
-///
-/// * `warmup_results` - Results from warmup encoding tasks, including memory usage
-///
-/// # Returns
-///
-/// A tuple containing:
-/// * Base memory size per token in bytes
-/// * HashMap of resolution category to weight values
-pub fn calculate_memory_requirements<T, E>(
-    warmup_results: &[(Result<T, E>, usize, String)],
-) -> (usize, HashMap<String, usize>)
-where
-    E: std::fmt::Display,
-{
-    let mut memory_by_resolution: HashMap<String, Vec<usize>> = HashMap::new();
-
-    // Collect memory usage by resolution category
-    for (_, peak_memory, resolution_category) in warmup_results {
-        memory_by_resolution
-            .entry(resolution_category.clone())
-            .or_insert_with(Vec::new)
-            .push(*peak_memory);
-    }
-
-    // Calculate averages for each resolution category
-    let mut averages: HashMap<String, usize> = HashMap::new();
-    for (category, values) in &memory_by_resolution {
-        if !values.is_empty() {
-            let sum: usize = values.iter().sum();
-            averages.insert(category.clone(), sum / values.len());
-        }
-    }
-
-    // Calculate peak memory usage during warmup
-    let max_peak = warmup_results
-        .iter()
-        .map(|(_, peak_memory, _)| *peak_memory)
-        .max()
-        .unwrap_or(512 * 1024 * 1024); // Default to 512MB if no data
-
-    // Determine base token size
-    let base_size = if let Some(min_average) = averages.values().min().copied() {
-        // Use the larger of minimum average or peak/4
-        std::cmp::max(min_average, max_peak / 4)
-    } else {
-        // Fallback to 512MB
-        512 * 1024 * 1024
-    };
-
-    // Calculate relative weights
-    let mut weights = HashMap::new();
-    weights.insert("SD".to_string(), 1); // Base weight for SD (was SDR)
-
-    // HD weight (formerly 1080p)
-    let weight_hd = if let Some(avg_hd) = averages.get("HD").or_else(|| averages.get("1080p")) {
-        std::cmp::max(1, avg_hd / base_size)
-    } else {
-        2 // Default if no data
-    };
-    weights.insert("HD".to_string(), weight_hd);
-
-    // UHD weight (formerly 4K)
-    let weight_uhd = if let Some(avg_uhd) = averages.get("UHD").or_else(|| averages.get("4k")) {
-        std::cmp::max(2, avg_uhd / base_size)
-    } else {
-        4 // Default if no data
-    };
-    weights.insert("UHD".to_string(), weight_uhd);
-
-    (base_size, weights)
-}
 
 #[cfg(test)]
 mod tests {
@@ -495,36 +418,6 @@ mod tests {
         assert_eq!(scheduler.current_token_usage(), 0);
     }
 
-    #[test]
-    fn test_calculate_memory_requirements() {
-        // Mock warmup results with memory usage in bytes
-        let warmup_results = vec![
-            (Ok(()) as Result<(), &str>, 300_000_000, "SD".to_string()),  // 300 MB for SD
-            (Ok(()) as Result<(), &str>, 320_000_000, "SD".to_string()),  // 320 MB for SD
-            (Ok(()) as Result<(), &str>, 650_000_000, "HD".to_string()),  // 650 MB for HD (formerly 1080p)
-            (Ok(()) as Result<(), &str>, 700_000_000, "HD".to_string()),  // 700 MB for HD (formerly 1080p)
-            (Ok(()) as Result<(), &str>, 1_200_000_000, "UHD".to_string()), // 1.2 GB for UHD (formerly 4K)
-        ];
-
-        let (base_size, weights) = calculate_memory_requirements(&warmup_results);
-
-        // The base size should be close to the SD average
-        assert!(
-            base_size >= 300_000_000,
-            "Base size should be at least 300 MB"
-        );
-
-        // Weights should be proportional
-        assert_eq!(*weights.get("SD").unwrap(), 1, "SD weight should be 1");
-        assert!(
-            *weights.get("HD").unwrap() >= 2,
-            "HD weight should be at least 2"
-        );
-        assert!(
-            *weights.get("UHD").unwrap() >= 3,
-            "UHD weight should be at least 3"
-        );
-    }
 
     #[test]
     fn test_builder_default_values() {
