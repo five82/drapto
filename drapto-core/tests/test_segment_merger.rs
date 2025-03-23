@@ -1,3 +1,15 @@
+//! Tests for video segment merging functionality
+//!
+//! These tests verify:
+//! - Generation of correct FFmpeg commands for concatenation
+//! - Configuration of merger options for different scenarios
+//! - Command-line argument validation
+//! - Default settings for segments with common codecs
+//! - Proper handling of metadata and stream copying
+//!
+//! These tests focus on command generation and options rather than
+//! performing actual merges, which are tested in integration tests.
+
 use std::path::Path;
 use std::ffi::OsString;
 

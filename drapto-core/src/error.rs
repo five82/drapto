@@ -1,3 +1,15 @@
+//! Error handling module
+//!
+//! Responsibilities:
+//! - Define custom error types for the entire library
+//! - Provide consistent error handling patterns
+//! - Enable detailed error reporting with context
+//! - Implement error conversion from standard library errors
+//! - Support error propagation through the Result type
+//!
+//! This module centralizes error handling infrastructure for
+//! the entire drapto codebase, ensuring consistent error reporting.
+
 use thiserror::Error;
 
 /// Custom error types for drapto

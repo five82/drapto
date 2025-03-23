@@ -1,3 +1,14 @@
+//! Media probe session management module
+//!
+//! Responsibilities:
+//! - Cache media probe results to avoid redundant probing
+//! - Provide an efficient interface for media information retrieval
+//! - Manage thread-safe access to cached media data
+//! - Optimize performance for repeated operations on the same files
+//!
+//! This module provides a session-based approach to media probing,
+//! reducing overhead when analyzing multiple aspects of the same media file.
+
 use std::path::Path;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};

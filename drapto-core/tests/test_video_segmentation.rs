@@ -1,3 +1,14 @@
+//! Integration tests for video segmentation functionality
+//!
+//! These tests verify:
+//! - End-to-end video segmentation using scene detection
+//! - Creation of segmented video files from source material
+//! - Proper handling of segment boundaries
+//! - Configuration-based scene detection thresholds
+//!
+//! Note: These tests require actual video files and FFmpeg to run.
+//! Tests are skipped if test media files are not available.
+
 use std::path::Path;
 use std::env;
 

@@ -1,3 +1,15 @@
+//! Tests for media file multiplexing functionality
+//!
+//! These tests verify:
+//! - Command building for FFmpeg-based multiplexing
+//! - Proper handling of multiple audio tracks
+//! - Mux option configuration and validation
+//! - Error handling for invalid paths
+//! - Full integration with FFmpeg (when available)
+//!
+//! The tests use a combination of mock files and actual FFmpeg operations
+//! depending on the test requirements and environment availability.
+
 use std::path::Path;
 use std::fs::File;
 use std::process::Command;

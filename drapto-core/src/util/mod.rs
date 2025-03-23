@@ -1,7 +1,15 @@
-//! Utility functions and helpers
+//! Utility functions and helpers module
 //!
-//! This module contains utility functions for command execution, logging, and other
-//! common tasks used throughout the codebase.
+//! Responsibilities:
+//! - Provide command execution infrastructure with progress reporting
+//! - Define job abstractions for various media processing tasks
+//! - Implement memory-aware scheduling for resource management
+//! - Support logging and progress tracking during operations
+//! - Offer common utilities shared across different subsystems
+//!
+//! This module contains fundamental utility functions and structures
+//! that support the core functionality throughout the codebase, including
+//! command execution, job management, and resource scheduling.
 
 pub mod command;
 pub mod jobs;

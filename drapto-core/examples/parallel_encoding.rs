@@ -1,3 +1,19 @@
+//! Parallel Encoding Pipeline Example
+//!
+//! This example demonstrates the complete encoding pipeline with parallel processing:
+//! 1. Setting up a full encoding pipeline with custom configuration
+//! 2. Utilizing multi-core processing for encoding
+//! 3. Tracking encoding progress with a callback function
+//! 4. Gathering and reporting comprehensive statistics about the encoding process
+//!
+//! This example configures the pipeline to process a single file efficiently
+//! using all available CPU cores while providing progress feedback.
+//!
+//! Run with:
+//! ```
+//! cargo run --example parallel_encoding <input_file> <output_file>
+//! ```
+
 use std::path::PathBuf;
 use std::time::Instant;
 use std::sync::Arc;

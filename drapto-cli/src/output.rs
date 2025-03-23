@@ -1,3 +1,15 @@
+//! CLI output formatting and display utilities
+//!
+//! Responsibilities:
+//! - Format and present validation reports
+//! - Display progress indicators for long-running operations
+//! - Provide consistent styling for CLI output
+//! - Color-code messages based on severity
+//! - Create nicely formatted tables and sections
+//!
+//! This module handles all console output formatting, ensuring
+//! a consistent and user-friendly interface across commands.
+
 use std::fmt::Display;
 use std::io::{self, Write};
 use drapto_core::validation::{ValidationReport, ValidationLevel, ValidationMessage};

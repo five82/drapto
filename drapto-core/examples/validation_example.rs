@@ -1,3 +1,24 @@
+//! Media Validation Example
+//!
+//! This example demonstrates drapto's validation capabilities:
+//! 1. Running comprehensive validation on a single media file
+//! 2. Comparing input and output files to validate encoding quality and correctness
+//! 3. Working with validation reports to identify issues and warnings
+//! 4. Handling different validation scenarios with appropriate checks
+//!
+//! The example supports two modes:
+//! - Single file validation: Quality checks, stream validation, etc.
+//! - Input/output comparison: Ensuring encoded output matches the source appropriately
+//!
+//! Run with:
+//! ```
+//! # Validate a single file
+//! cargo run --example validation_example <media_file>
+//!
+//! # Compare input and output files
+//! cargo run --example validation_example <input_file> <output_file>
+//! ```
+
 use std::env;
 use std::path::Path;
 use drapto_core::validation::{comprehensive_validation, validate_output};

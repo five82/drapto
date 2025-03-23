@@ -1,3 +1,15 @@
+//! Centralized logging configuration for Drapto
+//!
+//! This module handles:
+//! - Setting up proper console logging with formatting
+//! - Configuring file-based logging with rotation
+//! - Managing log levels and output destinations
+//! - Coordinating logging across all pipeline components
+//! - Providing utility functions for log formatting and structure
+//!
+//! The logging configuration ensures consistent formatting and proper
+//! log aggregation throughout the encoding pipeline.
+
 use log::{debug, info, warn, LevelFilter};
 use std::io::Write;
 use std::process::Command;

@@ -1,3 +1,12 @@
+//! Tests for media format and color space detection
+//!
+//! These tests verify:
+//! - Accurate detection of HDR (High Dynamic Range) content
+//! - Detection of various HDR formats (HDR10, HLG)
+//! - Identification of Dolby Vision content from various metadata sources
+//! - Proper handling of color space, transfer function, and primaries
+//! - Color format detection across different stream properties
+
 use std::collections::HashMap;
 use serde_json::Value;
 use drapto_core::detection::format::{has_hdr, has_dolby_vision};

@@ -1,7 +1,15 @@
 //! Media information and probing module
-//! 
-//! This module provides functionality for obtaining information about media files
-//! using FFprobe, as well as data structures for representing media information.
+//!
+//! Responsibilities:
+//! - Provide media file analysis and metadata extraction
+//! - Define data structures for representing media information
+//! - Execute and parse FFprobe commands to extract media details
+//! - Cache media probe results for efficient repeated access
+//! - Expose stream, format, and chapter information from media files
+//!
+//! This module provides comprehensive functionality for analyzing media files
+//! using FFprobe, including structured data types for representing media information
+//! and efficient caching mechanisms for repeated operations.
 
 pub mod info;
 pub mod probe;

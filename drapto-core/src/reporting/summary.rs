@@ -1,7 +1,16 @@
-//! Summary reporting module
+//! Encoding summary and statistics module
 //!
-//! This module handles generation of encoding summaries,
-//! statistics, and report formatting.
+//! Responsibilities:
+//! - Generate detailed summaries of encoding operations
+//! - Calculate size reduction and efficiency statistics
+//! - Format encoding results for presentation
+//! - Serialize summaries to JSON for storage
+//! - Aggregate statistics across batch operations
+//!
+//! This module provides comprehensive summary reporting for encoding
+//! operations, including size comparisons, duration tracking, and
+//! quality validation results. It offers both human-readable and
+//! machine-readable formats for analysis and presentation.
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};

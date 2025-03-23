@@ -1,9 +1,19 @@
-//! Example demonstrating segment merger functionality
+//! Video Segment Creation and Merger Example
 //!
-//! This example shows how to:
-//! 1. Create multiple video segments from a source file
-//! 2. Merge those segments back into a single file
-//! 3. Validate the merged output
+//! This example demonstrates advanced video segmentation and merging capabilities:
+//! 1. Creating multiple video segments from a source file at specific timestamps
+//! 2. Analyzing segment properties using MediaInfo
+//! 3. Merging segmented files back into a single coherent output
+//! 4. Validating the merged output against the source file
+//! 5. Comparing timing and duration information for validation
+//!
+//! The example shows the complete segmentation-merge workflow with proper
+//! error handling and verification of segment properties.
+//!
+//! Run with:
+//! ```
+//! cargo run --example segment_merger <input_video_file>
+//! ```
 
 use std::path::{Path, PathBuf};
 use std::env;

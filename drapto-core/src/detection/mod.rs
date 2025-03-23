@@ -1,7 +1,13 @@
-//! Video detection module
+//! Detection algorithms for media content analysis
 //!
-//! This module contains functionality for detecting various aspects of video files,
-//! including scene detection and format detection.
+//! Responsibilities:
+//! - Scene detection for video segmentation
+//! - Content format detection (HDR, SDR, Dolby Vision)
+//! - Stream properties analysis
+//! - Video quality assessment
+//!
+//! This module contains detection algorithms that analyze media files
+//! to determine their characteristics and optimal processing parameters.
 
 pub mod scene;
 pub mod format;

@@ -1,3 +1,15 @@
+//! Video validation module
+//!
+//! Responsibilities:
+//! - Validate video codec compliance and compatibility
+//! - Verify video dimensions, aspect ratio, and resolution
+//! - Check framerate consistency and stability
+//! - Validate video stream properties and metadata
+//! - Ensure video quality meets required standards
+//!
+//! This module provides functions to validate various aspects of
+//! video streams to ensure they meet encoding specifications.
+
 use crate::media::MediaInfo;
 use super::report::ValidationReport;
 

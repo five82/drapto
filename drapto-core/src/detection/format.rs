@@ -1,3 +1,14 @@
+//! Media format detection module
+//!
+//! Responsibilities:
+//! - Detect HDR/SDR video content
+//! - Detect Dolby Vision profiles
+//! - Detect black bars for cropping
+//! - Analyze color spaces and bit depths
+//!
+//! This module provides tools to analyze media files for format-specific
+//! characteristics that impact encoding decisions.
+
 use std::path::Path;
 use std::collections::HashMap;
 use std::process::Command;

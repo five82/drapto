@@ -1,7 +1,24 @@
 //! Drapto Core Library
 //!
-//! This library provides core functionality for the Drapto video encoding tool.
-//! It handles media information, validation, detection, and encoding operations.
+//! Responsibilities:
+//! - Provide a comprehensive video encoding pipeline using AV1
+//! - Handle media analysis, detection, and validation 
+//! - Implement segmentation-based parallel encoding
+//! - Support HDR, SDR, and Dolby Vision content processing
+//! - Offer detailed progress reporting and quality validation
+//!
+//! This library implements the core functionality for the Drapto video 
+//! encoding tool, which offers a complete video encoding pipeline with
+//! scene-based segmentation, parallel encoding, and quality optimization.
+//! It provides robust error handling, consistent logging, and comprehensive
+//! validation to ensure high-quality encoding output.
+//!
+//! The library is designed as a modular system with clean separation of concerns:
+//! - `media`: Media file analysis and information extraction
+//! - `detection`: Scene detection and format identification
+//! - `encoding`: Video and audio encoding with segmentation support
+//! - `validation`: Quality assurance and validation reporting
+//! - `util`: Reusable utilities for command execution and parallel processing
 
 // Core modules
 pub mod error;

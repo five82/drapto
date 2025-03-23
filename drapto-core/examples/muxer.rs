@@ -1,3 +1,18 @@
+//! Media File Multiplexing Example
+//!
+//! This example demonstrates how to use the Muxer to combine separate video and audio tracks:
+//! 1. Creating a muxer with custom synchronization options
+//! 2. Handling multiple audio tracks with a single video track
+//! 3. Verifying the muxing operation's success
+//! 4. Using custom synchronization thresholds for more flexible A/V matching
+//!
+//! Run with:
+//! ```
+//! cargo run --example muxer <video_file> <audio_file> [additional_audio_files...] <output_file>
+//! ```
+//!
+//! The example supports muxing one video track with multiple audio tracks.
+
 use std::path::Path;
 use std::fs;
 use std::env;

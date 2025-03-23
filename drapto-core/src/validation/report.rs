@@ -1,3 +1,15 @@
+//! Validation reporting module
+//!
+//! Responsibilities:
+//! - Structure and manage validation results
+//! - Track validation messages with severity levels
+//! - Format validation reports for display
+//! - Categorize validation issues by subsystem
+//! - Determine overall validation status
+//!
+//! This module provides structured validation reporting capabilities
+//! for presenting validation results in a clear and organized manner.
+
 use std::fmt::{self, Display};
 use serde::{Serialize, Deserialize};
 

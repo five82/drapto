@@ -1,15 +1,22 @@
-//! Example of using the Ab-AV1 encoder for video encoding
+//! AV1 Video Encoding with Ab-AV1 Example
 //!
-//! This example demonstrates:
-//! 1. Creating an Ab-AV1 encoder with a custom configuration
-//! 2. Checking for the availability of ab-av1
-//! 3. Encoding a video segment
-//! 4. Validating the encoded segment
+//! This example demonstrates high-efficiency AV1 video encoding using the Ab-AV1 encoder:
+//! 1. Creating an Ab-AV1 encoder with quality-targeted configuration
+//! 2. Checking for the availability of the ab-av1 encoder on the system
+//! 3. Encoding a video segment with specified VMAF quality target
+//! 4. Collecting and displaying detailed encoding statistics
+//! 5. Validating the encoded segment against the source
+//! 6. Supporting HDR and Dolby Vision content
 //!
 //! Run with:
 //! ```
-//! cargo run --example ab_av1_encoding
+//! cargo run --example ab_av1_encoding --input video.mp4 --output encoded.mkv --vmaf 95 --preset 8
 //! ```
+//!
+//! Optional flags:
+//! --hdr          Enable HDR processing
+//! --dv           Enable Dolby Vision processing
+//! --crop "..."   Specify cropping parameters
 
 use std::path::PathBuf;
 use drapto_core::encoding::video::{AbAv1Encoder, AbAv1Config};

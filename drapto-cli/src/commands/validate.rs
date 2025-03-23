@@ -1,3 +1,15 @@
+//! Validation command implementation
+//!
+//! Responsibilities:
+//! - Validate media files against quality criteria
+//! - Verify A/V sync, codec compatibility, and other properties
+//! - Compare encoded outputs with reference files
+//! - Generate comprehensive validation reports
+//! - Present validation results to users
+//!
+//! This module implements the validation commands accessible through
+//! the CLI for checking media file properties and encoding quality.
+
 use std::path::PathBuf;
 use log::info;
 use drapto_core::error::Result;

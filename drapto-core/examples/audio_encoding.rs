@@ -1,7 +1,18 @@
-//! Example demonstrating audio encoding with OpusEncoder
+//! Audio Encoding with Opus Example
 //!
-//! This example shows how to use the OpusEncoder to encode audio tracks
-//! from an input file to Opus format.
+//! This example demonstrates high-quality audio encoding capabilities:
+//! 1. Analyzing input files to detect audio streams and properties
+//! 2. Configuring the Opus encoder with specific quality settings
+//! 3. Encoding all audio tracks from an input file to Opus format
+//! 4. Verifying and reporting on encoded audio quality and size
+//!
+//! The example shows how to access stream properties, configure encoding
+//! parameters, and process multiple audio tracks from a single input file.
+//!
+//! Run with:
+//! ```
+//! cargo run --example audio_encoding <input_file>
+//! ```
 
 use std::path::PathBuf;
 use log::{info, error};

@@ -1,6 +1,14 @@
-//! Utility functions for logging
+//! Utility logging functions (Deprecated)
 //!
-//! This module contains utility functions for logging used throughout the codebase.
+//! Responsibilities:
+//! - Re-export logging functions from main logging module
+//! - Provide backwards compatibility for existing code
+//! - Warn about deprecated usage in favor of main logging module
+//! - Maintain interface stability during transition
+//! - Support legacy code paths using the util::logging module
+//!
+//! This deprecated module serves as a compatibility layer, redirecting
+//! to the main logging.rs module. New code should use drapto_core::logging directly.
 
 // This file is being deprecated in favor of the main logging.rs module
 // Future development should use drapto_core::logging instead

@@ -1,3 +1,15 @@
+//! Memory tracking and management module
+//!
+//! Responsibilities:
+//! - Track memory usage during encoding operations
+//! - Estimate memory requirements based on video properties
+//! - Categorize videos by resolution for memory allocation
+//! - Prevent memory exhaustion during parallel encoding
+//! - Provide memory-aware scheduling information
+//!
+//! This module enables efficient memory usage analysis and management
+//! to prevent out-of-memory conditions during intensive encoding tasks.
+
 use std::path::Path;
 use std::collections::HashMap;
 use std::sync::Arc;

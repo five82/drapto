@@ -1,3 +1,14 @@
+//! Drapto CLI Application Entry Point
+//!
+//! Responsibilities:
+//! - Parse command line arguments
+//! - Initialize logging subsystem
+//! - Dispatch to appropriate command handlers
+//! - Report overall execution status and timing
+//!
+//! This is the main entry point for the drapto command-line tool, which
+//! provides a user-friendly interface to the drapto-core functionality.
+
 mod args;
 mod commands;
 mod output;

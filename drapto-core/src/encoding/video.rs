@@ -1,7 +1,14 @@
-//! Video encoding module for drapto
+//! Video encoding module
 //!
-//! This module implements video encoding functionality for drapto.
-//! It handles video encoding with various encoders and quality settings.
+//! Responsibilities:
+//! - Encode video to AV1 format with optimal settings
+//! - Handle HDR, SDR, and Dolby Vision content appropriately
+//! - Manage encoder settings and quality targets
+//! - Coordinate parallel encoding of video segments
+//! - Monitor encoding progress and statistics
+//!
+//! This module provides comprehensive video encoding functionality
+//! supporting quality-based encoding with ab-av1, SVT-AV1, and other encoders.
 
 use log::{debug, info, warn};
 use regex::Regex;

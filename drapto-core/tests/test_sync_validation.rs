@@ -1,3 +1,12 @@
+//! Tests for audio/video synchronization validation
+//!
+//! These tests verify:
+//! - Detection of A/V sync issues between audio and video streams
+//! - Validation of start time alignment between streams
+//! - Validation of duration matching between streams
+//! - Handling of missing stream information
+//! - Proper tolerance thresholds for small sync differences
+
 use std::collections::HashMap;
 use serde_json::Value;
 use drapto_core::media::{MediaInfo, StreamInfo, StreamType};

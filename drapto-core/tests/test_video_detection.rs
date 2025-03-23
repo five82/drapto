@@ -1,3 +1,15 @@
+//! Tests for video property detection functionality
+//!
+//! These tests verify:
+//! - Detection of Dolby Vision content in video files
+//! - Generation of proper crop filters based on video black borders
+//! - Handling of invalid file paths and non-existent files
+//! - Safe execution with disable flags for command operations
+//! - Integration with system tools (mediainfo, FFmpeg)
+//!
+//! Note: Some tests that require external commands are ignored by default
+//! and can be run manually with the --ignored flag.
+
 use std::path::PathBuf;
 use drapto_core::detection::format::{detect_crop, detect_dolby_vision};
 

@@ -1,3 +1,13 @@
+//! Tests for video scene detection and boundary handling
+//!
+//! These tests verify:
+//! - Filtering of scene change candidates based on minimum gap requirements
+//! - Insertion of artificial segment boundaries for overly long segments
+//! - Handling of edge cases like empty inputs and single elements
+//! - Proper scene boundary placement for long scenes
+//!
+//! Note: Direct scene detection testing requires FFmpeg and is done in integration tests.
+
 use drapto_core::detection::scene::{
     filter_scene_candidates,
     insert_artificial_boundaries,

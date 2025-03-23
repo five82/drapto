@@ -1,4 +1,15 @@
 
+//! Video quality validation module
+//!
+//! Responsibilities:
+//! - Validate encoded video quality against reference
+//! - Verify proper HDR/SDR conversion and consistency
+//! - Validate pixel format and bit depth for content type
+//! - Check for quality degradation from format conversion
+//!
+//! This module analyzes the visual quality aspects of video encoding,
+//! ensuring that the output meets expected quality standards.
+
 use crate::error::Result;
 use crate::media::MediaInfo;
 use super::ValidationReport;

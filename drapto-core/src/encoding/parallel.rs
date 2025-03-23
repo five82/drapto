@@ -1,3 +1,15 @@
+//! Parallel encoding coordination module
+//!
+//! Responsibilities:
+//! - Coordinate parallel encoding of video segments
+//! - Track progress across multiple encoding operations
+//! - Manage thread-safe access to shared resources
+//! - Handle completion and error states of parallel tasks
+//! - Optimize CPU utilization during encoding
+//!
+//! This module leverages Rayon to efficiently distribute encoding
+//! tasks across available CPU cores, maximizing throughput.
+
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use log::{info, warn};

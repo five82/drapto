@@ -1,3 +1,23 @@
+//! Encoding Summary and Statistics Example
+//!
+//! This example demonstrates the encoding summary and reporting capabilities:
+//! 1. Generating detailed encoding summaries for individual files
+//! 2. Processing an entire directory of files using batch processing
+//! 3. Collecting and displaying statistics about the encoding process
+//! 4. Formatting results in a human-readable way
+//!
+//! The example shows both single file processing and batch directory processing
+//! modes with progress tracking and performance statistics.
+//!
+//! Run with:
+//! ```
+//! # Process a single file
+//! cargo run --example summary_example <input_file> <output_file>
+//!
+//! # Process a directory of files
+//! cargo run --example summary_example <input_dir> <output_dir> -d
+//! ```
+
 use std::env;
 use std::path::PathBuf;
 use std::time::Instant;

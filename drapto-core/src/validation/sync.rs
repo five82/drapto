@@ -1,3 +1,15 @@
+//! Audio/Video synchronization validation module
+//!
+//! Responsibilities:
+//! - Validate synchronization between audio and video streams
+//! - Check start times and durations for alignment
+//! - Detect synchronization issues based on tolerance thresholds
+//! - Ensure proper playback synchronization in final output
+//! - Report sync-related warnings and errors
+//!
+//! This module provides functions to validate A/V synchronization,
+//! a critical aspect of proper media playback quality.
+
 use crate::media::MediaInfo;
 use super::report::ValidationReport;
 

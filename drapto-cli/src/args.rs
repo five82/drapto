@@ -1,3 +1,14 @@
+//! Command-line argument parsing for Drapto
+//!
+//! Responsibilities:
+//! - Define the command-line interface structure
+//! - Parse and validate user-provided arguments
+//! - Provide help and documentation for CLI options
+//! - Define command subgroups and their parameters
+//!
+//! This module uses clap to define a structured CLI with commands for
+//! encoding, validation, and system information retrieval.
+
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 

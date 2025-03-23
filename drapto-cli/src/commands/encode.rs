@@ -1,3 +1,15 @@
+//! Encode command implementation
+//!
+//! Responsibilities:
+//! - Handle all video and audio encoding operations
+//! - Process command-line arguments for encoding
+//! - Handle file and directory encoding
+//! - Coordinate detection, encoding, and muxing steps
+//! - Report encoding progress and results
+//!
+//! This module implements the core encoding functionality accessed
+//! through the CLI, orchestrating the encoding pipeline.
+
 use std::path::PathBuf;
 use std::fs;
 use std::time::Instant;

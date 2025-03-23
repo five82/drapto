@@ -1,3 +1,13 @@
+//! Tests for the validation reporting system
+//!
+//! These tests verify:
+//! - Validation report creation and initialization
+//! - Adding information, warning and error messages
+//! - Proper tracking of validation state (passed/failed)
+//! - Message filtering by severity level
+//! - Report formatting and display
+//! - Consistent handling of multiple validation issues
+
 use drapto_core::validation::{ValidationReport, ValidationMessage, ValidationLevel};
 
 #[test]

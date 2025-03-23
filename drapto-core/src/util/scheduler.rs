@@ -1,3 +1,15 @@
+//! Memory-aware task scheduler module
+//!
+//! Responsibilities:
+//! - Manage parallel encoding tasks based on memory requirements
+//! - Prevent system memory exhaustion during encoding
+//! - Track token-based resource allocation
+//! - Provide backpressure when system resources are constrained
+//! - Monitor system memory usage in real-time
+//!
+//! This module provides a memory-aware scheduler that enables efficient
+//! utilization of system resources during parallel encoding operations.
+
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::thread;

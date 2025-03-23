@@ -1,3 +1,15 @@
+//! Media probing and analysis module
+//!
+//! Responsibilities:
+//! - Execute FFprobe to retrieve media information
+//! - Parse FFprobe JSON output into structured data
+//! - Query codec and format capabilities
+//! - Detect hardware acceleration support
+//! - Provide low-level access to media metadata
+//!
+//! This module provides a wrapper around FFprobe for retrieving
+//! detailed information about media files and system capabilities.
+
 use std::path::Path;
 use std::process::Command;
 use serde_json::Value;

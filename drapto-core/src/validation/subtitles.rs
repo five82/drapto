@@ -1,3 +1,15 @@
+//! Subtitle validation module
+//!
+//! Responsibilities:
+//! - Validate subtitle streams in media files
+//! - Verify subtitle formats and compatibility
+//! - Check subtitle synchronization with video
+//! - Compare subtitles between input and output files
+//! - Report subtitle-related issues or warnings
+//!
+//! This module provides functions to validate subtitle streams
+//! to ensure they are properly handled during the encoding process.
+
 use std::path::Path;
 use crate::media::MediaInfo;
 use crate::media::StreamInfo;

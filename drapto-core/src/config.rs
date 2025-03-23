@@ -1,3 +1,15 @@
+//! Configuration module
+//!
+//! Responsibilities:
+//! - Define configuration structures for all system components
+//! - Parse configuration files (TOML format)
+//! - Apply environment variable overrides
+//! - Validate configuration values
+//! - Provide centralized configuration management
+//!
+//! This module provides a unified approach to configuration handling
+//! throughout the application, with file parsing and validation.
+
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};

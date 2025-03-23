@@ -1,3 +1,15 @@
+//! Audio validation module
+//!
+//! Responsibilities:
+//! - Validate audio codec compliance and compatibility
+//! - Verify audio channel configuration
+//! - Check audio sample rate and bit depth
+//! - Validate audio stream duration
+//! - Ensure audio quality meets required standards
+//!
+//! This module provides functions to validate various aspects of
+//! audio streams to ensure they meet encoding specifications.
+
 use crate::media::MediaInfo;
 use super::report::ValidationReport;
 

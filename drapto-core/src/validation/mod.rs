@@ -1,3 +1,15 @@
+//! Media validation module
+//!
+//! Responsibilities:
+//! - Validate encoding output against quality criteria
+//! - Check for A/V sync issues in encoded media
+//! - Verify video quality, resolution, and color space
+//! - Validate audio tracks and subtitles
+//! - Generate comprehensive validation reports
+//!
+//! This module provides a framework for validating various aspects of
+//! media files including video, audio, subtitles, and synchronization.
+
 use std::path::Path;
 use log::{info, error, warn};
 

@@ -1,3 +1,15 @@
+//! Video segmentation module
+//!
+//! Responsibilities:
+//! - Split videos into segments based on scene detection
+//! - Create segment files for parallel encoding
+//! - Manage segment boundaries and timestamps
+//! - Validate created segments for encoding suitability
+//! - Provide a consistent interface for the segmentation process
+//!
+//! This module handles the process of splitting videos into smaller
+//! segments at scene boundaries for efficient parallel encoding.
+
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use log::{debug, info, warn, error};

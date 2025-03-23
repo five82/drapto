@@ -1,3 +1,11 @@
+//! Tests for the configuration file parsing and manipulation functionality
+//!
+//! These tests verify:
+//! - Proper parsing of TOML configuration files
+//! - Correct default values for missing configurations
+//! - Saving configuration to files and loading it back
+//! - Proper serialization/deserialization of all configuration values
+
 use drapto_core::config::Config;
 use std::env;
 use std::fs;

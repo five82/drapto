@@ -1,3 +1,15 @@
+//! Tests for quality validation and media compatibility
+//!
+//! These tests verify:
+//! - Comprehensive media file validation for quality issues
+//! - HDR/SDR compatibility and consistency checking
+//! - Dolby Vision status detection and preservation
+//! - Validation report formatting and message categorization
+//! - Proper handling of different video color spaces and bit depths
+//!
+//! Some tests require actual media files and are conditionally executed
+//! based on file availability.
+
 use std::path::Path;
 use drapto_core::validation::{ValidationReport, comprehensive_validation};
 

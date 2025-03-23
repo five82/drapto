@@ -1,3 +1,16 @@
+//! Configuration Management Example
+//!
+//! This example demonstrates different methods for configuring the drapto library:
+//! 1. Default configuration with environment variable overrides
+//! 2. Loading configuration from a TOML file
+//! 3. Programmatically creating and saving configuration
+//! 4. Understanding the priority of configuration layers (defaults → file → env → arguments)
+//!
+//! Run with:
+//! ```
+//! cargo run --example config_example
+//! ```
+
 use drapto_core::config::Config;
 use std::env;
 use std::path::PathBuf;

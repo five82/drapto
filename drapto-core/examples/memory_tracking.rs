@@ -1,3 +1,19 @@
+//! Memory-Aware Parallel Encoding Example
+//!
+//! This example demonstrates drapto's memory-aware parallel encoding capabilities:
+//! 1. Creating a memory-aware parallel encoder with specified constraints
+//! 2. Controlling how many jobs run concurrently based on estimated memory usage
+//! 3. Monitoring encoding progress across multiple jobs
+//! 4. Handling high-memory scenarios by throttling jobs
+//!
+//! The example simulates 10 encoding jobs with different memory requirements
+//! and execution times to show how the system adapts to memory constraints.
+//!
+//! Run with:
+//! ```
+//! cargo run --example memory_tracking
+//! ```
+
 use std::sync::Arc;
 use std::time::Instant;
 use log::info;

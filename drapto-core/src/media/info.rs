@@ -1,3 +1,15 @@
+//! Media information structures module
+//!
+//! Responsibilities:
+//! - Define data structures for media file information
+//! - Parse FFprobe output into structured data
+//! - Provide methods to query media properties
+//! - Handle format, stream, and chapter information
+//! - Support serialization and deserialization of media metadata
+//!
+//! This module provides the core data structures used to represent
+//! and analyze media file information throughout the application.
+
 use std::collections::HashMap;
 use std::fmt;
 use std::path::Path;

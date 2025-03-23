@@ -1,3 +1,11 @@
+//! Tests for environment variable configuration overrides
+//!
+//! These tests verify:
+//! - Environment variables properly override default configurations
+//! - Correct parsing of various value types from environment strings
+//! - Priority of environment variables in the configuration hierarchy
+//! - Consistent naming conventions for environment variables
+
 use drapto_core::config::Config;
 use std::env;
 

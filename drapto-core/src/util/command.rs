@@ -1,3 +1,15 @@
+//! Command execution utilities module
+//!
+//! Responsibilities:
+//! - Execute external commands safely and reliably
+//! - Parse command output and track progress
+//! - Manage command timeouts and failure handling
+//! - Provide progress reporting for long-running commands
+//! - Log command execution details for debugging
+//!
+//! This module provides utilities for executing external commands
+//! (like FFmpeg) with proper error handling and progress tracking.
+
 use std::process::{Command, Stdio, Output};
 use std::io::{BufRead, BufReader};
 use std::time::Duration;

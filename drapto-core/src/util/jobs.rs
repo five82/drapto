@@ -1,3 +1,15 @@
+//! Command job abstraction module
+//!
+//! Responsibilities:
+//! - Define interfaces for executable command jobs
+//! - Provide specialized job implementations for encoding tasks
+//! - Manage command execution with proper error handling
+//! - Track and report job progress
+//! - Support for different job types (encoding, ffprobe, segmentation)
+//!
+//! This module provides abstractions for various command-based jobs used
+//! throughout the encoding pipeline, enabling consistent execution patterns.
+
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::time::Duration;

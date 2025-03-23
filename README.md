@@ -2,13 +2,13 @@
 
 ab-av1 video encoding wrapper with scene-based segmentation, parallel processing, and Dolby Vision support.
 
-This is a vibe coding experiment to see how far LLM tools can take this
+This is a vibe coding experiment to see how far LLM tools can take this. Pull requests are welcome.
 
 ## Features
 
 - **AV1 Encoding with SVT-AV1:** High-quality encoding using libsvtav1 with configurable presets
 - **Intelligent Scene-Based Segmentation:** Automatically segments videos using adaptive scene detection
-- **Quality-Targeted Encoding:** Uses ab-av1 to achieve consistent quality with VMAF metrics
+- **Quality-Targeted Encoding:** Uses ab-av1 to achieve consistent quality with target VMAF
 - **Parallel Encoding Pipeline:** Encodes segments concurrently with memory-aware scheduling
 - **Enhanced Output Validation:** Performs comprehensive validation of video/audio streams, container integrity, and quality targets
 - **Dolby Vision Support:** Automatic detection and handling of Dolby Vision content

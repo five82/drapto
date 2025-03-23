@@ -1,3 +1,11 @@
+//! Tests for default configuration values
+//!
+//! These tests verify:
+//! - Proper initialization of default configuration values
+//! - Core default settings for encoding, scene detection, and resources
+//! - Consistency of default values across implementations
+//! - Correct initialization of configuration without external influences
+
 use drapto_core::config::Config;
 use std::env;
 

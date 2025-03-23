@@ -1,3 +1,15 @@
+//! Scene detection module
+//!
+//! Responsibilities:
+//! - Detect scene changes in video content
+//! - Determine optimal scene detection thresholds
+//! - Handle different content types (HDR, SDR)
+//! - Validate detected scene boundaries
+//! - Generate timestamps for video segmentation
+//!
+//! This module provides functions for analyzing video files to
+//! detect scene changes, enabling content-aware segmentation.
+
 use std::path::Path;
 use std::process::Command;
 use std::cmp::Ordering;

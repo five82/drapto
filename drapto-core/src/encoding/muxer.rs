@@ -1,3 +1,15 @@
+//! Media muxing module
+//!
+//! Responsibilities:
+//! - Combine video and audio streams into a final container
+//! - Handle container format selection and compatibility
+//! - Maintain proper audio/video synchronization
+//! - Verify muxed output streams and metadata
+//! - Support subtitle and chapter inclusion
+//!
+//! This module provides functionality for muxing encoded audio and video
+//! streams together into a final container file with proper metadata.
+
 use std::path::{Path, PathBuf};
 use std::f64;
 use log::info;

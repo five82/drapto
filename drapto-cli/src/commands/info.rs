@@ -1,3 +1,15 @@
+//! System information command implementation
+//!
+//! Responsibilities:
+//! - Detect and report FFmpeg version and capabilities
+//! - Check for hardware acceleration support
+//! - List available encoders and decoders
+//! - Verify HDR and format support
+//! - Report system information relevant to encoding
+//!
+//! This module implements the info command accessible through
+//! the CLI that helps users understand their system capabilities.
+
 use log::info;
 use drapto_core::error::Result;
 use drapto_core::media::probe::FFprobe;
