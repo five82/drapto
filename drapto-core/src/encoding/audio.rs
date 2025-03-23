@@ -247,6 +247,19 @@ impl OpusEncoder {
         // Create output file path
         let output_file = self.config.temp_dir.join(format!("audio-{}.mkv", track_index));
         
+        // Build encoding command
+        let mut cmd = self.build_encode_command(
+            &input_file,
+            &output_file,
+            track_index,
+            &track_info.target_bitrate
+        );
+        
+        // Get the command arguments for logging
+        let args: Vec<String> = cmd.get_args()
+            .map(|arg| arg.to_string_lossy().to_string())
+            .collect();
+        
         // Log audio encoding parameters section
         crate::logging::log_subsection("AUDIO ENCODING PARAMETERS");
         info!("");
@@ -256,23 +269,30 @@ impl OpusEncoder {
         info!("  Channels: {}", track_info.channels);
         info!("  Layout: {}", track_info.layout);
         info!("  Bitrate: {}", track_info.target_bitrate);
-        info!("  Application: {}", self.config.application);
-        info!("  VBR: {}", if self.config.vbr { "on" } else { "off" });
-        info!("  Compression Level: {}", self.config.compression_level);
-        info!("  Frame Duration: {}ms", self.config.frame_duration);
         
-        // Build and execute encoding command
-        let mut cmd = self.build_encode_command(
-            &input_file,
-            &output_file,
-            track_index,
-            &track_info.target_bitrate
-        );
+        // Extract and log all actual parameters from the command
+        for i in 0..args.len() {
+            if args[i] == "-af" && i + 1 < args.len() {
+                info!("  Audio Filter: {}", args[i+1]);
+            }
+            if args[i] == "-application" && i + 1 < args.len() {
+                info!("  Application: {}", args[i+1]);
+            }
+            if args[i] == "-vbr" && i + 1 < args.len() {
+                info!("  VBR: {}", args[i+1]);
+            }
+            if args[i] == "-compression_level" && i + 1 < args.len() {
+                info!("  Compression Level: {}", args[i+1]);
+            }
+            if args[i] == "-frame_duration" && i + 1 < args.len() {
+                info!("  Frame Duration: {}ms", args[i+1]);
+            }
+            if args[i] == "-avoid_negative_ts" && i + 1 < args.len() {
+                info!("  Avoid Negative TS: {}", args[i+1]);
+            }
+        }
         
-        // Get the command as a string for debugging
-        let args: Vec<String> = cmd.get_args()
-            .map(|arg| arg.to_string_lossy().to_string())
-            .collect();
+        // Create command string for debugging
         let cmd_str = format!("ffmpeg {}", args.join(" "));
         debug!("FFmpeg audio encoding command:");
         debug!("  {}", cmd_str.replace(" -", "\n  -"));
