@@ -55,17 +55,8 @@ pub struct AudioTrackInfo {
 /// Audio encoder configuration
 #[derive(Debug, Clone)]
 pub struct AudioEncoderConfig {
-    /// Opus encoding compression level (0-10)
-    pub compression_level: u32,
-    
-    /// Opus frame duration in milliseconds
-    pub frame_duration: u32,
-    
-    /// Use variable bitrate
-    pub vbr: bool,
-    
-    /// Application type (voip, audio, lowdelay)
-    pub application: String,
+    /// Global configuration reference
+    pub global_config: crate::config::Config,
     
     /// Working directory for temporary files
     pub temp_dir: PathBuf,
@@ -74,10 +65,7 @@ pub struct AudioEncoderConfig {
 impl Default for AudioEncoderConfig {
     fn default() -> Self {
         Self {
-            compression_level: 10,
-            frame_duration: 20,
-            vbr: true,
-            application: "audio".to_string(),
+            global_config: crate::config::Config::default(),
             temp_dir: std::env::temp_dir(),
         }
     }
@@ -92,7 +80,10 @@ impl OpusEncoder {
     /// Create a new OpusEncoder with default configuration
     pub fn new() -> Self {
         Self {
-            config: AudioEncoderConfig::default(),
+            config: AudioEncoderConfig {
+                global_config: crate::config::Config::default(),
+                temp_dir: std::env::temp_dir(),
+            },
         }
     }
     
@@ -114,16 +105,19 @@ impl OpusEncoder {
             Ok(info) => info,
             Err(_) => {
                 // If we can't get media info, use the track_index directly
+                // Get audio config from global config
+                let audio_config = &self.config.global_config.audio;
+                
                 let mut cmd = Command::new("ffmpeg");
                 cmd.args(["-hide_banner", "-loglevel", "warning"])
                    .arg("-i").arg(input_file.as_ref())
                    .arg("-map").arg(format!("0:a:{}", track_index))
                    .arg("-c:a").arg("libopus")
                    .arg("-af").arg("aformat=channel_layouts=7.1|5.1|stereo|mono")
-                   .arg("-application").arg(&self.config.application)
-                   .arg("-vbr").arg(if self.config.vbr { "on" } else { "off" })
-                   .arg("-compression_level").arg(self.config.compression_level.to_string())
-                   .arg("-frame_duration").arg(self.config.frame_duration.to_string())
+                   .arg("-application").arg(&audio_config.application)
+                   .arg("-vbr").arg(if audio_config.vbr { "on" } else { "off" })
+                   .arg("-compression_level").arg(audio_config.compression_level.to_string())
+                   .arg("-frame_duration").arg(audio_config.frame_duration.to_string())
                    .arg("-b:a").arg(bitrate)
                    .arg("-avoid_negative_ts").arg("make_zero")
                    .arg("-y").arg(output_file.as_ref());
@@ -135,16 +129,19 @@ impl OpusEncoder {
         
         // If the track_index is out of bounds or we have no audio streams, use the simple mapping
         if track_index >= audio_streams.len() {
+            // Get audio config from global config
+            let audio_config = &self.config.global_config.audio;
+            
             let mut cmd = Command::new("ffmpeg");
             cmd.args(["-hide_banner", "-loglevel", "warning"])
                .arg("-i").arg(input_file.as_ref())
                .arg("-map").arg(format!("0:a:{}", track_index))
                .arg("-c:a").arg("libopus")
                .arg("-af").arg("aformat=channel_layouts=7.1|5.1|stereo|mono")
-               .arg("-application").arg(&self.config.application)
-               .arg("-vbr").arg(if self.config.vbr { "on" } else { "off" })
-               .arg("-compression_level").arg(self.config.compression_level.to_string())
-               .arg("-frame_duration").arg(self.config.frame_duration.to_string())
+               .arg("-application").arg(&audio_config.application)
+               .arg("-vbr").arg(if audio_config.vbr { "on" } else { "off" })
+               .arg("-compression_level").arg(audio_config.compression_level.to_string())
+               .arg("-frame_duration").arg(audio_config.frame_duration.to_string())
                .arg("-b:a").arg(bitrate)
                .arg("-avoid_negative_ts").arg("make_zero")
                .arg("-y").arg(output_file.as_ref());
@@ -154,16 +151,19 @@ impl OpusEncoder {
         // Get the actual stream index
         let actual_index = audio_streams[track_index].index;
         
+        // Get audio config from global config
+        let audio_config = &self.config.global_config.audio;
+        
         let mut cmd = Command::new("ffmpeg");
         cmd.args(["-hide_banner", "-loglevel", "warning"])
            .arg("-i").arg(input_file.as_ref())
            .arg("-map").arg(format!("0:{}", actual_index))  // Use the actual stream index
            .arg("-c:a").arg("libopus")
            .arg("-af").arg("aformat=channel_layouts=7.1|5.1|stereo|mono")
-           .arg("-application").arg(&self.config.application)
-           .arg("-vbr").arg(if self.config.vbr { "on" } else { "off" })
-           .arg("-compression_level").arg(self.config.compression_level.to_string())
-           .arg("-frame_duration").arg(self.config.frame_duration.to_string())
+           .arg("-application").arg(&audio_config.application)
+           .arg("-vbr").arg(if audio_config.vbr { "on" } else { "off" })
+           .arg("-compression_level").arg(audio_config.compression_level.to_string())
+           .arg("-frame_duration").arg(audio_config.frame_duration.to_string())
            .arg("-b:a").arg(bitrate)
            .arg("-avoid_negative_ts").arg("make_zero")
            .arg("-y").arg(output_file.as_ref());
@@ -173,14 +173,40 @@ impl OpusEncoder {
     
     /// Determine appropriate bitrate based on channel count
     pub fn determine_bitrate(&self, channels: u32) -> (String, String) {
+        // Get the bitrate from config, or use default if not specified
+        let config = &self.config;
+        
         match channels {
-            1 => ("64k".to_string(), "mono".to_string()),
-            2 => ("128k".to_string(), "stereo".to_string()),
-            6 => ("256k".to_string(), "5.1".to_string()),
-            8 => ("384k".to_string(), "7.1".to_string()),
+            1 => {
+                let bitrate = config.global_config
+                    .audio.bitrates.mono
+                    .unwrap_or(64);
+                (format!("{}k", bitrate), "mono".to_string())
+            },
+            2 => {
+                let bitrate = config.global_config
+                    .audio.bitrates.stereo
+                    .unwrap_or(128);
+                (format!("{}k", bitrate), "stereo".to_string())
+            },
+            6 => {
+                let bitrate = config.global_config
+                    .audio.bitrates.surround_5_1
+                    .unwrap_or(256);
+                (format!("{}k", bitrate), "5.1".to_string())
+            },
+            8 => {
+                let bitrate = config.global_config
+                    .audio.bitrates.surround_7_1
+                    .unwrap_or(384);
+                (format!("{}k", bitrate), "7.1".to_string())
+            },
             _ => {
-                // Default to 48kbps per channel for other configurations
-                (format!("{}k", channels * 48), "custom".to_string())
+                // Default to per-channel bitrate for other configurations
+                let per_channel = config.global_config
+                    .audio.bitrates.per_channel
+                    .unwrap_or(48);
+                (format!("{}k", channels * per_channel), "custom".to_string())
             }
         }
     }
@@ -541,24 +567,26 @@ pub struct AudioEncodingOptions {
 ///
 /// * `input` - Path to input video file
 /// * `options` - Audio encoding options
+/// * `config` - Global configuration
 ///
 /// # Returns
 ///
 /// Paths to the encoded audio files
-pub fn encode_audio(input: &Path, options: &AudioEncodingOptions) -> Result<Vec<PathBuf>> {
+pub fn encode_audio(
+    input: &Path, 
+    options: &AudioEncodingOptions,
+    config: &crate::config::Config
+) -> Result<Vec<PathBuf>> {
     info!("Starting audio encoding: {}", input.display());
     debug!("Audio encoding options: {:?}", options);
     
     // Create encoder with proper configuration
-    let config = AudioEncoderConfig {
-        compression_level: 10,
-        frame_duration: 20,
-        vbr: true,
-        application: "audio".to_string(),
+    let encoder_config = AudioEncoderConfig {
+        global_config: config.clone(),
         temp_dir: options.working_dir.clone(),
     };
     
-    let encoder = OpusEncoder::with_config(config);
+    let encoder = OpusEncoder::with_config(encoder_config);
     
     // Encode all audio tracks
     match encoder.encode_audio_tracks(input) {
@@ -580,7 +608,22 @@ mod tests {
     
     #[test]
     fn test_determine_bitrate() {
-        let encoder = OpusEncoder::new();
+        // Create a default config
+        let mut config = crate::config::Config::default();
+        
+        // Set custom bitrates for testing
+        config.audio.bitrates.mono = Some(64);
+        config.audio.bitrates.stereo = Some(128);
+        config.audio.bitrates.surround_5_1 = Some(256);
+        config.audio.bitrates.surround_7_1 = Some(384);
+        config.audio.bitrates.per_channel = Some(48);
+        
+        let encoder_config = AudioEncoderConfig {
+            global_config: config,
+            temp_dir: std::env::temp_dir(),
+        };
+        
+        let encoder = OpusEncoder::with_config(encoder_config);
         
         let (bitrate1, layout1) = encoder.determine_bitrate(1);
         assert_eq!(bitrate1, "64k");
@@ -607,15 +650,22 @@ mod tests {
     #[test]
     fn test_build_encode_command() {
         let temp_dir = tempdir().unwrap();
-        let config = AudioEncoderConfig {
-            compression_level: 10,
-            frame_duration: 20,
-            vbr: true,
-            application: "audio".to_string(),
+        
+        // Create a default config
+        let mut config = crate::config::Config::default();
+        
+        // Set audio config for testing
+        config.audio.compression_level = 10;
+        config.audio.frame_duration = 20;
+        config.audio.vbr = true;
+        config.audio.application = "audio".to_string();
+        
+        let encoder_config = AudioEncoderConfig {
+            global_config: config,
             temp_dir: temp_dir.path().to_path_buf(),
         };
         
-        let encoder = OpusEncoder::with_config(config);
+        let encoder = OpusEncoder::with_config(encoder_config);
         
         let input_file = Path::new("/path/to/input.mkv");
         let output_file = Path::new("/path/to/output.mkv");

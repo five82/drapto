@@ -308,7 +308,7 @@ impl EncodingPipeline {
                 None 
             },
         };
-        let audio_tracks = encode_audio(input_file, &audio_options)?;
+        let audio_tracks = encode_audio(input_file, &audio_options, &self.options.config)?;
         
         // 5. Mux tracks
         self.report_progress(0.85, "Muxing tracks");

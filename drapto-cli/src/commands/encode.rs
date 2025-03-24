@@ -233,7 +233,7 @@ pub fn execute_encode(
     };
     
     print_progress("Encoding audio tracks...")?;
-    let audio_outputs = encode_audio(&input, &audio_options)?;
+    let audio_outputs = encode_audio(&input, &audio_options, &config)?;
     print_success(&format!("Encoded {} audio tracks", audio_outputs.len()));
     
     // Mux video and audio

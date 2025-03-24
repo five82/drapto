@@ -106,20 +106,56 @@ pub struct VideoEncodingConfig {
     pub vmaf_sample_length: f32,
 }
 
-/// Audio encoding configuration
+/// Audio encoding configuration for Opus codec
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AudioEncodingConfig {
-    /// Audio codec to use
-    pub codec: String,
+    /// Opus encoding compression level (0-10)
+    pub compression_level: u32,
     
-    /// Audio bitrate in kbps
-    pub bitrate: Option<u32>,
+    /// Opus frame duration in milliseconds
+    pub frame_duration: u32,
     
-    /// Enable normalization
-    pub normalize: bool,
+    /// Use variable bitrate
+    pub vbr: bool,
     
-    /// Target loudness level in LUFS
-    pub target_loudness: f32,
+    /// Application type (voip, audio, lowdelay)
+    pub application: String,
+    
+    /// Channel-specific bitrates override
+    /// When not specified, default values are used (64k for mono, 128k for stereo, etc.)
+    #[serde(default)]
+    pub bitrates: AudioBitrates,
+}
+
+/// Audio bitrate configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AudioBitrates {
+    /// Bitrate for mono audio (1 channel) in kbps
+    pub mono: Option<u32>,
+    
+    /// Bitrate for stereo audio (2 channels) in kbps
+    pub stereo: Option<u32>,
+    
+    /// Bitrate for 5.1 surround (6 channels) in kbps
+    pub surround_5_1: Option<u32>,
+    
+    /// Bitrate for 7.1 surround (8 channels) in kbps
+    pub surround_7_1: Option<u32>,
+    
+    /// Bitrate per channel for other configurations in kbps
+    pub per_channel: Option<u32>,
+}
+
+impl Default for AudioBitrates {
+    fn default() -> Self {
+        Self {
+            mono: Some(64),
+            stereo: Some(128),
+            surround_5_1: Some(256),
+            surround_7_1: Some(384),
+            per_channel: Some(48),
+        }
+    }
 }
 
 /// Scene detection configuration
@@ -206,10 +242,11 @@ impl Default for VideoEncodingConfig {
 impl Default for AudioEncodingConfig {
     fn default() -> Self {
         Self {
-            codec: get_env_string("DRAPTO_AUDIO_CODEC", "aac".to_string()),
-            bitrate: Some(get_env_u32("DRAPTO_AUDIO_BITRATE", 128)),
-            normalize: get_env_bool("DRAPTO_AUDIO_NORMALIZE", true),
-            target_loudness: get_env_f32("DRAPTO_TARGET_LOUDNESS", -23.0),
+            compression_level: get_env_u32("DRAPTO_AUDIO_COMPRESSION_LEVEL", 10),
+            frame_duration: get_env_u32("DRAPTO_AUDIO_FRAME_DURATION", 20),
+            vbr: get_env_bool("DRAPTO_AUDIO_VBR", true),
+            application: get_env_string("DRAPTO_AUDIO_APPLICATION", "audio".to_string()),
+            bitrates: AudioBitrates::default(),
         }
     }
 }

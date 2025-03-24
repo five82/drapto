@@ -17,6 +17,7 @@
 use std::path::PathBuf;
 use log::{info, error};
 use drapto_core::encoding::audio::{OpusEncoder, AudioEncoderConfig};
+use drapto_core::config::Config;
 use drapto_core::media::info::MediaInfo;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -68,16 +69,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     std::fs::create_dir_all(&temp_dir)?;
     info!("Created temporary directory: {:?}", temp_dir);
     
-    // Configure and create the audio encoder
-    let config = AudioEncoderConfig {
-        compression_level: 10,
-        frame_duration: 20,
-        vbr: true,
-        application: "audio".to_string(),
+    // Create the global configuration
+    let mut global_config = Config::default();
+    
+    // Configure audio settings
+    global_config.audio.compression_level = 10;
+    global_config.audio.frame_duration = 20;
+    global_config.audio.vbr = true;
+    global_config.audio.application = "audio".to_string();
+    
+    // Create encoder config
+    let encoder_config = AudioEncoderConfig {
+        global_config,
         temp_dir: temp_dir.clone(),
     };
     
-    let encoder = OpusEncoder::with_config(config);
+    let encoder = OpusEncoder::with_config(encoder_config);
     
     // Encode all audio tracks
     info!("Starting audio encoding");
