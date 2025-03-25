@@ -11,10 +11,18 @@
 //! a critical aspect of proper media playback quality.
 
 use crate::media::MediaInfo;
+use crate::config::Config;
 use super::report::ValidationReport;
 
 /// Validate A/V synchronization
-pub fn validate_sync(media_info: &MediaInfo, report: &mut ValidationReport) {
+pub fn validate_sync(
+    media_info: &MediaInfo, 
+    report: &mut ValidationReport,
+    config: Option<&Config>
+) {
+    // Use default config if none provided
+    let default_config = Config::default();
+    let config = config.unwrap_or(&default_config);
     // Get primary video stream information
     let video_stream = media_info.primary_video_stream();
     
@@ -63,14 +71,14 @@ pub fn validate_sync(media_info: &MediaInfo, report: &mut ValidationReport) {
         return;
     }
     
-    // Threshold in milliseconds (100ms = 0.1s as in Python version)
-    const THRESHOLD_MS: i64 = 100;
+    // Get sync threshold from config
+    let threshold_ms = config.validation.sync_threshold_ms;
     
     // Calculate start time difference in milliseconds
     let start_diff_ms = ((video_start - audio_start).abs() * 1000.0).round() as i64;
     
     // Check for start time mismatch
-    if start_diff_ms > THRESHOLD_MS {
+    if start_diff_ms > threshold_ms {
         report.add_error(
             format!("A/V sync start time error: video_start={:.2}s, audio_start={:.2}s, difference={}ms exceeds threshold", 
                     video_start, audio_start, start_diff_ms),
@@ -89,7 +97,7 @@ pub fn validate_sync(media_info: &MediaInfo, report: &mut ValidationReport) {
             // Calculate difference in milliseconds
             let dur_diff_ms = (video_dur_ms - audio_dur_ms).abs();
             
-            if dur_diff_ms > THRESHOLD_MS {
+            if dur_diff_ms > threshold_ms {
                 report.add_error(
                     format!("A/V sync duration error: video_dur={:.2}s, audio_dur={:.2}s, difference={}ms exceeds threshold", 
                             vdur, adur, dur_diff_ms),

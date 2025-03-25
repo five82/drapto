@@ -70,17 +70,17 @@ pub fn detect_scenes<P: AsRef<Path>>(
         return Ok(vec![total_duration]);
     }
     
-    // Determine threshold to use based on parameter values, not content type
-    // When scene_threshold == hdr_scene_threshold, we're already using HDR threshold (set by CLI)
-    let is_using_hdr_threshold = scene_threshold == hdr_scene_threshold;
-    let threshold = scene_threshold;
+    // Check if content is HDR
+    let is_hdr = media_info.is_hdr();
     
-    // Log which threshold we're using
-    if is_using_hdr_threshold {
-        info!("Using HDR scene threshold: {}", threshold);
+    // Select threshold based on content type
+    let threshold = if is_hdr {
+        info!("Using HDR scene threshold for HDR content");
+        hdr_scene_threshold
     } else {
-        info!("Using SDR scene threshold: {}", threshold);
-    }
+        info!("Using SDR scene threshold");
+        scene_threshold
+    };
     
     // Get candidate scenes
     match get_candidate_scenes(&input_file, threshold) {
@@ -537,16 +537,17 @@ pub fn validate_segment_boundaries<P: AsRef<Path>>(
     Ok(short_segments)
 }
 
-/// Validate segment boundaries using a standard tolerance value
+/// Validate segment boundaries using config's scene_tolerance value
 ///
 /// This is a convenience wrapper around `validate_segment_boundaries` that uses
-/// a standard tolerance value of 0.5 seconds.
+/// the scene_tolerance value from the config.
 ///
 /// # Arguments
 ///
 /// * `segments_dir` - Directory containing video segments
 /// * `scene_timestamps` - List of scene change timestamps
 /// * `min_duration` - Minimum acceptable segment duration
+/// * `config` - The Config struct containing scene_tolerance parameter
 ///
 /// # Returns
 ///
@@ -556,6 +557,12 @@ pub fn validate_segments<P: AsRef<Path>>(
     segments_dir: P,
     scene_timestamps: &[f64],
     min_duration: f64,
+    config: &Config,
 ) -> Result<Vec<(std::path::PathBuf, bool)>> {
-    validate_segment_boundaries(segments_dir, scene_timestamps, min_duration, 0.5)
+    validate_segment_boundaries(
+        segments_dir, 
+        scene_timestamps, 
+        min_duration, 
+        config.scene_detection.scene_tolerance as f64
+    )
 }

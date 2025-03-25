@@ -15,7 +15,6 @@ use regex::Regex;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Instant;
-use crate::config::{VideoEncodingConfig, SceneDetectionConfig};
 
 use crate::error::{DraptoError, Result};
 use crate::media::info::MediaInfo;
@@ -24,39 +23,14 @@ use crate::util::command::{self, run_command, run_command_with_progress};
 /// Configuration for ab-av1 encoding
 #[derive(Debug, Clone)]
 pub struct AbAv1Config {
-    /// Encoder preset (1-13, lower is slower/better quality)
-    pub preset: u8,
-
-    /// Target VMAF score (0-100)
-    pub target_vmaf: f32,
-
-    /// Target VMAF score for HDR content
-    pub target_vmaf_hdr: f32,
-
-    /// SVT-AV1 encoder parameters
-    pub svt_params: String,
-
-    /// Number of samples to use for VMAF analysis
-    pub vmaf_sample_count: usize,
-
-    /// Duration of each VMAF sample in seconds
-    pub vmaf_sample_duration: u32,
-
-    /// VMAF analysis options
-    pub vmaf_options: String,
+    /// Global configuration reference
+    pub global_config: crate::config::Config,
 }
 
 impl Default for AbAv1Config {
     fn default() -> Self {
         Self {
-            preset: 6,
-            target_vmaf: 93.0,     // SDR target VMAF
-            target_vmaf_hdr: 95.0, // HDR target VMAF
-            svt_params: "tune=0:enable-qm=1:enable-overlays=1:film-grain=0:film-grain-denoise=0"
-                .to_string(),
-            vmaf_sample_count: 3,
-            vmaf_sample_duration: 1,
-            vmaf_options: "n_subsample=8:pool=perc5_min".to_string(),
+            global_config: crate::config::Config::default(),
         }
     }
 }
@@ -79,6 +53,15 @@ impl AbAv1Encoder {
     /// Create a new Ab-AV1 encoder with custom configuration
     pub fn with_config(config: AbAv1Config) -> Self {
         Self { config }
+    }
+    
+    /// Create a new Ab-AV1 encoder with an existing global configuration
+    pub fn with_global_config(global_config: crate::config::Config) -> Self {
+        Self { 
+            config: AbAv1Config { 
+                global_config 
+            } 
+        }
     }
 
     /// Check if ab-av1 is available
@@ -111,6 +94,7 @@ impl AbAv1Encoder {
     ) -> Command {
         // Get retry-specific parameters
         let (sample_count, sample_duration, min_vmaf) = self.get_retry_params(retry_count, is_hdr);
+        let video_config = &self.config.global_config.video;
 
         // Now we just use the static to avoid logging parameters again,
         // since they've already been shown at the start
@@ -129,23 +113,23 @@ impl AbAv1Encoder {
             .arg("--output")
             .arg(output)
             .arg("--encoder")
-            .arg("libsvtav1")
+            .arg(&video_config.encoder)
             .arg("--min-vmaf")
             .arg(min_vmaf.to_string())
             .arg("--preset")
-            .arg(self.config.preset.to_string())
+            .arg(video_config.preset.to_string())
             .arg("--svt")
-            .arg(&self.config.svt_params)
+            .arg(&video_config.svt_params)
             .arg("--keyint")
-            .arg("10s")
+            .arg(&video_config.keyframe_interval)
             .arg("--samples")
             .arg(sample_count.to_string())
             .arg("--sample-duration")
             .arg(format!("{}s", sample_duration))
             .arg("--vmaf")
-            .arg(&self.config.vmaf_options)
+            .arg(&video_config.vmaf_options)
             .arg("--pix-format")
-            .arg("yuv420p10le");
+            .arg(&video_config.pixel_format);
 
         if let Some(filter) = crop_filter {
             cmd.arg("--vfilter").arg(filter);
@@ -156,16 +140,25 @@ impl AbAv1Encoder {
 
     /// Get encoding parameters based on retry count
     fn get_retry_params(&self, retry_count: usize, is_hdr: bool) -> (usize, u32, f32) {
+        let video_config = &self.config.global_config.video;
         let target_vmaf = if is_hdr {
-            self.config.target_vmaf_hdr
+            video_config.target_vmaf_hdr
         } else {
-            self.config.target_vmaf
+            video_config.target_vmaf
         };
 
         match retry_count {
-            0 => (3, 1, target_vmaf),
-            1 => (4, 2, target_vmaf),
-            _ => (4, 2, 95.0), // Force highest quality for last retry
+            0 => (
+                video_config.vmaf_sample_count as usize, 
+                video_config.vmaf_sample_duration as u32, 
+                target_vmaf
+            ),
+            1 => (
+                (video_config.vmaf_sample_count + 1) as usize,
+                (video_config.vmaf_sample_duration + 1.0) as u32,
+                target_vmaf
+            ),
+            _ => (4, 2, video_config.force_quality_score), // Force highest quality for last retry using configured value
         }
     }
 
@@ -391,7 +384,7 @@ impl AbAv1Encoder {
         retry_count: usize,
         is_hdr: bool,
     ) -> Result<SegmentEncodingStats> {
-        const MAX_RETRIES: usize = 2;
+        let max_retries = self.config.global_config.video.max_retries;
 
         warn!(
             "Encoding segment {} failed on attempt {} with error: {}",
@@ -400,7 +393,7 @@ impl AbAv1Encoder {
             error
         );
 
-        if retry_count < MAX_RETRIES {
+        if retry_count < max_retries {
             let new_retry_count = retry_count + 1;
             info!(
                 "Retrying segment {} (attempt {})",
@@ -412,7 +405,7 @@ impl AbAv1Encoder {
             Err(DraptoError::Encoding(format!(
                 "Segment {} failed after {} attempts: {}",
                 input.display(),
-                MAX_RETRIES + 1,
+                max_retries + 1,
                 error
             )))
         }
@@ -622,7 +615,7 @@ pub struct VideoEncodingOptions {
 /// # Returns
 ///
 /// Path to the encoded video file
-pub fn encode_video(input: &Path, options: &VideoEncodingOptions) -> Result<PathBuf> {
+pub fn encode_video(input: &Path, options: &VideoEncodingOptions, config: &crate::config::Config) -> Result<PathBuf> {
     info!("Starting video encoding: {}", input.display());
     debug!("Encoding options: {:?}", options);
 
@@ -632,8 +625,8 @@ pub fn encode_video(input: &Path, options: &VideoEncodingOptions) -> Result<Path
     })?;
     let output = options.working_dir.join(input_filename);
 
-    // Create and configure the encoder
-    let encoder = AbAv1Encoder::new();
+    // Create and configure the encoder with the provided config
+    let encoder = AbAv1Encoder::with_global_config(config.clone());
 
     // Check for ab-av1 availability
     match encoder.check_availability() {
@@ -656,39 +649,25 @@ pub fn encode_video(input: &Path, options: &VideoEncodingOptions) -> Result<Path
                     let segments_dir = options.working_dir.join("segments");
                     std::fs::create_dir_all(&segments_dir)?;
 
-                    // Create config for segmentation
-                    let config = crate::config::Config {
+                    // Create a new config for segmentation with input/output paths set
+                    // but keeping all the encodings settings from the original config
+                    let segmentation_config = crate::config::Config {
                         input: input.to_path_buf(),
-                        directories: Default::default(),
-                        video: VideoEncodingConfig {
-                            hw_accel_option: options.hw_accel_option.clone().unwrap_or_default(),
-                            hardware_acceleration: true,
-                            target_quality: None,
-                            target_quality_hdr: None,
-                            preset: 6,
-                            svt_params: String::new(),
-                            pix_fmt: String::new(),
-                            disable_crop: false,
-                            use_segmentation: true,
-                            vmaf_sample_count: 3,
-                            vmaf_sample_length: 1.0,
-                        },
-                        scene_detection: SceneDetectionConfig {
-                            scene_threshold: 40.0,
-                            hdr_scene_threshold: 30.0,
-                            min_segment_length: 5.0,
-                            max_segment_length: 15.0,
-                        },
-                        audio: Default::default(),
-                        resources: Default::default(),
-                        logging: Default::default(),
-                        output: PathBuf::new()
+                        output: PathBuf::new(),
+                        directories: config.directories.clone(),
+                        video: config.video.clone(),
+                        scene_detection: config.scene_detection.clone(),
+                        crop_detection: config.crop_detection.clone(),
+                        validation: config.validation.clone(),
+                        audio: config.audio.clone(),
+                        resources: config.resources.clone(),
+                        logging: config.logging.clone(),
                     };
 
                     // Segment the video
                     use crate::encoding::segmentation::segment_video_at_scenes;
                     let segment_files =
-                        segment_video_at_scenes(input, &segments_dir, &scenes, &config)?;
+                        segment_video_at_scenes(input, &segments_dir, &scenes, &segmentation_config)?;
 
                     if segment_files.is_empty() {
                         info!("Segmentation produced no segments, falling back to single-file encoding");
@@ -700,11 +679,16 @@ pub fn encode_video(input: &Path, options: &VideoEncodingOptions) -> Result<Path
                         };
                         use std::sync::Arc;
 
-                        // Save the config values for logging before we move the encoder
-                        let preset = encoder.config.preset;
-                        let svt_params = encoder.config.svt_params.clone();
-                        let vmaf_options = encoder.config.vmaf_options.clone();
-                        let min_vmaf = if options.is_hdr { 95 } else { 93 };
+                        // Save the config values for logging
+                        let video_config = config.video.clone();
+                        let preset = video_config.preset;
+                        let svt_params = video_config.svt_params.clone();
+                        let vmaf_options = video_config.vmaf_options.clone();
+                        let min_vmaf = if options.is_hdr { 
+                            video_config.target_vmaf_hdr 
+                        } else { 
+                            video_config.target_vmaf 
+                        };
 
                         // Define encoder adapter
                         struct AbAv1EncoderAdapter {
@@ -750,15 +734,17 @@ pub fn encode_video(input: &Path, options: &VideoEncodingOptions) -> Result<Path
 
                         crate::logging::log_section("ENCODING PARAMETERS");
                         info!("Common ab-av1 encoding parameters:");
-                        info!("  Encoder: libsvtav1");
+                        info!("  Encoder: {}", video_config.encoder);
                         info!("  Preset: {}", preset);
                         info!("  Min-VMAF: {}", min_vmaf);
                         info!("  SVT parameters: {}", svt_params);
-                        info!("  Keyframe interval: 10s");
-                        info!("  Sample count: {}", 3);
-                        info!("  Sample duration: {}s", 1);
+                        info!("  Keyframe interval: {}", video_config.keyframe_interval);
+                        info!("  Sample count: {}", video_config.vmaf_sample_count);
+                        info!("  Sample duration: {}s", video_config.vmaf_sample_duration);
                         info!("  VMAF options: {}", vmaf_options);
-                        info!("  Pixel format: yuv420p10le");
+                        info!("  Pixel format: {}", video_config.pixel_format);
+                        info!("  Max retries: {}", video_config.max_retries);
+                        info!("  Force quality: {}", video_config.force_quality_score);
                         if let Some(filter) = &options.crop_filter {
                             info!("  Video filter: {}", filter);
                         }
@@ -774,7 +760,7 @@ pub fn encode_video(input: &Path, options: &VideoEncodingOptions) -> Result<Path
                         // Create parallel encoder
                         let parallel_encoder = ParallelEncoder::new(Arc::new(encoder_adapter))
                             .max_concurrent_jobs(options.parallel_jobs)
-                            .memory_per_job(2048) // 2GB per job
+                            .memory_per_job(config.resources.memory_per_job) // Use configured memory per job
                             .on_progress(|progress, completed, total| {
                                 debug!(
                                     "Parallel encoding progress: {:.1}% ({}/{} segments)",
@@ -906,7 +892,11 @@ mod tests {
         assert!(args.contains(&"--input".to_string()));
         assert!(args.contains(&"--output".to_string()));
         assert!(args.contains(&"--encoder".to_string()));
-        assert!(args.contains(&"libsvtav1".to_string()));
+        assert!(args.contains(&"libsvtav1".to_string())); // Default encoder
+        assert!(args.contains(&"--keyint".to_string()));
+        assert!(args.contains(&"10s".to_string())); // Default keyint
+        assert!(args.contains(&"--pix-format".to_string()));
+        assert!(args.contains(&"yuv420p10le".to_string())); // Default pixel format
 
         // Test with crop filter
         let cmd_crop =
@@ -918,6 +908,26 @@ mod tests {
 
         assert!(crop_args.contains(&"--vfilter".to_string()));
         assert!(crop_args.contains(&"crop=100:100:0:0".to_string()));
+        
+        // Test with custom config
+        let mut custom_config = crate::config::Config::default();
+        custom_config.video.encoder = "librav1e".to_string();
+        custom_config.video.keyframe_interval = "5s".to_string();
+        custom_config.video.pixel_format = "yuv420p".to_string();
+        
+        let custom_encoder = AbAv1Encoder::with_global_config(custom_config);
+        let cmd_custom = custom_encoder.build_encode_command(input, output, None, 0, false);
+        let custom_args: Vec<String> = cmd_custom
+            .get_args()
+            .map(|arg| arg.to_string_lossy().to_string())
+            .collect();
+            
+        assert!(custom_args.contains(&"--encoder".to_string()));
+        assert!(custom_args.contains(&"librav1e".to_string())); // Custom encoder
+        assert!(custom_args.contains(&"--keyint".to_string()));
+        assert!(custom_args.contains(&"5s".to_string())); // Custom keyint
+        assert!(custom_args.contains(&"--pix-format".to_string()));
+        assert!(custom_args.contains(&"yuv420p".to_string())); // Custom pixel format
     }
 
     #[test]
@@ -940,11 +950,31 @@ mod tests {
         let (samples_retry2, duration_retry2, vmaf_retry2) = encoder.get_retry_params(2, false);
         assert_eq!(samples_retry2, 4);
         assert_eq!(duration_retry2, 2);
-        assert_eq!(vmaf_retry2, 95.0); // Third try forces 95.0 quality regardless of target
+        assert_eq!(vmaf_retry2, 95.0); // Third try uses force_quality_score
 
         // Test HDR
         let (_, _, vmaf_hdr) = encoder.get_retry_params(0, true);
-        assert_eq!(vmaf_hdr, 95.0); // Default config has same value for both
+        assert_eq!(vmaf_hdr, 95.0); // Default config has 95.0 for HDR
+        
+        // Test with custom config
+        let mut custom_config = crate::config::Config::default();
+        custom_config.video.target_vmaf = 90.0;
+        custom_config.video.target_vmaf_hdr = 92.0;
+        custom_config.video.force_quality_score = 98.0;
+        
+        let custom_encoder = AbAv1Encoder::with_global_config(custom_config);
+        
+        // Test custom SDR
+        let (_, _, custom_vmaf) = custom_encoder.get_retry_params(0, false);
+        assert_eq!(custom_vmaf, 90.0); // Custom SDR VMAF target
+        
+        // Test custom HDR
+        let (_, _, custom_vmaf_hdr) = custom_encoder.get_retry_params(0, true);
+        assert_eq!(custom_vmaf_hdr, 92.0); // Custom HDR VMAF target
+        
+        // Test custom force quality
+        let (_, _, custom_force_quality) = custom_encoder.get_retry_params(2, false);
+        assert_eq!(custom_force_quality, 98.0); // Custom force quality
     }
 
     #[test]

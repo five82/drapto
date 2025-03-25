@@ -284,7 +284,7 @@ impl EncodingPipeline {
                 is_hdr: false, // TODO: detect HDR
                 crop_filter: None, // TODO: implement crop detection
                 parallel_jobs: self.options.config.resources.parallel_jobs,
-                quality: self.options.config.video.target_quality,
+                quality: Some(self.options.config.video.target_vmaf),
                 hw_accel_option: if self.options.config.video.hardware_acceleration { 
                     Some(self.options.config.video.hw_accel_option.clone()) 
                 } else { 
@@ -293,7 +293,7 @@ impl EncodingPipeline {
                 scenes: None,
             };
             
-            encode_video(input_file, &video_options)?
+            encode_video(input_file, &video_options, &self.options.config)?
         };
 
         // 4. Encode audio
@@ -531,7 +531,7 @@ impl EncodingPipeline {
             is_hdr: false, // TODO: detect HDR
             crop_filter: None, // TODO: implement crop detection
             parallel_jobs: self.options.config.resources.parallel_jobs,
-            quality: self.options.config.video.target_quality,
+            quality: Some(self.options.config.video.target_vmaf),
             hw_accel_option: if self.options.config.video.hardware_acceleration { 
                 Some(self.options.config.video.hw_accel_option.clone()) 
             } else { 
@@ -541,7 +541,7 @@ impl EncodingPipeline {
         };
         
         // Use the real encoder implementation
-        let output_path = encode_video(input_file, &video_options)?;
+        let output_path = encode_video(input_file, &video_options, &self.options.config)?;
         
         crate::logging::log_subsection("CONCATENATION");
         info!("Encoded segments merged to {}", output_path.display());

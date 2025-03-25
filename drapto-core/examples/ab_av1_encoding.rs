@@ -18,7 +18,8 @@
 //! --crop "..."   Specify cropping parameters
 
 use std::path::PathBuf;
-use drapto_core::encoding::video::{AbAv1Encoder, AbAv1Config};
+use drapto_core::encoding::video::AbAv1Encoder;
+use drapto_core::config::Config;
 use drapto_core::error::Result;
 use std::time::Instant;
 use clap::Parser;
@@ -78,16 +79,14 @@ fn main() -> Result<()> {
     info!("Input: {}", input_path.display());
     info!("Output: {}", output_path.display());
     
-    // Create Ab-AV1 configuration
-    let config = AbAv1Config {
-        preset: args.preset,
-        target_vmaf: args.vmaf,
-        target_vmaf_hdr: args.vmaf,
-        ..AbAv1Config::default()
-    };
+    // Create global configuration
+    let mut global_config = Config::default();
+    global_config.video.preset = args.preset;
+    global_config.video.target_vmaf = args.vmaf;
+    global_config.video.target_vmaf_hdr = args.vmaf;
     
-    // Create encoder
-    let encoder = AbAv1Encoder::with_config(config);
+    // Create encoder with global config
+    let encoder = AbAv1Encoder::with_global_config(global_config);
     
     // Check if ab-av1 is available
     match encoder.check_availability() {

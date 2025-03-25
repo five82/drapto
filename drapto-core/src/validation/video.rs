@@ -11,13 +11,18 @@
 //! video streams to ensure they meet encoding specifications.
 
 use crate::media::MediaInfo;
+use crate::config::Config;
 use super::report::ValidationReport;
 
 /// Validate video stream properties
-pub fn validate_video(media_info: &MediaInfo, report: &mut ValidationReport) {
+pub fn validate_video(media_info: &MediaInfo, report: &mut ValidationReport, config: Option<&Config>) {
+    // Use default config if none provided
+    let default_config = Config::default();
+    let config = config.unwrap_or(&default_config);
+    
     validate_video_codec(media_info, report);
-    validate_video_dimensions(media_info, report);
-    validate_video_framerate(media_info, report);
+    validate_video_dimensions(media_info, report, config);
+    validate_video_framerate(media_info, report, config);
     validate_video_duration(media_info, report);
 }
 
@@ -49,7 +54,7 @@ fn validate_video_codec(media_info: &MediaInfo, report: &mut ValidationReport) {
 }
 
 /// Validate video dimensions
-fn validate_video_dimensions(media_info: &MediaInfo, report: &mut ValidationReport) {
+fn validate_video_dimensions(media_info: &MediaInfo, report: &mut ValidationReport, config: &Config) {
     if let Some(dimensions) = media_info.video_dimensions() {
         let (width, height) = dimensions;
         
@@ -58,10 +63,13 @@ fn validate_video_dimensions(media_info: &MediaInfo, report: &mut ValidationRepo
             "Video Dimensions"
         );
         
-        // Check if dimensions are valid
-        if width < 16 || height < 16 {
+        // Check if dimensions are valid using config values
+        if width < config.validation.video.min_width || height < config.validation.video.min_height {
             report.add_error(
-                format!("Video dimensions too small: {}x{}", width, height),
+                format!("Video dimensions too small: {}x{} (min: {}x{})", 
+                        width, height, 
+                        config.validation.video.min_width, 
+                        config.validation.video.min_height),
                 "Video Dimensions"
             );
         }
@@ -82,7 +90,7 @@ fn validate_video_dimensions(media_info: &MediaInfo, report: &mut ValidationRepo
 }
 
 /// Validate video framerate
-fn validate_video_framerate(media_info: &MediaInfo, report: &mut ValidationReport) {
+fn validate_video_framerate(media_info: &MediaInfo, report: &mut ValidationReport, config: &Config) {
     if let Some(stream) = media_info.primary_video_stream() {
         // Try to get avg_frame_rate first, then fall back to r_frame_rate
         let framerate_str = stream.properties.get("avg_frame_rate")
@@ -101,15 +109,17 @@ fn validate_video_framerate(media_info: &MediaInfo, report: &mut ValidationRepor
                             "Video Framerate"
                         );
                         
-                        // Check for very low or high framerates
-                        if fps < 10.0 {
+                        // Check for very low or high framerates using config values
+                        if fps < config.validation.video.min_framerate as f64 {
                             report.add_warning(
-                                format!("Low video framerate: {:.3} fps", fps),
+                                format!("Low video framerate: {:.3} fps (min: {:.3})", 
+                                        fps, config.validation.video.min_framerate),
                                 "Video Framerate"
                             );
-                        } else if fps > 120.0 {
+                        } else if fps > config.validation.video.max_framerate as f64 {
                             report.add_warning(
-                                format!("High video framerate: {:.3} fps", fps),
+                                format!("High video framerate: {:.3} fps (max: {:.3})", 
+                                        fps, config.validation.video.max_framerate),
                                 "Video Framerate"
                             );
                         }

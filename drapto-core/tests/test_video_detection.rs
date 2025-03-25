@@ -24,7 +24,7 @@ mod tests {
         let test_file = PathBuf::from("/non/existent/path");
         
         // Call with disable_crop = true to avoid actually running commands
-        let result = detect_crop(test_file, Some(true));
+        let result = detect_crop(test_file, Some(true), None);
         
         // Just verify it completes without panic
         match result {

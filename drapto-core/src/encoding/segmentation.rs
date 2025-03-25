@@ -253,7 +253,7 @@ fn validate_segments_integrity<P: AsRef<Path>>(
     // Validate segment boundaries against scene changes
     let min_segment_duration = config.scene_detection.min_segment_length as f64;
     
-    if let Ok(short_segments) = validate_segments(segments[0].parent().unwrap(), scene_times, min_segment_duration) {
+    if let Ok(short_segments) = validate_segments(segments[0].parent().unwrap(), scene_times, min_segment_duration, config) {
         let problematic_segments = short_segments.iter()
             .filter(|(_, is_scene)| !is_scene)
             .count();

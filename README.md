@@ -10,15 +10,16 @@ This is a vibe coding experiment to see how far LLM tools can take this. Pull re
 - **Intelligent Scene-Based Segmentation:** Automatically segments videos using adaptive scene detection
 - **Quality-Targeted Encoding:** Uses ab-av1 to achieve consistent quality with target VMAF
 - **Parallel Encoding Pipeline:** Encodes segments concurrently with memory-aware scheduling
-- **Enhanced Output Validation:** Performs comprehensive validation of video/audio streams, container integrity, and quality targets
+- **Enhanced Output Validation:** Performs comprehensive validation of video/audio streams, container integrity, sync, sample rates, and quality targets
 - **Automatic Black Bar Detection and Cropping:** Detects black bars and applies appropriate crop filters
-- **Quality Audio Encoding:** Intelligent audio encoding for optimal quality
+- **Quality Audio Encoding:** High quality Opus encoding with channel-adaptive bitrate selection
 - **Hardware Acceleration:** Supports hardware decoding when available
 
 ## Requirements
 
 - Rust 1.76+
 - FFmpeg 7.0+ with support for libsvtav1, libvmaf, and libopus
+- MediaInfo (for detailed media analysis and HDR detection)
 - ab-av1 (for quality-targeted encoding)
 
 ## Installation
@@ -55,11 +56,13 @@ Drapto's encoding pipeline performs:
 
 ## Configuration
 
-Drapto supports a flexible configuration system with multiple methods:
+Drapto has a comprehensive, modular configuration system with multiple methods:
 
 1. A TOML configuration file (`drapto.toml`)
-2. Environment variables
+2. Environment variables with the `DRAPTO_` prefix
 3. Command-line arguments
+
+Configuration is organized into logical sections (video, audio, validation, resources, etc.) with sensible defaults that can be overridden as needed.
 
 ### Example Configuration
 
@@ -69,10 +72,14 @@ input = "input.mkv"
 output = "output.mp4"
 
 [video]
-# Target VMAF quality (0-100)
-target_quality = 93.0
+# Target VMAF quality for SDR content (0-100)
+target_vmaf = 93.0
+# Target VMAF for HDR content
+target_vmaf_hdr = 95.0
 # Encoder preset (0-13, lower is slower but better quality)
 preset = 6
+# Encoder to use
+encoder = "libsvtav1"
 # Enable/disable scene-based segmentation
 use_segmentation = true
 
@@ -82,11 +89,27 @@ scene_threshold = 40.0
 # Minimum segment length in seconds
 min_segment_length = 5.0
 
+[audio]
+# Opus encoding compression level (0-10)
+compression_level = 10
+# Use variable bitrate
+vbr = true
+# Application type (voip, audio, lowdelay)
+application = "audio"
+
+[audio.bitrates]
+# Bitrate for stereo audio (2 channels) in kbps
+stereo = 128
+# Bitrate for 5.1 surround (6 channels) in kbps
+surround_5_1 = 256
+
 [resources]
 # Number of parallel encoding jobs (0 = auto-detect CPU cores)
 parallel_jobs = 0
 # Memory threshold as fraction of system RAM
 memory_threshold = 0.7
+# Memory limit per encoding job in MB
+memory_per_job = 2048
 ```
 
 For detailed configuration options, see the [Configuration Guide](docs/configuration.md).

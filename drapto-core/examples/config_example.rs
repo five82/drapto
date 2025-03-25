@@ -40,7 +40,7 @@ scene_threshold = 30.0
 min_segment_length = 3.0
 
 [video]
-target_quality = 90.0
+target_vmaf = 90.0
 disable_crop = true
 "#;
         std::fs::write(&example_config_path, example_config)?;
@@ -50,7 +50,7 @@ disable_crop = true
     
     println!("Scene threshold: {}", file_config.scene_detection.scene_threshold);
     println!("Min segment length: {}", file_config.scene_detection.min_segment_length);
-    println!("Target quality: {:?}", file_config.video.target_quality);
+    println!("Target VMAF: {}", file_config.video.target_vmaf);
     println!("Disable crop: {}", file_config.video.disable_crop);
     
     // Clean up temporary file

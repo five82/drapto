@@ -11,14 +11,19 @@
 //! audio streams to ensure they meet encoding specifications.
 
 use crate::media::MediaInfo;
+use crate::config::Config;
 use super::report::ValidationReport;
 
 /// Validate audio stream properties
-pub fn validate_audio(media_info: &MediaInfo, report: &mut ValidationReport) {
+pub fn validate_audio(media_info: &MediaInfo, report: &mut ValidationReport, config: Option<&Config>) {
+    // Use default config if none provided
+    let default_config = Config::default();
+    let config = config.unwrap_or(&default_config);
+    
     validate_audio_codec(media_info, report);
     validate_audio_channels(media_info, report);
-    validate_audio_duration(media_info, report);
-    validate_audio_sample_rate(media_info, report);
+    validate_audio_duration(media_info, report, config);
+    validate_audio_sample_rate(media_info, report, config);
 }
 
 /// Validate audio codec
@@ -116,12 +121,15 @@ fn validate_audio_channels(media_info: &MediaInfo, report: &mut ValidationReport
 }
 
 /// Validate audio duration
-fn validate_audio_duration(media_info: &MediaInfo, report: &mut ValidationReport) {
+fn validate_audio_duration(media_info: &MediaInfo, report: &mut ValidationReport, config: &Config) {
     let audio_streams = media_info.audio_streams();
     
     if audio_streams.is_empty() {
         return; // Already warned in validate_audio_codec
     }
+    
+    // Get short audio threshold from config
+    let short_audio_threshold = config.validation.audio.short_audio_threshold;
     
     for (i, stream) in audio_streams.iter().enumerate() {
         // Try multiple methods to get duration, similar to the Python implementation
@@ -152,10 +160,11 @@ fn validate_audio_duration(media_info: &MediaInfo, report: &mut ValidationReport
                 );
             }
             
-            // Check for very short audio
-            if duration < 0.5 {
+            // Check for very short audio using configurable threshold
+            if duration < short_audio_threshold {
                 report.add_warning(
-                    format!("Audio stream #{} has very short duration: {:.3} seconds", i, duration),
+                    format!("Audio stream #{} has very short duration: {:.3} seconds (threshold: {:.3}s)", 
+                            i, duration, short_audio_threshold),
                     "Audio Duration"
                 );
             }
@@ -169,7 +178,7 @@ fn validate_audio_duration(media_info: &MediaInfo, report: &mut ValidationReport
 }
 
 /// Validate audio sample rate
-fn validate_audio_sample_rate(media_info: &MediaInfo, report: &mut ValidationReport) {
+fn validate_audio_sample_rate(media_info: &MediaInfo, report: &mut ValidationReport, config: &Config) {
     let audio_streams = media_info.audio_streams();
     
     if audio_streams.is_empty() {
@@ -227,7 +236,7 @@ fn validate_audio_sample_rate(media_info: &MediaInfo, report: &mut ValidationRep
                         format!("Audio stream #{} has low sample rate: {} Hz", i, sample_rate),
                         "Audio Sample Rate"
                     );
-                } else if !is_standard_sample_rate(sample_rate) {
+                } else if !is_standard_sample_rate(sample_rate, &config.validation.audio.standard_sample_rates) {
                     report.add_warning(
                         format!("Audio stream #{} has non-standard sample rate: {} Hz", i, sample_rate),
                         "Audio Sample Rate"
@@ -239,10 +248,6 @@ fn validate_audio_sample_rate(media_info: &MediaInfo, report: &mut ValidationRep
 }
 
 /// Check if a sample rate is a standard value
-fn is_standard_sample_rate(rate: u32) -> bool {
-    const STANDARD_RATES: [u32; 8] = [
-        8000, 16000, 22050, 24000, 32000, 44100, 48000, 96000
-    ];
-    
-    STANDARD_RATES.contains(&rate)
+fn is_standard_sample_rate(rate: u32, standard_rates: &[u32]) -> bool {
+    standard_rates.contains(&rate)
 }

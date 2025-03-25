@@ -46,6 +46,7 @@ fn test_video_segmentation() {
     config.scene_detection.hdr_scene_threshold = 15.0;
     config.scene_detection.min_segment_length = 1.0;
     config.scene_detection.max_segment_length = 30.0;
+    config.scene_detection.scene_tolerance = 0.5;
     
     // Create temp directory for segments
     let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");

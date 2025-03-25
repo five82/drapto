@@ -32,8 +32,13 @@ pub struct VideoProperties {
 
 /// Determine crop threshold based on color properties
 /// Returns a tuple of (crop_threshold, is_hdr)
-fn determine_crop_threshold(color_transfer: &str, color_primaries: &str, color_space: &str) -> (i32, bool) {
-    let mut crop_threshold = 16;
+fn determine_crop_threshold(
+    color_transfer: &str, 
+    color_primaries: &str, 
+    color_space: &str,
+    config: &crate::config::Config
+) -> (i32, bool) {
+    let mut crop_threshold = config.crop_detection.sdr_threshold;
     let mut is_hdr = false;
     
     let hdr_transfer_regex = regex::Regex::new(r"^(smpte2084|arib-std-b67|smpte428|bt2020-10|bt2020-12)$").unwrap();
@@ -44,7 +49,7 @@ fn determine_crop_threshold(color_transfer: &str, color_primaries: &str, color_s
         || color_space == "bt2020c"
     {
         is_hdr = true;
-        crop_threshold = 128;
+        crop_threshold = config.crop_detection.hdr_threshold;
         info!("HDR content detected, adjusting detection sensitivity");
     }
     
@@ -53,7 +58,11 @@ fn determine_crop_threshold(color_transfer: &str, color_primaries: &str, color_s
 
 /// Run a set of ffmpeg commands to sample black levels for HDR content
 /// Returns an updated crop threshold based on black level analysis
-fn run_hdr_blackdetect<P: AsRef<Path>>(input_file: P, crop_threshold: i32) -> i32 {
+fn run_hdr_blackdetect<P: AsRef<Path>>(
+    input_file: P, 
+    crop_threshold: i32, 
+    config: &crate::config::Config
+) -> i32 {
     let input_path = input_file.as_ref();
     
     let mut cmd = Command::new("ffmpeg");
@@ -81,7 +90,7 @@ fn run_hdr_blackdetect<P: AsRef<Path>>(input_file: P, crop_threshold: i32) -> i3
             if !black_levels.is_empty() {
                 let avg_black_level = black_levels.iter().sum::<f32>() / black_levels.len() as f32;
                 let black_level = avg_black_level as i32;
-                return ((black_level as f32) * 1.5) as i32;
+                return ((black_level as f32) * config.crop_detection.hdr_black_level_multiplier) as i32;
             }
             
             crop_threshold
@@ -139,13 +148,13 @@ fn get_video_properties<P: AsRef<Path>>(input_file: P) -> Result<VideoProperties
 }
 
 /// Calculate how much time to skip at the end for credits
-fn calculate_credits_skip(duration: f64) -> f64 {
+fn calculate_credits_skip(duration: f64, config: &crate::config::Config) -> f64 {
     if duration > 3600.0 {
-        180.0  // Skip 3 minutes for movies > 1 hour
+        config.crop_detection.credits_skip_movie  // Skip for movies > 1 hour
     } else if duration > 1200.0 {
-        60.0   // Skip 1 minute for content > 20 minutes
+        config.crop_detection.credits_skip_episode  // Skip for content > 20 minutes
     } else if duration > 300.0 {
-        30.0   // Skip 30 seconds for content > 5 minutes
+        config.crop_detection.credits_skip_short  // Skip for content > 5 minutes
     } else {
         0.0
     }
@@ -156,19 +165,21 @@ fn run_cropdetect<P: AsRef<Path>>(
     input_file: P,
     crop_threshold: i32,
     dimensions: (u32, u32),
-    duration: f64
+    duration: f64,
+    config: &crate::config::Config
 ) -> Result<Option<String>> {
     let (orig_width, orig_height) = dimensions;
     
     // Calculate sampling parameters
-    let interval = 5.0;  // Check every 5 seconds
-    let mut total_samples = (duration / interval) as i32;
+    let interval = config.crop_detection.sampling_interval;
+    let mut total_samples = (duration / interval as f64) as i32;
     
-    if total_samples < 20 {
-        total_samples = 20;
+    if total_samples < config.crop_detection.min_sample_count {
+        total_samples = config.crop_detection.min_sample_count;
     }
     
-    let cropdetect_filter = format!("select='not(mod(n,30))',cropdetect=limit={}:round=2:reset=1", crop_threshold);
+    let cropdetect_filter = format!("select='{}',cropdetect=limit={}:round=2:reset=1", 
+                                  config.crop_detection.frame_selection, crop_threshold);
     let frames = total_samples * 2;
     
     let mut cmd = Command::new("ffmpeg");
@@ -210,7 +221,7 @@ fn run_cropdetect<P: AsRef<Path>>(
             // Analyze crop heights
             let crop_heights: Vec<u32> = valid_crops.iter()
                 .map(|(_, h, _, _)| *h)
-                .filter(|h| *h >= 100)
+                .filter(|h| *h >= config.crop_detection.min_height)
                 .collect();
             
             if crop_heights.is_empty() {
@@ -240,7 +251,7 @@ fn run_cropdetect<P: AsRef<Path>>(
                 info!("No significant black bars detected");
             }
             
-            if black_bar_percent > 1 {
+            if black_bar_percent > config.crop_detection.min_black_bar_percent {
                 Ok(Some(format!("crop={}:{}:0:{}", orig_width, most_common_height, black_bar_size)))
             } else {
                 Ok(Some(format!("crop={}:{}:0:0", orig_width, orig_height)))
@@ -259,14 +270,21 @@ fn run_cropdetect<P: AsRef<Path>>(
 ///
 /// * `input_file` - Path to input video file
 /// * `disable_crop` - If true, skip crop detection
+/// * `config` - Optional configuration, if not provided will use default values
 ///
 /// # Returns
 ///
 /// * `Result<(Option<String>, bool)>` - A tuple containing:
 ///   - Optional crop filter string (like "crop=1920:800:0:140"), None if disabled or failed
 ///   - Boolean indicating if the content is HDR
-pub fn detect_crop<P: AsRef<Path>>(input_file: P, disable_crop: Option<bool>) -> Result<(Option<String>, bool)> {
+pub fn detect_crop<P: AsRef<Path>>(
+    input_file: P, 
+    disable_crop: Option<bool>,
+    config: Option<&crate::config::Config>
+) -> Result<(Option<String>, bool)> {
     let disable_crop = disable_crop.unwrap_or(false);
+    let default_config = crate::config::Config::default();
+    let config = config.unwrap_or(&default_config);
     
     if disable_crop {
         info!("Crop detection disabled");
@@ -286,17 +304,21 @@ pub fn detect_crop<P: AsRef<Path>>(input_file: P, disable_crop: Option<bool>) ->
     let (mut crop_threshold, is_hdr) = determine_crop_threshold(
         props.color_props.get("transfer").unwrap_or(&String::new()),
         props.color_props.get("primaries").unwrap_or(&String::new()),
-        props.color_props.get("space").unwrap_or(&String::new())
+        props.color_props.get("space").unwrap_or(&String::new()),
+        config
     );
     
     // For HDR content, analyze black levels
     if is_hdr {
-        crop_threshold = run_hdr_blackdetect(&input_file, crop_threshold);
-        crop_threshold = crop_threshold.clamp(16, 256);
+        crop_threshold = run_hdr_blackdetect(&input_file, crop_threshold, config);
+        crop_threshold = crop_threshold.clamp(
+            config.crop_detection.min_threshold, 
+            config.crop_detection.max_threshold
+        );
     }
     
     // Adjust duration for credits
-    let credits_skip = calculate_credits_skip(props.duration);
+    let credits_skip = calculate_credits_skip(props.duration, config);
     let adjusted_duration = if credits_skip > 0.0 {
         props.duration - credits_skip
     } else {
@@ -304,7 +326,13 @@ pub fn detect_crop<P: AsRef<Path>>(input_file: P, disable_crop: Option<bool>) ->
     };
     
     // Run crop detection
-    let crop_filter = run_cropdetect(&input_file, crop_threshold, props.dimensions, adjusted_duration)?;
+    let crop_filter = run_cropdetect(
+        &input_file, 
+        crop_threshold, 
+        props.dimensions, 
+        adjusted_duration,
+        config
+    )?;
     
     Ok((crop_filter, is_hdr))
 }

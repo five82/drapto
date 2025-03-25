@@ -41,16 +41,16 @@ pub fn validate_media<P: AsRef<Path>>(
     
     // Run various validations with section headers
     logging::log_subsection("AUDIO VALIDATION");
-    audio::validate_audio(&media_info, &mut report);
+    audio::validate_audio(&media_info, &mut report, config);
     
     logging::log_subsection("VIDEO VALIDATION");
-    video::validate_video(&media_info, &mut report);
+    video::validate_video(&media_info, &mut report, config);
     
     logging::log_subsection("SUBTITLES VALIDATION");
     subtitles::validate_subtitles(&media_info, &mut report);
     
     logging::log_subsection("A/V SYNC VALIDATION");
-    sync::validate_sync(&media_info, &mut report);
+    sync::validate_sync(&media_info, &mut report, config);
     
     // Validate codecs with config
     logging::log_subsection("CODEC VALIDATION");
@@ -88,16 +88,16 @@ pub fn comprehensive_validation<P: AsRef<Path>>(
     
     // Basic validation categories with subsections
     logging::log_subsection("AUDIO VALIDATION");
-    audio::validate_audio(&media_info, &mut report);
+    audio::validate_audio(&media_info, &mut report, config);
     
     logging::log_subsection("VIDEO VALIDATION");
-    video::validate_video(&media_info, &mut report);
+    video::validate_video(&media_info, &mut report, config);
     
     logging::log_subsection("SUBTITLES VALIDATION");
     subtitles::validate_subtitles(&media_info, &mut report);
     
     logging::log_subsection("A/V SYNC VALIDATION");
-    sync::validate_sync(&media_info, &mut report);
+    sync::validate_sync(&media_info, &mut report, config);
     
     // Validate codecs with config
     logging::log_subsection("CODEC VALIDATION");
@@ -217,7 +217,7 @@ pub fn validate_av_sync<P: AsRef<Path>>(
     let media_info = MediaInfo::from_path(path_ref)?;
     
     // Use the sync module to check AV synchronization
-    sync::validate_sync(&media_info, &mut report);
+    sync::validate_sync(&media_info, &mut report, _config);
     
     // Log summary
     logging::log_subsection("SYNC VALIDATION SUMMARY");
@@ -312,19 +312,19 @@ where
     
     // 1. Duration validation
     logging::log_subsection("DURATION VALIDATION");
-    validate_duration(&input_info, &output_info, &mut report)?;
+    validate_duration(&input_info, &output_info, &mut report, config)?;
     
     // 2. Video validation
     logging::log_subsection("VIDEO VALIDATION");
-    video::validate_video(&output_info, &mut report);
+    video::validate_video(&output_info, &mut report, config);
     
     // 3. Audio validation
     logging::log_subsection("AUDIO VALIDATION");
-    audio::validate_audio(&output_info, &mut report);
+    audio::validate_audio(&output_info, &mut report, config);
     
     // 4. A/V sync validation
     logging::log_subsection("A/V SYNC VALIDATION");
-    sync::validate_sync(&output_info, &mut report);
+    sync::validate_sync(&output_info, &mut report, config);
     
     // 5. Codec compliance
     logging::log_subsection("CODEC VALIDATION");
@@ -373,16 +373,22 @@ where
 fn validate_duration(
     input_info: &MediaInfo,
     output_info: &MediaInfo,
-    report: &mut ValidationReport
+    report: &mut ValidationReport,
+    config: Option<&crate::config::Config>
 ) -> Result<()> {
+    // Use default configuration if none is provided
+    let default_config = crate::config::Config::default();
+    let config = config.unwrap_or(&default_config);
+    
     let input_duration = input_info.duration()
         .ok_or_else(|| DraptoError::Validation("Could not determine input duration".to_string()))?;
     
     let output_duration = output_info.duration()
         .ok_or_else(|| DraptoError::Validation("Could not determine output duration".to_string()))?;
     
-    // Allow a tolerance of 1% of duration or at least 0.5 seconds
-    let tolerance = (input_duration * 0.01).max(0.5);
+    // Get tolerance from config
+    let tolerance = (input_duration * config.validation.duration_relative_tolerance as f64)
+        .max(config.validation.duration_tolerance);
     let duration_diff = (input_duration - output_duration).abs();
     
     report.add_info(

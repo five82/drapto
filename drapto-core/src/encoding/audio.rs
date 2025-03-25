@@ -527,7 +527,7 @@ impl OpusEncoder {
         }
         
         // Detailed audio validation
-        audio_validation::validate_audio(&output_info, &mut report);
+        audio_validation::validate_audio(&output_info, &mut report, None);
         
         // Codec validation
         for (i, stream) in output_audio.iter().enumerate() {

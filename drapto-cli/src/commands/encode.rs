@@ -63,7 +63,9 @@ pub fn execute_encode(
     config.input = input.clone();
     config.output = output.clone();
     config.video.hardware_acceleration = !no_hwaccel;
-    config.video.target_quality = quality;
+    if let Some(q) = quality {
+        config.video.target_vmaf = q;
+    }
     config.resources.parallel_jobs = jobs.unwrap_or_else(num_cpus::get);
     config.logging.verbose = verbose;
     config.directories.keep_temp_files = keep_temp;
@@ -121,7 +123,7 @@ pub fn execute_encode(
     let mut crop_filter = None;
     if !config.video.disable_crop {
         print_info("Analyzing video for black bars", "");
-        let crop_result = detect_crop(&input, None)?;
+        let crop_result = detect_crop(&input, None, Some(&config))?;
         if let (Some(filter), _) = crop_result {
             print_info("Crop filter", &filter);
             crop_filter = Some(filter);
@@ -209,7 +211,7 @@ pub fn execute_encode(
     print_info("Parallel Jobs", config.resources.parallel_jobs);
     
     let video_options = VideoEncodingOptions {
-        quality: config.video.target_quality,
+        quality: Some(config.video.target_vmaf),
         parallel_jobs: config.resources.parallel_jobs,
         hw_accel_option: hw_accel_option.clone(), // Clone here to avoid move
         crop_filter,
@@ -221,7 +223,7 @@ pub fn execute_encode(
     debug!("Video encoding options: {:?}", video_options);
     print_progress("Encoding video...")?;
     
-    let video_output = encode_video(&input, &video_options)?;
+    let video_output = encode_video(&input, &video_options, &config)?;
     print_success(&format!("Video encoded to: {} (preserving original filename)", video_output.display()));
     
     // Encode audio

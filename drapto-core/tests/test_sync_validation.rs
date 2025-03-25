@@ -74,7 +74,7 @@ fn test_sync_validation_perfect() {
     );
     
     let mut report = ValidationReport::new();
-    sync::validate_sync(&media_info, &mut report);
+    sync::validate_sync(&media_info, &mut report, None);
     
     // Should not have errors
     assert!(report.passed);
@@ -97,7 +97,7 @@ fn test_sync_validation_start_time_mismatch() {
     );
     
     let mut report = ValidationReport::new();
-    sync::validate_sync(&media_info, &mut report);
+    sync::validate_sync(&media_info, &mut report, None);
     
     // Should have failed
     assert!(!report.passed);
@@ -119,7 +119,7 @@ fn test_sync_validation_duration_mismatch() {
     );
     
     let mut report = ValidationReport::new();
-    sync::validate_sync(&media_info, &mut report);
+    sync::validate_sync(&media_info, &mut report, None);
     
     // Should have failed
     assert!(!report.passed);
@@ -144,7 +144,7 @@ fn test_sync_validation_missing_streams() {
     media_info.streams.remove(1);
     
     let mut report = ValidationReport::new();
-    sync::validate_sync(&media_info, &mut report);
+    sync::validate_sync(&media_info, &mut report, None);
     
     // Should have failed
     assert!(!report.passed);
@@ -166,7 +166,7 @@ fn test_sync_validation_missing_duration() {
     );
     
     let mut report = ValidationReport::new();
-    sync::validate_sync(&media_info, &mut report);
+    sync::validate_sync(&media_info, &mut report, None);
     
     // Should have failed
     assert!(!report.passed);
@@ -188,9 +188,38 @@ fn test_sync_validation_within_threshold() {
     );
     
     let mut report = ValidationReport::new();
-    sync::validate_sync(&media_info, &mut report);
+    sync::validate_sync(&media_info, &mut report, None);
     
     // Should pass
+    assert!(report.passed);
+    
+    // Should have info message
+    let info_messages = report.infos();
+    assert!(info_messages.len() > 0);
+    assert!(info_messages[0].message.contains("A/V sync OK"));
+}
+
+#[test]
+fn test_sync_validation_with_custom_config() {
+    use drapto_core::config::Config;
+    
+    // Create media info with a difference of 150ms, which would normally fail
+    // with default threshold of 100ms
+    let media_info = create_test_media_info(
+        Some(0.0),        // video start
+        Some(60.0),       // video duration
+        Some(0.15),       // audio start (150ms difference)
+        Some(60.15),      // audio duration (150ms difference)
+    );
+    
+    // Create a custom config with a higher threshold of 200ms
+    let mut config = Config::default();
+    config.validation.sync_threshold_ms = 200; // Higher than the default 100ms
+    
+    let mut report = ValidationReport::new();
+    sync::validate_sync(&media_info, &mut report, Some(&config));
+    
+    // Should pass with the higher threshold
     assert!(report.passed);
     
     // Should have info message

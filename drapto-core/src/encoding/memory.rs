@@ -217,27 +217,24 @@ impl MemoryTracker {
         system.refresh_memory();
         let system_memory = system.total_memory() / 1024 / 1024; // Convert to MB
         
-        // Protect against very small values
-        let memory_per_job = memory_per_job.max(512); // Minimum 512MB per job
+        // Load resource configuration
+        let resources = crate::config::ResourceConfig::default();
         
-        // Adjust memory allocation based on total system memory
-        // Use more conservative allocation on systems with less memory
-        let memory_percentage = if system_memory < 8 * 1024 {
-            // Less than 8GB - be very conservative (50%)
-            0.5
-        } else if system_memory < 16 * 1024 {
-            // 8-16GB - conservative (60%) 
-            0.6
-        } else if system_memory < 32 * 1024 {
-            // 16-32GB - moderate (65%)
-            0.65
-        } else {
-            // 32GB+ - can be more generous (70%)
-            0.7
-        };
+        // Get token size from configuration
+        let memory_token_size = resources.memory_token_size;
+        
+        // Protect against very small values
+        let memory_per_job = memory_per_job.max(memory_token_size); // Minimum size based on token size
+        
+        // Use configured memory allocation percentage
+        let memory_reserve_percent = resources.memory_reserve_percent;
+        let memory_allocation_percent = resources.memory_allocation_percent;
+
+        // Calculate memory percentage based on the reserve and allocation settings
+        let memory_percentage = (1.0 - memory_reserve_percent) * memory_allocation_percent;
         
         // Calculate available memory based on system size
-        let available_memory = (system_memory as f64 * memory_percentage) as usize;
+        let available_memory = (system_memory as f64 * memory_percentage as f64) as usize;
         info!("Memory allocation: Using {}% of system memory based on system size", 
               (memory_percentage * 100.0) as usize);
         
@@ -247,36 +244,37 @@ impl MemoryTracker {
         // Since we're always using the memory-intensive SVT-AV1 encoder, apply aggressive limits
         // Either directly or via the AB-AV1 tool
         
-        // Determine minimum job count based on system memory
+        // Get min/max jobs from configuration
+        let min_memory_tokens = resources.min_memory_tokens;
+        let max_memory_tokens_limit = resources.max_memory_tokens_limit;
+        
+        // Scale min tokens based on system size but respect the configured minimum
         let min_jobs = if system_memory < 8 * 1024 {
-            // Small systems (< 8GB) - can only safely run 1 job
-            1
+            // Small systems (< 8GB) - respect minimum but cap at 1
+            min_memory_tokens.min(1)
         } else if system_memory < 16 * 1024 {
-            // Medium systems (8-16GB) - at least 2 jobs
-            2
+            // Medium systems (8-16GB) - respect minimum but cap at 2
+            min_memory_tokens.min(2)
         } else {
-            // Larger systems (16GB+) - at least 3 jobs for better performance
-            3
+            // Larger systems (16GB+) - use configured minimum
+            min_memory_tokens
         };
         
         // Apply a more balanced limit for our AV1 encoding, scaling with system size
         let adjusted_max = if max_memory > min_jobs + 1 {
-            // Moderate limit for memory-intensive encoding
-            let scaling_factor = if system_memory < 16 * 1024 {
-                // Smaller systems need more conservative scaling
-                0.7
-            } else {
-                // Larger systems can scale more aggressively
-                0.8
-            };
+            // Use configured memory allocation scaling
+            let scaling_factor = memory_allocation_percent as f64;
             
+            // Calculate reduced max but ensure it's within limits
             let reduced = (max_memory as f64 * scaling_factor) as usize;
+            let capped_max = reduced.max(min_jobs).min(max_memory_tokens_limit);
+            
             info!("SVT-AV1 encoder detected, balancing job count from {} to {}", 
-                  max_memory, reduced.max(min_jobs));
-            reduced.max(min_jobs) // Ensure minimum jobs based on system size
+                  max_memory, capped_max);
+            capped_max
         } else {
             // If max_memory is already close to or below our minimum, use it
-            max_memory.max(1) // Always ensure at least 1 job
+            max_memory.min(max_memory_tokens_limit).max(min_jobs) // Stay within configured limits
         };
         
         info!("Memory tracker: System memory: {}MB, Available: {}MB, Memory per job: {}MB, Max concurrent jobs: {} (SVT-AV1 encoder)",
@@ -322,16 +320,22 @@ impl MemoryTracker {
             (90.0, 80.0, 70.0)
         };
         
-        // Determine minimum job count based on system size
+        // Get resource configuration
+        let resources = crate::config::ResourceConfig::default();
+        
+        // Get configured min tokens
+        let min_memory_tokens = resources.min_memory_tokens;
+        
+        // Determine minimum job count based on system size and configuration
         let min_jobs = if total_memory_mb < 8 * 1024 {
             // Small systems - prefer reliability over parallelism
-            1
+            min_memory_tokens.min(1)
         } else if total_memory_mb < 16 * 1024 {
             // Medium systems - need some parallelism
-            2
+            min_memory_tokens.min(2)
         } else {
-            // Larger systems - need good parallelism
-            2
+            // Larger systems - respect minimum configured tokens
+            min_memory_tokens
         };
         
         // Calculate safe job count based on memory pressure

@@ -34,18 +34,25 @@ scene_threshold = 25.0
 min_segment_length = 3.0
 hdr_scene_threshold = 30.0
 max_segment_length = 15.0
+scene_tolerance = 0.5
 
 [video]
-target_quality = 90.0
+target_vmaf = 90.0
+target_vmaf_hdr = 95.0
 disable_crop = true
 hardware_acceleration = true
 hw_accel_option = ""
 preset = 6
 svt_params = "tune=0:film-grain=0:film-grain-denoise=0"
-pix_fmt = "yuv420p10le"
+encoder = "libsvtav1"
+keyframe_interval = "10s"
+pixel_format = "yuv420p10le"
+max_retries = 2
+force_quality_score = 95.0
 use_segmentation = true
 vmaf_sample_count = 3
-vmaf_sample_length = 1.0
+vmaf_sample_duration = 1.0
+vmaf_options = "n_subsample=8:pool=perc5_min"
 
 [audio]
 compression_level = 10
@@ -59,6 +66,11 @@ memory_threshold = 0.7
 max_memory_tokens = 8
 task_stagger_delay = 0.2
 memory_per_job = 2048
+memory_reserve_percent = 0.2
+memory_token_size = 512
+memory_allocation_percent = 0.6
+min_memory_tokens = 1
+max_memory_tokens_limit = 16
 
 [directories]
 temp_dir = "/tmp/drapto"
@@ -78,7 +90,7 @@ log_dir = "/tmp/drapto_logs"
     // Test if file values were loaded correctly
     assert_eq!(config.scene_detection.scene_threshold, 25.0);
     assert_eq!(config.scene_detection.min_segment_length, 3.0);
-    assert_eq!(config.video.target_quality, Some(90.0));
+    assert_eq!(config.video.target_vmaf, 90.0);
     assert_eq!(config.video.disable_crop, true);
     assert_eq!(config.input.to_string_lossy(), "input.mp4");
     assert_eq!(config.output.to_string_lossy(), "output.mp4");
