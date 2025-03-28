@@ -207,8 +207,7 @@ impl ParallelEncoder {
             loop {
                 match self.encoder.encode_video(segment, &output_path, progress_cb.clone()) {
                     Ok(_) => {
-                        // Successfully encoded
-                        info!("Segment encoding complete: {}", segment_name_str);
+                        // Don't log completion here - the encoder already logs this
                         
                         // Check output file exists and has valid size
                         if let Ok(metadata) = std::fs::metadata(&output_path) {

@@ -1,19 +1,21 @@
 # Drapto
 
-ab-av1 video encoding wrapper with scene-based segmentation and parallel processing.
+Optimized AV1 video encoding tool with intelligent quality control, scene-based segmentation, and parallel processing.
 
-This is a vibe coding experiment to see how far LLM tools can take this. Pull requests are welcome.
+Drapto automatically detects HDR/SDR content and applies the most appropriate encoding strategy - using CRF mode for HDR content and VMAF-targeted quality for SDR content.
 
 ## Features
 
 - **AV1 Encoding with SVT-AV1:** High-quality encoding using libsvtav1 with configurable presets
-- **Intelligent Scene-Based Segmentation:** Automatically segments videos using adaptive scene detection
-- **Quality-Targeted Encoding:** Uses ab-av1 to achieve consistent quality with target VMAF
-- **Parallel Encoding Pipeline:** Encodes segments concurrently with memory-aware scheduling
-- **Enhanced Output Validation:** Performs comprehensive validation of video/audio streams, container integrity, sync, sample rates, and quality targets
-- **Automatic Black Bar Detection and Cropping:** Detects black bars and applies appropriate crop filters
-- **Quality Audio Encoding:** High quality Opus encoding with channel-adaptive bitrate selection
-- **Hardware Acceleration:** Supports hardware decoding when available
+- **Content-Aware Quality Control:** Automatically selects optimal encoding mode:
+  - CRF (Constant Rate Factor) for HDR content
+  - VMAF-targeted quality for SDR content
+- **Adaptive Scene Detection:** Intelligently segments videos at scene boundaries for better compression
+- **Parallel Processing:** Encodes multiple segments concurrently with memory-aware scheduling
+- **Comprehensive Validation:** Ensures quality, integrity, sync, and format compliance
+- **Automatic Black Bar Detection:** Detects and removes black bars for optimal viewing experience
+- **High-Quality Audio:** Uses Opus codec with channel-adaptive bitrates
+- **Hardware Acceleration:** Supports hardware-accelerated decoding when available
 
 ## Requirements
 
@@ -29,94 +31,130 @@ This is a vibe coding experiment to see how far LLM tools can take this. Pull re
 git clone https://github.com/yourusername/drapto.git
 cd drapto
 
-# Build with cargo
-cargo build --release
+# Install dependencies (Ubuntu/Debian example)
+sudo apt install ffmpeg mediainfo
+cargo install ab-av1
 
-# Install locally
+# Build and install drapto
+cargo build --release
 cargo install --path .
 ```
 
 ## Usage
 
 ```bash
-# Encode a single file
+# Basic encoding (automatically detects HDR/SDR and uses appropriate mode)
 drapto encode --input input.mkv --output output.mkv
 
-# Get information about a media file
+# Analyze a media file
 drapto info input.mkv
 
 # Validate an encoded file
 drapto validate --input encoded.mp4 --reference original.mkv
+
+# Advanced encoding options
+drapto encode --input input.mkv --output output.mkv --preset 4 --parallel-jobs 4 --target-quality 95
+
+# Force CRF mode for all content
+drapto encode --input input.mkv --output output.mkv --use-crf
 ```
 
-Drapto's encoding pipeline performs:
-- **Segmentation:** The video is segmented using dynamic, scene-based detection
-- **Memory-Aware Parallel Encoding:** Segments are encoded in parallel with adaptive retry strategies
-- **Concatenation & Validation:** The encoded segments are concatenated and thoroughly validated
+### Encoding Pipeline
+
+Drapto processes videos through an intelligent pipeline:
+
+1. **Media Analysis:** Detects HDR/SDR content, dimensions, and formats
+2. **Content-Aware Mode Selection:** CRF for HDR, VMAF for SDR (customizable)
+3. **Scene Detection:** Segments video at scene boundaries for optimal compression
+4. **Parallel Encoding:** Processes segments concurrently with retry capability
+5. **Final Assembly:** Concatenates segments and validates the output
 
 ## Configuration
 
-Drapto has a comprehensive, modular configuration system with multiple methods:
+Drapto provides multiple ways to configure its behavior, in order of precedence:
 
-1. A TOML configuration file (`drapto.toml`)
-2. Environment variables with the `DRAPTO_` prefix
-3. Command-line arguments
+1. **Command-line arguments:** Directly passed when running drapto (highest priority)
+2. **Environment variables:** Set variables with `DRAPTO_` prefix
+3. **Configuration file:** TOML format (drapto.toml)
+4. **Default values:** Built-in defaults (lowest priority)
 
-Configuration is organized into logical sections (video, audio, validation, resources, etc.) with sensible defaults that can be overridden as needed.
+Configuration is organized into logical sections (video, audio, validation, resources, etc.) with sensible defaults that adapt to your content.
 
 ### Example Configuration
 
+Create a file named `drapto.toml` in your working directory:
+
 ```toml
-# Basic input/output paths
+# Basic input/output paths (can be overridden by command-line arguments)
 input = "input.mkv"
 output = "output.mp4"
 
 [video]
-# Target VMAF quality for SDR content (0-100)
-target_vmaf = 93.0
-# Target VMAF for HDR content
-target_vmaf_hdr = 95.0
-# Encoder preset (0-13, lower is slower but better quality)
-preset = 6
-# Encoder to use
-encoder = "libsvtav1"
-# Enable/disable scene-based segmentation
-use_segmentation = true
+# Quality settings for different content types
+# HDR automatically uses CRF mode, SDR uses VMAF by default
+target_vmaf = 93.0        # Target quality for SDR content
+target_vmaf_hdr = 95.0    # Only used if CRF is disabled for HDR
+
+# CRF values (used by default for HDR content)
+target_crf_sd = 25        # For SD (<1280p)
+target_crf_hd = 28        # For HD (1280-3839p)
+target_crf_4k = 28        # For 4K (≥3840p)
+
+# Encoding settings
+preset = 6                # 0-13, lower = better quality but slower
+encoder = "libsvtav1"     # AV1 encoder implementation
+pixel_format = "yuv420p10le"  # 10-bit for better HDR support
+keyframe_interval = "10s" # Keyframe interval
+
+# Processing options
+use_segmentation = true   # Enable scene-based segmentation
+disable_crop = false      # Enable automatic black bar detection
 
 [scene_detection]
-# Content threshold for scene detection (0-100)
-scene_threshold = 40.0
-# Minimum segment length in seconds
-min_segment_length = 5.0
+# Scene detection tuning
+scene_threshold = 40.0    # Content difference threshold for SDR
+hdr_scene_threshold = 30.0 # Threshold for HDR (lower for better detection)
+min_segment_length = 5.0  # Minimum segment duration in seconds
 
 [audio]
-# Opus encoding compression level (0-10)
-compression_level = 10
-# Use variable bitrate
-vbr = true
-# Application type (voip, audio, lowdelay)
-application = "audio"
+# Opus audio encoding
+compression_level = 10    # Maximum quality
+vbr = true                # Variable bitrate
+application = "audio"     # Optimized for music/movies
 
 [audio.bitrates]
-# Bitrate for stereo audio (2 channels) in kbps
+# Channel-specific bitrates (kbps)
 stereo = 128
-# Bitrate for 5.1 surround (6 channels) in kbps
 surround_5_1 = 256
 
 [resources]
-# Number of parallel encoding jobs (0 = auto-detect CPU cores)
-parallel_jobs = 0
-# Memory threshold as fraction of system RAM
-memory_threshold = 0.7
-# Memory limit per encoding job in MB
-memory_per_job = 2048
+# Resource management
+parallel_jobs = 0         # Auto-detect based on CPU cores
+memory_threshold = 0.7    # Maximum memory fraction to use
+memory_per_job = 2048     # MB per encoding job
 ```
 
 For detailed configuration options, see the [Configuration Guide](docs/configuration.md).
 
-## Development & Troubleshooting
+## Advanced Usage
 
-- **Logging:** Detailed logs are saved in the configured log directory
-- **Temporary Files:** Temporary directories are automatically cleaned up after encoding (unless keep_temp_files is enabled)
-- **Hardware Acceleration:** Automatically detected if available and enabled
-- **Common Issues:** Check dependency versions, ensure input videos are valid, and verify sufficient disk space for temporary files
+### Common Scenarios
+
+- **Maximum Quality:** Use `--preset 4 --target-quality 95` for highest quality SDR encoding
+- **Faster Encoding:** Use `--preset 8 --target-quality 90` for faster encoding with good quality
+- **HDR Content:** HDR content automatically uses CRF mode by default
+- **Force Encoding Mode:** Use `--use-crf` to enforce CRF mode for all content
+
+### Tips & Troubleshooting
+
+- **Logging:** Detailed logs are saved in `~/drapto_logs` (customizable)
+- **Temporary Files:** Working files are stored in `/tmp/drapto` by default and automatically cleaned up
+- **Hardware Acceleration:** Automatically used for decoding when available
+- **Memory Management:** Configure `memory_per_job` if encoding fails due to memory limits
+- **Common Issues:** 
+  - Ensure FFmpeg 7.0+ with libsvtav1 and libvmaf is installed
+  - MediaInfo is required for accurate HDR detection
+  - Verify input files are valid and readable
+  - Provide sufficient disk space for temporary segments
+
+For complete documentation, see the [Configuration Guide](docs/configuration.md).

@@ -147,9 +147,9 @@ pub fn validate_hdr_consistency(
     encoded_info: &MediaInfo,
     report: &mut ValidationReport,
 ) -> Result<()> {
-    // Perform a more thorough check for HDR content
-    let input_is_hdr = crate::detection::format::has_hdr(original_info);
-    let output_is_hdr = crate::detection::format::has_hdr(encoded_info);
+    // Use the MediaInfo.is_hdr() method for consistent HDR detection
+    let input_is_hdr = original_info.is_hdr();
+    let output_is_hdr = encoded_info.is_hdr();
     
     report.add_info(
         format!(

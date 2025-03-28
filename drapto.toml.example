@@ -40,10 +40,19 @@ disable_crop = false
 use_segmentation = true
 
 # Quality settings
+# Use CRF instead of VMAF for quality metric
+# Note: HDR content automatically uses CRF mode regardless of this setting
+use_crf = false
 # Target VMAF quality score (0-100) for SDR content
 target_vmaf = 93.0
-# Target VMAF for HDR content
+# Target VMAF for HDR content (only used if CRF mode is explicitly disabled for HDR)
 target_vmaf_hdr = 95.0
+# Target CRF value for standard definition content (width < 1280)
+target_crf_sd = 25
+# Target CRF value for high definition content (1280 <= width < 3840)
+target_crf_hd = 28
+# Target CRF value for 4K content (width >= 3840)
+target_crf_4k = 28
 
 # VMAF analysis options
 # VMAF sample count for quality estimation

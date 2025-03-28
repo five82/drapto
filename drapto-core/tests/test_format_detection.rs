@@ -49,27 +49,30 @@ mod tests {
     
     #[test]
     fn test_has_hdr() {
-        // Test with HDR transfer function (smpte2084/PQ)
+        // Test with HDR transfer function (smpte2084/PQ) and high bit depth
         let mut props = HashMap::new();
         props.insert(String::from("color_transfer"), Value::String(String::from("smpte2084")));
+        props.insert(String::from("bits_per_raw_sample"), Value::Number(serde_json::Number::from(10)));
         
         let stream = create_test_stream(StreamType::Video, props, HashMap::new());
         let media_info = create_test_media_info(vec![stream], None);
         
         assert!(has_hdr(&media_info));
         
-        // Test with HDR color primaries (bt2020)
+        // Test with HDR color primaries (bt2020) and high bit depth
         let mut props = HashMap::new();
         props.insert(String::from("color_primaries"), Value::String(String::from("bt2020")));
+        props.insert(String::from("bits_per_raw_sample"), Value::Number(serde_json::Number::from(10)));
         
         let stream = create_test_stream(StreamType::Video, props, HashMap::new());
         let media_info = create_test_media_info(vec![stream], None);
         
         assert!(has_hdr(&media_info));
         
-        // Test with HDR color space (bt2020nc)
+        // Test with both HDR color primaries and transfer function
         let mut props = HashMap::new();
-        props.insert(String::from("color_space"), Value::String(String::from("bt2020nc")));
+        props.insert(String::from("color_primaries"), Value::String(String::from("bt2020")));
+        props.insert(String::from("color_transfer"), Value::String(String::from("smpte2084")));
         
         let stream = create_test_stream(StreamType::Video, props, HashMap::new());
         let media_info = create_test_media_info(vec![stream], None);
@@ -81,6 +84,7 @@ mod tests {
         props.insert(String::from("color_transfer"), Value::String(String::from("bt709")));
         props.insert(String::from("color_primaries"), Value::String(String::from("bt709")));
         props.insert(String::from("color_space"), Value::String(String::from("bt709")));
+        props.insert(String::from("bits_per_raw_sample"), Value::Number(serde_json::Number::from(8)));
         
         let stream = create_test_stream(StreamType::Video, props, HashMap::new());
         let media_info = create_test_media_info(vec![stream], None);

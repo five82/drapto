@@ -35,7 +35,6 @@ pub fn print_section(text: &str) {
     println!("\n{}", line);
     println!("{}", section);
     println!("{}", line);
-    println!("");
 }
 
 /// Print a separator line

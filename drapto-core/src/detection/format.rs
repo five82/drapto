@@ -39,16 +39,20 @@ fn determine_crop_threshold(
     config: &crate::config::Config
 ) -> (i32, bool) {
     let mut crop_threshold = config.crop_detection.sdr_threshold;
-    let mut is_hdr = false;
     
+    // Get video stream properties for HDR detection
+    let hdr_primaries = color_primaries == "bt2020";
     let hdr_transfer_regex = regex::Regex::new(r"^(smpte2084|arib-std-b67|smpte428|bt2020-10|bt2020-12)$").unwrap();
+    let hdr_transfer = hdr_transfer_regex.is_match(color_transfer);
     
-    if hdr_transfer_regex.is_match(color_transfer)
-        || color_primaries == "bt2020"
-        || color_space == "bt2020nc"
-        || color_space == "bt2020c"
-    {
-        is_hdr = true;
+    // Also check color space, which can indicate HDR content
+    let hdr_space = color_space == "bt2020nc" || color_space == "bt2020c";
+    
+    // For bit depth, we'd need the original MediaInfo object, so just check the other properties
+    // More lenient detection for crop threshold adjustment
+    let is_hdr = hdr_transfer || hdr_primaries || hdr_space;
+    
+    if is_hdr {
         crop_threshold = config.crop_detection.hdr_threshold;
         info!("HDR content detected, adjusting detection sensitivity");
     }
@@ -337,7 +341,10 @@ pub fn detect_crop<P: AsRef<Path>>(
     Ok((crop_filter, is_hdr))
 }
 
-/// Check if media has HDR content
+/// Check if media has HDR content 
+/// 
+/// This function delegates to MediaInfo.is_hdr() to ensure consistent HDR detection
+/// across the entire application
 ///
 /// # Arguments
 ///
@@ -347,30 +354,7 @@ pub fn detect_crop<P: AsRef<Path>>(
 ///
 /// * `bool` - True if HDR content is detected
 pub fn has_hdr(media_info: &MediaInfo) -> bool {
-    if let Some(video_stream) = media_info.primary_video_stream() {
-        // Check color transfer
-        if let Some(color_transfer) = video_stream.properties.get("color_transfer").and_then(|v| v.as_str()) {
-            let hdr_transfer_regex = regex::Regex::new(r"^(smpte2084|arib-std-b67|smpte428|bt2020-10|bt2020-12)$").unwrap();
-            if hdr_transfer_regex.is_match(color_transfer) {
-                return true;
-            }
-        }
-        
-        // Check color primaries
-        if let Some(color_primaries) = video_stream.properties.get("color_primaries").and_then(|v| v.as_str()) {
-            if color_primaries == "bt2020" {
-                return true;
-            }
-        }
-        
-        // Check color space
-        if let Some(color_space) = video_stream.properties.get("color_space").and_then(|v| v.as_str()) {
-            if color_space == "bt2020nc" || color_space == "bt2020c" {
-                return true;
-            }
-        }
-    }
-    
-    false
+    // Use the centralized HDR detection implementation in MediaInfo
+    media_info.is_hdr()
 }
 

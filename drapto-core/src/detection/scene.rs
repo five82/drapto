@@ -73,12 +73,27 @@ pub fn detect_scenes<P: AsRef<Path>>(
     // Check if content is HDR
     let is_hdr = media_info.is_hdr();
     
+    // Add detailed detection info for debugging
+    if let Some(stream) = media_info.primary_video_stream() {
+        let primaries = stream.properties.get("color_primaries")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        let transfer = stream.properties.get("color_transfer")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        let pix_fmt = stream.properties.get("pix_fmt")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        debug!("Video properties - primaries: {}, transfer: {}, pix_fmt: {}", 
+               primaries, transfer, pix_fmt);
+    }
+    
     // Select threshold based on content type
     let threshold = if is_hdr {
-        info!("Using HDR scene threshold for HDR content");
+        info!("Using HDR scene threshold of {}", hdr_scene_threshold);
         hdr_scene_threshold
     } else {
-        info!("Using SDR scene threshold");
+        info!("Using SDR scene threshold of {}", scene_threshold);
         scene_threshold
     };
     

@@ -48,13 +48,46 @@ pub enum Commands {
         /// Output file or directory path
         output: PathBuf,
         
-        /// Target VMAF quality (0-100)
+        /// Target VMAF quality for SDR content (0-100)
         #[arg(
             short,
             long,
-            help = "Target video quality on VMAF scale (0-100, higher is better)"
+            help = "Target video quality on VMAF scale (0-100) for SDR content (HDR content uses CRF by default)"
         )]
         quality: Option<f32>,
+        
+        
+        /// Use CRF as quality metric for all content (HDR content uses CRF by default)
+        #[arg(
+            long,
+            help = "Force CRF mode for all content (Note: HDR content automatically uses CRF by default)",
+            default_value = "false"
+        )]
+        use_crf: bool,
+        
+        /// CRF value for standard definition
+        #[arg(
+            long,
+            help = "CRF value for standard definition content (0-63, lower is better quality)",
+            default_value = "25"
+        )]
+        crf_sd: u8,
+        
+        /// CRF value for high definition
+        #[arg(
+            long,
+            help = "CRF value for high definition content (0-63, lower is better quality)",
+            default_value = "28"
+        )]
+        crf_hd: u8,
+        
+        /// CRF value for 4K content
+        #[arg(
+            long,
+            help = "CRF value for 4K content (0-63, lower is better quality)",
+            default_value = "28"
+        )]
+        crf_4k: u8,
         
         /// Number of parallel encoding jobs
         #[arg(

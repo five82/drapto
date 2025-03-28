@@ -18,7 +18,7 @@ use chrono;
 use drapto_core::error::Result;
 use drapto_core::Config;
 use drapto_core::media::MediaInfo;
-use drapto_core::detection::format::{has_hdr, detect_crop};
+use drapto_core::detection::format::detect_crop;
 use drapto_core::detection::scene::detect_scenes;
 use drapto_core::encoding::video::{encode_video, VideoEncodingOptions};
 use drapto_core::encoding::audio::{encode_audio, AudioEncodingOptions};
@@ -33,6 +33,10 @@ pub fn execute_encode(
     input: PathBuf,
     output: PathBuf,
     quality: Option<f32>,
+    use_crf: bool,
+    crf_sd: u8,
+    crf_hd: u8,
+    crf_4k: u8,
     jobs: Option<usize>,
     no_hwaccel: bool,
     keep_temp: bool,
@@ -43,12 +47,143 @@ pub fn execute_encode(
 ) -> Result<()> {
     let start_time = Instant::now();
     
+    // Get versions of key tools and libraries
+    print_heading("Versions");
+    
+    // Get ab-av1 version
+    let ab_av1_version = match std::process::Command::new("ab-av1").arg("--version").output() {
+        Ok(output) => {
+            let version = String::from_utf8_lossy(&output.stdout);
+            if let Some(line) = version.lines().next() {
+                let version_str = line.trim();
+                if version_str.starts_with("ab-av1 ") {
+                    // Remove "ab-av1 " prefix for cleaner display
+                    version_str[7..].to_string()
+                } else {
+                    version_str.to_string()
+                }
+            } else {
+                "Unknown".to_string()
+            }
+        },
+        Err(_) => "Not found".to_string()
+    };
+    print_info("ab-av1", ab_av1_version);
+    
+    // Get FFmpeg version
+    let ffmpeg_version = match std::process::Command::new("ffmpeg").arg("-version").output() {
+        Ok(output) => {
+            let version = String::from_utf8_lossy(&output.stdout);
+            if let Some(line) = version.lines().next() {
+                let version_str = line.trim();
+                if version_str.starts_with("ffmpeg version ") {
+                    // Keep only "version X.Y.Z" part
+                    "version ".to_string() + &version_str[16..].split_whitespace().next().unwrap_or("unknown")
+                } else {
+                    version_str.to_string()
+                }
+            } else {
+                "Unknown".to_string()
+            }
+        },
+        Err(_) => "Not found".to_string()
+    };
+    print_info("FFmpeg", ffmpeg_version);
+    
+    // Get SVT-AV1 encoder version
+    let svtav1_version = match std::process::Command::new("SvtAv1EncApp").arg("--version").output() {
+        Ok(output) => {
+            let version = String::from_utf8_lossy(&output.stdout);
+            if let Some(first_line) = version.lines().next() {
+                let version_str = first_line.trim();
+                if version_str.starts_with("SVT-AV1 ") {
+                    // Remove "SVT-AV1 " prefix for cleaner display
+                    version_str[8..].to_string()
+                } else {
+                    version_str.to_string()
+                }
+            } else {
+                "Unknown".to_string()
+            }
+        },
+        Err(_) => "Bundled with FFmpeg".to_string()
+    };
+    print_info("SVT-AV1", svtav1_version);
+    
+    // Get VMAF version using pkg-config
+    let vmaf_version = match std::process::Command::new("pkg-config").args(["--modversion", "libvmaf"]).output() {
+        Ok(output) => {
+            let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !version.is_empty() {
+                format!("v{}", version)
+            } else {
+                "(version unknown)".to_string()
+            }
+        },
+        Err(_) => {
+            // Fallback to extracting from ffmpeg -filters
+            "(version unknown)".to_string()
+        }
+    };
+    
+    // Get libopus version using pkg-config
+    let opus_version = match std::process::Command::new("pkg-config").args(["--modversion", "opus"]).output() {
+        Ok(output) => {
+            let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !version.is_empty() {
+                format!("v{}", version)
+            } else {
+                "(version unknown)".to_string()
+            }
+        },
+        Err(_) => {
+            // Fallback to extracting from ffmpeg -encoders
+            "(version unknown)".to_string()
+        }
+    };
+    
+    // Print library versions
+    print_info("libopus", opus_version);
+    print_info("libvmaf", vmaf_version);
+    
+    // Create configuration
+    let mut config = Config::default();
+    
+    // **CRITICAL**: First analyze the input file to detect HDR/SDR BEFORE printing any quality metrics
+    info!("Analyzing input file to determine optimal encoding mode");
+    let media_info = MediaInfo::from_path(&input)?;
+    let is_hdr = media_info.is_hdr();
+    if is_hdr {
+        info!("HDR content detected, will use CRF mode for optimal quality");
+    }
+    
+    // Determine the actual encoding mode we'll use:
+    // 1. If use_crf is explicitly set by user, use that setting
+    // 2. Otherwise for HDR content, use CRF by default
+    // 3. For SDR content, use VMAF by default
+    let will_use_crf = use_crf || (is_hdr && !std::env::var("DRAPTO_USE_CRF").map(|v| v.to_lowercase() == "false").unwrap_or(false));
+    
+    // NOW print the encoding information with the correct quality metric
     print_heading("Video Encoding");
     print_info("Input", input.display());
     print_info("Output", output.display());
     
-    if let Some(quality) = quality {
-        print_info("Target Quality", quality);
+    if will_use_crf {
+        if is_hdr && !use_crf {
+            print_info("Quality Metric", "CRF (automatically selected for HDR content)");
+        } else {
+            print_info("Quality Metric", "CRF");
+        }
+        print_info("CRF (SD)", crf_sd);
+        print_info("CRF (HD)", crf_hd);
+        print_info("CRF (4K)", crf_4k);
+    } else {
+        print_info("Quality Metric", "VMAF");
+        if let Some(quality) = quality {
+            print_info("Target VMAF", quality);
+        } else {
+            print_info("Target VMAF", config.video.target_vmaf);
+        }
     }
     
     // Create parent directory for output if it doesn't exist
@@ -57,15 +192,21 @@ pub fn execute_encode(
             fs::create_dir_all(parent)?;
         }
     }
-    
-    // Create configuration
-    let mut config = Config::default();
     config.input = input.clone();
     config.output = output.clone();
     config.video.hardware_acceleration = !no_hwaccel;
+    // CRF takes precedence over VMAF
+    config.video.use_crf = use_crf;
+    config.video.target_crf_sd = crf_sd;
+    config.video.target_crf_hd = crf_hd;
+    config.video.target_crf_4k = crf_4k;
+    
     if let Some(q) = quality {
         config.video.target_vmaf = q;
+        // If the user specified a VMAF quality, use the same value for HDR
+        config.video.target_vmaf_hdr = q;
     }
+    
     config.resources.parallel_jobs = jobs.unwrap_or_else(num_cpus::get);
     config.logging.verbose = verbose;
     config.directories.keep_temp_files = keep_temp;
@@ -86,13 +227,11 @@ pub fn execute_encode(
     
     debug!("Configuration: {:?}", config);
     
-    // Analyze input file
-    info!("Analyzing input file");
+    // Print the input analysis section (we already analyzed the file above)
+    // Don't log "Analyzing input file" again since we already did that
     print_section("Input Analysis");
     
-    let media_info = MediaInfo::from_path(&input)?;
-    
-    // Print basic media info
+    // Print basic media info (using the media_info we already retrieved above)
     if let Some(format) = &media_info.format {
         print_info("Format", &format.format_name);
         if let Some(duration) = &format.duration {
@@ -108,8 +247,7 @@ pub fn execute_encode(
         print_info("Video dimensions", format!("{}x{}", dimensions.0, dimensions.1));
     }
     
-    // Check for HDR content
-    let is_hdr = has_hdr(&media_info);
+    // Print HDR status (using the is_hdr flag we already determined)
     if is_hdr {
         print_info("HDR", "Yes");
         // Adjust scene detection threshold for HDR content
@@ -159,7 +297,13 @@ pub fn execute_encode(
     print_section("Scene Detection");
     info!("Detecting scenes in video");
     
-    print_info("Scene Detection Threshold", config.scene_detection.scene_threshold);
+    // Show the appropriate threshold in the UI based on HDR status
+    // (using the is_hdr flag we already determined)
+    if is_hdr {
+        print_info("Scene Detection Threshold", format!("{} (HDR)", config.scene_detection.hdr_scene_threshold));
+    } else {
+        print_info("Scene Detection Threshold", format!("{} (SDR)", config.scene_detection.scene_threshold));
+    }
     print_info("Minimum Segment Length", format!("{} seconds", config.scene_detection.min_segment_length));
     print_info("Maximum Segment Length", format!("{} seconds", config.scene_detection.max_segment_length));
     
@@ -210,8 +354,25 @@ pub fn execute_encode(
     print_section("Video Encoding");
     print_info("Parallel Jobs", config.resources.parallel_jobs);
     
+    // Set the correct quality value based on encoding mode
+    let quality_value = if will_use_crf {
+        // When using CRF, the quality parameter is ignored, but we'll set it anyway
+        // CRF values are determined based on video dimensions in the video.rs code
+        None
+    } else {
+        // Set the appropriate VMAF target
+        if is_hdr {
+            Some(config.video.target_vmaf_hdr)
+        } else {
+            Some(config.video.target_vmaf)
+        }
+    };
+    
+    // Update the configuration to use the right mode
+    config.video.use_crf = will_use_crf;
+    
     let video_options = VideoEncodingOptions {
-        quality: Some(config.video.target_vmaf),
+        quality: quality_value,
         parallel_jobs: config.resources.parallel_jobs,
         hw_accel_option: hw_accel_option.clone(), // Clone here to avoid move
         crop_filter,
@@ -314,6 +475,10 @@ pub fn execute_encode_directory(
     input_dir: PathBuf,
     output_dir: PathBuf,
     quality: Option<f32>,
+    use_crf: bool,
+    crf_sd: u8,
+    crf_hd: u8,
+    crf_4k: u8,
     jobs: Option<usize>,
     no_hwaccel: bool,
     keep_temp: bool,
@@ -325,6 +490,14 @@ pub fn execute_encode_directory(
     print_heading("Directory Encoding");
     print_info("Input Directory", input_dir.display());
     print_info("Output Directory", output_dir.display());
+    
+    // Show the encoding mode that will be used for the batch
+    // Note: Individual files may still use different modes based on HDR detection
+    if use_crf {
+        print_info("Default Quality Metric", "CRF (user-specified)");
+    } else {
+        print_info("Default Quality Metric", "Auto (CRF for HDR, VMAF for SDR)");
+    }
 
     // Create output directory if it doesn't exist
     if !output_dir.exists() {
@@ -379,10 +552,17 @@ pub fn execute_encode_directory(
         
         print_heading(&format!("Processing File {}/{}: {}", index + 1, video_files.len(), filename.to_string_lossy()));
         
+        // For directory mode, we don't pre-analyze the file.
+        // Each individual file's content (HDR/SDR) will be detected in the execute_encode function
+        // and the appropriate encoding mode will be selected there.
         match execute_encode(
             input_file.clone(),
             output_file.clone(),
             quality,
+            use_crf,
+            crf_sd,
+            crf_hd,
+            crf_4k,
             jobs,
             no_hwaccel,
             keep_temp,

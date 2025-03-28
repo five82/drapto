@@ -76,7 +76,7 @@ target_vmaf = 85.0
 parallel_jobs = 8
 ```
 
-### Highest Quality Encoding
+### Highest Quality Encoding with VMAF
 
 ```toml
 [video]
@@ -85,6 +85,27 @@ target_vmaf = 95.0
 target_vmaf_hdr = 97.0
 svt_params = "tune=0:enable-qm=1:enable-overlays=1:film-grain=0"
 ```
+
+
+### Using CRF Mode for Direct Bitrate Control
+
+```toml
+[video]
+# Set to true to use CRF for all content (HDR content already uses CRF by default)
+use_crf = true
+# CRF values per resolution
+target_crf_sd = 25  # For standard definition (<1280p)
+target_crf_hd = 28  # For high definition (1280-3839p)
+target_crf_4k = 28  # For 4K content (≥3840p)
+preset = 6
+svt_params = "tune=0:enable-qm=1:enable-overlays=1:film-grain=0"
+```
+
+CRF (Constant Rate Factor) mode offers more predictable quality levels compared to VMAF mode. By default:
+- HDR content automatically uses CRF mode 
+- SDR content uses VMAF mode
+
+You can set `use_crf = true` to use CRF mode for all content, or `use_crf = false` to use VMAF mode for all content (not recommended for HDR).
 
 ### Low-Memory System
 
@@ -99,12 +120,25 @@ memory_reserve_percent = 0.3
 
 ### HDR Content
 
+Drapto automatically detects HDR content and uses Constant Rate Factor (CRF) mode for it by default, since VMAF is less accurate for HDR content. You can still customize the HDR encoding settings:
+
 ```toml
+# CRF mode is automatically used for HDR content
 [scene_detection]
 hdr_scene_threshold = 25.0
 
 [video]
+# If you prefer to use VMAF mode for HDR content (not recommended)
+# use_crf = false  # Uncomment this line to disable automatic CRF mode for HDR
+
+# CRF values if using CRF mode
+target_crf_hd = 28
+target_crf_4k = 28
+
+# VMAF target if using VMAF mode 
 target_vmaf_hdr = 95.0
+
+# Always use 10-bit pixel format for HDR
 pixel_format = "yuv420p10le"
 ```
 
@@ -157,8 +191,12 @@ Below is a complete reference of all available configuration options, their desc
 | `video.pixel_format` | Pixel format | yuv420p10le | `DRAPTO_PIXEL_FORMAT` |
 | `video.disable_crop` | Disable automatic crop detection | false | `DRAPTO_DISABLE_CROP` |
 | `video.use_segmentation` | Use scene-based segmentation and parallel encoding | true | `DRAPTO_USE_SEGMENTATION` |
+| `video.use_crf` | Use CRF instead of VMAF for quality metric (HDR content uses CRF by default) | false | `DRAPTO_USE_CRF` |
 | `video.target_vmaf` | Target VMAF score (0-100) for SDR content | 93.0 | `DRAPTO_TARGET_VMAF` |
-| `video.target_vmaf_hdr` | Target VMAF score (0-100) for HDR content | 95.0 | `DRAPTO_TARGET_VMAF_HDR` |
+| `video.target_vmaf_hdr` | Target VMAF score (0-100) for HDR content (only used if CRF mode is explicitly disabled for HDR) | 95.0 | `DRAPTO_TARGET_VMAF_HDR` |
+| `video.target_crf_sd` | Target CRF value for standard definition content | 25 | `DRAPTO_TARGET_CRF_SD` |
+| `video.target_crf_hd` | Target CRF value for high definition content | 28 | `DRAPTO_TARGET_CRF_HD` |
+| `video.target_crf_4k` | Target CRF value for 4K content | 28 | `DRAPTO_TARGET_CRF_4K` |
 | `video.vmaf_sample_count` | Number of samples to use for VMAF analysis | 3 | `DRAPTO_VMAF_SAMPLE_COUNT` |
 | `video.vmaf_sample_duration` | Duration of each VMAF sample in seconds | 1.0 | `DRAPTO_VMAF_SAMPLE_DURATION` |
 | `video.vmaf_options` | VMAF analysis options | n_subsample=8:pool=perc5_min | `DRAPTO_VMAF_OPTIONS` |

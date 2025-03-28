@@ -37,8 +37,12 @@ max_segment_length = 15.0
 scene_tolerance = 0.5
 
 [video]
+use_crf = false
 target_vmaf = 90.0
 target_vmaf_hdr = 95.0
+target_crf_sd = 25
+target_crf_hd = 28
+target_crf_4k = 28
 disable_crop = true
 hardware_acceleration = true
 hw_accel_option = ""

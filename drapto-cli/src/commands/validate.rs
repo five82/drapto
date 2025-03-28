@@ -16,7 +16,6 @@ use drapto_core::error::Result;
 use drapto_core::validation;
 use drapto_core::config::Config;
 use drapto_core::media::MediaInfo;
-use drapto_core::detection::format::has_hdr;
 
 use crate::output::{print_heading, print_section, print_info, print_validation_report, print_success};
 
@@ -85,7 +84,7 @@ pub fn execute_validate(
             }
             
             // Check HDR info
-            if has_hdr(&media_info) {
+            if media_info.is_hdr() {
                 print_info(&format!("HDR"), "Yes");
                 
                 // Print color space info if available

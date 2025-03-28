@@ -42,11 +42,23 @@ pub struct VideoEncodingConfig {
     // Quality settings
     //
     
+    /// Use CRF instead of VMAF for quality metric
+    pub use_crf: bool,
+    
     /// Target VMAF score (0-100) for SDR content
     pub target_vmaf: f32,
     
     /// Target VMAF score (0-100) for HDR content
     pub target_vmaf_hdr: f32,
+    
+    /// Target CRF value for standard definition content (width < 1280)
+    pub target_crf_sd: u8,
+    
+    /// Target CRF value for high definition content (1280 <= width < 3840)
+    pub target_crf_hd: u8,
+    
+    /// Target CRF value for 4K content (width >= 3840)
+    pub target_crf_4k: u8,
     
     //
     // VMAF analysis options
@@ -215,6 +227,11 @@ impl Default for VideoEncodingConfig {
             
             // Quality settings
             
+            // Use CRF instead of VMAF for quality metric
+            // When true, CRF values will be used instead of VMAF
+            // Default is false for SDR content, but we detect HDR dynamically in the encoder
+            use_crf: get_env_bool("DRAPTO_USE_CRF", false),
+            
             // Target VMAF score (0-100) for SDR content
             // Higher values produce better quality but larger file sizes
             target_vmaf: get_env_f32("DRAPTO_TARGET_VMAF", 93.0),
@@ -222,6 +239,18 @@ impl Default for VideoEncodingConfig {
             // Target VMAF score (0-100) for HDR content
             // HDR content typically requires higher VMAF for similar perceptual quality
             target_vmaf_hdr: get_env_f32("DRAPTO_TARGET_VMAF_HDR", 95.0),
+            
+            // Target CRF value for standard definition content (width < 1280)
+            // Lower values produce better quality but larger file sizes (0-63 range for AV1)
+            target_crf_sd: get_env_u8("DRAPTO_TARGET_CRF_SD", 25),
+            
+            // Target CRF value for high definition content (1280 <= width < 3840)
+            // Lower values produce better quality but larger file sizes (0-63 range for AV1)
+            target_crf_hd: get_env_u8("DRAPTO_TARGET_CRF_HD", 28),
+            
+            // Target CRF value for 4K content (width >= 3840)
+            // Lower values produce better quality but larger file sizes (0-63 range for AV1)
+            target_crf_4k: get_env_u8("DRAPTO_TARGET_CRF_4K", 28),
             
             // VMAF analysis options
             

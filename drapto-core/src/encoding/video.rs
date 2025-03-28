@@ -92,10 +92,10 @@ impl AbAv1Encoder {
         retry_count: usize,
         is_hdr: bool,
     ) -> Command {
-        // Get retry-specific parameters
-        let (sample_count, sample_duration, min_vmaf) = self.get_retry_params(retry_count, is_hdr);
+        // Get retry-specific parameters and video config
+        let (sample_count, sample_duration, min_vmaf, _) = self.get_retry_params(retry_count, is_hdr);
         let video_config = &self.config.global_config.video;
-
+        
         // Now we just use the static to avoid logging parameters again,
         // since they've already been shown at the start
         use std::sync::atomic::Ordering;
@@ -105,7 +105,67 @@ impl AbAv1Encoder {
             // This section is now logged earlier in the parallel encoding process
             // This just ensures we don't double-log
         }
+        
+        // Determine if we should use CRF mode
+        // 1. User explicitly requested CRF mode via config, OR
+        // 2. Content is HDR and user hasn't explicitly disabled CRF mode via environment variable
+        let use_crf_for_this_content = video_config.use_crf || 
+                                     (is_hdr && !std::env::var("DRAPTO_USE_CRF").map(|v| v.to_lowercase() == "false").unwrap_or(false));
+        
+        // For CRF mode, we need to know video dimensions
+        // Get video info from input file if we're using CRF mode
+        let crf_value = if use_crf_for_this_content {
+            // Get video dimensions
+            if let Ok(media_info) = crate::media::MediaInfo::from_path(input) {
+                if let Some((width, _height)) = media_info.video_dimensions() {
+                    self.get_crf_value(width as i32)
+                } else {
+                    // Fallback to HD if we can't determine dimensions
+                    video_config.target_crf_hd
+                }
+            } else {
+                // Fallback to HD if media info fails
+                video_config.target_crf_hd
+            }
+        } else {
+            0 // Not using CRF
+        };
 
+        // For CRF mode, we use ffmpeg directly instead of ab-av1 auto-encode
+        if use_crf_for_this_content {
+            let mut cmd = Command::new("ffmpeg");
+            cmd.arg("-y") // Overwrite output files without asking
+                .arg("-i")
+                .arg(input)
+                .arg("-c:v")
+                .arg("libsvtav1") // Use SVT-AV1 encoder
+                .arg("-preset")
+                .arg(video_config.preset.to_string())
+                .arg("-svtav1-params")
+                .arg(&video_config.svt_params)
+                .arg("-g") // Keyframe interval
+                .arg(video_config.keyframe_interval.replace("s", "")) // Remove 's' suffix for FFmpeg
+                .arg("-crf")
+                .arg(crf_value.to_string())
+                .arg("-pix_fmt")
+                .arg(&video_config.pixel_format);
+            
+            // Apply crop filter if provided
+            if let Some(filter) = crop_filter {
+                cmd.arg("-vf").arg(filter);
+            }
+            
+            // Video only output
+            cmd.arg("-an") // No audio
+                .arg("-sn") // No subtitles
+                .arg("-map")
+                .arg("0:v:0") // Map only the first video stream
+                .arg(output);
+                
+            return cmd;
+        }
+        
+        // Default ab-av1 auto-encode command for VMAF mode
         let mut cmd = Command::new("ab-av1");
         cmd.arg("auto-encode")
             .arg("--input")
@@ -114,8 +174,6 @@ impl AbAv1Encoder {
             .arg(output)
             .arg("--encoder")
             .arg(&video_config.encoder)
-            .arg("--min-vmaf")
-            .arg(min_vmaf.to_string())
             .arg("--preset")
             .arg(video_config.preset.to_string())
             .arg("--svt")
@@ -126,10 +184,14 @@ impl AbAv1Encoder {
             .arg(sample_count.to_string())
             .arg("--sample-duration")
             .arg(format!("{}s", sample_duration))
-            .arg("--vmaf")
-            .arg(&video_config.vmaf_options)
             .arg("--pix-format")
             .arg(&video_config.pixel_format);
+            
+        // Add VMAF quality target
+        cmd.arg("--min-vmaf")
+           .arg(min_vmaf.to_string())
+           .arg("--vmaf")
+           .arg(&video_config.vmaf_options);
 
         if let Some(filter) = crop_filter {
             cmd.arg("--vfilter").arg(filter);
@@ -139,37 +201,64 @@ impl AbAv1Encoder {
     }
 
     /// Get encoding parameters based on retry count
-    fn get_retry_params(&self, retry_count: usize, is_hdr: bool) -> (usize, u32, f32) {
+    fn get_retry_params(&self, retry_count: usize, is_hdr: bool) -> (usize, u32, f32, u8) {
         let video_config = &self.config.global_config.video;
         let target_vmaf = if is_hdr {
             video_config.target_vmaf_hdr
         } else {
             video_config.target_vmaf
         };
+        
+        // For CRF mode, we don't have a specific HDR value in the config
+        // so we just use the appropriate value based on video dimensions
+        // This will be determined later when we have video dimensions
 
         match retry_count {
             0 => (
                 video_config.vmaf_sample_count as usize, 
                 video_config.vmaf_sample_duration as u32, 
-                target_vmaf
+                target_vmaf,
+                0 // CRF placeholder, will be set later based on dimensions
             ),
             1 => (
                 (video_config.vmaf_sample_count + 1) as usize,
                 (video_config.vmaf_sample_duration + 1.0) as u32,
-                target_vmaf
+                target_vmaf,
+                0 // CRF placeholder, will be set later based on dimensions
             ),
-            _ => (4, 2, video_config.force_quality_score), // Force highest quality for last retry using configured value
+            _ => (
+                4, 
+                2, 
+                video_config.force_quality_score,
+                0 // CRF placeholder, will be set later based on dimensions
+            ), // Force highest quality for last retry using configured value
+        }
+    }
+    
+    /// Determine appropriate CRF value based on video dimensions
+    fn get_crf_value(&self, width: i32) -> u8 {
+        let video_config = &self.config.global_config.video;
+        
+        if width < 1280 {
+            // Standard definition
+            video_config.target_crf_sd
+        } else if width < 3840 {
+            // High definition (720p, 1080p)
+            video_config.target_crf_hd
+        } else {
+            // 4K and above
+            video_config.target_crf_4k
         }
     }
 
-    /// Parse VMAF scores from encoder output
+    /// Parse quality scores from encoder output
     fn parse_vmaf_scores(&self, stderr: &str) -> (Option<f64>, Option<f64>, Option<f64>) {
-        let mut vmaf_values = Vec::new();
-        // More flexible regex that matches multiple formats:
+        let mut quality_values = Vec::new();
+        // Regex that matches VMAF score formats:
         // 1. [Parsed_libvmaf_0 @ 0x55842c1490] VMAF score: 95.432651
         // 2. [SVT] Average VMAF Score: 95.43 (Min: 93.21, Max: 97.65)
         // 3. VMAF 95.432651
-        let re = Regex::new(r"VMAF(?:\s+score:|[^\d]+)([0-9.]+)").unwrap();
+        let re_vmaf = Regex::new(r"VMAF(?:\s+score:|[^\d]+)([0-9.]+)").unwrap();
         
         // For min/max detection if available in SVT format
         let re_min_max = Regex::new(r"Min:\s*([0-9.]+).*Max:\s*([0-9.]+)").unwrap();
@@ -188,28 +277,28 @@ impl AbAv1Encoder {
             }
             
             // Check for VMAF scores
-            if let Some(captures) = re.captures(line) {
+            if let Some(captures) = re_vmaf.captures(line) {
                 if let Some(vmaf_str) = captures.get(1) {
                     if let Ok(vmaf) = vmaf_str.as_str().parse::<f64>() {
-                        vmaf_values.push(vmaf);
+                        quality_values.push(vmaf);
                     }
                 }
             }
         }
 
-        if vmaf_values.is_empty() {
+        if quality_values.is_empty() {
             return (None, None, None);
         }
 
-        let avg = vmaf_values.iter().sum::<f64>() / vmaf_values.len() as f64;
+        let avg = quality_values.iter().sum::<f64>() / quality_values.len() as f64;
         
         // Use explicitly extracted min/max if available, otherwise calculate from values
         let min = min_value.unwrap_or_else(|| 
-            vmaf_values.iter().cloned().fold(f64::INFINITY, f64::min)
+            quality_values.iter().cloned().fold(f64::INFINITY, f64::min)
         );
         
         let max = max_value.unwrap_or_else(|| 
-            vmaf_values.iter().cloned().fold(f64::NEG_INFINITY, f64::max)
+            quality_values.iter().cloned().fold(f64::NEG_INFINITY, f64::max)
         );
 
         (Some(avg), Some(min), Some(max))
@@ -350,15 +439,16 @@ impl AbAv1Encoder {
                     stats.metrics.resolution, stats.metrics.framerate
                 );
 
-                if let Some(vmaf) = stats.vmaf_score {
+                if let Some(quality_score) = stats.vmaf_score {
                     info!(
                         "  VMAF Avg: {:.2}, Min: {:.2}, Max: {:.2}",
-                        vmaf,
+                        quality_score,
                         stats.vmaf_min.unwrap_or(0.0),
                         stats.vmaf_max.unwrap_or(0.0)
                     );
-                } else {
-                    info!("  No VMAF scores available");
+                } else if !self.config.global_config.video.use_crf {
+                    // Only display this message when not using CRF mode
+                    info!("  No quality scores available");
                 }
 
                 Ok(stats)
@@ -736,15 +826,68 @@ pub fn encode_video(input: &Path, options: &VideoEncodingOptions, config: &crate
                         info!("Common ab-av1 encoding parameters:");
                         info!("  Encoder: {}", video_config.encoder);
                         info!("  Preset: {}", preset);
-                        info!("  Min-VMAF: {}", min_vmaf);
+                        
+                        // Determine if we're actually using CRF for this content (including HDR auto-CRF)
+                        let using_crf_for_this_content = video_config.use_crf || 
+                            (options.is_hdr && !std::env::var("DRAPTO_USE_CRF").map(|v| v.to_lowercase() == "false").unwrap_or(false));
+                            
+                        // Log content type
+                        if options.is_hdr {
+                            info!("  Content type: HDR");
+                        } else {
+                            info!("  Content type: SDR");
+                        }
+                        
+                        // Log mode-specific parameters (CRF or VMAF)
+                        if using_crf_for_this_content {
+                            if options.is_hdr && !video_config.use_crf {
+                                info!("  Quality metric: CRF (Constant Rate Factor) - automatically selected for HDR content");
+                            } else {
+                                info!("  Quality metric: CRF (Constant Rate Factor)");
+                            }
+                            
+                            // Get video dimensions to report expected CRF value
+                            if let Ok(media_info) = crate::media::MediaInfo::from_path(&input) {
+                                if let Some((width, _height)) = media_info.video_dimensions() {
+                                    let crf = if width < 1280 {
+                                        video_config.target_crf_sd
+                                    } else if width < 3840 {
+                                        video_config.target_crf_hd
+                                    } else {
+                                        video_config.target_crf_4k
+                                    };
+                                    info!("  Resolution: {}p", width);
+                                    info!("  CRF value: {}", crf);
+                                }
+                            } else {
+                                info!("  CRF values:");
+                                info!("    SD (<1280p): {}", video_config.target_crf_sd);
+                                info!("    HD (1280-3839p): {}", video_config.target_crf_hd);
+                                info!("    4K (≥3840p): {}", video_config.target_crf_4k);
+                            }
+                        } else {
+                            info!("  Quality metric: VMAF");
+                            info!("  Min-VMAF: {}", min_vmaf);
+                            info!("  VMAF options: {}", vmaf_options);
+                        }
+                        
                         info!("  SVT parameters: {}", svt_params);
                         info!("  Keyframe interval: {}", video_config.keyframe_interval);
-                        info!("  Sample count: {}", video_config.vmaf_sample_count);
-                        info!("  Sample duration: {}s", video_config.vmaf_sample_duration);
-                        info!("  VMAF options: {}", vmaf_options);
+                        
+                        // Sample count and duration only apply to VMAF mode
+                        if !video_config.use_crf {
+                            info!("  Sample count: {}", video_config.vmaf_sample_count);
+                            info!("  Sample duration: {}s", video_config.vmaf_sample_duration);
+                        }
+                        
                         info!("  Pixel format: {}", video_config.pixel_format);
                         info!("  Max retries: {}", video_config.max_retries);
-                        info!("  Force quality: {}", video_config.force_quality_score);
+                        
+                        // Only show force quality score for VMAF mode (not for CRF mode)
+                        if !video_config.use_crf {
+                            info!("  Force quality: {}", video_config.force_quality_score);
+                        }
+                        
                         if let Some(filter) = &options.crop_filter {
                             info!("  Video filter: {}", filter);
                         }
@@ -881,7 +1024,7 @@ mod tests {
         let input = Path::new("/tmp/input.mkv");
         let output = Path::new("/tmp/output.mkv");
 
-        // Test default command
+        // Test default command (VMAF)
         let cmd = encoder.build_encode_command(input, output, None, 0, false);
         let args: Vec<String> = cmd
             .get_args()
@@ -897,6 +1040,8 @@ mod tests {
         assert!(args.contains(&"10s".to_string())); // Default keyint
         assert!(args.contains(&"--pix-format".to_string()));
         assert!(args.contains(&"yuv420p10le".to_string())); // Default pixel format
+        assert!(args.contains(&"--min-vmaf".to_string())); // Default uses VMAF
+        assert!(!args.contains(&"-crf".to_string())); // Default does not use CRF
 
         // Test with crop filter
         let cmd_crop =
@@ -909,11 +1054,12 @@ mod tests {
         assert!(crop_args.contains(&"--vfilter".to_string()));
         assert!(crop_args.contains(&"crop=100:100:0:0".to_string()));
         
-        // Test with custom config
+        // Test with custom config using VMAF
         let mut custom_config = crate::config::Config::default();
         custom_config.video.encoder = "librav1e".to_string();
         custom_config.video.keyframe_interval = "5s".to_string();
         custom_config.video.pixel_format = "yuv420p".to_string();
+        custom_config.video.use_crf = false;   // Not using CRF
         
         let custom_encoder = AbAv1Encoder::with_global_config(custom_config);
         let cmd_custom = custom_encoder.build_encode_command(input, output, None, 0, false);
@@ -928,6 +1074,42 @@ mod tests {
         assert!(custom_args.contains(&"5s".to_string())); // Custom keyint
         assert!(custom_args.contains(&"--pix-format".to_string()));
         assert!(custom_args.contains(&"yuv420p".to_string())); // Custom pixel format
+        assert!(custom_args.contains(&"--min-vmaf".to_string())); // Using VMAF
+        assert!(!custom_args.contains(&"-crf".to_string())); // Not using CRF
+        
+        
+        // Test with CRF mode
+        // Note: we can't easily test the actual CRF value without mocking MediaInfo,
+        // so we'll just check that it uses ffmpeg with the -crf parameter
+        let mut crf_config = crate::config::Config::default();
+        crf_config.video.encoder = "libsvtav1".to_string();
+        crf_config.video.use_crf = true;     // Use CRF
+        crf_config.video.target_crf_sd = 24; // Custom SD CRF
+        crf_config.video.target_crf_hd = 26; // Custom HD CRF
+        crf_config.video.target_crf_4k = 27; // Custom 4K CRF
+        
+        // We can't fully test this without mocking the MediaInfo, but we can check that 
+        // it's trying to run ffmpeg instead of ab-av1
+        let crf_encoder = AbAv1Encoder::with_global_config(crf_config);
+        let cmd_crf = crf_encoder.build_encode_command(input, output, None, 0, false);
+        
+        // Check that it's ffmpeg, not ab-av1
+        assert_eq!(cmd_crf.get_program().to_string_lossy(), "ffmpeg");
+        
+        let crf_args: Vec<String> = cmd_crf
+            .get_args()
+            .map(|arg| arg.to_string_lossy().to_string())
+            .collect();
+        
+        // Check for ffmpeg command structure
+        assert!(crf_args.contains(&"-i".to_string()));
+        assert!(crf_args.contains(&"-c:v".to_string()));
+        assert!(crf_args.contains(&"libsvtav1".to_string()));
+        assert!(crf_args.contains(&"-crf".to_string())); // Using CRF
+        
+        // Check for video-only output (no audio or subtitles)
+        assert!(crf_args.contains(&"-an".to_string())); // No audio
+        assert!(crf_args.contains(&"-sn".to_string())); // No subtitles
     }
 
     #[test]
@@ -935,26 +1117,30 @@ mod tests {
         let encoder = AbAv1Encoder::new();
 
         // Test default settings (SDR)
-        let (samples, duration, vmaf) = encoder.get_retry_params(0, false);
+        let (samples, duration, vmaf, crf) = encoder.get_retry_params(0, false);
         assert_eq!(samples, 3);
         assert_eq!(duration, 1);
         assert_eq!(vmaf, 93.0); // Default SDR VMAF target
+        assert_eq!(crf, 0);     // CRF placeholder, determined later based on dimensions
 
         // Test with retry
-        let (samples_retry, duration_retry, vmaf_retry) = encoder.get_retry_params(1, false);
+        let (samples_retry, duration_retry, vmaf_retry, crf_retry) = encoder.get_retry_params(1, false);
         assert_eq!(samples_retry, 4);
         assert_eq!(duration_retry, 2);
         assert_eq!(vmaf_retry, 93.0); // Should still use target_vmaf
+        assert_eq!(crf_retry, 0);     // CRF placeholder, determined later based on dimensions
 
         // Test second retry (force quality)
-        let (samples_retry2, duration_retry2, vmaf_retry2) = encoder.get_retry_params(2, false);
+        let (samples_retry2, duration_retry2, vmaf_retry2, crf_retry2) = encoder.get_retry_params(2, false);
         assert_eq!(samples_retry2, 4);
         assert_eq!(duration_retry2, 2);
         assert_eq!(vmaf_retry2, 95.0); // Third try uses force_quality_score
+        assert_eq!(crf_retry2, 0);     // CRF placeholder, determined later based on dimensions
 
         // Test HDR
-        let (_, _, vmaf_hdr) = encoder.get_retry_params(0, true);
+        let (_, _, vmaf_hdr, crf_hdr) = encoder.get_retry_params(0, true);
         assert_eq!(vmaf_hdr, 95.0); // Default config has 95.0 for HDR
+        assert_eq!(crf_hdr, 0);     // CRF placeholder, determined later based on dimensions
         
         // Test with custom config
         let mut custom_config = crate::config::Config::default();
@@ -965,16 +1151,66 @@ mod tests {
         let custom_encoder = AbAv1Encoder::with_global_config(custom_config);
         
         // Test custom SDR
-        let (_, _, custom_vmaf) = custom_encoder.get_retry_params(0, false);
+        let (_, _, custom_vmaf, custom_crf) = custom_encoder.get_retry_params(0, false);
         assert_eq!(custom_vmaf, 90.0); // Custom SDR VMAF target
+        assert_eq!(custom_crf, 0);     // CRF placeholder, determined later based on dimensions
         
         // Test custom HDR
-        let (_, _, custom_vmaf_hdr) = custom_encoder.get_retry_params(0, true);
+        let (_, _, custom_vmaf_hdr, custom_crf_hdr) = custom_encoder.get_retry_params(0, true);
         assert_eq!(custom_vmaf_hdr, 92.0); // Custom HDR VMAF target
+        assert_eq!(custom_crf_hdr, 0);     // CRF placeholder, determined later based on dimensions
         
         // Test custom force quality
-        let (_, _, custom_force_quality) = custom_encoder.get_retry_params(2, false);
+        let (_, _, custom_force_quality, custom_force_crf) = custom_encoder.get_retry_params(2, false);
         assert_eq!(custom_force_quality, 98.0); // Custom force quality
+        assert_eq!(custom_force_crf, 0);     // CRF placeholder, determined later based on dimensions
+    }
+
+    #[test]
+    fn test_get_crf_value() {
+        let encoder = AbAv1Encoder::new();
+        
+        // Test standard definition (width < 1280)
+        let crf_sd = encoder.get_crf_value(640);
+        assert_eq!(crf_sd, 25); // Default SD CRF value
+        
+        let crf_sd_border = encoder.get_crf_value(1279);
+        assert_eq!(crf_sd_border, 25); // Still SD at border value
+        
+        // Test high definition (1280 <= width < 3840)
+        let crf_hd_min = encoder.get_crf_value(1280);
+        assert_eq!(crf_hd_min, 28); // HD at minimum value
+        
+        let crf_hd = encoder.get_crf_value(1920);
+        assert_eq!(crf_hd, 28); // HD at common 1080p width
+        
+        let crf_hd_border = encoder.get_crf_value(3839);
+        assert_eq!(crf_hd_border, 28); // Still HD at border value
+        
+        // Test 4K (width >= 3840)
+        let crf_4k_min = encoder.get_crf_value(3840);
+        assert_eq!(crf_4k_min, 28); // 4K at minimum value (often UHD)
+        
+        let crf_4k = encoder.get_crf_value(4096);
+        assert_eq!(crf_4k, 28); // 4K at cinema 4K width
+        
+        // Test with custom config
+        let mut custom_config = crate::config::Config::default();
+        custom_config.video.target_crf_sd = 22;  // Custom SD value
+        custom_config.video.target_crf_hd = 25;  // Custom HD value
+        custom_config.video.target_crf_4k = 27;  // Custom 4K value
+        
+        let custom_encoder = AbAv1Encoder::with_global_config(custom_config);
+        
+        // Test custom values for each resolution range
+        let custom_crf_sd = custom_encoder.get_crf_value(720);
+        assert_eq!(custom_crf_sd, 22); // Custom SD CRF value
+        
+        let custom_crf_hd = custom_encoder.get_crf_value(1920);
+        assert_eq!(custom_crf_hd, 25); // Custom HD CRF value
+        
+        let custom_crf_4k = custom_encoder.get_crf_value(3840);
+        assert_eq!(custom_crf_4k, 27); // Custom 4K CRF value
     }
 
     #[test]
@@ -1001,15 +1237,16 @@ mod tests {
         assert!((min_val - 93.21).abs() < 0.1); // Within 0.1 point
         assert!((max_val - 97.65).abs() < 0.1); // Within 0.1 point
 
-        // Test with no VMAF scores
-        let stderr_no_vmaf = "
-            No VMAF scores here
+        // Test with no quality scores
+        let stderr_no_scores = "
+            No quality scores here
             Just some other output
         ";
 
-        let (avg_none, min_none, max_none) = encoder.parse_vmaf_scores(stderr_no_vmaf);
+        let (avg_none, min_none, max_none) = encoder.parse_vmaf_scores(stderr_no_scores);
         assert!(avg_none.is_none());
         assert!(min_none.is_none());
         assert!(max_none.is_none());
+        
     }
 }
