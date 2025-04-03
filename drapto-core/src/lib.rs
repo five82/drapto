@@ -54,6 +54,9 @@ pub enum CoreError {
 
     #[error("No suitable video files found in input directory")]
     NoFilesFound,
+
+    #[error("Required external command '{0}' not found or failed to execute. Please ensure it's installed and in your PATH.")]
+    DependencyNotFound(String),
 }
 
 // Type alias for Result using our custom error
@@ -113,6 +116,39 @@ fn calculate_audio_bitrate(channels: u32) -> u32 {
     }
 }
 
+/// Checks if a required external command is available and executable.
+fn check_dependency(cmd_name: &str) -> CoreResult<()> {
+    // Use a version flag that typically exits quickly if the command exists
+    let version_arg = if cmd_name == "ffprobe" { "-version" } else { "--version" };
+    Command::new(cmd_name)
+        .arg(version_arg)
+        .stdout(Stdio::null()) // Don't capture stdout
+        .stderr(Stdio::null()) // Don't capture stderr
+        .status() // Use status() to wait and get only the exit status
+        .map_err(|e| {
+            // Specifically check if the error is because the command wasn't found
+            if e.kind() == io::ErrorKind::NotFound {
+                CoreError::DependencyNotFound(cmd_name.to_string())
+            } else {
+                // Other errors during spawn (e.g., permissions)
+                CoreError::CommandStart(cmd_name.to_string(), e)
+            }
+        })?;
+
+    // Check if the command executed successfully (exit code 0)
+    // Some tools might return non-zero even for --version if other args are needed,
+    // but this is a common pattern. If output() succeeded without an IoError::NotFound,
+    // it implies the command was found and started. A non-zero exit might indicate
+    // an issue, but for this check, we primarily care that it *can* be executed.
+    // Re-evaluating if `!output.status.success()` should also be DependencyNotFound.
+    // For now, if `output()` succeeds, we assume the dependency is met.
+    // Let's refine: if `output()` works but status is non-zero, it *was* found.
+    // The original `map_err` handles the "not found" case correctly.
+    // So if we reach here, it was found.
+    Ok(())
+}
+
+
 // --- Public API ---
 
 /// Finds processable video files (currently hardcoded to .mkv).
@@ -157,6 +193,15 @@ pub fn process_videos<F>(
 where
     F: FnMut(&str), // Closure to handle logging
 {
+    // --- Check Dependencies ---
+    log_callback("Checking for required external commands...");
+    check_dependency("HandBrakeCLI")?;
+    log_callback("  [OK] HandBrakeCLI found.");
+    check_dependency("ffprobe")?;
+    log_callback("  [OK] ffprobe found.");
+    log_callback("External dependency check passed.");
+
+
     let mut results: Vec<EncodeResult> = Vec::new();
     let cmd_handbrake = "HandBrakeCLI"; // Define command name
 
