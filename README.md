@@ -7,7 +7,7 @@ Drapto provides a convenient command-line interface to automate video encoding t
 ## Features
 
 *   Wraps HandBrakeCLI for powerful and flexible video encoding.
-*   Uses TOML configuration files for defining encoding presets (e.g., `handbrake_defaults.toml`).
+*   Uses built-in default encoding settings.
 
 ## Installation
 
@@ -23,7 +23,7 @@ Drapto provides a convenient command-line interface to automate video encoding t
 
 ## Usage
 
-Basic usage involves specifying an input file/directory and an output directory. Drapto will use the default settings defined in `handbrake_defaults.toml` or a specified configuration file.
+Basic usage involves specifying an input file/directory and an output directory. Drapto will use built-in default encoding settings.
 
 ```bash
 # Encode a single file using default settings
@@ -32,12 +32,4 @@ drapto encode -i /path/to/input/video.mkv -o /path/to/output/
 # Encode all videos in a directory
 drapto encode -i /path/to/input/directory/ -o /path/to/output/
 
-# Specify a custom configuration file
-# Note: Custom config file loading is not implemented in the provided main.rs yet.
-# This example assumes future implementation.
-# drapto encode -c /path/to/custom_config.toml -i /path/to/input/video.mkv -o /path/to/output/
-
-# The current implementation uses handbrake_defaults.toml automatically.
-# Example using default settings:
-drapto encode -i /path/to/input/video.mkv -o /path/to/output/
 ```

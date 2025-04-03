@@ -1,13 +1,12 @@
 use clap::{Parser, Subcommand};
 use drapto_core::{CoreConfig, CoreError, EncodeResult};
-use serde::Deserialize; // Added for TOML parsing
 use std::cell::Cell;
 use std::fs::{self, File};
 use std::io::{Write, BufWriter};
 use std::path::PathBuf;
 use std::process;
 use std::time::Instant;
-use toml; // Added for TOML parsing
+mod config; // Import the new config module
 
 // --- CLI Argument Definition ---
 
@@ -50,26 +49,6 @@ fn get_timestamp() -> String {
     chrono::Local::now().format("%Y%m%d_%H%M%S").to_string()
 }
 
-// --- Configuration Struct ---
-
-#[derive(Deserialize, Debug, Clone)]
-#[serde(deny_unknown_fields)] // Optional: Error if unknown fields are in TOML
-struct HandbrakeDefaults {
-    encoder_preset: Option<u8>,
-    quality: Option<u8>,
-    crop_mode: Option<String>,
-}
-
-// Provide default values (None means not set, core library should handle its own defaults)
-impl Default for HandbrakeDefaults {
-    fn default() -> Self {
-        HandbrakeDefaults {
-            encoder_preset: None,
-            quality: None,
-            crop_mode: None,
-        }
-    }
-}
 
 
 // --- Main Logic ---
@@ -78,42 +57,7 @@ impl Default for HandbrakeDefaults {
 fn run_encode(args: EncodeArgs) -> Result<(), Box<dyn std::error::Error>> {
     let total_start_time = Instant::now();
 
-    // --- Load Handbrake Defaults ---
-    // Assumes handbrake_defaults.toml is in the same directory as Cargo.toml for the CLI
-    // A more robust solution might involve searching standard config locations.
-    let defaults_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("handbrake_defaults.toml");
-    let defaults: HandbrakeDefaults = match fs::read_to_string(&defaults_path) {
-        Ok(content) => match toml::from_str(&content) {
-            Ok(parsed_defaults) => {
-                // Use println! for now, replace with proper logging later if needed
-                println!("INFO: Loaded defaults from {}", defaults_path.display());
-                parsed_defaults
-            }
-            Err(e) => {
-                eprintln!(
-                    "WARN: Failed to parse {}: {}. Using built-in defaults.",
-                    defaults_path.display(),
-                    e
-                );
-                HandbrakeDefaults::default()
-            }
-        },
-        Err(e) => {
-            // Only warn if it's not a 'NotFound' error, otherwise silently use defaults
-            if e.kind() != std::io::ErrorKind::NotFound {
-                 eprintln!(
-                    "WARN: Could not read {}: {}. Using built-in defaults.",
-                    defaults_path.display(),
-                    e
-                 );
-            } else {
-                 println!("INFO: Defaults file {} not found. Using built-in defaults.", defaults_path.display());
-            }
-            HandbrakeDefaults::default()
-        }
-    };
-    // Temporary: Print loaded defaults for verification
-    println!("DEBUG: Using Handbrake defaults: {:?}", defaults);
+    // Defaults are now hardcoded in config.rs
 
     // --- Determine Paths (using args from EncodeArgs) ---
     let input_path = args.input_path.canonicalize()
@@ -200,10 +144,11 @@ fn run_encode(args: EncodeArgs) -> Result<(), Box<dyn std::error::Error>> {
         input_dir: effective_input_dir,
         output_dir: output_dir.clone(),
         log_dir: log_dir.clone(),
-        // Pass the loaded defaults (or None if not set in TOML/file not found)
-        default_encoder_preset: defaults.encoder_preset,
-        default_quality: defaults.quality,
-        default_crop_mode: defaults.crop_mode,
+        // Use the constants from the config module
+        // Convert types as needed (i32 -> u8, &str -> String)
+        default_encoder_preset: Some(config::DEFAULT_ENCODER_PRESET as u8),
+        default_quality: Some(config::DEFAULT_QUALITY as u8),
+        default_crop_mode: Some(config::DEFAULT_CROP_MODE.to_string()),
     };
 
     // --- Execute Core Logic ---
