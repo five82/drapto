@@ -1,35 +1,10 @@
 [package]
 name = "drapto-core"
-version.workspace = true
-edition.workspace = true
-authors.workspace = true
-description.workspace = true
-license.workspace = true
-repository.workspace = true
-keywords.workspace = true
-categories.workspace = true
+version = "0.1.0"
+edition = "2024"
+
 
 [dependencies]
-ffmpeg-the-third = { workspace = true }
-log = { workspace = true }
-env_logger = { workspace = true }
-rayon = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-toml = { workspace = true }
-dirs = { workspace = true }
-tokio = { workspace = true }
-anyhow = { workspace = true }
-thiserror = { workspace = true }
-regex = { workspace = true }
-num_cpus = { workspace = true }
-sysinfo = { workspace = true }
-uuid = { workspace = true }
-chrono = { workspace = true }
-colored = { workspace = true }
-indicatif = { workspace = true }
-
-[dev-dependencies]
-tempfile = { workspace = true }
-clap = { workspace = true }
-env_logger = { workspace = true }
+walkdir = "2"
+chrono = "0.4"
+thiserror = "1.0"
