@@ -117,21 +117,29 @@ fn calculate_audio_bitrate(channels: u32) -> u32 {
 
 /// Finds processable video files (currently hardcoded to .mkv).
 pub fn find_processable_files(input_dir: &Path) -> CoreResult<Vec<PathBuf>> {
-    let mut files = Vec::new();
-    for entry in walkdir::WalkDir::new(input_dir)
+    // Use collect to handle potential WalkDir errors first
+    let entries: Vec<walkdir::DirEntry> = walkdir::WalkDir::new(input_dir)
         .min_depth(1)
         .max_depth(1)
         .into_iter()
-        .filter_map(|e| e.map_err(CoreError::Walkdir).ok()) // Filter out walkdir errors, log them later if needed
+        .collect::<Result<Vec<_>, _>>() // Collect results, propagating the first error
+        .map_err(CoreError::Walkdir)?; // Map walkdir::Error to CoreError::Walkdir
+
+    let files: Vec<PathBuf> = entries
+        .into_iter()
         .filter(|e| e.file_type().is_file())
-    {
-        if let Some(ext) = entry.path().extension() {
-            if ext.to_string_lossy().eq_ignore_ascii_case("mkv") {
-                 files.push(entry.path().to_path_buf());
-            }
-        }
-    }
+        .filter_map(|entry| {
+            entry
+                .path()
+                .extension()
+                .and_then(|ext| ext.to_str()) // Ensure extension is valid UTF-8
+                .filter(|ext_str| ext_str.eq_ignore_ascii_case("mkv"))
+                .map(|_| entry.path().to_path_buf()) // If it's an mkv, keep the path
+        })
+        .collect();
+
     if files.is_empty() {
+        // If entries were successfully collected but no MKV files were found
         Err(CoreError::NoFilesFound)
     } else {
         Ok(files)
@@ -415,3 +423,5 @@ pub fn format_bytes(bytes: u64) -> String {
         format!("{} B", bytes)
     }
 }
+
+// Unit tests have been moved to the `tests/` directory.
