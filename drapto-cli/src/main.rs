@@ -175,7 +175,8 @@ fn run_encode(args: EncodeArgs) -> Result<(), Box<dyn std::error::Error>> {
                 println!(); // Move to the next line
             }
             // Print the normal log message
-            println!("{}", msg);
+            // Trim trailing whitespace before printing to avoid double newlines
+            println!("{}", msg.trim_end());
             last_was_progress.set(false);
         }
 

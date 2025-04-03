@@ -8,7 +8,6 @@ Drapto provides a convenient command-line interface to automate video encoding t
 
 *   Wraps HandBrakeCLI for powerful and flexible video encoding.
 *   Uses TOML configuration files for defining encoding presets (e.g., `handbrake_defaults.toml`).
-*   (Add more specific features here as the project develops)
 
 ## Installation
 
@@ -16,7 +15,7 @@ Drapto provides a convenient command-line interface to automate video encoding t
 2.  **Install Rust:** If you don't have Rust installed, follow the instructions at [rustup.rs](https://rustup.rs/).
 3.  **Install Drapto:** Install directly from the Git repository using `cargo install`.
     ```bash
-    cargo install --git <repository_url> # Replace with the actual repository URL
+    cargo install --git https://github.com/five82/drapto
     ```
     This command clones the repository, builds the `drapto` binary, and installs it to `~/.cargo/bin/`.
 
@@ -42,5 +41,3 @@ drapto encode -i /path/to/input/directory/ -o /path/to/output/
 # Example using default settings:
 drapto encode -i /path/to/input/video.mkv -o /path/to/output/
 ```
-
-(Add more detailed usage examples and options here)
