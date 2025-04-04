@@ -32,6 +32,9 @@ site/
 dmypy.json
 .aider*
 
+# AI
+.roomodes
+
 # Rust
 target/
 

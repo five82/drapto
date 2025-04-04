@@ -1,3 +1,0 @@
-[commands]
-format = ["cargo clippy"]
-test = ["cargo test"]
