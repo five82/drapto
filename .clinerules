@@ -8,3 +8,6 @@
 7. Avoid scope creap and bloat.
 8. Look at the old python code for context.
 9. Use proper rust file and directory structure according to Rust best practices.
+
+## Drapto
+1. Run "HandbrakeCLI -h" to see the the available Handbrake parameters.

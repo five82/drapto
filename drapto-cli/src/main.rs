@@ -42,6 +42,23 @@ struct EncodeArgs {
     /// Optional: Directory for log files (defaults to OUTPUT_DIR/logs)
     #[arg(short, long, value_name = "LOG_DIR")]
     log_dir: Option<PathBuf>,
+
+    // --- Film Grain Optimization Flags ---
+    /// Disable automatic film grain optimization (it's enabled by default)
+    #[arg(long)]
+    disable_grain_optimization: bool,
+    /// Duration (seconds) for each optimization sample clip
+    #[arg(long, value_name = "SECONDS")]
+    grain_sample_duration: Option<u32>,
+    /// Number of sample points for optimization
+    #[arg(long, value_name = "COUNT")]
+    grain_sample_count: Option<usize>,
+    /// Comma-separated initial grain values to test (e.g., 0,8,20)
+    #[arg(long, value_delimiter = ',', value_name = "VALS")]
+    grain_initial_values: Option<Vec<u8>>,
+    /// Fallback grain value if optimization fails/disabled (default: 0)
+    #[arg(long, value_name = "VALUE")]
+    grain_fallback_value: Option<u8>,
 }
 
 // --- Helper Functions (Timestamp) ---
@@ -149,6 +166,18 @@ fn run_encode(args: EncodeArgs) -> Result<(), Box<dyn std::error::Error>> {
         default_encoder_preset: Some(config::DEFAULT_ENCODER_PRESET as u8),
         default_quality: Some(config::DEFAULT_QUALITY as u8),
         default_crop_mode: Some(config::DEFAULT_CROP_MODE.to_string()),
+        // New film grain config fields - set to None, core will use defaults
+        film_grain_metric_type: None,
+        film_grain_knee_threshold: None,
+        film_grain_refinement_range_delta: None,
+        film_grain_max_value: None,
+        film_grain_refinement_points_count: None,
+        // --- Film Grain Args ---
+        optimize_film_grain: !args.disable_grain_optimization, // Enabled by default, disable with flag
+        film_grain_sample_duration: args.grain_sample_duration,
+        film_grain_sample_count: args.grain_sample_count,
+        film_grain_initial_values: args.grain_initial_values,
+        film_grain_fallback_value: args.grain_fallback_value,
     };
 
     // --- Execute Core Logic ---
@@ -239,4 +268,89 @@ fn main() {
             process::exit(1);
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    // Helper function to create temporary directories/files for tests
+    // Note: Real file system interaction is often avoided in pure unit tests,
+    // but clap parsing tests often need valid paths.
+    // For simplicity here, we'll assume paths exist or use relative ones.
+
+    #[test]
+    fn test_parse_encode_basic_args() {
+        let args = vec![
+            "drapto-cli", // Program name
+            "encode",     // Subcommand
+            "input_dir",  // input_path
+            "output_dir", // output_dir
+        ];
+        let cli = Cli::parse_from(args);
+
+        match cli.command {
+            Commands::Encode(encode_args) => {
+                assert_eq!(encode_args.input_path, PathBuf::from("input_dir"));
+                assert_eq!(encode_args.output_dir, PathBuf::from("output_dir"));
+                assert!(encode_args.log_dir.is_none());
+                assert!(!encode_args.disable_grain_optimization); // Default is false (optimization enabled)
+                assert!(encode_args.grain_sample_duration.is_none());
+                assert!(encode_args.grain_sample_count.is_none());
+                assert!(encode_args.grain_initial_values.is_none());
+                assert!(encode_args.grain_fallback_value.is_none());
+            } // _ => panic!("Expected Encode command"), // Removed as other commands don't exist yet
+        }
+    }
+
+    #[test]
+    fn test_parse_encode_with_log_dir() {
+        let args = vec![
+            "drapto-cli",
+            "encode",
+            "input.mkv",
+            "out",
+            "--log-dir",
+            "custom_logs",
+        ];
+        let cli = Cli::parse_from(args);
+
+        match cli.command {
+            Commands::Encode(encode_args) => {
+                assert_eq!(encode_args.input_path, PathBuf::from("input.mkv"));
+                assert_eq!(encode_args.output_dir, PathBuf::from("out"));
+                assert_eq!(encode_args.log_dir, Some(PathBuf::from("custom_logs")));
+            }
+        }
+    }
+
+     #[test]
+    fn test_parse_encode_with_grain_args() {
+        let args = vec![
+            "drapto-cli",
+            "encode",
+            "input",
+            "output",
+            "--disable-grain-optimization",
+            "--grain-sample-duration", "15",
+            "--grain-sample-count", "5",
+            "--grain-initial-values", "4,12,24",
+            "--grain-fallback-value", "6",
+        ];
+        let cli = Cli::parse_from(args);
+
+        match cli.command {
+            Commands::Encode(encode_args) => {
+                assert!(encode_args.disable_grain_optimization);
+                assert_eq!(encode_args.grain_sample_duration, Some(15));
+                assert_eq!(encode_args.grain_sample_count, Some(5));
+                assert_eq!(encode_args.grain_initial_values, Some(vec![4, 12, 24]));
+                assert_eq!(encode_args.grain_fallback_value, Some(6));
+            }
+        }
+    }
+
+    // Add more tests here for edge cases, invalid inputs (if clap allows testing this easily),
+    // or specific flag combinations.
 }

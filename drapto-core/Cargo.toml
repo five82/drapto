@@ -8,6 +8,10 @@ edition = "2024"
 walkdir = "2"
 chrono = "0.4"
 thiserror = "1.0"
+tempfile = "3" # Moved from dev-dependencies
+
+[features]
+# Enables mocking of external commands like ffprobe during tests
+test-mock-ffprobe = []
 
 [dev-dependencies]
-tempfile = "3"

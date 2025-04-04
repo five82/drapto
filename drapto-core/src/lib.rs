@@ -6,6 +6,9 @@ use std::time::{Duration, Instant};
 use std::collections::VecDeque;
 use thiserror::Error; // Import the macro
 
+// --- Modules ---
+pub mod processing;
+
 // --- Public Structs ---
 
 #[derive(Debug, Clone)] // Clone might be useful for the CLI
@@ -14,6 +17,13 @@ pub struct EncodeResult {
     pub duration: Duration,
     pub input_size: u64,
     pub output_size: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)] // Added PartialEq, Eq for comparison
+pub enum FilmGrainMetricType {
+    KneePoint,
+    // PercentMaxReduction, // Keep commented out for now as we focus on KneePoint
+    // OriginalEfficiency, // Keep commented out for now
 }
 
 #[derive(Debug, Clone)] // Configuration for the core processing
@@ -25,6 +35,27 @@ pub struct CoreConfig {
     pub default_encoder_preset: Option<u8>,
     pub default_quality: Option<u8>,
     pub default_crop_mode: Option<String>,
+    // --- Film Grain Optimization ---
+    /// Enable automatic film grain optimization (default: false)
+    pub optimize_film_grain: bool,
+    /// Duration in seconds for each sample clip (default: 10)
+    pub film_grain_sample_duration: Option<u32>,
+    /// Number of sample points to extract (default: 3)
+    pub film_grain_sample_count: Option<usize>,
+    /// Initial grain values to test (default: [0, 8, 20])
+    pub film_grain_initial_values: Option<Vec<u8>>,
+    /// Fallback grain value if optimization fails or is disabled (default: 0)
+    pub film_grain_fallback_value: Option<u8>,
+    /// Which metric to use for determining optimal grain (default: KneePoint)
+    pub film_grain_metric_type: Option<FilmGrainMetricType>,
+    /// Threshold for KneePoint metric (percentage of max efficiency, e.g., 0.8 for 80%)
+    pub film_grain_knee_threshold: Option<f64>,
+    /// +/- range around the Phase 2 median estimate for Phase 3 refinement (default: 3)
+    pub film_grain_refinement_range_delta: Option<u8>,
+    /// Maximum allowed film grain value for the final result (default: 20)
+    pub film_grain_max_value: Option<u8>,
+    /// Number of refinement points to test in Phase 3 (default: 3) - Moved from film_grain.rs constants
+    pub film_grain_refinement_points_count: Option<usize>,
 }
 
 // --- Custom Error Type ---
@@ -57,6 +88,12 @@ pub enum CoreError {
 
     #[error("Required external command '{0}' not found or failed to execute. Please ensure it's installed and in your PATH.")]
     DependencyNotFound(String),
+
+    // --- Film Grain Errors ---
+    #[error("Film grain sample extraction/encoding failed: {0}")]
+    FilmGrainEncodingFailed(String),
+    #[error("Film grain analysis failed: {0}")]
+    FilmGrainAnalysisFailed(String),
 }
 
 // Type alias for Result using our custom error
@@ -235,6 +272,27 @@ where
             }
         };
 
+        // --- Determine Film Grain Value ---
+        let film_grain_value = if config.optimize_film_grain {
+            log_callback(&format!(
+                "Attempting to determine optimal film grain value for {}...",
+                filename
+            ));
+            match processing::film_grain::determine_optimal_grain(input_path, config, &mut log_callback, processing::film_grain::get_video_duration_secs, processing::film_grain::extract_and_test_sample) { // Pass actual functions
+                Ok(optimal_value) => {
+                    log_callback(&format!("Optimal film grain value determined: {}", optimal_value));
+                    optimal_value
+                }
+                Err(e) => {
+                    let fallback = config.film_grain_fallback_value.unwrap_or(0);
+                    log_callback(&format!("Warning: Film grain optimization failed: {}. Using fallback value: {}", e, fallback));
+                    fallback
+                }
+            }
+        } else {
+            config.film_grain_fallback_value.unwrap_or(0) // Use fallback if optimization disabled
+        };
+
         // --- Build HandBrakeCLI Command ---
         let mut handbrake_args: VecDeque<String> = VecDeque::new();
 
@@ -245,8 +303,10 @@ where
         handbrake_args.push_back("svt_av1_10bit".to_string());
         handbrake_args.push_back("--encoder-tune".to_string());
         handbrake_args.push_back("0".to_string()); // Assuming tune 0 is always desired
-        handbrake_args.push_back("--encopts".to_string());
-        handbrake_args.push_back("film-grain=8:film-grain-denoise=1".to_string()); // Assuming film grain is always desired
+         // Dynamic film grain setting
+         let encopts = format!("film-grain={}:film-grain-denoise=1", film_grain_value); // Use determined/fallback value
+         handbrake_args.push_back("--encopts".to_string());
+         handbrake_args.push_back(encopts);
 
         // Encoder Preset (Use default from config or fallback)
         let encoder_preset = config.default_encoder_preset.unwrap_or(6); // Fallback to 6
