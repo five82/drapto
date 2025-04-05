@@ -161,7 +161,8 @@ where
                 "Attempting to determine optimal film grain value for {}...",
                 filename
             ));
-            match processing::film_grain::determine_optimal_grain(input_path, config, &mut log_callback, get_video_duration_secs, extract_and_test_sample) {
+            // Pass handbrake_cmd_parts to determine_optimal_grain
+            match processing::film_grain::determine_optimal_grain(input_path, config, &mut log_callback, get_video_duration_secs, extract_and_test_sample, &handbrake_cmd_parts) {
                 Ok(optimal_value) => {
                     log_callback(&format!("Optimal film grain value determined: {}", optimal_value));
                     optimal_value

@@ -121,7 +121,7 @@ fn test_determine_optimal_grain_success_scenario() -> Result<(), Box<dyn std::er
     // We'll assume we can call it directly via crate::processing::film_grain::determine_optimal_grain
     // Define mock closures for dependencies
     let mock_duration_fetcher = |_path: &Path| -> CoreResult<f64> { Ok(300.0) }; // Keep duration simple
-    let mock_sample_tester = |_input_path: &Path, start_secs: f64, _duration_secs: u32, grain_value: u8, _config: &CoreConfig| -> CoreResult<u64> {
+    let mock_sample_tester = |_input_path: &Path, start_secs: f64, _duration_secs: u32, grain_value: u8, _config: &CoreConfig, _handbrake_cmd_parts: &[String]| -> CoreResult<u64> {
         // Mock data designed for Knee Point testing (Expected final result: 5)
         // Sample 1 (starts ~100s): Base 10000
         // Sample 2 (starts ~200s): Base 12000
@@ -159,6 +159,7 @@ fn test_determine_optimal_grain_success_scenario() -> Result<(), Box<dyn std::er
         &mut logger,
         mock_duration_fetcher,
         mock_sample_tester, // Pass the mock sample tester
+        &[], // Pass dummy command parts for the test
     );
 
     // --- Assertions ---
@@ -210,7 +211,7 @@ fn test_determine_optimal_grain_failure_scenario() -> Result<(), Box<dyn std::er
     // --- Execute ---
     // Define mock closures for dependencies
     let mock_duration_fetcher = |_path: &Path| -> CoreResult<f64> { Ok(300.0) };
-    let mock_sample_tester = |_input_path: &Path, _start_secs: f64, _duration_secs: u32, grain_value: u8, _config: &CoreConfig| -> CoreResult<u64> {
+    let mock_sample_tester = |_input_path: &Path, _start_secs: f64, _duration_secs: u32, grain_value: u8, _config: &CoreConfig, _handbrake_cmd_parts: &[String]| -> CoreResult<u64> {
         // Simulate failure for grain 15
         if grain_value == 15 {
             Err(CoreError::FilmGrainEncodingFailed("Mock failure for grain 15".to_string()))
@@ -231,6 +232,7 @@ fn test_determine_optimal_grain_failure_scenario() -> Result<(), Box<dyn std::er
         &mut logger,
         mock_duration_fetcher,
         mock_sample_tester, // Pass the mock sample tester
+        &[], // Pass dummy command parts for the test
     );
 
     // --- Assertions ---
@@ -271,7 +273,7 @@ fn test_determine_optimal_grain_adaptive_range() -> Result<(), Box<dyn std::erro
 
     // --- Mocking Setup ---
     let mock_duration_fetcher = |_path: &Path| -> CoreResult<f64> { Ok(300.0) };
-    let mock_sample_tester = |_input_path: &Path, start_secs: f64, _duration_secs: u32, grain_value: u8, _config: &CoreConfig| -> CoreResult<u64> {
+    let mock_sample_tester = |_input_path: &Path, start_secs: f64, _duration_secs: u32, grain_value: u8, _config: &CoreConfig, _handbrake_cmd_parts: &[String]| -> CoreResult<u64> {
         // Mock data designed for non-zero standard deviation in Phase 2 estimates
         // Sample 1 (75s): Base 10000 -> Estimate 5
         // Sample 2 (150s): Base 12000 -> Estimate 8 (make reduction less efficient)
@@ -318,6 +320,7 @@ fn test_determine_optimal_grain_adaptive_range() -> Result<(), Box<dyn std::erro
         &mut logger,
         mock_duration_fetcher,
         mock_sample_tester,
+        &[], // Pass dummy command parts for the test
     );
 
     // --- Assertions ---
@@ -364,7 +367,7 @@ fn test_determine_optimal_grain_knee_fallback() -> Result<(), Box<dyn std::error
 
     // --- Mocking Setup ---
     let mock_duration_fetcher = |_path: &Path| -> CoreResult<f64> { Ok(300.0) };
-    let mock_sample_tester = |_input_path: &Path, _start_secs: f64, _duration_secs: u32, grain_value: u8, _config: &CoreConfig| -> CoreResult<u64> {
+    let mock_sample_tester = |_input_path: &Path, _start_secs: f64, _duration_secs: u32, grain_value: u8, _config: &CoreConfig, _handbrake_cmd_parts: &[String]| -> CoreResult<u64> {
         // Mock data designed to trigger the knee point fallback (no candidates meet threshold)
         // Make efficiencies very low and close together
         let base_size = 10000;
@@ -389,6 +392,7 @@ fn test_determine_optimal_grain_knee_fallback() -> Result<(), Box<dyn std::error
         &mut logger,
         mock_duration_fetcher,
         mock_sample_tester,
+        &[], // Pass dummy command parts for the test
     );
 
     // --- Assertions ---
@@ -405,7 +409,7 @@ fn test_determine_optimal_grain_knee_fallback() -> Result<(), Box<dyn std::error
     // BUT WAIT - the goal is to test the *fallback*. Let's adjust mock data.
 
     // --- Re-Mocking for Fallback ---
-     let mock_sample_tester_fallback = |_input_path: &Path, _start_secs: f64, _duration_secs: u32, grain_value: u8, _config: &CoreConfig| -> CoreResult<u64> {
+     let mock_sample_tester_fallback = |_input_path: &Path, _start_secs: f64, _duration_secs: u32, grain_value: u8, _config: &CoreConfig, _handbrake_cmd_parts: &[String]| -> CoreResult<u64> {
         // Make max efficiency high, but subsequent efficiencies drop off *sharply* below threshold
         let base_size = 10000;
         match grain_value {
@@ -430,6 +434,7 @@ fn test_determine_optimal_grain_knee_fallback() -> Result<(), Box<dyn std::error
         &mut logger_fallback,
         mock_duration_fetcher,
         mock_sample_tester_fallback,
+        &[], // Pass dummy command parts for the test
     );
 
      // --- Assertions (Fallback) ---
@@ -446,7 +451,7 @@ fn test_determine_optimal_grain_knee_fallback() -> Result<(), Box<dyn std::error
     // STILL NOT HITTING FALLBACK. Need candidates list to be EMPTY.
 
     // --- Re-Mocking for ACTUAL Fallback ---
-     let mock_sample_tester_actual_fallback = |_input_path: &Path, _start_secs: f64, _duration_secs: u32, grain_value: u8, _config: &CoreConfig| -> CoreResult<u64> {
+     let mock_sample_tester_actual_fallback = |_input_path: &Path, _start_secs: f64, _duration_secs: u32, grain_value: u8, _config: &CoreConfig, _handbrake_cmd_parts: &[String]| -> CoreResult<u64> {
         // Ensure NO positive efficiency for any grain > 0
         let base_size = 10000;
         match grain_value {
@@ -464,6 +469,7 @@ fn test_determine_optimal_grain_knee_fallback() -> Result<(), Box<dyn std::error
         &mut logger_actual_fallback,
         mock_duration_fetcher,
         mock_sample_tester_actual_fallback,
+        &[], // Pass dummy command parts for the test
     );
 
      // --- Assertions (Actual Fallback) ---

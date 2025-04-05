@@ -112,6 +112,7 @@ pub(crate) fn extract_and_test_sample(
     duration_secs: u32,
     grain_value: u8,
     config: &CoreConfig,
+    handbrake_cmd_parts: &[String], // <-- Add this parameter
     // log_callback: &mut dyn FnMut(&str), // Not needed here, logging is done by caller
 ) -> CoreResult<u64> {
     let temp_dir = tempdir().map_err(CoreError::Io)?;
@@ -179,13 +180,22 @@ pub(crate) fn extract_and_test_sample(
     handbrake_args.push("--verbose=0".to_string());
 
     // --- Execute ---
-    let cmd_handbrake = "HandBrakeCLI";
-    let status = Command::new(cmd_handbrake)
-        .args(&handbrake_args)
+    // Use the provided command parts
+    if handbrake_cmd_parts.is_empty() {
+        // Should not happen if check_dependency worked, but good practice.
+        // Use FilmGrainEncodingFailed as this prevents the encoding step.
+        return Err(CoreError::FilmGrainEncodingFailed("Internal error: HandBrakeCLI command parts are unexpectedly empty.".to_string()));
+    }
+    let handbrake_executable = &handbrake_cmd_parts[0];
+    let base_args = &handbrake_cmd_parts[1..]; // e.g., ["run", "fr.handbrake..."] or empty
+
+    let status = Command::new(handbrake_executable)
+        .args(base_args) // Add base args first (like "run", "fr.handbrake...")
+        .args(&handbrake_args) // Then add the specific sample encode args
         .stdout(Stdio::null()) // Ensure stdout is ignored
         .stderr(Stdio::null()) // Ensure stderr is ignored
         .status()
-        .map_err(|e| CoreError::CommandStart(cmd_handbrake.to_string(), e))?;
+        .map_err(|e| CoreError::CommandStart(handbrake_executable.to_string(), e))?; // Use correct executable in error
 
     if !status.success() {
         // We don't have stderr here, so provide a generic error message

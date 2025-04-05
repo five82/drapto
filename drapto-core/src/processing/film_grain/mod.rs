@@ -93,11 +93,13 @@ pub fn determine_optimal_grain<F, D, S>(
     mut log_callback: F,
     duration_fetcher: D, // Dependency injection for duration lookup (e.g., sampling::get_video_duration_secs)
     sample_tester: S,    // Dependency injection for sample testing (e.g., sampling::extract_and_test_sample)
+    handbrake_cmd_parts: &[String], // <-- Add HandBrake command parts
 ) -> CoreResult<u8>
 where
     F: FnMut(&str),
     D: Fn(&Path) -> CoreResult<f64>,
-    S: Fn(&Path, f64, u32, u8, &CoreConfig) -> CoreResult<u64>, // Sample tester signature
+    // Update sample_tester signature to include handbrake_cmd_parts
+    S: Fn(&Path, f64, u32, u8, &CoreConfig, &[String]) -> CoreResult<u64>,
 {
     // --- Get Configuration ---
     // Use constants from this module only if config doesn't provide them
@@ -159,7 +161,8 @@ where
         // Test initial values (iterate slice for order, use set for contains checks later)
         for &grain_value in initial_grain_values_slice {
             log_callback(&format!("[INFO]   Testing grain value {}...", grain_value));
-            match sample_tester(input_path, start_time, sample_duration, grain_value, config) {
+            // Pass handbrake_cmd_parts to sample_tester
+            match sample_tester(input_path, start_time, sample_duration, grain_value, config, handbrake_cmd_parts) {
                 Ok(file_size) => {
                     sample_results.push(GrainTest { grain_value, file_size }); // Use imported type
                 }
@@ -280,7 +283,8 @@ where
             for &grain_value in &refined_grain_values {
                  log_callback(&format!("[INFO]   Testing refined grain value {}...", grain_value));
                  for (i, &start_time) in sample_start_times.iter().enumerate() {
-                     match sample_tester(input_path, start_time, sample_duration, grain_value, config) {
+                     // Pass handbrake_cmd_parts to sample_tester
+                     match sample_tester(input_path, start_time, sample_duration, grain_value, config, handbrake_cmd_parts) {
                          Ok(file_size) => {
                              // Add result to the correct sample's vector in phase3_results
                              phase3_results[i].push(GrainTest { grain_value, file_size }); // Use imported type
