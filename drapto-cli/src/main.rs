@@ -19,10 +19,11 @@ use clap::{Parser, Subcommand};
 use drapto_core::{CoreConfig, CoreError, EncodeResult};
 use std::cell::Cell;
 use std::fs::{self, File};
-use std::io::{Write, BufWriter};
+use std::io::{Write, BufWriter}; // Removed unused 'self' import
 use std::path::PathBuf;
 use std::process;
 use std::time::Instant;
+use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor}; // Added
 mod config; // Import the new config module
 
 // --- CLI Argument Definition ---
@@ -90,6 +91,7 @@ fn get_timestamp() -> String {
 // Renamed the main logic function to reflect the 'encode' action
 fn run_encode(args: EncodeArgs) -> Result<(), Box<dyn std::error::Error>> {
     let total_start_time = Instant::now();
+    let mut stdout = StandardStream::stdout(ColorChoice::Auto); // Added for colored output
 
     // Defaults are now hardcoded in config.rs
 
@@ -138,30 +140,194 @@ fn run_encode(args: EncodeArgs) -> Result<(), Box<dyn std::error::Error>> {
     // Use Cell to allow modifying state within FnMut closure
     let last_was_progress = Cell::new(false);
 
+    // --- Log Callback (Console + File) ---
+    // Captures stdout mutably for coloring console output
     let mut log_callback = |msg: &str| {
+        // --- File Logging (Always raw) ---
+        // Write the raw message to the log file first
+        writeln!(logger, "{}", msg).ok();
+        logger.flush().ok(); // Flush file buffer
+
+        // --- Console Logging (Colored) ---
         let is_progress = msg.contains('\r');
+        let msg_trimmed = msg.trim_end(); // Use trimmed for console logic
 
         if is_progress {
-            // Print progress update using print! and flush
-            print!("{}", msg);
-            std::io::stdout().flush().ok();
+            // For progress, write directly, assuming HandBrake handles terminal control
+            // Style HandBrakeCLI progress lines as Blue
+            // Explicitly set Blue foreground, and ensure not bold/dimmed
+            stdout.set_color(ColorSpec::new()
+                .set_fg(Some(Color::Blue))
+                .set_bold(false)
+                .set_dimmed(false)
+                .set_intense(false) // Also ensure not intense
+            ).ok();
+            write!(&mut stdout, "{}", msg).ok(); // Print original message
+            stdout.reset().ok(); // Reset color immediately after writing
+            stdout.flush().ok(); // Flush console buffer
             last_was_progress.set(true);
         } else {
-            // If the last message was progress, print a newline first
-            // to move off the progress line before printing the current message.
+            // For normal messages, handle potential preceding progress line
             if last_was_progress.get() {
-                println!(); // Move to the next line
+                writeln!(&mut stdout).ok(); // Move to the next line after progress
             }
-            // Print the normal log message
-            // Trim trailing whitespace before printing to avoid double newlines
-            println!("{}", msg.trim_end());
-            last_was_progress.set(false);
-        }
 
-        // Write the raw message to the log file regardless
-        writeln!(logger, "{}", msg).ok();
-        // Flush the file logger
-        logger.flush().ok();
+            // --- Apply Enhanced Styling ---
+            // We need more granular control than a single color_spec for the whole line now.
+            // Handle specific cases first.
+
+            let mut handled = false; // Flag to check if we printed already
+
+            // Define prefix arrays for styling rules
+            let bold_label_prefixes = [
+                "Input path:", "Output directory:", "Log directory:", "Main log file:",
+                "Total encode execution time:", "Drapto Encode Run Finished:", "Drapto Encode Run Started:"
+            ];
+            let summary_value_prefixes = [ // Moved definition here
+                "  Encode time: ", "  Input size:  ", "  Output size: ", "  Reduced by:  " // Note spaces for alignment
+            ];
+
+            // Style: Bold Labels, Normal Values (Initial Info & Final Timing)
+            for prefix in bold_label_prefixes {
+                if msg_trimmed.starts_with(prefix) {
+                    if let Some(value) = msg_trimmed.strip_prefix(prefix) {
+                        stdout.set_color(ColorSpec::new().set_bold(true)).ok(); // Bold label
+                        write!(&mut stdout, "{}", prefix).ok();
+                        stdout.reset().ok(); // Reset for value
+                        writeln!(&mut stdout, "{}", value).ok();
+                        handled = true;
+                        break;
+                    }
+                }
+            }
+
+            // Style: Normal Labels, Bold Values (Summary Details)
+            if !handled {
+                // summary_value_prefixes is now defined above
+                 for prefix in summary_value_prefixes {
+                     if msg_trimmed.starts_with(prefix) {
+                         if let Some(value) = msg_trimmed.strip_prefix(prefix) {
+                             write!(&mut stdout, "{}", prefix).ok(); // Normal label
+                             stdout.set_color(ColorSpec::new().set_bold(true)).ok(); // Bold value
+                             writeln!(&mut stdout, "{}", value).ok();
+                             stdout.reset().ok(); // Reset after value
+                             handled = true;
+                             break;
+                         }
+                     }
+                 }
+            }
+
+            // Style: Success Count (Bold Green Number)
+            if !handled && msg_trimmed.starts_with("Successfully encoded ") {
+                 if let Some(rest) = msg_trimmed.strip_prefix("Successfully encoded ") {
+                     if let Some((count_str, _suffix)) = rest.split_once(" file(s).") { // Prefix suffix with _
+                         write!(&mut stdout, "Successfully encoded ").ok();
+                         stdout.set_color(ColorSpec::new().set_fg(Some(Color::Green)).set_bold(true)).ok();
+                         write!(&mut stdout, "{}", count_str).ok();
+                         stdout.reset().ok();
+                         stdout.set_color(ColorSpec::new().set_fg(Some(Color::Green))).ok(); // Green for suffix
+                         writeln!(&mut stdout, " file(s).").ok();
+                         stdout.reset().ok();
+                         handled = true;
+                     }
+                 }
+            }
+// Style: Status Prefixes ([OK], [INFO], etc.)
+if !handled {
+    let status_prefixes = [
+        ("[OK]", ColorSpec::new().set_fg(Some(Color::Green)).clone()),
+        ("[INFO]", ColorSpec::new().set_fg(Some(Color::Cyan)).clone()),
+        ("[WARN]", ColorSpec::new().set_fg(Some(Color::Yellow)).clone()),
+        ("[ERROR]", ColorSpec::new().set_fg(Some(Color::Red)).set_bold(true).clone()),
+        ("[FAIL]", ColorSpec::new().set_fg(Some(Color::Red)).set_bold(true).clone()),
+        ("[DEBUG]", ColorSpec::new().set_fg(Some(Color::Magenta)).clone()),
+        ("[TRACE]", ColorSpec::new().set_fg(Some(Color::Blue)).clone()),
+    ];
+    for (prefix, spec) in status_prefixes {
+         // Add space to prefix for matching to avoid partial matches like "[INFO]rmation"
+         let prefix_with_space = format!("{} ", prefix);
+         if msg_trimmed.starts_with(&prefix_with_space) {
+             if let Some(rest) = msg_trimmed.strip_prefix(&prefix_with_space) {
+                 stdout.set_color(&spec).ok();
+                 write!(&mut stdout, "{}", prefix).ok(); // Write only the prefix colored
+                 stdout.reset().ok();
+                 writeln!(&mut stdout, " {}", rest).ok(); // Write the rest uncolored (with space)
+                 handled = true;
+                 break;
+             }
+         }
+         // Handle cases where the prefix might be the entire message (less likely but possible)
+         else if msg_trimmed == prefix {
+              stdout.set_color(&spec).ok();
+              writeln!(&mut stdout, "{}", prefix).ok();
+              stdout.reset().ok();
+              handled = true;
+              break;
+         }
+    }
+}
+
+// Style: Specific Lines ("Processing:", "External dependency check passed.")
+if !handled {
+    if msg_trimmed == "External dependency check passed." {
+        stdout.set_color(ColorSpec::new().set_fg(Some(Color::Green))).ok();
+        writeln!(&mut stdout, "{}", msg_trimmed).ok();
+        stdout.reset().ok();
+        handled = true;
+    } else if let Some(filename) = msg_trimmed.strip_prefix("Processing: ") {
+        stdout.set_color(ColorSpec::new().set_bold(true)).ok(); // Bold "Processing:"
+        write!(&mut stdout, "Processing: ").ok();
+        stdout.reset().ok(); // Reset for filename
+        writeln!(&mut stdout, "{}", filename).ok();
+        handled = true;
+    }
+}
+
+
+// --- Fallback to Previous Simpler Styling for remaining unhandled cases ---
+if !handled {
+    let mut color_spec = ColorSpec::new();
+    match msg_trimmed {
+        // Separators
+        m if m.starts_with("===") || m.starts_with("---") => {
+            color_spec.set_fg(Some(Color::Cyan)).set_bold(true);
+        }
+        // Headers
+        m if m.starts_with("Encoding Summary:") => {
+            color_spec.set_bold(true); // Bold White
+        }
+        // Warnings (already handled FATAL CORE ERROR, Success, specific labels/values)
+        m if m.starts_with("No processable .mkv files") || m.starts_with("No files were successfully encoded.") => {
+            color_spec.set_fg(Some(Color::Yellow));
+        }
+        // Default case: Check for summary filename or just print default
+        _ => {
+            // Heuristic for summary filename: Not indented, not handled above
+             if !msg_trimmed.starts_with(' ') &&
+               !msg_trimmed.starts_with("===") && !msg_trimmed.starts_with("---") &&
+               !msg_trimmed.starts_with("Encoding Summary:")
+               // Add other known non-filename prefixes if needed
+            {
+                // Assume it's a filename in the summary
+                color_spec.set_bold(true); // Bold White
+            }
+            // Otherwise, use default color spec (covers "Found X files...", etc.)
+        }
+    }
+    // Print lines handled by this fallback logic
+    stdout.set_color(&color_spec).ok();
+    writeln!(&mut stdout, "{}", msg_trimmed).ok();
+    stdout.reset().ok(); // Reset to default colors
+}
+            // Removed redundant reset and extra brace from previous fallback logic
+
+            // Note: Printing is now handled within the specific styling blocks above or in the fallback match.
+            // The reset is also handled within those blocks.
+
+            last_was_progress.set(false);
+            stdout.flush().ok(); // Flush console buffer
+        }
     };
 
     // --- Log Initial Info ---
@@ -262,7 +428,8 @@ fn run_encode(args: EncodeArgs) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 
-fn main() {
+// Update main to return Result for potential IO errors during colored stderr printing
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Parse the top-level arguments
     let cli = Cli::parse();
 
@@ -277,13 +444,27 @@ fn main() {
     // Handle the result from the command function
     match result {
         Ok(()) => {
-            process::exit(0);
+            // process::exit(0); // Exit is handled after main returns Ok
         }
         Err(e) => {
-            // Print errors directly to stderr for CLI tools
-            eprintln!("Error: {}", e);
-            process::exit(1);
+            // Use termcolor for stderr as well
+            let mut stderr = StandardStream::stderr(ColorChoice::Auto);
+            stderr.set_color(ColorSpec::new().set_fg(Some(Color::Red)).set_bold(true))?;
+            writeln!(&mut stderr, "Error: {}", e)?;
+            stderr.reset()?;
+            process::exit(1); // Exit with error code
         }
+    };
+
+    // If result was Ok, return Ok here to satisfy the function signature.
+    // The process will exit with 0 implicitly when main returns Ok.
+    if result.is_ok() {
+        Ok(())
+    } else {
+        // Errors should have been handled and exited within the match,
+        // but satisfy the compiler if somehow an Err propagates here.
+        // This branch shouldn't realistically be hit due to process::exit(1) above.
+        result
     }
 }
 

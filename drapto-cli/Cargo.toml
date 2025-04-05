@@ -11,3 +11,4 @@ path = "src/main.rs"
 clap = { version = "4", features = ["derive", "cargo"] } # Add "cargo" feature for better integration
 chrono = "0.4"
 drapto-core = { path = "../drapto-core" }
+termcolor = "1.4" # For colored terminal output
