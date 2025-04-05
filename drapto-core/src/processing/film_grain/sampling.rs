@@ -39,7 +39,7 @@ use crate::error::{CoreError, CoreResult};
 use std::fs;
 use std::path::Path;
 use std::process::{Command, Stdio};
-use tempfile::tempdir;
+// Removed unused import: use tempfile::tempdir;
 
 // --- Constants ---
 pub(crate) const DEFAULT_SAMPLE_DURATION_SECS: u32 = 10; // Made pub(crate)
@@ -115,9 +115,18 @@ pub(crate) fn extract_and_test_sample(
     handbrake_cmd_parts: &[String], // <-- Add this parameter
     // log_callback: &mut dyn FnMut(&str), // Not needed here, logging is done by caller
 ) -> CoreResult<u64> {
-    let temp_dir = tempdir().map_err(CoreError::Io)?;
+    // Create a dedicated subdirectory for temporary samples within the main output dir
+    let samples_tmp_base_dir = config.output_dir.join("grain_samples_tmp");
+    fs::create_dir_all(&samples_tmp_base_dir).map_err(CoreError::Io)?;
+
+    // Create the temporary directory *inside* the dedicated subdirectory
+    let temp_dir = tempfile::Builder::new()
+        .prefix("sample_") // Optional: add a prefix
+        .tempdir_in(&samples_tmp_base_dir)
+        .map_err(CoreError::Io)?;
+
     let output_filename = format!(
-        "sample_start{}_dur{}_grain{}.mkv",
+        "start{}_dur{}_grain{}.mkv", // Simplified filename slightly
         start_secs.round(), duration_secs, grain_value
     );
     let output_path = temp_dir.path().join(output_filename);
