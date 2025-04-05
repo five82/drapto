@@ -189,19 +189,20 @@ pub(crate) fn extract_and_test_sample(
     let handbrake_executable = &handbrake_cmd_parts[0];
     let base_args = &handbrake_cmd_parts[1..]; // e.g., ["run", "fr.handbrake..."] or empty
 
-    let status = Command::new(handbrake_executable)
+    // Capture output to get stderr on failure
+    let output = Command::new(handbrake_executable)
         .args(base_args) // Add base args first (like "run", "fr.handbrake...")
         .args(&handbrake_args) // Then add the specific sample encode args
-        .stdout(Stdio::null()) // Ensure stdout is ignored
-        .stderr(Stdio::null()) // Ensure stderr is ignored
-        .status()
+        .stdout(Stdio::null()) // Still ignore stdout
+        .stderr(Stdio::piped()) // Capture stderr
+        .output() // Use output() to get status and stderr
         .map_err(|e| CoreError::CommandStart(handbrake_executable.to_string(), e))?; // Use correct executable in error
 
-    if !status.success() {
-        // We don't have stderr here, so provide a generic error message
+    if !output.status.success() {
+        let stderr_output = String::from_utf8_lossy(&output.stderr);
         return Err(CoreError::FilmGrainEncodingFailed(format!(
-            "HandBrakeCLI failed for sample (start: {}, grain: {}) with status {}",
-            start_secs, grain_value, status
+            "HandBrakeCLI failed for sample (start: {}, grain: {}) with status {}. Stderr: {}",
+            start_secs, grain_value, output.status, stderr_output.trim()
         )));
     }
 
