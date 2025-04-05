@@ -62,7 +62,10 @@ fn default_test_config(output_dir: &Path, log_dir: &Path) -> CoreConfig {
         output_dir: output_dir.to_path_buf(),
         log_dir: log_dir.to_path_buf(),
         default_encoder_preset: Some(6),
-        default_quality: Some(28),
+        // default_quality: Some(28), // Field removed
+        quality_sd: None, // Set new fields to None for test setup
+        quality_hd: None,
+        quality_uhd: None,
         default_crop_mode: Some("off".to_string()), // Use 'off' for consistency
         // Film Grain specific defaults
         optimize_film_grain: true, // Enable for testing the function

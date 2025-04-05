@@ -9,7 +9,9 @@ walkdir = "2"
 chrono = "0.4"
 thiserror = "1.0"
 tempfile = "3" # Moved from dev-dependencies
-
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+log = "0.4" # Added for logging within the core library
 [features]
 # Enables mocking of external commands like ffprobe during tests
 test-mock-ffprobe = []

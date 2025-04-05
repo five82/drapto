@@ -10,8 +10,12 @@
 // Default HandbrakeCLI encoding parameters
 
 pub const DEFAULT_ENCODER_PRESET: i32 = 6;
-pub const DEFAULT_QUALITY: i32 = 27;
-pub const DEFAULT_CROP_MODE: &str = "auto";
+// pub const DEFAULT_QUALITY: i32 = 27; // Removed
+// The following CLI defaults are no longer needed as fallbacks are handled in drapto-core
+// pub const DEFAULT_QUALITY_SD: i32 = 28;
+// pub const DEFAULT_QUALITY_HD: i32 = 27;
+// pub const DEFAULT_QUALITY_UHD: i32 = 26;
+pub const DEFAULT_CROP_MODE: &str = "auto"; // Keep this one for now
 
 #[cfg(test)]
 mod tests {
@@ -20,7 +24,10 @@ mod tests {
     #[test]
     fn test_default_config_values() {
         assert_eq!(DEFAULT_ENCODER_PRESET, 6);
-        assert_eq!(DEFAULT_QUALITY, 27);
+        // assert_eq!(DEFAULT_QUALITY, 27); // Removed
+        // assert_eq!(DEFAULT_QUALITY_SD, 28); // Removed
+        // assert_eq!(DEFAULT_QUALITY_HD, 27); // Removed
+        // assert_eq!(DEFAULT_QUALITY_UHD, 26); // Removed
         assert_eq!(DEFAULT_CROP_MODE, "auto");
     }
 }

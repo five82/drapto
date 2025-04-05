@@ -25,6 +25,13 @@ pub enum FilmGrainMetricType {
     // OriginalEfficiency, // Keep commented out for now
 }
 
+// --- Core Default Values ---
+// These are used by the core logic if specific values are not provided in CoreConfig.
+pub const DEFAULT_CORE_QUALITY_SD: u8 = 24;
+pub const DEFAULT_CORE_QUALITY_HD: u8 = 25;
+pub const DEFAULT_CORE_QUALITY_UHD: u8 = 27;
+// Add other core defaults here if needed (e.g., default preset)
+
 #[derive(Debug, Clone)] // Configuration for the core processing
 pub struct CoreConfig {
     pub input_dir: PathBuf,
@@ -32,7 +39,10 @@ pub struct CoreConfig {
     pub log_dir: PathBuf,
     // --- Optional Handbrake Defaults ---
     pub default_encoder_preset: Option<u8>,
-    pub default_quality: Option<u8>,
+    // pub default_quality: Option<u8>, // Replaced by resolution-specific qualities
+    pub quality_sd: Option<u8>, // Quality for Standard Definition (e.g., < 1920 width)
+    pub quality_hd: Option<u8>, // Quality for High Definition (e.g., >= 1920 width)
+    pub quality_uhd: Option<u8>, // Quality for Ultra High Definition (e.g., >= 3840 width)
     pub default_crop_mode: Option<String>,
     // --- Film Grain Optimization ---
     /// Enable automatic film grain optimization (default: false)

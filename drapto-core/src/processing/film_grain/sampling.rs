@@ -140,7 +140,9 @@ pub(crate) fn extract_and_test_sample(
     handbrake_args.push(encoder_preset.to_string());
 
     // Quality
-    let quality = config.default_quality.unwrap_or(28);
+    // Use a fixed quality for sample encoding, as resolution-specific quality isn't needed here.
+    // Using 27 as a reasonable default (matches previous HD default).
+    let quality = 27;
     handbrake_args.push("--quality".to_string());
     handbrake_args.push(quality.to_string());
 

@@ -50,6 +50,12 @@ pub enum CoreError {
     #[error("ffprobe output parsing error: {0}")]
     FfprobeParse(String),
 
+    #[error("Failed to parse JSON output: {0}")]
+    JsonParseError(String),
+
+    #[error("Failed to extract video information: {0}")]
+    VideoInfoError(String),
+
     #[error("No suitable video files found in input directory")]
     NoFilesFound,
 

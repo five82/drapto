@@ -38,9 +38,9 @@
 // - Finally, returns a `CoreResult` containing a `Vec<EncodeResult>` for all files
 //   that were processed successfully.
 
-use crate::config::CoreConfig;
+use crate::config::{CoreConfig, DEFAULT_CORE_QUALITY_HD, DEFAULT_CORE_QUALITY_SD, DEFAULT_CORE_QUALITY_UHD}; // Import core defaults
 use crate::error::{CoreError, CoreResult};
-use crate::external::{check_dependency, get_audio_channels};
+use crate::external::{check_dependency, get_audio_channels, get_video_width}; // Added get_video_width
 use crate::utils::get_file_size;
 use crate::EncodeResult; // Assuming EncodeResult stays in lib.rs or is re-exported from there
 use crate::processing; // To access film_grain submodule
@@ -120,16 +120,46 @@ where
             }
         };
 
+        // --- Get Video Width ---
+        let video_width = match get_video_width(input_path) {
+             Ok(width) => width, // Get width, log combined message later
+             Err(e) => {
+                 log_callback(&format!("Warning: Error getting video width for {}: {}. Cannot determine resolution-specific quality. Skipping file.", filename, e));
+                 continue; // Skip this file if we can't get the width
+             }
+         };
+
+        // --- Determine Quality based on Width ---
+        const UHD_WIDTH_THRESHOLD: u32 = 3840;
+        const HD_WIDTH_THRESHOLD: u32 = 1920;
+        let quality = if video_width >= UHD_WIDTH_THRESHOLD {
+            config.quality_uhd.unwrap_or(DEFAULT_CORE_QUALITY_UHD)
+        } else if video_width >= HD_WIDTH_THRESHOLD {
+            config.quality_hd.unwrap_or(DEFAULT_CORE_QUALITY_HD)
+        } else {
+            config.quality_sd.unwrap_or(DEFAULT_CORE_QUALITY_SD)
+        };
+        let category = if video_width >= UHD_WIDTH_THRESHOLD {
+            "UHD"
+        } else if video_width >= HD_WIDTH_THRESHOLD {
+            "HD"
+        } else {
+            "SD"
+        };
+        // Log the combined message immediately after determining width and quality
+        log_callback(&format!(
+            "Detected video width: {} ({}) - CRF set to {}",
+            video_width, category, quality
+        ));
+
         // --- Determine Film Grain Value ---
-        // Note: The function calls within determine_optimal_grain might need updating later
-        // when those functions are moved.
+        // (Film grain logic now runs *after* quality selection)
         let film_grain_value = if config.optimize_film_grain {
             log_callback(&format!(
                 "Attempting to determine optimal film grain value for {}...",
                 filename
             ));
-            // TODO: Update these function references when film_grain module is refactored
-            match processing::film_grain::determine_optimal_grain(input_path, config, &mut log_callback, get_video_duration_secs, extract_and_test_sample) { // Pass imported functions directly
+            match processing::film_grain::determine_optimal_grain(input_path, config, &mut log_callback, get_video_duration_secs, extract_and_test_sample) {
                 Ok(optimal_value) => {
                     log_callback(&format!("Optimal film grain value determined: {}", optimal_value));
                     optimal_value
@@ -141,7 +171,7 @@ where
                 }
             }
         } else {
-            config.film_grain_fallback_value.unwrap_or(0) // Use fallback if optimization disabled
+            config.film_grain_fallback_value.unwrap_or(0)
         };
 
         // --- Build HandBrakeCLI Command ---
@@ -166,11 +196,10 @@ where
         handbrake_args.push_back(encoder_preset.to_string());
         log_callback(&format!("Using encoder preset: {}", encoder_preset));
 
-        // Quality (Use default from config or fallback)
-        let quality = config.default_quality.unwrap_or(28); // Fallback to 28
+        // Quality (Use the value determined earlier based on width)
         handbrake_args.push_back("--quality".to_string());
         handbrake_args.push_back(quality.to_string());
-        log_callback(&format!("Using quality: {}", quality));
+        // Logging for quality is now done immediately after width detection
 
         // Crop Mode (Only add if specified in config)
         if let Some(crop_mode) = &config.default_crop_mode {
