@@ -80,15 +80,17 @@ where
 {
     // --- Check Dependencies ---
     log_callback("Checking for required external commands...");
-    check_dependency("HandBrakeCLI")?;
-    log_callback("  [OK] HandBrakeCLI found.");
-    check_dependency("ffprobe")?;
+    // Store the command parts for HandBrakeCLI
+    let handbrake_cmd_parts = check_dependency("HandBrakeCLI")?;
+    log_callback(&format!("  [OK] HandBrakeCLI found (using: {:?}).", handbrake_cmd_parts));
+    // Assuming ffprobe is direct for now, but could use check_dependency too
+    let _ffprobe_cmd_parts = check_dependency("ffprobe")?;
     log_callback("  [OK] ffprobe found.");
     log_callback("External dependency check passed.");
 
 
     let mut results: Vec<EncodeResult> = Vec::new();
-    let cmd_handbrake = "HandBrakeCLI"; // Define command name
+    // cmd_handbrake is now replaced by handbrake_cmd_parts
 
     for input_path in files_to_process {
         let file_start_time = Instant::now();
@@ -256,17 +258,24 @@ where
          handbrake_args.push_back(output_path.to_string_lossy().to_string());
 
 
+        // Combine the base command parts (e.g., ["flatpak", "run", "..."]) with the specific arguments
+        let mut full_handbrake_args = VecDeque::from(handbrake_cmd_parts[1..].to_vec()); // Start with args like "run", "fr.handbrake..."
+        full_handbrake_args.append(&mut handbrake_args); // Append the specific encode args
+
+        let handbrake_executable = &handbrake_cmd_parts[0]; // The actual command to run (e.g., "HandBrakeCLI" or "flatpak")
+
         log_callback(&format!("Starting HandBrakeCLI for {}...", filename));
-        log_callback(&format!("Command: {} {}", cmd_handbrake, handbrake_args.iter().map(|s| format!("\"{}\"", s)).collect::<Vec<_>>().join(" ")));
+        // Log the command correctly, showing the executable and all arguments
+        log_callback(&format!("Command: {} {}", handbrake_executable, full_handbrake_args.iter().map(|s| format!("\"{}\"", s)).collect::<Vec<_>>().join(" ")));
 
 
         // --- Execute HandBrakeCLI ---
-        let mut child = Command::new(cmd_handbrake)
-            .args(Vec::from(handbrake_args))
+        let mut child = Command::new(handbrake_executable) // Use the determined executable
+            .args(Vec::from(full_handbrake_args)) // Use the combined arguments
             .stdout(Stdio::piped())
             .stderr(Stdio::piped()) // Capture stderr
             .spawn()
-            .map_err(|e| CoreError::CommandStart(cmd_handbrake.to_string(), e))?;
+            .map_err(|e| CoreError::CommandStart(handbrake_executable.to_string(), e))?; // Use correct executable in error
 
          // --- Stream Output to Log Callback ---
          // Combine stdout and stderr readers
@@ -337,7 +346,7 @@ where
          let stderr_output = stderr_thread.join().expect("Stderr reading thread panicked"); // Declare and assign here
 
 
-         let status = child.wait().map_err(|e| CoreError::CommandWait(cmd_handbrake.to_string(), e))?;
+         let status = child.wait().map_err(|e| CoreError::CommandWait(handbrake_executable.to_string(), e))?; // Use correct executable in error
 
 
         // --- Handle Result ---
