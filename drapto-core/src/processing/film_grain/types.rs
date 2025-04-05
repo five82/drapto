@@ -1,5 +1,21 @@
 // drapto-core/src/processing/film_grain/types.rs
-// Responsibility: Define data structures specific to film grain processing.
+//
+// This module defines the data structures specifically used within the
+// film grain optimization logic (`processing::film_grain` module) to
+// store and manage the results of testing different grain values.
+//
+// Types:
+// - `GrainTest`: A struct representing the outcome of encoding a single video
+//   sample with a specific `grain_value`. It stores the `grain_value` tested
+//   and the resulting `file_size` in bytes. It includes a custom `Debug`
+//   implementation to format the file size nicely (in MB) for logging.
+// - `SampleResult`: A type alias for `Vec<GrainTest>`. It represents the
+//   collection of all `GrainTest` results obtained from testing different
+//   grain values at a single sample point within the video.
+// - `AllResults`: A type alias for `Vec<SampleResult>`. It represents the
+//   complete set of results across all sample points tested in the video.
+//   Each element in the outer vector corresponds to a sample point, and the
+//   inner `SampleResult` vector holds the tests for that point.
 
 use std::fmt;
 use std::vec::Vec; // Explicit import for clarity, though often prelude is enough

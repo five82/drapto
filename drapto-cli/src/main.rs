@@ -1,3 +1,20 @@
+// drapto-cli/src/main.rs
+//
+// This file defines the command-line interface (CLI) for the Drapto video encoding tool.
+// It uses the `clap` crate to parse command-line arguments for various operations,
+// primarily the 'encode' command.
+//
+// Responsibilities include:
+// - Defining CLI argument structures (`Cli`, `Commands`, `EncodeArgs`).
+// - Parsing user-provided arguments.
+// - Setting up logging to both console and file.
+// - Validating input paths and identifying files to process.
+// - Configuring the `drapto-core` library based on CLI arguments and defaults.
+// - Invoking the core video processing logic (`drapto_core::process_videos`).
+// - Handling results and errors from the core library.
+// - Displaying a summary of encoding results.
+// - Managing process exit codes based on success or failure.
+
 use clap::{Parser, Subcommand};
 use drapto_core::{CoreConfig, CoreError, EncodeResult};
 use std::cell::Cell;

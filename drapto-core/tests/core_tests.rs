@@ -1,3 +1,22 @@
+// drapto-core/tests/core_tests.rs
+//
+// This file contains integration tests for the `drapto-core` library.
+// Integration tests are located in the `tests` directory next to `src` and
+// can only test the public API exposed by the library crate (`drapto_core`).
+//
+// These tests cover:
+// - Utility functions re-exported by `lib.rs` (e.g., `format_duration`, `format_bytes`).
+// - File discovery logic (`find_processable_files`) using temporary directories
+//   and files created via the `tempfile` crate.
+// - Error handling scenarios for file discovery (e.g., empty directory, non-existent path).
+//
+// Note: Functions or modules not part of the public API (e.g., private helpers,
+// internal modules not re-exported) cannot be directly tested here. They should
+// have unit tests within their respective source files (`src/...`) inside a `mod tests { ... }` block.
+//
+// This file also declares the `film_grain_tests` module, which likely contains
+// more specific integration tests for the film grain optimization features.
+
 use drapto_core::*; // Import items from the drapto_core crate
 use std::fs::{self, File};
 use std::path::PathBuf;

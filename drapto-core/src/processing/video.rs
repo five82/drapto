@@ -1,5 +1,42 @@
 // drapto-core/src/processing/video.rs
-// Responsibility: Contain the main video processing loop.
+//
+// This module houses the main video processing orchestration logic for the
+// `drapto-core` library. Its central piece is the `process_videos` function.
+//
+// Responsibilities of `process_videos`:
+// - Takes a `CoreConfig`, a list of video files (`files_to_process`), and a
+//   logging callback (`log_callback`) as input.
+// - Performs initial checks for required external dependencies (`HandBrakeCLI`, `ffprobe`)
+//   using functions from the `external` module.
+// - Iterates through each provided video file path.
+// - For each file:
+//   - Determines the output path based on the configuration.
+//   - Retrieves audio track channel counts using `ffprobe` via the `external` module.
+//   - Calculates appropriate audio bitrates based on channel counts using the
+//     internal `calculate_audio_bitrate` helper function.
+//   - If `optimize_film_grain` is enabled in the config, it calls the
+//     `determine_optimal_grain` function (from the `film_grain` submodule)
+//     to find the best film grain setting. Otherwise, it uses the configured
+//     fallback value.
+//   - Constructs the full argument list for the `HandBrakeCLI` command, incorporating
+//     settings from the `CoreConfig`, calculated audio bitrates, and the determined
+//     film grain value.
+//   - Spawns `HandBrakeCLI` as a subprocess, capturing its stdout and stderr.
+//   - Uses separate threads to concurrently read stdout and stderr, sending chunks
+//     of output through an MPSC channel to the main thread.
+//   - The main thread receives these chunks and passes them to the `log_callback`
+//     for real-time progress reporting. Stderr is also captured separately for
+//     potential error messages.
+//   - Waits for the `HandBrakeCLI` process to complete.
+//   - If the process succeeds:
+//     - Retrieves input and output file sizes using `utils::get_file_size`.
+//     - Creates an `EncodeResult` struct containing filename, duration, and sizes.
+//     - Adds the `EncodeResult` to a list of successful results.
+//   - If the process fails:
+//     - Logs an error message including the exit status and the captured stderr content.
+//     - Continues processing the next file (does not stop the entire batch).
+// - Finally, returns a `CoreResult` containing a `Vec<EncodeResult>` for all files
+//   that were processed successfully.
 
 use crate::config::CoreConfig;
 use crate::error::{CoreError, CoreResult};

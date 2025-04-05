@@ -1,4 +1,27 @@
-//! drapto-core: The core library for video processing tasks.
+//! # drapto-core
+//!
+//! This crate provides the core logic for video processing tasks, primarily focusing
+//! on interacting with HandBrakeCLI for encoding and potentially other tools for
+//! analysis and optimization (like film grain detection).
+//!
+//! ## Structure
+//!
+//! The crate is organized into several modules:
+//! - `config`: Defines configuration structures (`CoreConfig`) used throughout the library.
+//! - `discovery`: Contains functions for finding processable video files (`find_processable_files`).
+//! - `error`: Defines custom error types (`CoreError`) and results (`CoreResult`) for the library.
+//! - `external`: Handles interactions with external command-line tools like HandBrakeCLI.
+//! - `processing`: Contains the main video processing logic, including encoding orchestration
+//!   (`process_videos`) and specific optimizations like film grain analysis
+//!   (`determine_optimal_grain`).
+//! - `utils`: Provides common utility functions (e.g., `format_bytes`, `format_duration`).
+//!
+//! ## Public API
+//!
+//! This `lib.rs` file re-exports the primary public interface elements from the internal
+//! modules, making them directly accessible to users of the `drapto-core` crate.
+//! It also defines the `EncodeResult` struct, which is returned to report the outcome
+//! of individual file encoding operations.
 
 // --- Modules ---
 // Declare all the top-level modules as per the refactoring plan.

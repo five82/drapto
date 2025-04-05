@@ -1,3 +1,40 @@
+// drapto-core/tests/film_grain_tests.rs
+//
+// This file contains integration tests specifically targeting the film grain
+// optimization functionality within the `drapto-core` library, primarily focusing
+// on the `determine_optimal_grain` function.
+//
+// As these are integration tests, they operate on the public (or `pub(crate)`) API
+// of the `drapto_core` crate. However, testing `determine_optimal_grain` directly
+// requires simulating the results of external processes (`ffprobe` for duration,
+// `HandBrakeCLI` for sample encoding) without actually running them.
+//
+// Mocking Strategy:
+// - Dependency Injection: The `determine_optimal_grain` function is designed to
+//   accept function pointers (`duration_fetcher`, `sample_tester`) for the operations
+//   that interact with external tools. These tests provide mock closures that mimic
+//   the expected behavior and return predefined results, allowing testing of the
+//   analysis logic under various scenarios.
+// - `cfg(test)`: The `get_video_duration_secs` function in `sampling.rs` uses
+//   `#[cfg(test)]` to provide a mock implementation using a `thread_local` variable
+//   when compiled for tests (though these integration tests use the DI approach).
+// - Temporary Files/Dirs: The `tempfile` crate is used to create dummy video files
+//   and directories needed for configuration paths, even though the mock functions
+//   don't actually interact with the file content.
+// - Log Collection: A mock logging callback (`collecting_log_callback`) is used to
+//   capture log messages generated during the optimization process, allowing assertions
+//   on the internal steps and decisions made by the algorithm.
+//
+// Test Scenarios:
+// - Success Case: Simulates a scenario where the mock data leads to a specific expected
+//   optimal grain value based on the Knee Point metric.
+// - Failure Case: Simulates a scenario where one of the mock sample encoding tests fails,
+//   ensuring that the error propagates correctly.
+// - Adaptive Range: Tests the logic for calculating the refinement range based on the
+//   standard deviation of initial estimates.
+// - Knee Fallback: Tests scenarios where the Knee Point analysis doesn't find suitable
+//   candidates meeting the threshold, ensuring it correctly falls back to the default (0).
+
 use drapto_core::*; // Import items from the drapto_core crate
 use std::fs::File; // Only File is needed for create_dummy_video_file
 use std::path::{Path, PathBuf};

@@ -1,5 +1,23 @@
 // drapto-core/src/external/mod.rs
-// Responsibility: Handle interactions with external command-line tools.
+//
+// This module encapsulates all interactions with external command-line interface (CLI)
+// tools that `drapto-core` relies on, such as `ffprobe` (for media analysis) and
+// `HandBrakeCLI` (for encoding).
+//
+// Its primary responsibilities include:
+// - Providing functions to check for the presence and executability of required
+//   external tools (`check_dependency`).
+// - Abstracting the execution of these tools and parsing their output.
+// - Defining helper functions that utilize these tools to gather information
+//   (e.g., `get_audio_channels` using `ffprobe`).
+// - (Future) Containing the logic for constructing and executing HandBrakeCLI commands.
+//
+// Functions within this module are typically marked `pub(crate)` as they represent
+// internal implementation details of the core library, not intended for direct
+// external consumption, but used by other modules within `drapto-core` (like `processing`).
+//
+// Consider creating sub-modules like `external::ffprobe` and `external::handbrake`
+// as the complexity grows.
 
 use crate::error::{CoreError, CoreResult}; // Use crate:: prefix
 use std::io;

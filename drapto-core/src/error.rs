@@ -1,5 +1,26 @@
 // drapto-core/src/error.rs
-// Responsibility: Define custom error types and results for the crate.
+//
+// This module defines the custom error handling infrastructure for the `drapto-core` library.
+// It utilizes the `thiserror` crate to create a structured and informative error enum.
+//
+// Includes:
+// - `CoreError`: An enum representing all possible errors that can occur within the
+//   `drapto-core` library. Variants cover:
+//     - I/O errors (`Io`).
+//     - Directory traversal errors during file discovery (`Walkdir`).
+//     - General path-related issues (`PathError`).
+//     - Failures when attempting to start external commands (`CommandStart`).
+//     - Failures when waiting for external commands to complete (`CommandWait`).
+//     - Errors when external commands exit with a non-zero status (`CommandFailed`).
+//     - Issues parsing output from tools like `ffprobe` (`FfprobeParse`).
+//     - Cases where no processable video files are found (`NoFilesFound`).
+//     - Situations where required external dependencies (like HandBrakeCLI or ffprobe)
+//       are not found or executable (`DependencyNotFound`).
+//     - Specific errors related to the film grain optimization process, such as
+//       sample encoding failures (`FilmGrainEncodingFailed`) or analysis problems
+//       (`FilmGrainAnalysisFailed`).
+// - `CoreResult<T>`: A type alias for `Result<T, CoreError>`, simplifying function
+//   signatures throughout the library.
 
 use std::io;
 use thiserror::Error; // Import the macro

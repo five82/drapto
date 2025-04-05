@@ -1,5 +1,25 @@
 // drapto-core/src/processing/film_grain/analysis.rs
-// Responsibility: Contain functions related to analyzing grain test results.
+//
+// This module provides functions specifically for analyzing the results obtained
+// from testing different film grain values during the optimization process.
+// It focuses on statistical calculations and applying the chosen efficiency metric.
+//
+// Functions:
+// - `calculate_median`: A helper function (`pub(crate)`) that computes the median
+//   value of a slice of `u8` values. It sorts the input slice in place.
+// - `calculate_std_dev`: A helper function (`pub(crate)`) that computes the sample
+//   standard deviation of a slice of `u8` values. Returns `None` if fewer than
+//   two values are provided.
+// - `calculate_knee_point_grain`: The core analysis function (`pub(crate)`) for
+//   the "Knee Point" (or Elbow Point) metric. It takes the results from testing
+//   various grain values for a single sample (`SampleResult`), calculates the
+//   efficiency (reduction in file size per unit of grain) for each test relative
+//   to the grain=0 baseline, finds the maximum efficiency achieved, and then selects
+//   the *lowest* grain value that achieves an efficiency within a certain threshold
+//   (e.g., 80%) of the maximum efficiency. This aims to find the point of diminishing
+//   returns, selecting a grain value that provides most of the size reduction benefit
+//   without potentially going much higher for minimal extra gain. It includes detailed
+//   logging via the provided `log_callback`.
 
 use super::types::SampleResult; // Use super to access types module
 use std::vec::Vec; // Explicit import

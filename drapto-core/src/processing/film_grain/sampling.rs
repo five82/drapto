@@ -1,5 +1,38 @@
 // drapto-core/src/processing/film_grain/sampling.rs
-// Responsibility: Handle the extraction and testing of video samples.
+//
+// This module is responsible for the operational aspects of film grain optimization,
+// specifically interacting with external tools to gather necessary information and
+// perform the sample encoding tests.
+//
+// Functions:
+// - `get_video_duration_secs`: A function (`pub(crate)`) designed to retrieve the
+//   total duration of a video file in seconds. It uses `ffprobe` for this purpose.
+//   Includes conditional compilation (`#[cfg(test)]`) to allow mocking its return
+//   value during tests using a `thread_local` variable. (Note: There's a TODO
+//   to potentially move this function to the `external` module for better separation
+//   of concerns).
+// - `extract_and_test_sample`: The core function (`pub(crate)`) for testing a specific
+//   film grain value. It takes the input video path, a start time, a duration, the
+//   grain value to test, and the core configuration. It performs the following steps:
+//     1. Creates a temporary directory using the `tempfile` crate.
+//     2. Constructs the necessary `HandBrakeCLI` arguments to encode only the
+//        specified segment (`--start-at`, `--stop-at`) of the input video.
+//     3. Applies the provided `grain_value` and other relevant encoding settings
+//        from the `CoreConfig` (preset, quality, crop mode).
+//     4. Disables audio (`-a none`) and subtitles (`-s none`) to speed up the
+//        sample encoding process, as only the video size impact is relevant here.
+//     5. Suppresses `HandBrakeCLI`'s standard output and error streams (`--verbose=0`,
+//        `Stdio::null()`) to keep the main process log clean.
+//     6. Executes `HandBrakeCLI` in the temporary directory.
+//     7. Checks the exit status of `HandBrakeCLI`. If it fails, returns a
+//        `CoreError::FilmGrainEncodingFailed`.
+//     8. If successful, retrieves the file size of the generated sample `.mkv` file.
+//     9. Returns the file size as a `CoreResult<u64>`.
+//    The temporary directory and its contents are automatically cleaned up when the
+//    function scope ends.
+//
+// This module acts as the bridge between the abstract analysis logic in `analysis.rs`
+// and the concrete execution of external tools needed to generate the data for that analysis.
 
 use crate::config::CoreConfig;
 use crate::error::{CoreError, CoreResult};

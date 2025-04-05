@@ -1,5 +1,15 @@
 // drapto-core/src/discovery.rs
-// Responsibility: Handle finding processable files.
+//
+// This module handles the discovery of video files eligible for processing.
+//
+// The primary function, `find_processable_files`, scans a given input directory
+// for files matching specific criteria (currently, only `.mkv` files, case-insensitive).
+// It uses the `walkdir` crate to iterate through directory entries but is configured
+// to only search the top level (`max_depth(1)`) of the provided path.
+//
+// It returns a `CoreResult` containing either a vector of `PathBuf`s for the
+// found `.mkv` files or a `CoreError` if an issue occurs during directory traversal
+// (`CoreError::Walkdir`) or if no `.mkv` files are found (`CoreError::NoFilesFound`).
 
 use crate::error::{CoreError, CoreResult}; // Use crate:: prefix
 use std::path::{Path, PathBuf};

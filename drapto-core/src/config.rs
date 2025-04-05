@@ -1,5 +1,20 @@
 // drapto-core/src/config.rs
-// Responsibility: Define core configuration structures and related constants/defaults.
+//
+// This module defines the core configuration structures and related types
+// used throughout the `drapto-core` library.
+//
+// It includes:
+// - `FilmGrainMetricType`: An enum defining the different strategies available
+//   for determining the optimal film grain value during optimization.
+// - `CoreConfig`: The main configuration struct holding all parameters required
+//   for the core processing logic. This includes input/output paths, logging paths,
+//   optional overrides for Handbrake defaults (like preset, quality, crop), and
+//   detailed settings for the film grain optimization process (e.g., enabling
+//   optimization, sample duration/count, initial values, fallback value, metric type,
+//   thresholds, refinement parameters).
+//
+// Instances of `CoreConfig` are typically created by consumers of the library
+// (like `drapto-cli`) and passed into the main processing functions.
 
 use std::path::PathBuf;
 

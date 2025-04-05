@@ -1,4 +1,57 @@
 // drapto-core/src/processing/film_grain/mod.rs
+//
+// This module orchestrates the process of determining an optimal film grain
+// value for a given video file based on the provided configuration. It aims
+// to find a balance between visual quality (retaining grain) and encoding
+// efficiency (file size).
+//
+// Submodules:
+// - `analysis`: Contains functions for analyzing the results of grain tests
+//   (e.g., calculating efficiency, finding the knee point, median, std dev).
+// - `sampling`: Provides functions for extracting video duration and performing
+//   the core task of extracting a sample clip and encoding it with a specific
+//   grain value to measure the resulting file size.
+// - `types`: Defines data structures used to store the results of grain tests
+//   (e.g., `GrainTest`, `SampleResult`, `AllResults`).
+//
+// Main Function: `determine_optimal_grain`
+// This is the public entry point for the film grain optimization process. It
+// takes the input video path, core configuration, a logging callback, and two
+// function pointers (via dependency injection) for fetching duration and testing
+// samples.
+//
+// The process involves multiple phases:
+// 1. Configuration & Validation: Reads settings from `CoreConfig`, applies defaults,
+//    and performs basic validation (e.g., checks for required grain value 0).
+// 2. Duration & Sampling Points: Determines the video duration and calculates
+//    evenly spaced time points within the video to extract samples from.
+// 3. Phase 1 (Initial Broad Testing): Tests a predefined set of initial grain
+//    values (from config or defaults) across all calculated sample points. This
+//    provides a baseline understanding of how grain affects file size.
+// 4. Phase 2 (Initial Estimation per Sample): Analyzes the Phase 1 results for
+//    each sample individually using the configured metric (currently Knee Point)
+//    to get an initial estimate of the optimal grain for that specific sample.
+// 5. Phase 3 (Focused Refinement):
+//    - Calculates the median of the Phase 2 estimates.
+//    - Determines an adaptive refinement range around this median based on the
+//      standard deviation of the Phase 2 estimates (provides tighter focus if
+//      estimates are consistent, wider if they vary).
+//    - Generates a small number of new grain values to test within this refined
+//      range (excluding values already tested in Phase 1).
+//    - Tests these refined grain values across all samples.
+// 6. Phase 4 (Final Selection):
+//    - Combines the results from Phase 1 and Phase 3 for each sample.
+//    - Re-applies the Knee Point metric to this combined, richer dataset for each
+//      sample to get a final, more accurate estimate for that sample.
+// 7. Final Result: Calculates the median of the final estimates from Phase 4.
+//    This median value represents the overall recommended optimal grain value,
+//    which is then capped at the configured maximum allowed value.
+//
+// Dependency Injection:
+// The use of `duration_fetcher` and `sample_tester` function arguments allows
+// the core logic here to be decoupled from the specific implementation details
+// of interacting with external tools (like `ffprobe` or `HandBrakeCLI`), making
+// the analysis logic more testable and potentially adaptable to different tools.
 
 // Declare submodules
 pub mod analysis;
