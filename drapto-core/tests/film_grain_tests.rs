@@ -273,38 +273,39 @@ fn test_determine_optimal_grain_adaptive_range() -> Result<(), Box<dyn std::erro
 
     // --- Mocking Setup ---
     let mock_duration_fetcher = |_path: &Path| -> CoreResult<f64> { Ok(300.0) };
-    let mock_sample_tester = |_input_path: &Path, start_secs: f64, _duration_secs: u32, grain_value: u8, _config: &CoreConfig, _handbrake_cmd_parts: &[String]| -> CoreResult<u64> {
-        // Mock data designed for non-zero standard deviation in Phase 2 estimates
-        // Sample 1 (75s): Base 10000 -> Estimate 5
-        // Sample 2 (150s): Base 12000 -> Estimate 8 (make reduction less efficient)
-        // Sample 3 (225s): Base 9000 -> Estimate 10 (make reduction even less efficient)
-        // Extremely simplified mock data to force specific outcomes
-        let base_size: u64 = match start_secs.round() as u32 { // Explicitly type as u64
-             75 => 10000, // Sample 1
-            150 => 12000, // Sample 2
-            225 => 9000,  // Sample 3
-            _ => 10000,
-        };
+    // Use a counter to simulate the 3 different sample scenarios regardless of random start_secs
+    let call_counter = Arc::new(Mutex::new(0usize));
+    // Calculate the number of initial values outside the closure to avoid borrowing config inside
+    let initial_values_len = config.film_grain_initial_values.as_ref().map_or(1, |v| v.len().max(1)); // Use max(1) to prevent division by zero if vec is empty
 
-        let target_grain = match start_secs.round() as u32 {
-             75 => 5,
-            150 => 8,
-            225 => 10,
-            _ => 5,
+    let mock_sample_tester = move |_input_path: &Path, _start_secs: f64, _duration_secs: u32, grain_value: u8, _config: &CoreConfig, _handbrake_cmd_parts: &[String]| -> CoreResult<u64> {
+        let mut counter = call_counter.lock().unwrap();
+        *counter += 1; // Increment call count
+        // Use the captured initial_values_len instead of accessing config
+        let sample_scenario = (*counter -1) / initial_values_len + 1; // Determine which sample this call belongs to (adjust counter logic for 1-based scenario)
+
+        // Mock data designed for non-zero standard deviation in Phase 2 estimates
+        // Sample 1: Base 10000 -> Estimate 5
+        // Sample 2: Base 12000 -> Estimate 8
+        // Sample 3: Base 9000 -> Estimate 10
+        let (base_size, target_grain) = match sample_scenario {
+            1 => (10000u64, 5u8), // Scenario for Sample 1
+            2 => (12000u64, 8u8), // Scenario for Sample 2
+            3 => (9000u64, 10u8), // Scenario for Sample 3
+            _ => (10000u64, 5u8), // Fallback (shouldn't be reached with 3 samples)
         };
 
         // Calculate reduction: High (e.g., 1000 * grain) at target, Low (e.g., constant 10) otherwise
         let reduction = if grain_value == target_grain {
-            1000 * grain_value as u64 // High efficiency at target (Eff = 1000)
+            1000 * grain_value as u64 // High efficiency at target
         } else if grain_value > 0 {
-             10 // Constant low reduction (Eff = 10 / grain_value)
+             10 // Constant low reduction
         } else {
             0
         };
 
         // Ensure size doesn't go below a minimum (e.g., 10% of base)
         let final_size = base_size.saturating_sub(reduction).max(base_size / 10);
-        // Debug print removed
         Ok(final_size)
     };
 

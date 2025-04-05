@@ -64,6 +64,7 @@ use crate::error::{CoreError, CoreResult};
 use std::collections::HashSet;
 use std::path::Path;
 use std::vec::Vec; // Explicit import for clarity
+use rand::{thread_rng, Rng}; // Added for randomized sampling
 
 // Use items from submodules
 use self::analysis::{calculate_knee_point_grain, calculate_median, calculate_std_dev};
@@ -74,7 +75,6 @@ use self::types::{AllResults, GrainTest, SampleResult};
 // These are now primarily accessed via CoreConfig defaults, but kept here for reference
 // if needed for internal logic unrelated to config defaults.
 // Consider removing them if truly unused after refactoring CoreConfig usage.
-const DEFAULT_SAMPLE_COUNT: usize = 3;
 const DEFAULT_INITIAL_GRAIN_VALUES: &[u8] = &[0, 5, 10, 15];
 const DEFAULT_FALLBACK_GRAIN_VALUE: u8 = 0;
 const DEFAULT_KNEE_THRESHOLD: f64 = 0.8;
@@ -104,7 +104,7 @@ where
     // --- Get Configuration ---
     // Use constants from this module only if config doesn't provide them
     let sample_duration = config.film_grain_sample_duration.unwrap_or(DEFAULT_SAMPLE_DURATION_SECS);
-    let sample_count = config.film_grain_sample_count.unwrap_or(DEFAULT_SAMPLE_COUNT);
+    // let sample_count = config.film_grain_sample_count.unwrap_or(DEFAULT_SAMPLE_COUNT); // Replaced by dynamic calculation
     let initial_grain_values_slice = config.film_grain_initial_values.as_deref().unwrap_or(DEFAULT_INITIAL_GRAIN_VALUES);
     let fallback_value = config.film_grain_fallback_value.unwrap_or(DEFAULT_FALLBACK_GRAIN_VALUE);
     let metric_type = config.film_grain_metric_type.clone().unwrap_or(FilmGrainMetricType::KneePoint); // Use imported type
@@ -116,8 +116,9 @@ where
     let initial_grain_values_set: HashSet<u8> = initial_grain_values_slice.iter().cloned().collect();
 
     // Basic validation
-    if sample_count == 0 || initial_grain_values_set.is_empty() {
-        log_callback("[WARN] Film grain optimization requires at least one sample and initial value. Using fallback.");
+    // Validation for sample_count == 0 removed as dynamic calculation ensures >= 3 samples.
+    if initial_grain_values_set.is_empty() {
+        log_callback("[WARN] Film grain optimization requires at least one initial value. Using fallback.");
         return Ok(fallback_value);
     }
      if !initial_grain_values_set.contains(&0) {
@@ -135,26 +136,76 @@ where
     let total_duration_secs = duration_fetcher(input_path)?;
     log_callback(&format!("[INFO] Video duration: {:.2} seconds", total_duration_secs));
 
-    if total_duration_secs < (sample_duration * sample_count as u32) as f64 {
-        log_callback("[WARN] Video duration is too short for the requested number of samples. Using fallback.");
+    // --- Calculate Number of Samples ---
+    const MIN_SAMPLES: usize = 3;
+    const MAX_SAMPLES: usize = 9;
+    const SECS_PER_SAMPLE_TARGET: f64 = 600.0; // 10 minutes
+
+    let base_samples = (total_duration_secs / SECS_PER_SAMPLE_TARGET).ceil() as usize;
+    let mut num_samples = base_samples.max(MIN_SAMPLES).min(MAX_SAMPLES);
+
+    // Ensure odd number of samples, rounding up if necessary, capped by MAX_SAMPLES
+    if num_samples % 2 == 0 {
+        num_samples = (num_samples + 1).min(MAX_SAMPLES);
+    }
+    log_callback(&format!("[INFO] Calculated number of samples: {}", num_samples));
+
+    // --- Validate Duration for Calculated Samples ---
+    let min_required_duration = (sample_duration * num_samples as u32) as f64;
+    if total_duration_secs < min_required_duration {
+        log_callback(&format!(
+            "[WARN] Video duration ({:.2}s) is too short for the minimum required duration ({:.2}s) for {} samples. Using fallback.",
+            total_duration_secs, min_required_duration, num_samples
+        ));
         return Ok(fallback_value);
     }
 
-    // --- Calculate Sample Positions ---
-    let mut sample_start_times = Vec::with_capacity(sample_count);
-    let interval = total_duration_secs / (sample_count + 1) as f64;
-    for i in 1..=sample_count {
-        sample_start_times.push(interval * i as f64);
+    // --- Calculate Randomized Sample Positions (within 15%-85% window) ---
+    let sample_duration_f64 = sample_duration as f64;
+    let start_boundary = total_duration_secs * 0.15;
+    let end_boundary = total_duration_secs * 0.85; // Point after which sample *cannot* start
+    let latest_possible_start = end_boundary - sample_duration_f64; // Latest time a sample can start
+
+    if latest_possible_start <= start_boundary {
+         log_callback(&format!(
+            "[WARN] Video duration ({:.2}s) results in an invalid sampling window ({:.2}s - {:.2}s) for sample duration {}. Using fallback.",
+            total_duration_secs, start_boundary, end_boundary, sample_duration
+        ));
+        return Ok(fallback_value);
     }
+
+    // Check if the usable window duration is sufficient for the number of samples
+    // Note: This is a basic check; it doesn't guarantee non-overlapping random samples,
+    // but makes it highly likely for typical durations and sample counts.
+    let usable_window_duration = latest_possible_start - start_boundary;
+    if usable_window_duration < (num_samples as f64 * sample_duration_f64 * 0.5) { // Heuristic: window needs to be at least half the total sample time
+         log_callback(&format!(
+            "[WARN] Usable sampling window duration ({:.2}s to {:.2}s = {:.2}s) might be too small for {} samples of duration {}. Using fallback.",
+            start_boundary, latest_possible_start, usable_window_duration, num_samples, sample_duration
+        ));
+        return Ok(fallback_value);
+    }
+
+    let mut sample_start_times = Vec::with_capacity(num_samples);
+    let mut rng = thread_rng();
+    // TODO: Consider adding logic to prevent samples from being too close together,
+    // although random distribution makes significant overlap unlikely for small sample counts.
+    for _ in 0..num_samples {
+        let start_time = rng.gen_range(start_boundary..=latest_possible_start);
+        sample_start_times.push(start_time);
+    }
+    // Sort for potentially more predictable logging/debugging, though not strictly necessary
+    sample_start_times.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    log_callback(&format!("[DEBUG] Generated random sample start times ({}): {:?}", num_samples, sample_start_times));
 
     // --- Phase 1: Test Initial Values ---
     log_callback(&format!("[INFO] Starting Film Grain Optimization - Phase 1: Initial Testing (Values: {:?})", initial_grain_values_slice));
-    let mut phase1_results: AllResults = Vec::with_capacity(sample_count);
+    let mut phase1_results: AllResults = Vec::with_capacity(num_samples);
 
     for (i, &start_time) in sample_start_times.iter().enumerate() {
         log_callback(&format!(
             "[INFO] Analyzing sample {}/{} (at {:.2}s)...",
-            i + 1, sample_count, start_time
+            i + 1, num_samples, start_time
         ));
         let mut sample_results: SampleResult = Vec::with_capacity(initial_grain_values_set.len());
 
@@ -182,7 +233,7 @@ where
 
     // --- Phase 2: Estimate Optimal per Sample (using Knee Point) ---
     log_callback("[INFO] Phase 2: Estimating optimal grain per sample using Knee Point metric...");
-    let mut initial_estimates: Vec<u8> = Vec::with_capacity(sample_count);
+    let mut initial_estimates: Vec<u8> = Vec::with_capacity(num_samples);
     for (i, sample_results) in phase1_results.iter().enumerate() {
         // Pass a mutable reference to log_callback
         let estimate = calculate_knee_point_grain(sample_results, knee_threshold, &mut log_callback, i); // Use analysis:: function
@@ -191,7 +242,7 @@ where
     log_callback(&format!("[INFO] Phase 2 Initial estimates per sample: {:?}", initial_estimates));
 
     // --- Phase 3: Focused Refinement ---
-    let mut phase3_results: AllResults = Vec::with_capacity(sample_count); // Initialize even if refinement is skipped
+    let mut phase3_results: AllResults = Vec::with_capacity(num_samples); // Initialize even if refinement is skipped
     let mut refined_grain_values: Vec<u8> = Vec::new(); // Initialize
 
     if initial_estimates.is_empty() {
@@ -275,7 +326,7 @@ where
             log_callback(&format!("[INFO] Phase 3: Testing refined grain values: {:?}", refined_grain_values));
 
             // Initialize phase3_results with empty vectors for each sample
-            for _ in 0..sample_count {
+            for _ in 0..num_samples {
                 phase3_results.push(Vec::with_capacity(refined_grain_values.len()));
             }
 
@@ -309,9 +360,9 @@ where
 
     // --- Phase 4: Final Selection ---
     log_callback("[INFO] Phase 4: Determining final optimal grain using Knee Point on combined results...");
-    let mut final_estimates: Vec<u8> = Vec::with_capacity(sample_count);
+    let mut final_estimates: Vec<u8> = Vec::with_capacity(num_samples);
 
-    for i in 0..sample_count {
+    for i in 0..num_samples {
         // Combine Phase 1 and Phase 3 results for this sample
         let mut combined_results = phase1_results[i].clone();
         // Ensure phase3_results has data for this index before extending
