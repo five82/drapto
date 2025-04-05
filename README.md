@@ -36,6 +36,6 @@ Basic usage involves specifying an input file/directory and an output directory.
 drapto encode -i /path/to/input/video.mkv -o /path/to/output/
 
 # Encode all videos in a directory
-drapto encode -i /path/to/input/directory/ -o /path/to/output/
+drapto encode -i /path/to/input_directory/ -o /path/to/output_directory/
 
 ```

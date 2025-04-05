@@ -1,5 +1,0 @@
-# Default HandbrakeCLI encoding parameters
-
-encoder_preset = 6
-quality = 27
-crop_mode = "auto"
