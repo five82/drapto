@@ -75,11 +75,11 @@ use self::types::{AllResults, GrainTest, SampleResult};
 // if needed for internal logic unrelated to config defaults.
 // Consider removing them if truly unused after refactoring CoreConfig usage.
 const DEFAULT_SAMPLE_COUNT: usize = 3;
-const DEFAULT_INITIAL_GRAIN_VALUES: &[u8] = &[0, 5, 10, 15, 20];
+const DEFAULT_INITIAL_GRAIN_VALUES: &[u8] = &[0, 5, 10, 15];
 const DEFAULT_FALLBACK_GRAIN_VALUE: u8 = 0;
 const DEFAULT_KNEE_THRESHOLD: f64 = 0.8;
 const DEFAULT_REFINEMENT_RANGE_DELTA: u8 = 3; // Used as fallback if std dev calc fails
-const DEFAULT_MAX_VALUE: u8 = 20;
+const DEFAULT_MAX_VALUE: u8 = 15;
 const DEFAULT_REFINEMENT_POINTS_COUNT: usize = 3;
 
 
