@@ -110,7 +110,7 @@ where
     let metric_type = config.film_grain_metric_type.clone().unwrap_or(FilmGrainMetricType::KneePoint); // Use imported type
     let knee_threshold = config.film_grain_knee_threshold.unwrap_or(DEFAULT_KNEE_THRESHOLD);
     let max_value = config.film_grain_max_value.unwrap_or(DEFAULT_MAX_VALUE);
-    let refinement_points_count = config.film_grain_refinement_points_count.unwrap_or(DEFAULT_REFINEMENT_POINTS_COUNT);
+    let _refinement_points_count = config.film_grain_refinement_points_count.unwrap_or(DEFAULT_REFINEMENT_POINTS_COUNT);
 
     // --- Convert initial values to HashSet for quick lookups ---
     let initial_grain_values_set: HashSet<u8> = initial_grain_values_slice.iter().cloned().collect();
@@ -246,7 +246,8 @@ where
     let mut refined_grain_values: Vec<u8> = Vec::new(); // Initialize
 
     if initial_estimates.is_empty() {
-        log_callback("[WARN] No initial estimates generated in Phase 2. Skipping refinement.");
+        log_callback("[WARN] No initial estimates generated in Phase 2. Skipping refinement and returning fallback value.");
+        return Ok(fallback_value); // Return fallback if no initial estimates
     } else {
         let mut estimates_for_median = initial_estimates.clone();
         let median_estimate = calculate_median(&mut estimates_for_median); // Use analysis:: function
@@ -259,6 +260,7 @@ where
 
         let adaptive_refinement_delta = match std_dev_opt {
             Some(std_dev) if std_dev.is_finite() && std_dev > 0.0 => {
+                // Valid, positive standard deviation found
                 let scaled_delta = (std_dev * ADAPTIVE_DELTA_FACTOR).round();
                 // Ensure the result fits in u8 and clamp
                 let delta = if scaled_delta < 0.0 {
@@ -270,12 +272,17 @@ where
                 } else {
                     (scaled_delta as u8).max(MIN_ADAPTIVE_DELTA)
                 };
-                 log_callback(&format!("[DEBUG] Phase 3: Calculated standard deviation: {:.2}, Scaled delta factor: {}, Raw adaptive delta: {}", std_dev, ADAPTIVE_DELTA_FACTOR, delta));
+                 log_callback(&format!("[DEBUG] Phase 3: Calculated standard deviation: {:.2}. Using adaptive delta: {}", std_dev, delta));
                  delta
             }
+            Some(std_dev) if std_dev == 0.0 => {
+                // Standard deviation is zero (all estimates were the same)
+                log_callback(&format!("[DEBUG] Phase 3: Standard deviation is 0.0 (all initial estimates agree). Using minimal delta: {}", MIN_ADAPTIVE_DELTA));
+                MIN_ADAPTIVE_DELTA // Use the minimum delta for refinement
+            }
             _ => {
-                // Fallback if std dev is zero, NaN, infinite, or calculated from < 2 estimates
-                log_callback(&format!("[DEBUG] Phase 3: Could not calculate valid standard deviation or std dev is zero/NaN/infinite. Using default delta: {}", DEFAULT_REFINEMENT_RANGE_DELTA));
+                // Fallback if std dev is NaN, infinite, or calculated from < 2 estimates (None)
+                log_callback(&format!("[DEBUG] Phase 3: Std dev is NaN/Infinite or calculated from < 2 estimates. Using default delta: {}", DEFAULT_REFINEMENT_RANGE_DELTA));
                 DEFAULT_REFINEMENT_RANGE_DELTA // Use the old default constant as fallback
             }
         };
@@ -290,7 +297,25 @@ where
 
         log_callback(&format!("[INFO] Phase 3: Refinement range around median: [{}, {}]", lower_bound, upper_bound));
 
-        // Generate refinement points within the range, excluding initial values
+        // Generate refinement points within the range [lower_bound, upper_bound], excluding initial values
+        if upper_bound >= lower_bound {
+            // Iterate through all integer points in the calculated range
+            for point in lower_bound..=upper_bound {
+                // Add if not already in initial values
+                if !initial_grain_values_set.contains(&point) {
+                    // Check if the point is already in the list to avoid duplicates
+                    // (though the direct iteration shouldn't cause duplicates here)
+                    if !refined_grain_values.contains(&point) {
+                         refined_grain_values.push(point);
+                    }
+                }
+            }
+            // Sort the collected points for consistent testing order
+            refined_grain_values.sort_unstable();
+        }
+
+        // Old logic using refinement_points_count and step (commented out for reference):
+        /*
         if upper_bound >= lower_bound && refinement_points_count > 0 { // Check upper_bound >= lower_bound
             // Use a HashSet for efficient checking of generated points
             let mut generated_points = HashSet::new();
@@ -312,12 +337,12 @@ where
 
                  // Add if not already in initial values and not already generated
                  if !initial_grain_values_set.contains(&clamped_point) && generated_points.insert(clamped_point) {
-                     refined_grain_values.push(clamped_point);
+                    refined_grain_values.push(clamped_point); // Need to add to the actual list
                  }
              }
-             // Ensure refined values are sorted for logging/processing consistency
-             refined_grain_values.sort_unstable();
+             refined_grain_values.sort_unstable(); // Sort after collecting
         }
+        */
 
 
         if refined_grain_values.is_empty() {
@@ -355,7 +380,6 @@ where
                  log_callback(&format!("[DEBUG]   Sample {} Phase 3 results: {:?}", i + 1, results));
              }
         }
-    }
 
 
     // --- Phase 4: Final Selection ---
@@ -400,6 +424,7 @@ where
     ));
 
     Ok(capped_median_value)
+    } // Close the main 'else' block from line 250
 }
 
 // Test module removed as per standard practice for library crates

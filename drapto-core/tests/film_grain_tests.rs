@@ -182,13 +182,13 @@ fn test_determine_optimal_grain_success_scenario() -> Result<(), Box<dyn std::er
     assert!(logs.iter().any(|m| m.contains("[INFO] Phase 2 Initial estimates per sample: [5, 5, 5]")), "Log missing: Phase 2 estimates"); // Based on mock data
     assert!(logs.iter().any(|m| m.contains("[INFO] Phase 3: Median of initial estimates: 5")), "Log missing: Phase 3 median");
     // Check for adaptive delta calculation log (fallback case)
-    assert!(logs.iter().any(|m| m.contains("[DEBUG] Phase 3: Could not calculate valid standard deviation or std dev is zero/NaN/infinite. Using default delta: 3")), "Log missing: Adaptive delta fallback message");
+    assert!(logs.iter().any(|m| m.contains("[DEBUG] Phase 3: Standard deviation is 0.0 (all initial estimates agree). Using minimal delta: 1")), "Log missing: Std dev 0.0 message");
     // Updated assertion to match the actual log format including the adaptive delta value
     // Check the log message when adaptive delta falls back to default
-    assert!(logs.iter().any(|m| m.contains("[INFO] Phase 3: Refinement range around median: [2, 8]")), "Log missing: Phase 3 range log (fallback case)");
+    assert!(logs.iter().any(|m| m.contains("[INFO] Phase 3: Refinement range around median: [4, 6]")), "Log missing: Phase 3 range log [4, 6]");
     // Check for the specific refined values tested
     assert!(logs.iter().any(|m| m.contains("Testing refined grain value 4...")), "Log missing: Testing refined value 4");
-    assert!(logs.iter().any(|m| m.contains("Testing refined grain value 7...")), "Log missing: Testing refined value 7");
+    assert!(logs.iter().any(|m| m.contains("Testing refined grain value 6...")), "Log missing: Testing refined value 6");
     assert!(logs.iter().any(|m| m.contains("[INFO] Phase 4: Determining final optimal grain using Knee Point on combined results...")), "Log missing: Phase 4 start");
     assert!(logs.iter().any(|m| m.contains("[INFO] Phase 4 Final estimates per sample: [4, 4, 4]")), "Log missing: Phase 4 estimates"); // Based on re-calculation
     assert!(logs.iter().any(|m| m.contains("[INFO] Final Result: Median optimal grain: 4. Capped at 20: 4")), "Log missing: Final value 4");
