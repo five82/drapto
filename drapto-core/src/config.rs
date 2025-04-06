@@ -65,4 +65,7 @@ pub struct CoreConfig {
     pub film_grain_max_value: Option<u8>,
     /// Number of refinement points to test in Phase 3 (default: 3) - Moved from film_grain.rs constants
     pub film_grain_refinement_points_count: Option<usize>,
+    // --- Notifications ---
+    /// Optional ntfy.sh topic URL for notifications
+    pub ntfy_topic: Option<String>,
 }

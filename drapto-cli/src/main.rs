@@ -3,26 +3,22 @@
 // Main entry point for the Drapto CLI application.
 // Parses arguments and dispatches to command handlers.
 
+// Use items from the drapto_cli library crate
+use drapto_cli::{Cli, Commands, run_encode};
 use clap::Parser;
 use std::io::Write; // For writeln
 use std::process;
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
-// Declare modules
-mod cli;
-mod commands;
-mod config; // Keep config for potential future use or direct defaults access
-mod logging;
-
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Parse the top-level arguments using the struct from the cli module
-    let cli_args = cli::Cli::parse();
+    let cli_args = Cli::parse(); // Use the imported Cli struct
 
     // Match on the command provided
     let result = match cli_args.command {
-        cli::Commands::Encode(args) => {
-            // Call the specific function for the encode command from the commands module
-            commands::encode::run_encode(args)
+        Commands::Encode(args) => { // Use the imported Commands enum
+            // Call the specific function for the encode command (now re-exported)
+            run_encode(args)
         } // Add other command arms here -> cli::Commands::Other(args) => commands::other::run_other(args),
     };
 

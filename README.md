@@ -38,4 +38,14 @@ drapto encode -i /path/to/input/video.mkv -o /path/to/output/
 # Encode all videos in a directory
 drapto encode -i /path/to/input_directory/ -o /path/to/output_directory/
 
+# Encode and send notifications to an ntfy.sh topic
+drapto encode -i video.mkv -o output/ --ntfy https://ntfy.sh/your_topic
 ```
+
+### Notifications
+
+Drapto can send notifications about encoding progress (start, success, error) to an [ntfy.sh](https://ntfy.sh/) topic URL. The notification message will include the hostname where the encode job is running.
+
+*   Use the `--ntfy <topic_url>` argument to specify the topic URL.
+*   Alternatively, set the `DRAPTO_NTFY_TOPIC` environment variable.
+*   If both are set, the command-line argument takes precedence.

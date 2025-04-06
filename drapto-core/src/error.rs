@@ -67,6 +67,10 @@ pub enum CoreError {
     FilmGrainEncodingFailed(String),
     #[error("Film grain analysis failed: {0}")]
     FilmGrainAnalysisFailed(String),
+
+    // --- Notification Errors ---
+    #[error("Notification error: {0}")]
+    NotificationError(String),
 }
 
 // Type alias for Result using our custom error

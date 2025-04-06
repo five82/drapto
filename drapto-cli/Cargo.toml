@@ -8,7 +8,10 @@ name = "drapto"
 path = "src/main.rs"
 
 [dependencies]
-clap = { version = "4", features = ["derive", "cargo"] } # Add "cargo" feature for better integration
+clap = { version = "4", features = ["derive", "cargo", "env"] } # Add "env" feature for env var support
 chrono = "0.4"
 drapto-core = { path = "../drapto-core" }
 termcolor = "1.4" # For colored terminal output
+
+[dev-dependencies]
+tempfile = "3" # For creating temporary directories/files in tests

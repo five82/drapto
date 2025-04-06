@@ -13,6 +13,8 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 log = "0.4" # Added for logging within the core library
 rand = "0.8" # Added for randomized film grain sampling
+reqwest = { version = "0.12", features = ["blocking", "json", "rustls-tls"], default-features = false } # For ntfy notifications
+hostname = "0.3" # To get the system hostname for notifications
 [features]
 # Enables mocking of external commands like ffprobe during tests
 test-mock-ffprobe = []

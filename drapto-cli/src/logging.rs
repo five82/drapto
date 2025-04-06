@@ -2,10 +2,10 @@
 //
 // Handles logging setup and the combined console/file log callback.
 
-use std::cell::Cell;
 use std::fs::File;
 use std::io::{BufWriter, Write};
-use std::time::{Duration, Instant}; // Added for throttling
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
 // --- Helper Functions (Timestamp) ---
@@ -17,110 +17,77 @@ pub fn get_timestamp() -> String {
 // Creates the logging closure that writes to both console (with color) and a file.
 pub fn create_log_callback(
     log_file: File,
-) -> Result<Box<dyn FnMut(&str)>, Box<dyn std::error::Error>> {
-    let mut logger = Box::new(BufWriter::new(log_file)); // Using Box for simplicity with closure
-    let mut stdout = StandardStream::stdout(ColorChoice::Auto);
-
-    // Use Cell to allow modifying state within FnMut closure
-    let last_was_progress = Cell::new(false);
-    let last_progress_file_log_time = Cell::new(None::<Instant>); // Track last file log time for progress
+) -> Result<Box<dyn FnMut(&str) + Send + 'static>, Box<dyn std::error::Error>> {
+    // Wrap shared state in Arc<Mutex> for thread safety
+    let logger = Arc::new(Mutex::new(BufWriter::new(log_file)));
+    let last_was_progress = Arc::new(Mutex::new(false));
+    let last_progress_file_log_time = Arc::new(Mutex::new(None::<Instant>));
     let throttle_duration = Duration::from_secs(30); // Throttle interval
 
+    // The closure captures the Arc<Mutex<...>> variables, making it Send + Clone + 'static
     let log_callback = move |msg: &str| {
         // --- File Logging (Throttled for progress) ---
-        let is_progress = msg.contains('\r'); // Determine this early
+        let is_progress = msg.contains('\r');
         let should_log_to_file = if is_progress {
             let now = Instant::now();
-            match last_progress_file_log_time.get() {
-                Some(last_time) if now.duration_since(last_time) < throttle_duration => {
-                    false // Throttle: Too soon since last progress log
-                }
+            let mut last_time_opt_guard = last_progress_file_log_time.lock().unwrap();
+            match *last_time_opt_guard {
+                Some(last_time) if now.duration_since(last_time) < throttle_duration => false,
                 _ => {
-                    last_progress_file_log_time.set(Some(now)); // Update time and allow log
+                    *last_time_opt_guard = Some(now);
                     true
                 }
             }
         } else {
-            true // Always log non-progress messages
+            true
         };
+
         if should_log_to_file {
-            // Write the raw message to the log file
+            let mut logger_guard = logger.lock().unwrap();
             if is_progress {
-                // Always add a newline for progress messages in the log file
-                // This makes them visible on separate lines, effectively replacing the \r
-                writeln!(logger, "{}", msg).ok();
+                writeln!(logger_guard, "{}", msg).ok();
+            } else if msg.ends_with('\n') || msg.ends_with('\r') {
+                write!(logger_guard, "{}", msg).ok();
             } else {
-                // For non-progress messages, use the previous logic:
-                // Write as-is if it already has a delimiter, otherwise add one.
-                if msg.ends_with('\n') || msg.ends_with('\r') {
-                    write!(logger, "{}", msg).ok();
-                } else {
-                    writeln!(logger, "{}", msg).ok();
-                }
+                writeln!(logger_guard, "{}", msg).ok();
             }
-            logger.flush().ok(); // Flush file buffer
+            logger_guard.flush().ok();
         }
 
         // --- Console Logging (Colored) ---
-        // Use the already determined is_progress
-        // Note: Console logic below remains unchanged and uses the same `is_progress` value
-        // File logging logic moved above
-
-        // --- Console Logging (Colored) ---
-        // `is_progress` is already defined above
-        let msg_trimmed = msg.trim_end(); // Use trimmed for console logic
+        // Create a new stdout handle each time to avoid capturing non-Send/Clone type
+        let mut stdout = StandardStream::stdout(ColorChoice::Auto);
+        let msg_trimmed = msg.trim_end();
+        let mut last_was_progress_guard = last_was_progress.lock().unwrap(); // Lock for console logic
 
         if is_progress {
-            // For progress, write directly, assuming HandBrake handles terminal control
-            // Style HandBrakeCLI progress lines as Blue
-            // Explicitly set Blue foreground, and ensure not bold/dimmed
-            stdout
-                .set_color(
-                    ColorSpec::new()
-                        .set_fg(Some(Color::Blue))
-                        .set_bold(false)
-                        .set_dimmed(false)
-                        .set_intense(false), // Also ensure not intense
-                )
-                .ok();
-            write!(&mut stdout, "{}", msg).ok(); // Print original message
-            stdout.reset().ok(); // Reset color immediately after writing
-            stdout.flush().ok(); // Flush console buffer
-            last_was_progress.set(true);
+            stdout.set_color(ColorSpec::new().set_fg(Some(Color::Blue)).set_bold(false).set_dimmed(false).set_intense(false)).ok();
+            write!(&mut stdout, "{}", msg).ok();
+            stdout.reset().ok();
+            stdout.flush().ok();
+            *last_was_progress_guard = true;
         } else {
-            // For normal messages, handle potential preceding progress line
-            if last_was_progress.get() {
-                writeln!(&mut stdout).ok(); // Move to the next line after progress
+            if *last_was_progress_guard {
+                writeln!(&mut stdout).ok();
             }
 
-            // --- Apply Enhanced Styling ---
-            let mut handled = false; // Flag to check if we printed already
-
-            // Define prefix arrays for styling rules
+            let mut handled = false;
             let bold_label_prefixes = [
-                "Input path:",
-                "Output directory:",
-                "Log directory:",
-                "Main log file:",
-                "Total encode execution time:",
-                "Drapto Encode Run Finished:",
-                "Drapto Encode Run Started:",
+                "Input path:", "Output directory:", "Log directory:", "Main log file:",
+                "Total encode execution time:", "Drapto Encode Run Finished:", "Drapto Encode Run Started:",
+                "Running on host:",
             ];
             let summary_value_prefixes = [
-                // Moved definition here
-                "  Encode time: ",
-                "  Input size:  ",
-                "  Output size: ",
-                "  Reduced by:  ", // Note spaces for alignment
+                "  Encode time: ", "  Input size:  ", "  Output size: ", "  Reduced by:  ",
             ];
 
-            // Style: Bold Labels, Normal Values (Initial Info & Final Timing)
+            // Style: Bold Labels, Normal Values
             for prefix in bold_label_prefixes {
                 if msg_trimmed.starts_with(prefix) {
                     if let Some(value) = msg_trimmed.strip_prefix(prefix) {
-                        stdout.set_color(ColorSpec::new().set_bold(true)).ok(); // Bold label
+                        stdout.set_color(ColorSpec::new().set_bold(true)).ok();
                         write!(&mut stdout, "{}", prefix).ok();
-                        stdout.reset().ok(); // Reset for value
+                        stdout.reset().ok();
                         writeln!(&mut stdout, "{}", value).ok();
                         handled = true;
                         break;
@@ -128,16 +95,15 @@ pub fn create_log_callback(
                 }
             }
 
-            // Style: Normal Labels, Bold Values (Summary Details)
+            // Style: Normal Labels, Bold Values
             if !handled {
-                // summary_value_prefixes is now defined above
                 for prefix in summary_value_prefixes {
                     if msg_trimmed.starts_with(prefix) {
                         if let Some(value) = msg_trimmed.strip_prefix(prefix) {
-                            write!(&mut stdout, "{}", prefix).ok(); // Normal label
-                            stdout.set_color(ColorSpec::new().set_bold(true)).ok(); // Bold value
+                            write!(&mut stdout, "{}", prefix).ok();
+                            stdout.set_color(ColorSpec::new().set_bold(true)).ok();
                             writeln!(&mut stdout, "{}", value).ok();
-                            stdout.reset().ok(); // Reset after value
+                            stdout.reset().ok();
                             handled = true;
                             break;
                         }
@@ -145,69 +111,45 @@ pub fn create_log_callback(
                 }
             }
 
-            // Style: Success Count (Bold Green Number)
+            // Style: Success Count
             if !handled && msg_trimmed.starts_with("Successfully encoded ") {
-                if let Some(rest) = msg_trimmed.strip_prefix("Successfully encoded ") {
+                 if let Some(rest) = msg_trimmed.strip_prefix("Successfully encoded ") {
                     if let Some((count_str, _suffix)) = rest.split_once(" file(s).") {
-                        // Prefix suffix with _
                         write!(&mut stdout, "Successfully encoded ").ok();
-                        stdout
-                            .set_color(
-                                ColorSpec::new().set_fg(Some(Color::Green)).set_bold(true),
-                            )
-                            .ok();
+                        stdout.set_color(ColorSpec::new().set_fg(Some(Color::Green)).set_bold(true)).ok();
                         write!(&mut stdout, "{}", count_str).ok();
                         stdout.reset().ok();
-                        stdout
-                            .set_color(ColorSpec::new().set_fg(Some(Color::Green)))
-                            .ok(); // Green for suffix
+                        stdout.set_color(ColorSpec::new().set_fg(Some(Color::Green))).ok();
                         writeln!(&mut stdout, " file(s).").ok();
                         stdout.reset().ok();
                         handled = true;
                     }
                 }
             }
-            // Style: Status Prefixes ([OK], [INFO], etc.)
+
+            // Style: Status Prefixes
             if !handled {
                 let status_prefixes = [
                     ("[OK]", ColorSpec::new().set_fg(Some(Color::Green)).clone()),
                     ("[INFO]", ColorSpec::new().set_fg(Some(Color::Cyan)).clone()),
-                    (
-                        "[WARN]",
-                        ColorSpec::new().set_fg(Some(Color::Yellow)).clone(),
-                    ),
-                    (
-                        "[ERROR]",
-                        ColorSpec::new().set_fg(Some(Color::Red)).set_bold(true).clone(),
-                    ),
-                    (
-                        "[FAIL]",
-                        ColorSpec::new().set_fg(Some(Color::Red)).set_bold(true).clone(),
-                    ),
-                    (
-                        "[DEBUG]",
-                        ColorSpec::new().set_fg(Some(Color::Magenta)).clone(),
-                    ),
-                    (
-                        "[TRACE]",
-                        ColorSpec::new().set_fg(Some(Color::Blue)).clone(),
-                    ),
+                    ("[WARN]", ColorSpec::new().set_fg(Some(Color::Yellow)).clone()),
+                    ("[ERROR]", ColorSpec::new().set_fg(Some(Color::Red)).set_bold(true).clone()),
+                    ("[FAIL]", ColorSpec::new().set_fg(Some(Color::Red)).set_bold(true).clone()),
+                    ("[DEBUG]", ColorSpec::new().set_fg(Some(Color::Magenta)).clone()),
+                    ("[TRACE]", ColorSpec::new().set_fg(Some(Color::Blue)).clone()),
                 ];
                 for (prefix, spec) in status_prefixes {
-                    // Add space to prefix for matching to avoid partial matches like "[INFO]rmation"
                     let prefix_with_space = format!("{} ", prefix);
                     if msg_trimmed.starts_with(&prefix_with_space) {
                         if let Some(rest) = msg_trimmed.strip_prefix(&prefix_with_space) {
                             stdout.set_color(&spec).ok();
-                            write!(&mut stdout, "{}", prefix).ok(); // Write only the prefix colored
+                            write!(&mut stdout, "{}", prefix).ok();
                             stdout.reset().ok();
-                            writeln!(&mut stdout, " {}", rest).ok(); // Write the rest uncolored (with space)
+                            writeln!(&mut stdout, " {}", rest).ok();
                             handled = true;
                             break;
                         }
-                    }
-                    // Handle cases where the prefix might be the entire message (less likely but possible)
-                    else if msg_trimmed == prefix {
+                    } else if msg_trimmed == prefix {
                         stdout.set_color(&spec).ok();
                         writeln!(&mut stdout, "{}", prefix).ok();
                         stdout.reset().ok();
@@ -217,67 +159,51 @@ pub fn create_log_callback(
                 }
             }
 
-            // Style: Specific Lines ("Processing:", "External dependency check passed.")
+            // Style: Specific Lines
             if !handled {
                 if msg_trimmed == "External dependency check passed." {
-                    stdout
-                        .set_color(ColorSpec::new().set_fg(Some(Color::Green)))
-                        .ok();
+                    stdout.set_color(ColorSpec::new().set_fg(Some(Color::Green))).ok();
                     writeln!(&mut stdout, "{}", msg_trimmed).ok();
                     stdout.reset().ok();
                     handled = true;
                 } else if let Some(filename) = msg_trimmed.strip_prefix("Processing: ") {
-                    stdout.set_color(ColorSpec::new().set_bold(true)).ok(); // Bold "Processing:"
+                    stdout.set_color(ColorSpec::new().set_bold(true)).ok();
                     write!(&mut stdout, "Processing: ").ok();
-                    stdout.reset().ok(); // Reset for filename
+                    stdout.reset().ok();
                     writeln!(&mut stdout, "{}", filename).ok();
                     handled = true;
                 }
             }
 
-            // --- Fallback to Previous Simpler Styling for remaining unhandled cases ---
+            // Fallback Styling
             if !handled {
                 let mut color_spec = ColorSpec::new();
                 match msg_trimmed {
-                    // Separators
                     m if m.starts_with("===") || m.starts_with("---") => {
                         color_spec.set_fg(Some(Color::Cyan)).set_bold(true);
                     }
-                    // Headers
                     m if m.starts_with("Encoding Summary:") => {
-                        color_spec.set_bold(true); // Bold White
+                        color_spec.set_bold(true);
                     }
-                    // Warnings (already handled FATAL CORE ERROR, Success, specific labels/values)
-                    m if m.starts_with("No processable .mkv files")
-                        || m.starts_with("No files were successfully encoded.") =>
-                    {
+                    m if m.starts_with("No processable .mkv files") || m.starts_with("No files were successfully encoded.") => {
                         color_spec.set_fg(Some(Color::Yellow));
                     }
-                    // Default case: Check for summary filename or just print default
                     _ => {
-                        // Heuristic for summary filename: Not indented, not handled above
-                        if !msg_trimmed.starts_with(' ')
-                            && !msg_trimmed.starts_with("===")
-                            && !msg_trimmed.starts_with("---")
-                            && !msg_trimmed.starts_with("Encoding Summary:")
-                        // Add other known non-filename prefixes if needed
-                        {
-                            // Assume it's a filename in the summary
-                            color_spec.set_bold(true); // Bold White
+                        if !msg_trimmed.starts_with(' ') && !msg_trimmed.starts_with("===") && !msg_trimmed.starts_with("---") && !msg_trimmed.starts_with("Encoding Summary:") {
+                            color_spec.set_bold(true);
                         }
-                        // Otherwise, use default color spec (covers "Found X files...", etc.)
                     }
                 }
-                // Print lines handled by this fallback logic
                 stdout.set_color(&color_spec).ok();
                 writeln!(&mut stdout, "{}", msg_trimmed).ok();
-                stdout.reset().ok(); // Reset to default colors
+                stdout.reset().ok();
             }
 
-            last_was_progress.set(false);
-            stdout.flush().ok(); // Flush console buffer
+            *last_was_progress_guard = false;
+            stdout.flush().ok();
         }
     };
 
+    // Box the closure and return it
     Ok(Box::new(log_callback))
 }

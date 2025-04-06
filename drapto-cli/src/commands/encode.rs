@@ -53,7 +53,8 @@ pub fn run_encode(args: EncodeArgs) -> Result<(), Box<dyn std::error::Error>> { 
     let main_log_filename = format!("drapto_encode_run_{}.log", get_timestamp());
     let main_log_path = log_dir.join(main_log_filename);
     let log_file = File::create(&main_log_path)?;
-    let mut log_callback = create_log_callback(log_file)?; // Use the helper
+    // create_log_callback returns Box<dyn FnMut...>
+    let mut log_callback = create_log_callback(log_file)?;
 
     // --- Log Initial Info ---
     log_callback("========================================");
@@ -84,6 +85,7 @@ pub fn run_encode(args: EncodeArgs) -> Result<(), Box<dyn std::error::Error>> { 
         film_grain_sample_count: args.grain_sample_count,
         film_grain_initial_values: args.grain_initial_values,
         film_grain_fallback_value: args.grain_fallback_value,
+        ntfy_topic: args.ntfy, // Pass the ntfy topic URL from CLI args/env
     };
 
     // --- Execute Core Logic ---
@@ -93,7 +95,8 @@ pub fn run_encode(args: EncodeArgs) -> Result<(), Box<dyn std::error::Error>> { 
          log_callback("No processable .mkv files found in the specified input path.");
          processing_result = Ok(Vec::new());
     } else {
-         processing_result = drapto_core::process_videos(&config, &files_to_process, &mut *log_callback); // Deref Box
+         // Pass mutable reference to the dereferenced Box<dyn FnMut...>
+         processing_result = drapto_core::process_videos(&config, &files_to_process, &mut *log_callback);
     }
 
     // --- Handle Core Results ---

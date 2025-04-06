@@ -31,6 +31,7 @@ pub mod error;
 pub mod external; // Note: This is pub but contains pub(crate) items. Fine for now.
 pub mod processing;
 pub mod utils;
+pub mod notifications; // Added for ntfy support
 
 // --- Public API Re-exports ---
 // Re-export items intended for public use from their respective modules.
@@ -49,6 +50,9 @@ pub use processing::{determine_optimal_grain, process_videos};
 
 // From utils module (public helper functions)
 pub use utils::{format_bytes, format_duration};
+
+// From notifications module
+pub use notifications::send_ntfy;
 
 // --- Public Structs (defined directly in lib.rs) ---
 // EncodeResult remains here as it's a simple data structure returned by the public API.

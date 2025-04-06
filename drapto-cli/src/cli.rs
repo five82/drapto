@@ -69,6 +69,12 @@ pub struct EncodeArgs { // Made public
     /// Fallback grain value if optimization fails/disabled (default: 0)
     #[arg(long, value_name = "VALUE")]
     pub grain_fallback_value: Option<u8>, // Made public
+
+    // --- Notifications ---
+    /// Optional: ntfy.sh topic URL for sending notifications (e.g., https://ntfy.sh/your_topic)
+    /// Can also be set via the DRAPTO_NTFY_TOPIC environment variable.
+    #[arg(long, value_name = "TOPIC_URL", env = "DRAPTO_NTFY_TOPIC")]
+    pub ntfy: Option<String>,
 }
 
 
@@ -84,6 +90,10 @@ mod tests {
 
     #[test]
     fn test_parse_encode_basic_args() {
+        // Temporarily unset env var to test CLI parsing in isolation
+        let original_env = std::env::var("DRAPTO_NTFY_TOPIC").ok();
+        unsafe { std::env::remove_var("DRAPTO_NTFY_TOPIC"); }
+
         let args = vec![
             "drapto-cli", // Program name
             "encode",     // Subcommand
@@ -107,12 +117,22 @@ mod tests {
                 assert!(encode_args.grain_sample_count.is_none());
                 assert!(encode_args.grain_initial_values.is_none());
                 assert!(encode_args.grain_fallback_value.is_none());
+                assert!(encode_args.ntfy.is_none()); // Check new ntfy arg
             }
+        }
+
+        // Restore env var
+        if let Some(val) = original_env {
+            unsafe { std::env::set_var("DRAPTO_NTFY_TOPIC", val); }
         }
     }
 
      #[test]
     fn test_parse_encode_with_log_dir() {
+        // Temporarily unset env var
+        let original_env = std::env::var("DRAPTO_NTFY_TOPIC").ok();
+        unsafe { std::env::remove_var("DRAPTO_NTFY_TOPIC"); }
+
         let args = vec![
             "drapto-cli",
             "encode",
@@ -132,12 +152,22 @@ mod tests {
                 assert!(encode_args.quality_sd.is_none());
                 assert!(encode_args.quality_hd.is_none());
                 assert!(encode_args.quality_uhd.is_none());
+                assert!(encode_args.ntfy.is_none()); // Check new ntfy arg
             }
+        }
+
+        // Restore env var
+        if let Some(val) = original_env {
+            unsafe { std::env::set_var("DRAPTO_NTFY_TOPIC", val); }
         }
     }
 
      #[test]
     fn test_parse_encode_with_grain_args() {
+        // Temporarily unset env var
+        let original_env = std::env::var("DRAPTO_NTFY_TOPIC").ok();
+        unsafe { std::env::remove_var("DRAPTO_NTFY_TOPIC"); }
+
         let args = vec![
             "drapto-cli",
             "encode",
@@ -162,11 +192,21 @@ mod tests {
                 assert!(encode_args.quality_sd.is_none());
                 assert!(encode_args.quality_hd.is_none());
                 assert!(encode_args.quality_uhd.is_none());
+                assert!(encode_args.ntfy.is_none()); // Check new ntfy arg
             }
+        }
+
+        // Restore env var
+        if let Some(val) = original_env {
+            unsafe { std::env::set_var("DRAPTO_NTFY_TOPIC", val); }
         }
     }
     #[test]
     fn test_parse_encode_with_quality_args() {
+        // Temporarily unset env var
+        let original_env = std::env::var("DRAPTO_NTFY_TOPIC").ok();
+        unsafe { std::env::remove_var("DRAPTO_NTFY_TOPIC"); }
+
         let args = vec![
             "drapto-cli",
             "encode",
@@ -183,9 +223,57 @@ mod tests {
                 assert_eq!(encode_args.quality_sd, Some(30));
                 assert_eq!(encode_args.quality_hd, Some(25));
                 assert_eq!(encode_args.quality_uhd, Some(22));
+                assert!(encode_args.ntfy.is_none()); // Check new ntfy arg
             }
+        }
+
+        // Restore env var
+        if let Some(val) = original_env {
+            unsafe { std::env::set_var("DRAPTO_NTFY_TOPIC", val); }
         }
     }
     // Add more tests here for edge cases, invalid inputs (if clap allows testing this easily),
     // or specific flag combinations.
+    #[test]
+    fn test_parse_encode_with_ntfy_arg() {
+        let args = vec![
+            "drapto-cli",
+            "encode",
+            "input",
+            "output",
+            "--ntfy", "https://ntfy.sh/mytopic",
+        ];
+        let cli = Cli::parse_from(args);
+
+        match cli.command {
+            Commands::Encode(encode_args) => {
+                assert_eq!(encode_args.ntfy, Some("https://ntfy.sh/mytopic".to_string()));
+                // Check other args are default/None
+                assert!(encode_args.log_dir.is_none());
+                assert!(encode_args.quality_sd.is_none());
+                assert!(!encode_args.disable_grain_optimization);
+            }
+        }
+    }
+
+    // Test with environment variable (requires setting it before running the test,
+    // which is tricky in standard `cargo test`. Could use a helper crate or manual setup)
+    // #[test]
+    // fn test_parse_encode_with_ntfy_env() {
+    //     std::env::set_var("DRAPTO_NTFY_TOPIC", "https://env.ntfy.sh/topic");
+    //     let args = vec![
+    //         "drapto-cli",
+    //         "encode",
+    //         "input",
+    //         "output",
+    //     ];
+    //     let cli = Cli::parse_from(args);
+    //     std::env::remove_var("DRAPTO_NTFY_TOPIC"); // Clean up env var
+
+    //     match cli.command {
+    //         Commands::Encode(encode_args) => {
+    //             assert_eq!(encode_args.ntfy, Some("https://env.ntfy.sh/topic".to_string()));
+    //         }
+    //     }
+    // }
 }

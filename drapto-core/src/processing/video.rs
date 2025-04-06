@@ -38,10 +38,11 @@
 // - Finally, returns a `CoreResult` containing a `Vec<EncodeResult>` for all files
 //   that were processed successfully.
 
-use crate::config::{CoreConfig, DEFAULT_CORE_QUALITY_HD, DEFAULT_CORE_QUALITY_SD, DEFAULT_CORE_QUALITY_UHD}; // Import core defaults
+use crate::config::{CoreConfig, DEFAULT_CORE_QUALITY_HD, DEFAULT_CORE_QUALITY_SD, DEFAULT_CORE_QUALITY_UHD};
+use crate::notifications::send_ntfy; // Added for ntfy support
 use crate::error::{CoreError, CoreResult};
 use crate::external::{check_dependency, get_audio_channels, get_video_width}; // Added get_video_width
-use crate::utils::get_file_size;
+use crate::utils::{format_bytes, format_duration, get_file_size}; // Added format_bytes, format_duration
 use crate::EncodeResult; // Assuming EncodeResult stays in lib.rs or is re-exported from there
 use crate::processing; // To access film_grain submodule
 // Import specific functions needed for dependency injection
@@ -73,12 +74,13 @@ fn calculate_audio_bitrate(channels: u32) -> u32 {
 pub fn process_videos<F>(
     config: &CoreConfig,
     files_to_process: &[PathBuf],
-    mut log_callback: F,
+    mut log_callback: F, // Accept by mutable reference (via Box deref)
 ) -> CoreResult<Vec<EncodeResult>>
 where
-    F: FnMut(&str), // Closure to handle logging
+    F: FnMut(&str), // Remove Send + 'static bounds
 {
     // --- Check Dependencies ---
+    // No need to clone here, use the mutable reference directly
     log_callback("Checking for required external commands...");
     // Store the command parts for HandBrakeCLI
     let handbrake_cmd_parts = check_dependency("HandBrakeCLI")?;
@@ -87,6 +89,12 @@ where
     let _ffprobe_cmd_parts = check_dependency("ffprobe")?;
     log_callback("  [OK] ffprobe found.");
     log_callback("External dependency check passed.");
+
+    // --- Get Hostname ---
+    let hostname = hostname::get()
+        .map(|s| s.into_string().unwrap_or_else(|_| "unknown-host-invalid-utf8".to_string()))
+        .unwrap_or_else(|_| "unknown-host-error".to_string());
+    log_callback(&format!("Running on host: {}", hostname));
 
 
     let mut results: Vec<EncodeResult> = Vec::new();
@@ -107,7 +115,16 @@ where
 
         let output_path = config.output_dir.join(&filename);
 
+        // Use the mutable reference directly
         log_callback(&format!("Processing: {}", filename));
+
+        // --- Send Start Notification ---
+        if let Some(topic) = &config.ntfy_topic {
+            let start_message = format!("[{}]: Starting encode for: {}", hostname, filename); // Add hostname
+            if let Err(e) = send_ntfy(topic, &start_message, Some("Drapto Encode Start"), Some(3), Some("arrow_forward")) {
+                log_callback(&format!("Warning: Failed to send ntfy start notification for {}: {}", filename, e));
+            }
+        }
 
         // --- Get Audio Info ---
         let audio_channels = match get_audio_channels(input_path) {
@@ -162,6 +179,7 @@ where
                 filename
             ));
             // Pass handbrake_cmd_parts to determine_optimal_grain
+            // Pass a mutable reference to the clone for film grain optimization logging
             match processing::film_grain::determine_optimal_grain(input_path, config, &mut log_callback, get_video_duration_secs, extract_and_test_sample, &handbrake_cmd_parts) {
                 Ok(optimal_value) => {
                     log_callback(&format!("Optimal film grain value determined: {}", optimal_value));
@@ -290,6 +308,8 @@ where
          let (tx, rx) = mpsc::channel(); // Channel to send output lines/chunks
 
          let stdout_tx = tx.clone();
+         // Remove the clone attempt, threads will only send data
+         // For now, assume logging only happens on the main thread receiving from the channel
          let stdout_thread = thread::spawn(move || {
              let mut buffer = [0; 1024]; // Read in chunks
              let mut line_buffer = String::new(); // Buffer for incomplete lines
@@ -312,6 +332,8 @@ where
                              let line = line_buffer[..line_end].to_string();
 
                              // Send the complete line
+                             // Only send the line, do not log here
+                             // Send the line (might be redundant if logging handles everything, but keep for now)
                              if stdout_tx.send(line).is_err() {
                                  // Cannot send, receiver likely gone, stop thread
                                  return;
@@ -328,6 +350,7 @@ where
          });
 
          let stderr_tx = tx; // No need to clone tx again
+         // Remove the clone attempt
          let stderr_thread = thread::spawn(move || {
              let mut buffer = [0; 1024]; // Read in chunks
              let mut line_buffer = String::new(); // Buffer for incomplete lines
@@ -354,11 +377,12 @@ where
 
                              captured_stderr_lines.push(line.clone()); // Capture the line
 
-                             // Send the complete line for logging
+                             // Only capture the line, do not log here
+                             // Send the line (might be redundant if logging handles everything, but keep for now)
                              if stderr_tx.send(line).is_err() {
                                  // Cannot send, receiver likely gone, stop thread
                                  // Return what we captured so far
-                                 return captured_stderr_lines.join("");
+                                 return captured_stderr_lines.join(""); // Return captured stderr on send error
                              }
 
                              // Remove the processed line from the buffer
@@ -377,9 +401,9 @@ where
          // drop(tx); // This was incorrect, tx is moved into stderr_thread
 
          // Receive messages (now guaranteed to be lines) until the channel is closed
+         // Receive messages from threads and log them on the main thread
          for received_line in rx {
-             // Log lines as they arrive. Throttling in log_callback will now work correctly.
-             log_callback(&received_line);
+             log_callback(&received_line); // Log received lines here
          }
 
          // --- Wait for threads and get captured stderr ---
@@ -405,22 +429,60 @@ where
                 output_size,
             });
 
-            log_callback(&format!("Completed: {} in {:?}", filename, file_elapsed_time));
+            let completion_log_msg = format!("Completed: {} in {}", filename, format_duration(file_elapsed_time));
+            // Use the clone for logging within the iteration
+            log_callback(&completion_log_msg);
+
+            // --- Send Success Notification ---
+            if let Some(topic) = &config.ntfy_topic {
+                let reduction = if input_size > 0 {
+                    100u64.saturating_sub(output_size.saturating_mul(100) / input_size)
+                } else {
+                    0
+                };
+                let success_message = format!(
+                    "[{hostname}]: Successfully encoded {filename} in {duration}.\nSize: {in_size} -> {out_size} (Reduced by {reduct}%)",
+                    hostname = hostname, // Add hostname
+                    filename = filename,
+                    duration = format_duration(file_elapsed_time),
+                    in_size = format_bytes(input_size),
+                    out_size = format_bytes(output_size),
+                    reduct = reduction
+                );
+                 if let Err(e) = send_ntfy(topic, &success_message, Some("Drapto Encode Success"), Some(4), Some("white_check_mark")) {
+                    // Use the clone for logging within the iteration
+                    log_callback(&format!("Warning: Failed to send ntfy success notification for {}: {}", filename, e));
+                }
+            }
 
         } else {
             // Log error including captured stderr, then continue processing other files
+             // Log the error using the iteration's logger clone
              log_callback(&format!(
                 "ERROR: HandBrakeCLI failed for {} with status {}. Stderr:\n{}",
                  filename, status, stderr_output.trim() // Use the captured stderr
              ));
-            // Continue processing other files without adding this one to results.
-            // Log error but continue processing other files
              log_callback(&format!(
                 "ERROR: HandBrakeCLI failed for {} with status {}. Check log for details.",
                  filename, status
              ));
             // Consider returning a partial success / error report instead of just Vec<EncodeResult>
             // Or just log it and don't add to results, as done here.
+
+            // --- Send Error Notification ---
+            if let Some(topic) = &config.ntfy_topic {
+                let error_message = format!(
+                    "[{hostname}]: Error encoding {filename}: HandBrakeCLI failed with status {status}.",
+                    hostname = hostname, // Add hostname
+                    filename = filename,
+                    status = status
+                );
+                 if let Err(e) = send_ntfy(topic, &error_message, Some("Drapto Encode Error"), Some(5), Some("x,rotating_light")) {
+                    // Use the clone for logging within the iteration
+                    log_callback(&format!("Warning: Failed to send ntfy error notification for {}: {}", filename, e));
+                }
+            }
+            // Logging already done above
         }
          log_callback("----------------------------------------");
 
