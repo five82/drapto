@@ -292,15 +292,35 @@ where
          let stdout_tx = tx.clone();
          let stdout_thread = thread::spawn(move || {
              let mut buffer = [0; 1024]; // Read in chunks
+             let mut line_buffer = String::new(); // Buffer for incomplete lines
              loop {
                  match stdout_reader.read(&mut buffer) {
-                     Ok(0) => break, // EOF
-                     Ok(n) => {
-                         // Send the chunk as lossy UTF-8
-                         let chunk = String::from_utf8_lossy(&buffer[..n]);
-                         if stdout_tx.send(chunk.to_string()).is_err() {
-                             break; // Receiver disconnected
+                     Ok(0) => { // EOF
+                         // Send any remaining data in the buffer as the last line
+                         if !line_buffer.is_empty() {
+                             let _ = stdout_tx.send(line_buffer);
                          }
+                         break;
+                     }
+                     Ok(n) => {
+                         let chunk = String::from_utf8_lossy(&buffer[..n]);
+                         line_buffer.push_str(&chunk);
+
+                         // Process complete lines within the buffer
+                         while let Some(delimiter_pos) = line_buffer.find(|c| c == '\n' || c == '\r') {
+                             let line_end = delimiter_pos + 1; // Include the delimiter
+                             let line = line_buffer[..line_end].to_string();
+
+                             // Send the complete line
+                             if stdout_tx.send(line).is_err() {
+                                 // Cannot send, receiver likely gone, stop thread
+                                 return;
+                             }
+
+                             // Remove the processed line from the buffer
+                             line_buffer.drain(..line_end);
+                         }
+                         // Any remaining part stays in line_buffer for the next read
                      }
                      Err(_) => break, // Error reading
                  }
@@ -310,35 +330,56 @@ where
          let stderr_tx = tx; // No need to clone tx again
          let stderr_thread = thread::spawn(move || {
              let mut buffer = [0; 1024]; // Read in chunks
-             let mut captured_stderr = String::new(); // Local stderr capture
+             let mut line_buffer = String::new(); // Buffer for incomplete lines
+             let mut captured_stderr_lines = Vec::new(); // Capture lines for error reporting
+
              loop {
                  match stderr_reader.read(&mut buffer) {
-                     Ok(0) => break, // EOF
+                     Ok(0) => { // EOF
+                         // Send any remaining data in the buffer as the last line
+                         if !line_buffer.is_empty() {
+                             captured_stderr_lines.push(line_buffer.clone()); // Capture final part
+                             let _ = stderr_tx.send(line_buffer);
+                         }
+                         break;
+                     }
                      Ok(n) => {
                          let chunk = String::from_utf8_lossy(&buffer[..n]);
-                         captured_stderr.push_str(&chunk); // Capture locally
-                         // Send the chunk for logging
-                         if stderr_tx.send(chunk.to_string()).is_err() {
-                             break; // Receiver disconnected
+                         line_buffer.push_str(&chunk);
+
+                         // Process complete lines within the buffer
+                         while let Some(delimiter_pos) = line_buffer.find(|c| c == '\n' || c == '\r') {
+                             let line_end = delimiter_pos + 1; // Include the delimiter
+                             let line = line_buffer[..line_end].to_string();
+
+                             captured_stderr_lines.push(line.clone()); // Capture the line
+
+                             // Send the complete line for logging
+                             if stderr_tx.send(line).is_err() {
+                                 // Cannot send, receiver likely gone, stop thread
+                                 // Return what we captured so far
+                                 return captured_stderr_lines.join("");
+                             }
+
+                             // Remove the processed line from the buffer
+                             line_buffer.drain(..line_end);
                          }
+                         // Any remaining part stays in line_buffer for the next read
                      }
                      Err(_) => break, // Error reading
                  }
              }
-             captured_stderr // Return captured stderr at the end
+             captured_stderr_lines.join("") // Return combined captured stderr lines
          });
 
          // --- Receive and log output from both threads ---
          // Drop the original tx so the loop terminates when threads finish
          // drop(tx); // This was incorrect, tx is moved into stderr_thread
 
-         // Receive messages until the channel is closed (both threads exit)
-         for received_chunk in rx {
-             // Log chunks as they arrive. Note: This might interleave stdout/stderr
-             // and split lines, but ensures real-time display.
-             log_callback(&received_chunk);
-             // We need to reconstruct stderr_output here if needed for CommandFailed error
-             // For simplicity now, we'll get it from the thread join result.
+         // Receive messages (now guaranteed to be lines) until the channel is closed
+         for received_line in rx {
+             // Log lines as they arrive. Throttling in log_callback will now work correctly.
+             log_callback(&received_line);
          }
 
          // --- Wait for threads and get captured stderr ---

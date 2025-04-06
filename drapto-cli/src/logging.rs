@@ -5,6 +5,7 @@
 use std::cell::Cell;
 use std::fs::File;
 use std::io::{BufWriter, Write};
+use std::time::{Duration, Instant}; // Added for throttling
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
 // --- Helper Functions (Timestamp) ---
@@ -22,15 +23,51 @@ pub fn create_log_callback(
 
     // Use Cell to allow modifying state within FnMut closure
     let last_was_progress = Cell::new(false);
+    let last_progress_file_log_time = Cell::new(None::<Instant>); // Track last file log time for progress
+    let throttle_duration = Duration::from_secs(30); // Throttle interval
 
     let log_callback = move |msg: &str| {
-        // --- File Logging (Always raw) ---
-        // Write the raw message to the log file first
-        writeln!(logger, "{}", msg).ok();
-        logger.flush().ok(); // Flush file buffer
+        // --- File Logging (Throttled for progress) ---
+        let is_progress = msg.contains('\r'); // Determine this early
+        let should_log_to_file = if is_progress {
+            let now = Instant::now();
+            match last_progress_file_log_time.get() {
+                Some(last_time) if now.duration_since(last_time) < throttle_duration => {
+                    false // Throttle: Too soon since last progress log
+                }
+                _ => {
+                    last_progress_file_log_time.set(Some(now)); // Update time and allow log
+                    true
+                }
+            }
+        } else {
+            true // Always log non-progress messages
+        };
+        if should_log_to_file {
+            // Write the raw message to the log file
+            if is_progress {
+                // Always add a newline for progress messages in the log file
+                // This makes them visible on separate lines, effectively replacing the \r
+                writeln!(logger, "{}", msg).ok();
+            } else {
+                // For non-progress messages, use the previous logic:
+                // Write as-is if it already has a delimiter, otherwise add one.
+                if msg.ends_with('\n') || msg.ends_with('\r') {
+                    write!(logger, "{}", msg).ok();
+                } else {
+                    writeln!(logger, "{}", msg).ok();
+                }
+            }
+            logger.flush().ok(); // Flush file buffer
+        }
 
         // --- Console Logging (Colored) ---
-        let is_progress = msg.contains('\r');
+        // Use the already determined is_progress
+        // Note: Console logic below remains unchanged and uses the same `is_progress` value
+        // File logging logic moved above
+
+        // --- Console Logging (Colored) ---
+        // `is_progress` is already defined above
         let msg_trimmed = msg.trim_end(); // Use trimmed for console logic
 
         if is_progress {
