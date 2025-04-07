@@ -29,14 +29,18 @@ The feature works by encoding short samples of the source video using different 
 
 ## Usage
 
-Basic usage involves specifying an input file/directory and an output directory. Drapto will use built-in default encoding settings.
+Basic usage involves specifying an input file/directory and an output directory. By default, Drapto runs in **daemon mode**, meaning it will start the encoding process in the background and detach from the terminal, allowing you to log out while it continues running. Log files are created in the specified log directory (or `output_dir/logs` by default). A PID file (`drapto.pid`) is also created in the log directory to track the running process.
 
+To run Drapto in the foreground (interactive mode), use the `--interactive` flag. This will display progress and logs directly in your terminal.
 ```bash
-# Encode a single file using default settings
+# Encode a single file in the background (default daemon mode)
 drapto encode -i /path/to/input/video.mkv -o /path/to/output/
 
-# Encode all videos in a directory
+# Encode all videos in a directory in the background
 drapto encode -i /path/to/input_directory/ -o /path/to/output_directory/
+
+# Encode a single file interactively (in the foreground)
+drapto encode --interactive -i /path/to/input/video.mkv -o /path/to/output/
 
 # Encode and send notifications to an ntfy.sh topic
 drapto encode -i video.mkv -o output/ --ntfy https://ntfy.sh/your_topic

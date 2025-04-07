@@ -10,6 +10,7 @@ path = "src/main.rs"
 [dependencies]
 clap = { version = "4", features = ["derive", "cargo", "env"] } # Add "env" feature for env var support
 chrono = "0.4"
+daemonize = "0.5" # For daemonizing the process
 drapto-core = { path = "../drapto-core" }
 termcolor = "1.4" # For colored terminal output
 

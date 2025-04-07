@@ -44,7 +44,7 @@ fn test_ntfy_warnings_logged_on_failure() {
 
     // --- Execute ---
     // run_encode handles creating the log dir and file
-    let result = commands::encode::run_encode(args);
+    let result = commands::encode::run_encode(args, false, vec![_dummy_mkv.clone()], input_dir.path().to_path_buf()); // Pass dummy file list and input dir
 
     // We expect run_encode to succeed even if ntfy fails (it just logs warnings)
     // However, the underlying Handbrake call might fail if HandbrakeCLI isn't installed

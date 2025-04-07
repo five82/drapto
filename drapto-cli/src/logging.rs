@@ -17,6 +17,7 @@ pub fn get_timestamp() -> String {
 // Creates the logging closure that writes to both console (with color) and a file.
 pub fn create_log_callback(
     log_file: File,
+    enable_console: bool, // Add parameter to control console output
 ) -> Result<Box<dyn FnMut(&str) + Send + 'static>, Box<dyn std::error::Error>> {
     // Wrap shared state in Arc<Mutex> for thread safety
     let logger = Arc::new(Mutex::new(BufWriter::new(log_file)));
@@ -54,7 +55,8 @@ pub fn create_log_callback(
             logger_guard.flush().ok();
         }
 
-        // --- Console Logging (Colored) ---
+        // --- Console Logging (Conditional & Colored) ---
+        if enable_console {
         // Create a new stdout handle each time to avoid capturing non-Send/Clone type
         let mut stdout = StandardStream::stdout(ColorChoice::Auto);
         let msg_trimmed = msg.trim_end();
@@ -201,7 +203,9 @@ pub fn create_log_callback(
 
             *last_was_progress_guard = false;
             stdout.flush().ok();
-        }
+            }
+            stdout.flush().ok(); // Ensure flush happens even if not progress
+        } // End of if enable_console
     };
 
     // Box the closure and return it

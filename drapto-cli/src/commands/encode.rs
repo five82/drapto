@@ -9,27 +9,22 @@ use drapto_core::{CoreConfig, CoreError, EncodeResult};
 use std::fs::{self, File};
 // use std::path::PathBuf; // Removed unused import
 use std::time::Instant;
+use std::path::PathBuf; // Ensure PathBuf is imported, remove unused Path
 
-// Renamed the main logic function to reflect the 'encode' action
-pub fn run_encode(args: EncodeArgs) -> Result<(), Box<dyn std::error::Error>> { // Made public
-    let total_start_time = Instant::now();
-
-    // --- Determine Paths (using args from EncodeArgs) ---
+// --- New function to discover files ---
+pub fn discover_encode_files(args: &EncodeArgs) -> Result<(Vec<PathBuf>, PathBuf), Box<dyn std::error::Error>> {
     let input_path = args.input_path.canonicalize()
         .map_err(|e| format!("Invalid input path '{}': {}", args.input_path.display(), e))?;
-    let output_dir = args.output_dir;
-    let log_dir = args.log_dir.unwrap_or_else(|| output_dir.join("logs"));
 
-    // --- Validate Input and Determine Files to Process ---
     let metadata = fs::metadata(&input_path)
         .map_err(|e| format!("Failed to access input path '{}': {}", input_path.display(), e))?;
 
-    let (files_to_process, effective_input_dir) = if metadata.is_dir() {
+    if metadata.is_dir() {
         // Input is a directory
         match drapto_core::find_processable_files(&input_path) {
-             Ok(files) => (files, input_path.clone()),
-             Err(CoreError::NoFilesFound) => (Vec::new(), input_path.clone()),
-             Err(e) => return Err(e.into()),
+             Ok(files) => Ok((files, input_path.clone())),
+             Err(CoreError::NoFilesFound) => Ok((Vec::new(), input_path.clone())), // Return empty vec if no files found
+             Err(e) => Err(e.into()), // Propagate other core errors
         }
     } else if metadata.is_file() {
         // Input is a file
@@ -37,13 +32,32 @@ pub fn run_encode(args: EncodeArgs) -> Result<(), Box<dyn std::error::Error>> { 
             let parent_dir = input_path.parent().ok_or_else(|| {
                 CoreError::PathError(format!("Could not determine parent directory for file '{}'", input_path.display()))
             })?.to_path_buf();
-            (vec![input_path.clone()], parent_dir)
+            Ok((vec![input_path.clone()], parent_dir))
         } else {
-            return Err(format!("Input file '{}' is not a .mkv file.", input_path.display()).into());
+            Err(format!("Input file '{}' is not a .mkv file.", input_path.display()).into())
         }
     } else {
-        return Err(format!("Input path '{}' is neither a file nor a directory.", input_path.display()).into());
-    };
+        Err(format!("Input path '{}' is neither a file nor a directory.", input_path.display()).into())
+    }
+}
+
+
+
+// Renamed the main logic function to reflect the 'encode' action
+// --- Modified run_encode function ---
+pub fn run_encode(
+    args: EncodeArgs,
+    interactive: bool,
+    files_to_process: Vec<PathBuf>, // Accept discovered files
+    effective_input_dir: PathBuf,   // Accept effective input dir
+) -> Result<(), Box<dyn std::error::Error>> {
+    let total_start_time = Instant::now();
+
+    // Paths are now determined partially by args and partially by discovered info
+    let output_dir = args.output_dir; // Keep using output_dir from args
+    let log_dir = args.log_dir.unwrap_or_else(|| output_dir.join("logs"));
+
+    // File discovery logic moved to discover_encode_files
 
     // --- Create Output/Log Dirs ---
     fs::create_dir_all(&output_dir)?;
@@ -54,20 +68,34 @@ pub fn run_encode(args: EncodeArgs) -> Result<(), Box<dyn std::error::Error>> { 
     let main_log_path = log_dir.join(main_log_filename);
     let log_file = File::create(&main_log_path)?;
     // create_log_callback returns Box<dyn FnMut...>
-    let mut log_callback = create_log_callback(log_file)?;
+    let mut log_callback = create_log_callback(log_file, interactive)?; // Pass interactive flag
 
     // --- Log Initial Info ---
     log_callback("========================================");
     log_callback(&format!("Drapto Encode Run Started: {}", chrono::Local::now()));
-    log_callback(&format!("Input path: {}", input_path.display()));
+    log_callback(&format!("Original Input arg: {}", args.input_path.display())); // Log original arg
     log_callback(&format!("Output directory: {}", output_dir.display()));
     log_callback(&format!("Log directory: {}", log_dir.display()));
     log_callback(&format!("Main log file: {}", main_log_path.display()));
+    log_callback(&format!("Interactive mode: {}", interactive)); // Log mode
     log_callback("========================================");
+
+    // --- PID File Handling (Daemon Mode Only) ---
+    if !interactive {
+        let pid_path = log_dir.join("drapto.pid");
+        // Use std::fs::write to create/overwrite the PID file with the current process ID.
+        // Note: This happens *after* daemonization and log setup.
+        match std::fs::write(&pid_path, std::process::id().to_string()) {
+            Ok(_) => log_callback(&format!("[INFO] PID file created at: {}", pid_path.display())),
+            Err(e) => log_callback(&format!("[WARN] Failed to create PID file at {}: {}", pid_path.display(), e)),
+            // Consider adding cleanup for the PID file on exit (e.g., using signal handling or atexit crate),
+            // but that adds complexity. For now, manual cleanup is assumed.
+        }
+    }
 
     // --- Prepare Core Configuration ---
     let config = CoreConfig {
-        input_dir: effective_input_dir,
+        input_dir: effective_input_dir, // Use passed effective_input_dir
         output_dir: output_dir.clone(),
         log_dir: log_dir.clone(),
         default_encoder_preset: Some(config::DEFAULT_ENCODER_PRESET as u8),
@@ -90,7 +118,7 @@ pub fn run_encode(args: EncodeArgs) -> Result<(), Box<dyn std::error::Error>> { 
 
     // --- Execute Core Logic ---
     let processing_result: Result<Vec<EncodeResult>, CoreError>;
-    log_callback(&format!("Found {} file(s) to process.", files_to_process.len()));
+    log_callback(&format!("Processing {} file(s).", files_to_process.len())); // Use passed files_to_process
     if files_to_process.is_empty() {
          log_callback("No processable .mkv files found in the specified input path.");
          processing_result = Ok(Vec::new());
