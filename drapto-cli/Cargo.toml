@@ -16,3 +16,4 @@ termcolor = "1.4" # For colored terminal output
 
 [dev-dependencies]
 tempfile = "3" # For creating temporary directories/files in tests
+assert_cmd = "2" # For CLI integration testing

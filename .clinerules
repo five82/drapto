@@ -6,8 +6,10 @@
 5. Implement concurrency with Rust's safety guarantees
 6. Focus on minimalism and performance
 7. Avoid scope creap and bloat.
-8. Look at the old python code for context.
+8. Avoid overengineering solutions.
 9. Use proper rust file and directory structure according to Rust best practices.
+10. Follow docs/testing_strategy.md for our testing strategy.
+11. This is a small hobby project maintained by a single develper. The project scope should reflect this.
 
 ## Drapto
 1. Run "HandbrakeCLI -h" to see the the available Handbrake parameters.
