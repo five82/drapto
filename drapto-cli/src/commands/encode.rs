@@ -174,7 +174,18 @@ pub fn run_encode(
             return Err(e.into());
         }
     }
-
+ 
+    // --- Clean up temporary grain sampling directory ---
+    let grain_tmp_dir = actual_output_dir.join("grain_samples_tmp");
+    if grain_tmp_dir.exists() { // Check if it exists before trying to remove
+        log_callback(&format!("[INFO] Cleaning up temporary directory: {}", grain_tmp_dir.display()));
+        match fs::remove_dir_all(&grain_tmp_dir) {
+            Ok(_) => log_callback(&format!("[INFO] Successfully removed temporary directory: {}", grain_tmp_dir.display())),
+            Err(e) => log_callback(&format!("[WARN] Failed to remove temporary directory {}: {}", grain_tmp_dir.display(), e)),
+        }
+    }
+ 
+ 
     // --- Print Summary ---
     if !successfully_encoded.is_empty() {
         log_callback("========================================");
