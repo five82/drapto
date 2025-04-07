@@ -74,8 +74,9 @@ fn calculate_audio_bitrate(channels: u32) -> u32 {
 pub fn process_videos<F>(
     config: &CoreConfig,
     files_to_process: &[PathBuf],
+    target_filename_override: Option<PathBuf>, // <-- Add new parameter
     mut log_callback: F, // Accept by mutable reference (via Box deref)
-) -> CoreResult<Vec<EncodeResult>>
+) -> CoreResult<Vec<EncodeResult>> // <-- Keep return type
 where
     F: FnMut(&str), // Remove Send + 'static bounds
 {
@@ -113,7 +114,15 @@ where
             .to_string_lossy()
             .to_string();
 
-        let output_path = config.output_dir.join(&filename);
+        // --- Determine Output Path ---
+        let output_path = match &target_filename_override {
+            // If an override filename is provided (meaning single input file + output file path given)
+            Some(target_filename) if files_to_process.len() == 1 => {
+                config.output_dir.join(target_filename) // Join the *actual* output dir with the target filename
+            }
+            // Otherwise (multiple input files OR output path was a directory), use the input filename
+            _ => config.output_dir.join(&filename),
+        };
 
         // Use the mutable reference directly
         log_callback(&format!("Processing: {}", filename));

@@ -53,14 +53,34 @@ pub fn run_encode(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let total_start_time = Instant::now();
 
-    // Paths are now determined partially by args and partially by discovered info
-    let output_dir = args.output_dir; // Keep using output_dir from args
-    let log_dir = args.log_dir.unwrap_or_else(|| output_dir.join("logs"));
+    // Determine actual output directory and potential target filename
+    let (actual_output_dir, target_filename_override_os) = // Renamed variable for clarity
+        if files_to_process.len() == 1 && args.output_dir.extension().is_some() {
+            // Input is single file and output looks like a file path
+            let target_file = args.output_dir.clone();
+            let parent_dir = target_file.parent()
+                .map(|p| p.to_path_buf())
+                .filter(|p| !p.as_os_str().is_empty()) // Handle cases where parent might be empty (e.g., root)
+                .unwrap_or_else(|| PathBuf::from(".")); // Default to current dir if no parent
+            // Extract OsString filename, handle potential failure (though unlikely if extension exists)
+            let filename_os = target_file.file_name().map(|name| name.to_os_string());
+            (parent_dir, filename_os)
+        } else {
+            // Input is directory or output looks like a directory
+            (args.output_dir.clone(), None)
+        };
+
+    // Convert Option<OsString> to Option<PathBuf> for the core function call
+    let target_filename_override = target_filename_override_os.map(PathBuf::from);
+
+
+    // Use the determined actual_output_dir for logs unless a specific log_dir is given
+    let log_dir = args.log_dir.unwrap_or_else(|| actual_output_dir.join("logs"));
 
     // File discovery logic moved to discover_encode_files
 
     // --- Create Output/Log Dirs ---
-    fs::create_dir_all(&output_dir)?;
+    fs::create_dir_all(&actual_output_dir)?; // Create the actual output directory
     fs::create_dir_all(&log_dir)?;
 
     // --- Setup Logging ---
@@ -74,7 +94,11 @@ pub fn run_encode(
     log_callback("========================================");
     log_callback(&format!("Drapto Encode Run Started: {}", chrono::Local::now()));
     log_callback(&format!("Original Input arg: {}", args.input_path.display())); // Log original arg
-    log_callback(&format!("Output directory: {}", output_dir.display()));
+    log_callback(&format!("Original Output arg: {}", args.output_dir.display())); // Log original arg
+    log_callback(&format!("Effective Output directory: {}", actual_output_dir.display()));
+    if let Some(fname) = &target_filename_override {
+        log_callback(&format!("Effective Output filename: {}", fname.display()));
+    }
     log_callback(&format!("Log directory: {}", log_dir.display()));
     log_callback(&format!("Main log file: {}", main_log_path.display()));
     log_callback(&format!("Interactive mode: {}", interactive)); // Log mode
@@ -96,7 +120,7 @@ pub fn run_encode(
     // --- Prepare Core Configuration ---
     let config = CoreConfig {
         input_dir: effective_input_dir, // Use passed effective_input_dir
-        output_dir: output_dir.clone(),
+        output_dir: actual_output_dir.clone(), // Use the determined directory
         log_dir: log_dir.clone(),
         default_encoder_preset: Some(config::DEFAULT_ENCODER_PRESET as u8),
         quality_sd: args.quality_sd,
@@ -124,7 +148,13 @@ pub fn run_encode(
          processing_result = Ok(Vec::new());
     } else {
          // Pass mutable reference to the dereferenced Box<dyn FnMut...>
-         processing_result = drapto_core::process_videos(&config, &files_to_process, &mut *log_callback);
+         // Pass the Option<PathBuf> target_filename_override
+         processing_result = drapto_core::process_videos(
+             &config,
+             &files_to_process,
+             target_filename_override, // Pass the override
+             &mut *log_callback
+         );
     }
 
     // --- Handle Core Results ---

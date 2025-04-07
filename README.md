@@ -34,16 +34,16 @@ Basic usage involves specifying an input file/directory and an output directory.
 To run Drapto in the foreground (interactive mode), use the `--interactive` flag. This will display progress and logs directly in your terminal.
 ```bash
 # Encode a single file in the background (default daemon mode)
-drapto encode -i /path/to/input/video.mkv -o /path/to/output/
+drapto encode /path/to/input/video.mkv /path/to/output/
 
 # Encode all videos in a directory in the background
-drapto encode -i /path/to/input_directory/ -o /path/to/output_directory/
+drapto encode /path/to/input_directory/ /path/to/output_directory/
 
 # Encode a single file interactively (in the foreground)
-drapto encode --interactive -i /path/to/input/video.mkv -o /path/to/output/
+drapto encode --interactive /path/to/input/video.mkv /path/to/output/
 
 # Encode and send notifications to an ntfy.sh topic
-drapto encode -i video.mkv -o output/ --ntfy https://ntfy.sh/your_topic
+drapto encode video.mkv output/ --ntfy https://ntfy.sh/your_topic
 ```
 
 ### Notifications
