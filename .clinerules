@@ -11,3 +11,4 @@
 
 ## Drapto
 1. Run "HandbrakeCLI -h" to see the the available Handbrake parameters.
+2. drapto supports both MacOS and Linux.
