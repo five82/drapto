@@ -124,6 +124,30 @@ where
             _ => config.output_dir.join(&filename),
         };
 
+        // --- Check for Existing Output File ---
+        if output_path.exists() {
+            let error_msg = format!(
+                "ERROR: Output file already exists: {}. Skipping encode.",
+                output_path.display()
+            );
+            log_callback(&error_msg);
+
+            // Send notification if configured
+            if let Some(topic) = &config.ntfy_topic {
+                let ntfy_message = format!(
+                    "[{hostname}]: Skipped encode for {filename}: Output file already exists at {output_display}",
+                    hostname = hostname, // Already fetched earlier
+                    filename = filename,
+                    output_display = output_path.display()
+                );
+                 if let Err(e) = send_ntfy(topic, &ntfy_message, Some("Drapto Encode Skipped"), Some(3), Some("warning")) {
+                    log_callback(&format!("Warning: Failed to send ntfy skip notification for {}: {}", filename, e));
+                }
+            }
+            log_callback("----------------------------------------"); // Add separator like other skips/errors
+            continue; // Skip to the next file
+        }
+
         // Use the mutable reference directly
         log_callback(&format!("Processing: {}", filename));
 
