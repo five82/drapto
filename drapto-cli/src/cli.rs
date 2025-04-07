@@ -33,46 +33,46 @@ pub enum Commands { // Made public
 #[derive(Parser, Debug)] // Use Parser derive for args struct as well
 pub struct EncodeArgs { // Made public
     /// Input file or directory containing .mkv files
-    #[arg(required = true, value_name = "INPUT_PATH")]
-    pub input_path: PathBuf, // Made public
+    #[arg(short = 'i', long = "input", required = true, value_name = "INPUT_PATH")]
+    pub input_path: PathBuf,
 
     /// Directory where encoded files will be saved
-    #[arg(required = true, value_name = "OUTPUT_DIR")]
-    pub output_dir: PathBuf, // Made public
+    #[arg(short = 'o', long = "output", required = true, value_name = "OUTPUT_DIR")]
+    pub output_dir: PathBuf,
 
     /// Optional: Directory for log files (defaults to OUTPUT_DIR/logs)
     #[arg(short, long, value_name = "LOG_DIR")]
-    pub log_dir: Option<PathBuf>, // Made public
+    pub log_dir: Option<PathBuf>,
 
     // --- Quality Overrides ---
     /// Optional: Override CRF quality for SD videos (<1920 width)
     #[arg(long, value_name = "CRF_SD")]
-    pub quality_sd: Option<u8>, // Made public
+    pub quality_sd: Option<u8>,
 
     /// Optional: Override CRF quality for HD videos (>=1920 width)
     #[arg(long, value_name = "CRF_HD")]
-    pub quality_hd: Option<u8>, // Made public
+    pub quality_hd: Option<u8>,
 
     /// Optional: Override CRF quality for UHD videos (>=3840 width)
     #[arg(long, value_name = "CRF_UHD")]
-    pub quality_uhd: Option<u8>, // Made public
+    pub quality_uhd: Option<u8>,
 
     // --- Film Grain Optimization Flags ---
     /// Disable automatic film grain optimization (it's enabled by default)
     #[arg(long)]
-    pub disable_grain_optimization: bool, // Made public
+    pub disable_grain_optimization: bool,
     /// Duration (seconds) for each optimization sample clip
     #[arg(long, value_name = "SECONDS")]
-    pub grain_sample_duration: Option<u32>, // Made public
+    pub grain_sample_duration: Option<u32>,
     /// Number of sample points for optimization
     #[arg(long, value_name = "COUNT")]
-    pub grain_sample_count: Option<usize>, // Made public
+    pub grain_sample_count: Option<usize>,
     /// Comma-separated initial grain values to test (e.g., 0,8,20)
     #[arg(long, value_delimiter = ',', value_name = "VALS")]
-    pub grain_initial_values: Option<Vec<u8>>, // Made public
+    pub grain_initial_values: Option<Vec<u8>>,
     /// Fallback grain value if optimization fails/disabled (default: 0)
     #[arg(long, value_name = "VALUE")]
-    pub grain_fallback_value: Option<u8>, // Made public
+    pub grain_fallback_value: Option<u8>,
 
     // --- Notifications ---
     /// Optional: ntfy.sh topic URL for sending notifications (e.g., https://ntfy.sh/your_topic)
@@ -101,8 +101,8 @@ mod tests {
         let args = vec![
             "drapto-cli", // Program name
             "encode",     // Subcommand
-            "input_dir",  // input_path
-            "output_dir", // output_dir
+            "--input", "input_dir",  // input_path using long flag
+            "--output", "output_dir", // output_dir using long flag
         ];
         let cli = Cli::parse_from(args);
 
@@ -143,8 +143,8 @@ mod tests {
         let args = vec![
             "drapto-cli",
             "encode",
-            "input.mkv", // Can be a file too
-            "out",
+            "-i", "input.mkv", // Use short flag
+            "-o", "out",       // Use short flag
             "--log-dir",
             "custom_logs",
         ];
@@ -181,8 +181,8 @@ mod tests {
         let args = vec![
             "drapto-cli",
             "encode",
-            "input",
-            "output",
+            "--input", "input",
+            "--output", "output",
             "--disable-grain-optimization",
             "--grain-sample-duration", "15",
             "--grain-sample-count", "5",
@@ -220,8 +220,8 @@ mod tests {
         let args = vec![
             "drapto-cli",
             "encode",
-            "input",
-            "output",
+            "-i", "input",
+            "-o", "output",
             "--quality-sd", "30",
             "--quality-hd", "25",
             "--quality-uhd", "22",
@@ -252,8 +252,8 @@ mod tests {
         let args = vec![
             "drapto-cli",
             "encode",
-            "input",
-            "output",
+            "--input", "input",
+            "--output", "output",
             "--ntfy", "https://ntfy.sh/mytopic",
         ];
         let cli = Cli::parse_from(args);
@@ -299,8 +299,8 @@ mod tests {
             "drapto-cli",
             "--interactive", // Add the global flag
             "encode",
-            "input",
-            "output",
+            "-i", "input",
+            "-o", "output",
         ];
         let cli = Cli::parse_from(args);
 
