@@ -25,6 +25,7 @@
 // Declare submodules
 pub mod film_grain;
 pub mod video;
+pub mod audio; // Add the new audio module
 
 // Re-export public API functions
 pub use film_grain::determine_optimal_grain;

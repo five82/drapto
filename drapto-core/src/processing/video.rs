@@ -41,10 +41,10 @@
 use crate::config::{CoreConfig, DEFAULT_CORE_QUALITY_HD, DEFAULT_CORE_QUALITY_SD, DEFAULT_CORE_QUALITY_UHD};
 use crate::notifications::send_ntfy; // Added for ntfy support
 use crate::error::{CoreError, CoreResult};
-use crate::external::{check_dependency, get_audio_channels, get_video_width}; // Added get_video_width
+use crate::external::{check_dependency, get_video_width}; // Removed get_audio_channels
 use crate::utils::{format_bytes, format_duration, get_file_size}; // Added format_bytes, format_duration
 use crate::EncodeResult; // Assuming EncodeResult stays in lib.rs or is re-exported from there
-use crate::processing; // To access film_grain submodule
+use crate::processing::{self, audio}; // To access film_grain and audio submodules
 // Import specific functions needed for dependency injection
 use crate::processing::film_grain::sampling::{extract_and_test_sample, get_video_duration_secs};
 
@@ -56,17 +56,6 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Instant;
 
-
-// Calculates audio bitrate based on channel count (private helper)
-fn calculate_audio_bitrate(channels: u32) -> u32 {
-    match channels {
-        1 => 64,   // Mono
-        2 => 128,  // Stereo
-        6 => 256,  // 5.1
-        8 => 384,  // 7.1
-        _ => channels * 48, // Default fallback
-    }
-}
 
 /// Processes a list of video files based on the configuration.
 /// Calls the `log_callback` for logging messages.
@@ -159,19 +148,6 @@ where
             }
         }
 
-        // --- Get Audio Info ---
-        let audio_channels = match get_audio_channels(input_path) {
-            Ok(channels) => {
-                log_callback(&format!("Detected audio channels: {:?}", channels));
-                channels
-            }
-            Err(e) => {
-                log_callback(&format!("Warning: Error getting audio channels for {}: {}. Skipping audio bitrate options.", filename, e));
-                // Continue without specific bitrates if ffprobe fails for this file
-                vec![]
-            }
-        };
-
         // --- Get Video Width ---
         let video_width = match get_video_width(input_path) {
              Ok(width) => width, // Get width, log combined message later
@@ -228,6 +204,22 @@ where
             config.film_grain_fallback_value.unwrap_or(0)
         };
 
+        // --- Prepare Audio Options ---
+        // Call the new function from the audio module
+        let audio_cli_args = match audio::prepare_audio_options(input_path, &mut log_callback) {
+             Ok(args) => args,
+             Err(e) => {
+                 // Although prepare_audio_options currently handles internal errors gracefully,
+                 // we still log if the function itself returns an Err.
+                 log_callback(&format!("Error preparing audio options for {}: {}. Proceeding without specific audio args.", filename, e));
+                 // Provide minimal default audio args if the function fails unexpectedly
+                 vec![
+                     "--aencoder".to_string(), "opus".to_string(),
+                     "--all-audio".to_string(), "--mixdown".to_string(), "none".to_string()
+                 ]
+             }
+         };
+
         // --- Build HandBrakeCLI Command ---
         // TODO: Extract this logic into external/handbrake.rs as per plan
         let mut handbrake_args: VecDeque<String> = VecDeque::new();
@@ -268,10 +260,7 @@ where
         // Other fixed options
          handbrake_args.push_back("--auto-anamorphic".to_string());
          handbrake_args.push_back("--all-subtitles".to_string());
-         handbrake_args.push_back("--aencoder".to_string());
-         handbrake_args.push_back("opus".to_string());
-         handbrake_args.push_back("--all-audio".to_string());
-         handbrake_args.push_back("--mixdown".to_string());
+         // Static audio args are now handled by prepare_audio_options
          handbrake_args.push_back("none".to_string());
          handbrake_args.push_back("--enable-hw-decoding".to_string());
          handbrake_args.push_back("--no-comb-detect".to_string());
@@ -286,29 +275,10 @@ where
          handbrake_args.push_back("--no-lapsharp".to_string());
          handbrake_args.push_back("--no-deblock".to_string());
 
-         // Dynamic audio bitrate options
-        let mut audio_bitrates = Vec::new();
-        let mut audio_bitrate_log_parts = Vec::new(); // For logging individual bitrates
-
-        for (index, &num_channels) in audio_channels.iter().enumerate() {
-            let bitrate = calculate_audio_bitrate(num_channels); // Use local helper
-            audio_bitrates.push(bitrate.to_string());
-            let log_msg = format!(
-                "Calculated bitrate for audio stream {} ({} channels): {}kbps",
-                index, num_channels, bitrate
-            );
-            log_callback(&log_msg);
-            audio_bitrate_log_parts.push(format!("Stream {}: {}kbps", index, bitrate)); // Store for summary log
-        }
-
-        if !audio_bitrates.is_empty() {
-            let bitrate_string = audio_bitrates.join(",");
-            handbrake_args.push_back("--ab".to_string());
-            handbrake_args.push_back(bitrate_string.clone()); // Add the comma-separated string
-            log_callback(&format!("Final audio bitrate option: --ab {}", bitrate_string));
-            log_callback(&format!("  Breakdown: {}", audio_bitrate_log_parts.join(", "))); // Log the breakdown
-        }
-
+         // Append the prepared audio arguments
+         for arg in audio_cli_args {
+             handbrake_args.push_back(arg);
+         }
          // Input and Output files
          handbrake_args.push_back("-i".to_string());
          handbrake_args.push_back(input_path.to_string_lossy().to_string());
