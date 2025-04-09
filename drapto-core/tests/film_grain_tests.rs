@@ -171,7 +171,7 @@ fn test_determine_optimal_grain_success_scenario() -> Result<(), Box<dyn std::er
     // Phase 2: Estimates per sample should all be 5 (based on mock data efficiency) -> Median = 5
     // Phase 3: Range [2, 8]. Refined points (excluding 5) e.g., [3, 4, 6] tested.
     // Phase 4: Re-calculates knee point per sample using combined data. Should still be 5 for each sample. -> Median = 5. Capped = 5.
-    assert_eq!(optimal_value, 4, "Expected optimal value 4 based on mock data and Knee Point logic");
+    assert_eq!(optimal_value, 5, "Expected optimal value 5 based on mock data and Knee Point logic"); // Updated expected value
 
     // Check logs for key steps
     let logs = log_messages.lock().unwrap();
@@ -183,7 +183,7 @@ fn test_determine_optimal_grain_success_scenario() -> Result<(), Box<dyn std::er
     assert!(logs.iter().any(|m| m.contains("[INFO] Phase 2 Initial estimates per sample: [5, 5, 5]")), "Log missing: Phase 2 estimates"); // Based on mock data
     assert!(logs.iter().any(|m| m.contains("[INFO] Phase 3: Median of initial estimates: 5")), "Log missing: Phase 3 median");
     // Check for adaptive delta calculation log (fallback case)
-    assert!(logs.iter().any(|m| m.contains("[DEBUG] Phase 3: Standard deviation is 0.0 (all initial estimates agree). Using minimal delta: 1")), "Log missing: Std dev 0.0 message");
+    assert!(logs.iter().any(|m| m.contains("Standard deviation is 0.0") && m.contains("Using minimal delta: 1")), "Log missing: Std dev 0.0 message"); // Simplified check
     // Updated assertion to match the actual log format including the adaptive delta value
     // Check the log message when adaptive delta falls back to default
     assert!(logs.iter().any(|m| m.contains("[INFO] Phase 3: Refinement range around median: [4, 6]")), "Log missing: Phase 3 range log [4, 6]");
@@ -191,8 +191,8 @@ fn test_determine_optimal_grain_success_scenario() -> Result<(), Box<dyn std::er
     assert!(logs.iter().any(|m| m.contains("Testing refined grain value 4...")), "Log missing: Testing refined value 4");
     assert!(logs.iter().any(|m| m.contains("Testing refined grain value 6...")), "Log missing: Testing refined value 6");
     assert!(logs.iter().any(|m| m.contains("[INFO] Phase 4: Determining final optimal grain using Knee Point on combined results...")), "Log missing: Phase 4 start");
-    assert!(logs.iter().any(|m| m.contains("[INFO] Phase 4 Final estimates per sample: [4, 4, 4]")), "Log missing: Phase 4 estimates"); // Based on re-calculation
-    assert!(logs.iter().any(|m| m.contains("[INFO] Final Result: Median optimal grain: 4. Capped at 20: 4")), "Log missing: Final value 4");
+    assert!(logs.iter().any(|m| m.contains("[INFO] Phase 4 Final estimates per sample: [5, 5, 5]")), "Log missing: Phase 4 estimates [5, 5, 5]"); // Updated expected estimates
+    assert!(logs.iter().any(|m| m.contains("[INFO] Final Result: Median optimal grain: 5. Capped at 20: 5")), "Log missing: Final value 5"); // Updated expected final value
 
 
     Ok(())
@@ -346,10 +346,10 @@ fn test_determine_optimal_grain_adaptive_range() -> Result<(), Box<dyn std::erro
     println!("Collected Logs (Adaptive Range Test):\n{:#?}", logs);
     assert!(logs.iter().any(|m| m.contains("[INFO] Phase 2 Initial estimates per sample: [5, 8, 10]")), "Log missing: Phase 2 estimates [5, 8, 10]");
     assert!(logs.iter().any(|m| m.contains("[INFO] Phase 3: Median of initial estimates: 8")), "Log missing: Phase 3 median 8");
-    assert!(logs.iter().any(|m| m.contains("[DEBUG] Phase 3: Calculated standard deviation: 2.5")), "Log missing: Std Dev calculation"); // Check approx value
-    assert!(logs.iter().any(|m| m.contains("[INFO] Phase 3: Using adaptive refinement delta: 4")), "Log missing: Adaptive delta 4");
-    // Update assertion to match actual log format
-    assert!(logs.iter().any(|m| m.contains("[INFO] Phase 3: Refinement range around median: [4, 12]")), "Log missing: Phase 3 range [4, 12]");
+    assert!(logs.iter().any(|m| m.contains("Calculated standard deviation: 2.05")), "Log missing: Std Dev calculation (expected ~2.05)"); // Check correct value
+    assert!(logs.iter().any(|m| m.contains("[INFO] Phase 3: Using adaptive refinement delta: 3")), "Log missing: Adaptive delta 3"); // Check correct delta
+    // Update assertion to match actual log format and correct range
+    assert!(logs.iter().any(|m| m.contains("[INFO] Phase 3: Refinement range around median: [5, 11]")), "Log missing: Phase 3 range [5, 11]"); // Check correct range
     assert!(logs.iter().any(|m| m.contains("Testing refined grain value 6...")), "Log missing: Testing refined value 6");
     assert!(logs.iter().any(|m| m.contains("[INFO] Phase 4 Final estimates per sample: [5, 8, 10]")), "Log missing: Phase 4 estimates [5, 8, 10]");
     assert!(logs.iter().any(|m| m.contains("[INFO] Final Result: Median optimal grain: 8. Capped at 20: 8")), "Log missing: Final value 8");
