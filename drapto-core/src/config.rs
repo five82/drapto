@@ -43,7 +43,9 @@ pub struct CoreConfig {
     pub quality_sd: Option<u8>, // Quality for Standard Definition (e.g., < 1920 width)
     pub quality_hd: Option<u8>, // Quality for High Definition (e.g., >= 1920 width)
     pub quality_uhd: Option<u8>, // Quality for Ultra High Definition (e.g., >= 3840 width)
-    pub default_crop_mode: Option<String>,
+    pub default_crop_mode: Option<String>, // Crop mode for the main encode
+    /// Crop mode specifically for film grain sampling encodes (defaults to auto)
+    pub film_grain_sample_crop_mode: Option<String>,
     // --- Film Grain Optimization ---
     /// Enable automatic film grain optimization (default: false)
     pub optimize_film_grain: bool,

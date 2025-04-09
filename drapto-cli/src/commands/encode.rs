@@ -126,7 +126,12 @@ pub fn run_encode(
         quality_sd: args.quality_sd,
         quality_hd: args.quality_hd,
         quality_uhd: args.quality_uhd,
-        default_crop_mode: Some(config::DEFAULT_CROP_MODE.to_string()),
+        default_crop_mode: Some(if args.disable_autocrop {
+            "none".to_string() // Use "none" for main encode if flag is set
+        } else {
+            config::DEFAULT_CROP_MODE.to_string() // Use default otherwise
+        }),
+        film_grain_sample_crop_mode: Some(config::DEFAULT_CROP_MODE.to_string()), // Always use default for sampling
         film_grain_metric_type: None, // Keep defaults for now
         film_grain_knee_threshold: None,
         film_grain_refinement_range_delta: None,

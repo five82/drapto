@@ -156,15 +156,14 @@ pub(crate) fn extract_and_test_sample(
     handbrake_args.push("--quality".to_string());
     handbrake_args.push(quality.to_string());
 
-    // Crop Mode (use config or default 'off' for samples?) - Let's use config for consistency
-    if let Some(crop_mode) = &config.default_crop_mode {
-        handbrake_args.push("--crop-mode".to_string());
-        handbrake_args.push(crop_mode.clone());
-    } else {
-         // Default to 'off' if not specified, to avoid auto-crop variance affecting size
-         handbrake_args.push("--crop-mode".to_string());
-         handbrake_args.push("off".to_string());
-    }
+    // Crop Mode for Sampling (Use the specific config setting)
+    // The CLI ensures film_grain_sample_crop_mode is always Some, defaulting to "auto".
+    // We still provide a fallback here for robustness.
+    let sample_crop_mode = config.film_grain_sample_crop_mode
+        .as_deref() // Get &str from Option<String>
+        .unwrap_or("auto"); // Default to "auto" if None (shouldn't happen)
+    handbrake_args.push("--crop-mode".to_string());
+    handbrake_args.push(sample_crop_mode.to_string()); // Add the argument
 
     // --- Sample Specific Parameters ---
     handbrake_args.push("--start-at".to_string());

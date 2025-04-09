@@ -12,5 +12,8 @@
 11. This is a small hobby project maintained by a single develper. The project scope should reflect this.
 
 ## Drapto
-1. Run "HandbrakeCLI -h" to see the the available Handbrake parameters.
-2. drapto supports both MacOS and Linux.
+1. drapto supports both MacOS and Linux.
+
+## Documentation
+1. Testing Strategy: docs/testing_strategy.md
+2. HandBrakeCLI help: docs/HandBrakeCLI.md

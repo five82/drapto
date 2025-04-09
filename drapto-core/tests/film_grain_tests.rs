@@ -67,6 +67,7 @@ fn default_test_config(output_dir: &Path, log_dir: &Path) -> CoreConfig {
         quality_hd: None,
         quality_uhd: None,
         default_crop_mode: Some("off".to_string()), // Use 'off' for consistency
+        film_grain_sample_crop_mode: Some("auto".to_string()), // Add missing field for tests
         // Film Grain specific defaults
         optimize_film_grain: true, // Enable for testing the function
         film_grain_sample_duration: Some(10),

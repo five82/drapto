@@ -40,6 +40,7 @@ fn test_ntfy_warnings_logged_on_failure() {
         grain_initial_values: None,
         grain_fallback_value: None,
         ntfy: Some(invalid_ntfy_url.to_string()), // Provide the invalid URL
+        disable_autocrop: false, // Add the missing field
     };
 
     // --- Execute ---
