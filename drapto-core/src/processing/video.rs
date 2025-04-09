@@ -287,20 +287,26 @@ where
          handbrake_args.push_back("--no-deblock".to_string());
 
          // Dynamic audio bitrate options
-        let mut audio_bitrate_opts_log = String::new();
+        let mut audio_bitrates = Vec::new();
+        let mut audio_bitrate_log_parts = Vec::new(); // For logging individual bitrates
+
         for (index, &num_channels) in audio_channels.iter().enumerate() {
             let bitrate = calculate_audio_bitrate(num_channels); // Use local helper
-            handbrake_args.push_back("--ab".to_string());
-            handbrake_args.push_back(bitrate.to_string());
+            audio_bitrates.push(bitrate.to_string());
             let log_msg = format!(
-                "Added bitrate for audio stream {} ({} channels): {}kbps",
+                "Calculated bitrate for audio stream {} ({} channels): {}kbps",
                 index, num_channels, bitrate
             );
             log_callback(&log_msg);
-            audio_bitrate_opts_log.push_str(&format!(" --ab {}", bitrate));
+            audio_bitrate_log_parts.push(format!("Stream {}: {}kbps", index, bitrate)); // Store for summary log
         }
-        if !audio_bitrate_opts_log.is_empty() {
-            log_callback(&format!("Final audio bitrate options:{}", audio_bitrate_opts_log));
+
+        if !audio_bitrates.is_empty() {
+            let bitrate_string = audio_bitrates.join(",");
+            handbrake_args.push_back("--ab".to_string());
+            handbrake_args.push_back(bitrate_string.clone()); // Add the comma-separated string
+            log_callback(&format!("Final audio bitrate option: --ab {}", bitrate_string));
+            log_callback(&format!("  Breakdown: {}", audio_bitrate_log_parts.join(", "))); // Log the breakdown
         }
 
          // Input and Output files
