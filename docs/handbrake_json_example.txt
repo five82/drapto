@@ -1,0 +1,537 @@
+❯ HandBrakeCLI "--encoder" "svt_av1_10bit" "--encoder-tune" "0" "--encopts" "film-grain=14:film-grain-denoise=1" "--encoder-preset" "6" "--quality" "29" "--crop-mode" "auto" "--auto-anamorphic" "--all-subtitles" "none" "--enable-hw-decoding" "--no-comb-detect" "--no-deinterlace" "--no-bwdif" "--no-decomb" "--no-detelecine" "--no-hqdn3d" "--no-nlmeans" "--no-chroma-smooth" "--no-unsharp" "--no-lapsharp" "--no-deblock" "--aencoder" "opus" "--all-audio" "--mixdown" "none" "--ab" "256" "-i" "input/test1.mkv" "-o" "output/test1.mkv" --json
+[21:01:03] Compile-time hardening features are enabled
+[21:01:03] hb_init: starting libhb thread
+[21:01:03] thread 16b25f000 started ("libhb")
+Version: {
+    "Arch": "arm64",
+    "Name": "HandBrake",
+    "Official": true,
+    "RepoDate": "2025-03-30 20:31:34",
+    "RepoHash": "92c487d4fc09fff2476ca4c92588799af389dfff",
+    "System": "Darwin",
+    "Type": "developer",
+    "Version": {
+        "Major": 0,
+        "Minor": 0,
+        "Point": 0
+    },
+    "VersionString": "20250330203134-92c487d4f-master"
+}
+HandBrake 20250330203134-92c487d4f-master (2025033101) - Darwin arm64 - https://handbrake.fr
+10 CPUs detected
+Opening input/test1.mkv...
+[21:01:03] CPU: Apple M1 Max
+[21:01:03]  - logical processor count: 10
+[21:01:03] hb_scan: path=input/test1.mkv, title_index=1
+Input #0, matroska,webm, from 'input/test1.mkv':
+  Metadata:
+    title           : Adventures in Babysitting 25th Anniversary
+    ENCODER         : Lavf61.7.100
+  Duration: 00:02:00.24, start: 0.042000, bitrate: 33673 kb/s
+  Stream #0:0(eng): Video: h264 (High), yuv420p(tv, bt709, progressive), 1920x1080 [SAR 1:1 DAR 16:9], 23.98 fps, 23.98 tbr, 1k tbn
+      Metadata:
+        BPS-eng         : 29008870
+        DURATION-eng    : 01:42:16.713916666
+        NUMBER_OF_FRAMES-eng: 147134
+        NUMBER_OF_BYTES-eng: 22252388935
+        SOURCE_ID-eng   : 001011
+        _STATISTICS_WRITING_APP-eng: MakeMKV v1.17.8 darwin(arm64-release)
+        _STATISTICS_WRITING_DATE_UTC-eng: 2024-12-21 21:47:18
+        _STATISTICS_TAGS-eng: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES SOURCE_ID
+        DURATION        : 00:02:00.244000000
+  Stream #0:1(eng): Audio: dts (dca) (DTS-HD MA), 48000 Hz, 5.1(side), s32p (24 bit) (default)
+      Metadata:
+        title           : Surround 5.1
+        BPS-eng         : 4423439
+        DURATION-eng    : 01:42:25.770666666
+        NUMBER_OF_FRAMES-eng: 576166
+        NUMBER_OF_BYTES-eng: 3398180104
+        SOURCE_ID-eng   : 001100
+        _STATISTICS_WRITING_APP-eng: MakeMKV v1.17.8 darwin(arm64-release)
+        _STATISTICS_WRITING_DATE_UTC-eng: 2024-12-21 21:47:18
+        _STATISTICS_TAGS-eng: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES SOURCE_ID
+        DURATION        : 00:02:00.182000000
+[21:01:03] scan: decoding previews for title 1
+[21:01:03] scan: audio 0x1: dca, rate=48000Hz, bitrate=1 English (DTS-HD MA, 5.1 ch)
+Progress: {
+    "Scanning": {
+        "Preview": 3,
+        "PreviewCount": 10,
+        "Progress": 0.30000001192092896,
+        "SequenceID": 0,
+        "Title": 1,
+        "TitleCount": 1
+    },
+    "State": "SCANNING"
+}
+Progress: {
+    "Scanning": {
+        "Preview": 8,
+        "PreviewCount": 10,
+        "Progress": 0.80000001192092896,
+        "SequenceID": 0,
+        "Title": 1,
+        "TitleCount": 1
+    },
+    "State": "SCANNING"
+}
+[21:01:04] using container PAR 1:1
+[21:01:04] scan: 10 previews, 1920x1080, 23.976 fps, autocrop = 22/22/0/0, aspect 16:9, PAR 1:1, color profile: 1-1-1, chroma location: left
+[21:01:04] libhb: scan thread found 1 valid title(s)
++ Using preset: CLI Default
++ title 1:
+  + stream: input/test1.mkv
+  + duration: 00:02:00
+  + size: 1920x1080, pixel aspect: 1/1, display aspect: 1.78, 23.976 fps
+  + autocrop: 22/22/0/0
+  + chapters:
+    + 1: duration 00:02:00
+  + audio tracks:
+    + 1, English (DTS-HD MA, 5.1 ch) (iso639-2: eng)
+  + subtitle tracks:
+[21:01:04] Starting work at: Thu Apr 10 21:01:04 2025
+
+[21:01:04] 1 job(s) to process
+[21:01:04] json job:
+{
+    "Audio": {
+        "AudioList": [
+            {
+                "Bitrate": 256,
+                "CompressionLevel": -1.0,
+                "DRC": 0.0,
+                "DitherMethod": "auto",
+                "Encoder": 67108864,
+                "Gain": 0.0,
+                "Mixdown": 0,
+                "Name": "Surround 5.1",
+                "NormalizeMixLevel": false,
+                "PresetEncoder": "ca_aac",
+                "Quality": -3.0,
+                "Samplerate": 0,
+                "Track": 0
+            }
+        ],
+        "CopyMask": [
+            "copy:aac",
+            "copy:ac3",
+            "copy:eac3",
+            "copy:dtshd",
+            "copy:dts",
+            "copy:mp3",
+            "copy:truehd",
+            "copy:flac"
+        ],
+        "FallbackEncoder": "ca_aac"
+    },
+    "Destination": {
+        "AlignAVStart": false,
+        "ChapterList": [
+            {
+                "Duration": {
+                    "Hours": 0,
+                    "Minutes": 2,
+                    "Seconds": 0,
+                    "Ticks": 10821960
+                },
+                "Name": ""
+            }
+        ],
+        "ChapterMarkers": false,
+        "File": "output/test1.mkv",
+        "InlineParameterSets": false,
+        "Mux": "mkv",
+        "Options": {
+            "IpodAtom": false,
+            "Optimize": false
+        }
+    },
+    "Filters": {
+        "FilterList": [
+            {
+                "ID": 11,
+                "Settings": {
+                    "mode": 0
+                }
+            },
+            {
+                "ID": 20,
+                "Settings": {
+                    "crop-bottom": 22,
+                    "crop-left": 0,
+                    "crop-right": 0,
+                    "crop-top": 22,
+                    "height": 1036,
+                    "width": 1920
+                }
+            }
+        ]
+    },
+    "Metadata": {
+        "Name": "Adventures in Babysitting 25th Anniversary"
+    },
+    "PAR": {
+        "Den": 1,
+        "Num": 1
+    },
+    "SequenceID": 0,
+    "Source": {
+        "Angle": 0,
+        "HWDecode": 0,
+        "KeepDuplicateTitles": false,
+        "Path": "input/test1.mkv",
+        "Range": {
+            "End": 1,
+            "Start": 1,
+            "Type": "chapter"
+        },
+        "Title": 1
+    },
+    "Subtitle": {
+        "Search": {
+            "Burn": true,
+            "Default": false,
+            "Enable": false,
+            "Forced": false
+        },
+        "SubtitleList": []
+    },
+    "Video": {
+        "ChromaLocation": 1,
+        "ColorInputFormat": 0,
+        "ColorMatrix": 1,
+        "ColorOutputFormat": 0,
+        "ColorPrimaries": 1,
+        "ColorRange": 1,
+        "ColorTransfer": 1,
+        "Encoder": "svt_av1_10bit",
+        "HardwareDecode": 0,
+        "MultiPass": false,
+        "Options": "film-grain=14:film-grain-denoise=1",
+        "PasshtruHDRDynamicMetadata": 6,
+        "Preset": "6",
+        "QSV": {
+            "AdapterIndex": 0,
+            "AsyncDepth": 0,
+            "Decode": false
+        },
+        "Quality": 29.0,
+        "Tune": "0",
+        "Turbo": false
+    }
+}
+[21:01:04] Starting Task: Encoding Pass
+[21:01:04] work: mixdown not specified, track 1 setting mixdown 5.1 Channels
+[21:01:04] work: compression level not specified, track 1 setting compression level 10.00
+[21:01:04] job configuration:
+[21:01:04]  * source
+[21:01:04]    + input/test1.mkv
+[21:01:04]    + title 1, chapter(s) 1 to 1
+[21:01:04]    + container: matroska,webm
+[21:01:04]    + data rate: 33673 kbps
+[21:01:04]  * destination
+[21:01:04]    + output/test1.mkv
+[21:01:04]    + container: Matroska (libavformat)
+[21:01:04]  * video track
+[21:01:04]    + decoder: h264 8-bit (yuv420p)
+[21:01:04]    + filters
+[21:01:04]      + Framerate Shaper (mode=0)
+[21:01:04]        + frame rate: same as source (around 23.976 fps)
+[21:01:04]      + Crop and Scale (width=1920:height=1036:crop-top=22:crop-bottom=22:crop-left=0:crop-right=0)
+[21:01:04]        + source: 1920 * 1080, crop (22/22/0/0): 1920 * 1036, scale: 1920 * 1036
+[21:01:04]      + Format (format=yuv420p10le)
+[21:01:04]    + Output geometry
+[21:01:04]      + storage dimensions: 1920 x 1036
+[21:01:04]      + pixel aspect ratio: 1 : 1
+[21:01:04]      + display dimensions: 1920 x 1036
+[21:01:04]    + encoder: AV1 10-bit (SVT)
+[21:01:04]      + preset:  6
+[21:01:04]      + tune:    0
+[21:01:04]      + options: film-grain=14:film-grain-denoise=1
+[21:01:04]      + quality: 29.00 (RF)
+[21:01:04]      + color profile: 1-1-1
+[21:01:04]      + color range: tv
+[21:01:04]      + chroma location: left
+[21:01:04]  * audio track 1
+[21:01:04]    + name: Surround 5.1
+[21:01:04]    + decoder: English (DTS-HD MA, 5.1 ch) (track 1, id 0x1)
+[21:01:04]      + samplerate: 48000 Hz
+[21:01:04]    + mixdown: 5.1 Channels
+[21:01:04]    + encoder: Opus (libopus)
+[21:01:04]      + bitrate: 256 kbps, samplerate: 48000 Hz
+[21:01:04]      + compression level: 10.00
+[21:01:04] sync: expecting 2882 video frames
+Svt[info]: -------------------------------------------
+Svt[info]: SVT [version]:       SVT-AV1 Encoder Lib v3.0.2
+Svt[info]: SVT [build]  :       Apple LLVM 15.0.0 (clang-1500.3.9.4)     64 bit
+Svt[info]: -------------------------------------------
+Svt[info]: Level of Parallelism: 4
+Svt[info]: Number of PPCS 107
+Svt[info]: [asm level on system : up to neon_dotprod]
+Svt[info]: [asm level selected : up to neon_dotprod]
+Svt[info]: -------------------------------------------
+Svt[info]: SVT [config]: main profile   tier (auto)     level (auto)
+Svt[info]: SVT [config]: width / height / fps numerator / fps denominator               : 1920 / 1040 / 24000 / 1001
+Svt[info]: SVT [config]: bit-depth / color format                                       : 10 / YUV420
+Svt[info]: SVT [config]: preset / tune / pred struct                                    : 6 / VQ / random access
+Svt[info]: SVT [config]: gop size / mini-gop size / key-frame type                      : 245 / 32 / key frame
+Svt[info]: SVT [config]: BRC mode / rate factor                                         : CRF / 29
+Svt[info]: SVT [config]: AQ mode / variance boost                                       : 2 / 0
+Svt[info]: SVT [config]: film grain synth / denoising / level                           : 1 / 1 / 14
+Svt[info]: SVT [config]: sharpness / luminance-based QP bias                    : 0 / 0
+Svt[info]: Svt[info]: -------------------------------------------
+[21:01:04] sync: first pts video is 0
+[21:01:04] sync: Chapter 1 at frame 1 time 0
+[21:01:04] sync: first pts audio 0x1 is 180
+Progress: {
+    "State": "WORKING",
+    "Working": {
+        "ETASeconds": 0,
+        "Hours": -1,
+        "Minutes": -1,
+        "Pass": 1,
+        "PassCount": 1,
+        "PassID": 0,
+        "Paused": 0,
+        "Progress": 0.0052047190256416798,
+        "Rate": 0.0,
+        "RateAvg": 0.0,
+        "Seconds": -1,
+        "SequenceID": 1
+    }
+}
+Progress: {
+    "State": "WORKING",
+    "Working": {
+        "ETASeconds": 0,
+        "Hours": -1,
+        "Minutes": -1,
+        "Pass": 1,
+        "PassCount": 1,
+        "PassID": 0,
+        "Paused": 0,
+        "Progress": 0.01006245706230402,
+        "Rate": 0.0,
+        "RateAvg": 0.0,
+        "Seconds": -1,
+        "SequenceID": 1
+    }
+}
+Progress: {
+    "State": "WORKING",
+    "Working": {
+        "ETASeconds": 0,
+        "Hours": -1,
+        "Minutes": -1,
+        "Pass": 1,
+        "PassCount": 1,
+        "PassID": 0,
+        "Paused": 0,
+        "Progress": 0.017696045339107513,
+        "Rate": 0.0,
+        "RateAvg": 0.0,
+        "Seconds": -1,
+        "SequenceID": 1
+    }
+}
+Progress: {
+    "State": "WORKING",
+    "Working": {
+        "ETASeconds": 0,
+        "Hours": -1,
+        "Minutes": -1,
+        "Pass": 1,
+        "PassCount": 1,
+        "PassID": 0,
+        "Paused": 0,
+        "Progress": 0.020471895113587379,
+        "Rate": 3.3823813083699861e-8,
+        "RateAvg": 0.0,
+        "Seconds": -1,
+        "SequenceID": 1
+    }
+}
+Progress: {
+    "State": "WORKING",
+    "Working": {
+        "ETASeconds": 0,
+        "Hours": -1,
+        "Minutes": -1,
+        "Pass": 1,
+        "PassCount": 1,
+        "PassID": 0,
+        "Paused": 0,
+        "Progress": 0.032616239041090012,
+        "Rate": 3.3823813083699861e-8,
+        "RateAvg": 0.0,
+        "Seconds": -1,
+        "SequenceID": 1
+    }
+}
+Progress: {
+    "State": "WORKING",
+    "Working": {
+        "ETASeconds": 0,
+        "Hours": -1,
+        "Minutes": -1,
+        "Pass": 1,
+        "PassCount": 1,
+        "PassID": 0,
+        "Paused": 0,
+        "Progress": 0.039555862545967102,
+        "Rate": 3.3823813083699861e-8,
+        "RateAvg": 0.0,
+        "Seconds": -1,
+        "SequenceID": 1
+    }
+}
+Progress: {
+    "State": "WORKING",
+    "Working": {
+        "ETASeconds": 0,
+        "Hours": -1,
+        "Minutes": -1,
+        "Pass": 1,
+        "PassCount": 1,
+        "PassID": 0,
+        "Paused": 0,
+        "Progress": 0.043025676161050797,
+        "Rate": 3.3823813083699861e-8,
+        "RateAvg": 0.0,
+        "Seconds": -1,
+        "SequenceID": 1
+    }
+}
+Progress: {
+    "State": "WORKING",
+    "Working": {
+        "ETASeconds": 0,
+        "Hours": -1,
+        "Minutes": -1,
+        "Pass": 1,
+        "PassCount": 1,
+        "PassID": 0,
+        "Paused": 0,
+        "Progress": 0.045801527798175812,
+        "Rate": 7.2233902415064222e-8,
+        "RateAvg": 0.0,
+        "Seconds": -1,
+        "SequenceID": 1
+    }
+}
+^CSignal 2 received, terminating - do it again in case it gets stuck
+Progress: {
+    "State": "WORKING",
+    "Working": {
+        "ETASeconds": 0,
+        "Hours": -1,
+        "Minutes": -1,
+        "Pass": 1,
+        "PassCount": 1,
+        "PassID": 0,
+        "Paused": 0,
+        "Progress": 0.04753643274307251,
+        "Rate": 7.2233902415064222e-8,
+        "RateAvg": 0.0,
+        "Seconds": -1,
+        "SequenceID": 1
+    }
+}
+
+
+
+
+
+
+Progress: {
+    "State": "WORKING",
+    "Working": {
+        "ETASeconds": 2,
+        "Hours": 0,
+        "Minutes": 0,
+        "Pass": 1,
+        "PassCount": 1,
+        "PassID": 0,
+        "Paused": 0,
+        "Progress": 0.99965304136276245,
+        "Rate": 18.098247528076172,
+        "RateAvg": 23.301162719726562,
+        "Seconds": 2,
+        "SequenceID": 1
+    }
+}
+Progress: {
+    "State": "WORKING",
+    "Working": {
+        "ETASeconds": 2,
+        "Hours": 0,
+        "Minutes": 0,
+        "Pass": 1,
+        "PassCount": 1,
+        "PassID": 0,
+        "Paused": 0,
+        "Progress": 0.99965304136276245,
+        "Rate": 18.098247528076172,
+        "RateAvg": 23.301162719726562,
+        "Seconds": 2,
+        "SequenceID": 1
+    }
+}
+Progress: {
+    "State": "WORKING",
+    "Working": {
+        "ETASeconds": 2,
+        "Hours": 0,
+        "Minutes": 0,
+        "Pass": 1,
+        "PassCount": 1,
+        "PassID": 0,
+        "Paused": 0,
+        "Progress": 0.99965304136276245,
+        "Rate": 18.098247528076172,
+        "RateAvg": 23.301162719726562,
+        "Seconds": 2,
+        "SequenceID": 1
+    }
+}
+[20:58:32] work: average encoding speed for job is 23.301163 fps
+[20:58:32] vfr: 2882 frames output, 0 dropped
+[20:58:32] vfr: lost time: 0 (0 frames)
+[20:58:32] vfr: gained time: 0 (0 frames) (0 not accounted for)
+[20:58:32] dca-decoder done: 11263 frames, 0 decoder errors
+[20:58:32] h264-decoder done: 2882 frames, 0 decoder errors
+Progress: {
+    "State": "WORKING",
+    "Working": {
+        "ETASeconds": 2,
+        "Hours": 0,
+        "Minutes": 0,
+        "Pass": 1,
+        "PassCount": 1,
+        "PassID": 0,
+        "Paused": 0,
+        "Progress": 0.99965304136276245,
+        "Rate": 18.098247528076172,
+        "RateAvg": 23.301162719726562,
+        "Seconds": 2,
+        "SequenceID": 1
+    }
+}
+[20:58:32] sync: got 2882 frames, 2882 expected
+[20:58:32] sync: framerate min 23.976 fps, max 23.976 fps, avg 23.976 fps
+[20:58:32] mux: track 0, 2882 frames, 98903408 bytes, 6582.40 kbps, fifo 512
+[20:58:32] mux: track 1, 6007 frames, 2385899 bytes, 158.79 kbps, fifo 2048
+[20:58:32] Finished work at: Thu Apr 10 20:58:32 2025
+
+[20:58:32] libhb: work result = 0
+Progress: {
+    "State": "WORKDONE",
+    "WorkDone": {
+        "Error": 0,
+        "SequenceID": 1
+    }
+}
+
+Encode done!
+
+HandBrake has exited.
