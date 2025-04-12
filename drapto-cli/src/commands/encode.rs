@@ -137,7 +137,7 @@ pub fn run_encode(
         film_grain_refinement_range_delta: None,
         film_grain_max_value: None,
         film_grain_refinement_points_count: None,
-        optimize_film_grain: !args.disable_grain_optimization,
+        optimize_film_grain: args.enable_grain_optimization, // Use the new flag directly
         film_grain_sample_duration: args.grain_sample_duration,
         film_grain_sample_count: args.grain_sample_count,
         film_grain_initial_values: args.grain_initial_values,

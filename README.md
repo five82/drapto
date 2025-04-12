@@ -44,6 +44,9 @@ drapto encode --interactive -i /path/to/input/video.mkv -o /path/to/output/
 
 # Encode and send notifications to an ntfy.sh topic
 drapto encode -i video.mkv -o output/ --ntfy https://ntfy.sh/your_topic
+
+# Enable film grain optimization (disabled by default)
+drapto encode -i video.mkv -o output/ --enable-grain-optimization
 ```
 
 ### Notifications
@@ -53,3 +56,13 @@ Drapto can send notifications about encoding progress (start, success, error) to
 *   Use the `--ntfy <topic_url>` argument to specify the topic URL.
 *   Alternatively, set the `DRAPTO_NTFY_TOPIC` environment variable.
 *   If both are set, the command-line argument takes precedence.
+
+### Common Options
+
+*   `--interactive`: Run in the foreground instead of the background (daemon mode).
+*   `--enable-grain-optimization`: Enable the film grain optimization process (disabled by default). See the "Film Grain Detection" section for more details.
+*   `--disable-autocrop`: Prevent HandBrake from automatically cropping black bars.
+*   `--preset <0-13>`: Override the default SVT-AV1 encoder preset (lower is slower/better).
+*   `--quality-sd/hd/uhd <CRF>`: Override the default CRF quality value for specific resolutions.
+*   `--log-dir <PATH>`: Specify a custom directory for log files.
+*   `--ntfy <URL>`: Send notifications to the specified ntfy.sh topic URL.

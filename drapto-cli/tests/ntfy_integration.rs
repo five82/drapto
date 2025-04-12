@@ -34,7 +34,7 @@ fn test_ntfy_warnings_logged_on_failure() {
         quality_sd: None,
         quality_hd: None,
         quality_uhd: None,
-        disable_grain_optimization: true, // Disable grain to simplify test
+        enable_grain_optimization: false, // Keep grain disabled (default) to simplify test
         grain_sample_duration: None,
         grain_sample_count: None,
         grain_initial_values: None,

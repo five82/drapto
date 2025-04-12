@@ -58,9 +58,9 @@ pub struct EncodeArgs { // Made public
     pub quality_uhd: Option<u8>,
 
     // --- Film Grain Optimization Flags ---
-    /// Disable automatic film grain optimization (it's enabled by default)
-    #[arg(long)]
-    pub disable_grain_optimization: bool,
+    /// Enable automatic film grain optimization (it's disabled by default)
+    #[arg(long = "enable-grain-optimization")] // Explicitly set the long flag name
+    pub enable_grain_optimization: bool, // Renamed field
     /// Duration (seconds) for each optimization sample clip
     #[arg(long, value_name = "SECONDS")]
     pub grain_sample_duration: Option<u32>,
@@ -126,7 +126,7 @@ mod tests {
                 assert!(encode_args.quality_hd.is_none());
                 assert!(encode_args.quality_uhd.is_none());
                 // Check grain args
-                assert!(!encode_args.disable_grain_optimization); // Default is false (optimization enabled)
+                assert!(!encode_args.enable_grain_optimization); // Default is false (optimization disabled)
                 assert!(encode_args.grain_sample_duration.is_none());
                 assert!(encode_args.grain_sample_count.is_none());
                 assert!(encode_args.grain_initial_values.is_none());
@@ -195,7 +195,7 @@ mod tests {
             "encode",
             "--input", "input",
             "--output", "output",
-            "--disable-grain-optimization",
+            "--enable-grain-optimization", // Use the new flag
             "--grain-sample-duration", "15",
             "--grain-sample-count", "5",
             "--grain-initial-values", "4,12,24",
@@ -207,7 +207,7 @@ mod tests {
 
         match cli.command {
             Commands::Encode(encode_args) => {
-                assert!(encode_args.disable_grain_optimization);
+                assert!(encode_args.enable_grain_optimization); // Check the new flag is true when passed
                 assert_eq!(encode_args.grain_sample_duration, Some(15));
                 assert_eq!(encode_args.grain_sample_count, Some(5));
                 assert_eq!(encode_args.grain_initial_values, Some(vec![4, 12, 24]));
@@ -282,7 +282,7 @@ mod tests {
                 // Check other args are default/None
                 assert!(encode_args.log_dir.is_none());
                 assert!(encode_args.quality_sd.is_none());
-                assert!(!encode_args.disable_grain_optimization);
+                assert!(!encode_args.enable_grain_optimization); // Check default is false
                 assert!(encode_args.preset.is_none()); // Check new preset arg (u8)
                 assert!(!encode_args.disable_autocrop); // Check default
             },
@@ -351,7 +351,7 @@ mod tests {
                 // Check other args are default/None
                 assert!(encode_args.log_dir.is_none());
                 assert!(encode_args.quality_sd.is_none());
-                assert!(!encode_args.disable_grain_optimization);
+                assert!(!encode_args.enable_grain_optimization); // Check default is false
                 assert!(encode_args.ntfy.is_none());
                 assert!(encode_args.preset.is_none()); // Check new preset arg (u8)
             },
@@ -379,7 +379,7 @@ mod tests {
                 // Check other args are default/None
                 assert!(encode_args.log_dir.is_none());
                 assert!(encode_args.quality_sd.is_none());
-                assert!(!encode_args.disable_grain_optimization);
+                assert!(!encode_args.enable_grain_optimization); // Check default is false
                 assert!(!encode_args.disable_autocrop);
                 assert!(encode_args.ntfy.is_none());
             },
