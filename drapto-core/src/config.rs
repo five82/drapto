@@ -38,7 +38,8 @@ pub struct CoreConfig {
     pub output_dir: PathBuf,
     pub log_dir: PathBuf,
     // --- Optional Handbrake Defaults ---
-    pub default_encoder_preset: Option<u8>,
+    pub default_encoder_preset: Option<u8>, // Keep this as the primary way to set default
+    pub preset: Option<u8>, // New field for CLI override (numeric)
     // pub default_quality: Option<u8>, // Replaced by resolution-specific qualities
     pub quality_sd: Option<u8>, // Quality for Standard Definition (e.g., < 1920 width)
     pub quality_hd: Option<u8>, // Quality for High Definition (e.g., >= 1920 width)

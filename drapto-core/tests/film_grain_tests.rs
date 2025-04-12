@@ -81,6 +81,7 @@ fn default_test_config(output_dir: &Path, log_dir: &Path) -> CoreConfig {
         film_grain_max_value: Some(20), // Max value cap
         film_grain_refinement_points_count: Some(3), // 3 refinement points
         ntfy_topic: None, // Add missing field for tests
+        preset: None, // Add missing preset field
     }
 }
 

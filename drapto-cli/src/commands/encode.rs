@@ -143,6 +143,7 @@ pub fn run_encode(
         film_grain_initial_values: args.grain_initial_values,
         film_grain_fallback_value: args.grain_fallback_value,
         ntfy_topic: args.ntfy, // Pass the ntfy topic URL from CLI args/env
+        preset: args.preset.clone(), // Pass the preset from CLI args
     };
 
     // --- Execute Core Logic ---

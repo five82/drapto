@@ -144,10 +144,18 @@ pub(crate) fn extract_and_test_sample(
     handbrake_args.push("--encopts".to_string());
     handbrake_args.push(encopts);
 
-    // Encoder Preset
-    let encoder_preset = config.default_encoder_preset.unwrap_or(6);
+    // Encoder Preset (Use CLI override -> default config -> fallback)
+    let preset_value: u8;
+    if let Some(cli_preset) = config.preset {
+        preset_value = cli_preset;
+        // Note: We don't log here as sample encodes suppress output
+    } else if let Some(default_preset) = config.default_encoder_preset {
+         preset_value = default_preset;
+    } else {
+        preset_value = 6; // Hardcoded fallback
+    }
     handbrake_args.push("--encoder-preset".to_string());
-    handbrake_args.push(encoder_preset.to_string());
+    handbrake_args.push(preset_value.to_string()); // Convert u8 to String for args
 
     // Quality
     // Use a fixed quality for sample encoding, as resolution-specific quality isn't needed here.

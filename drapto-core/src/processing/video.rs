@@ -236,11 +236,20 @@ where
          handbrake_args.push_back("--encopts".to_string());
          handbrake_args.push_back(encopts);
 
-        // Encoder Preset (Use default from config or fallback)
-        let encoder_preset = config.default_encoder_preset.unwrap_or(6); // Fallback to 6
+        // Encoder Preset (Use CLI override if provided, otherwise use default from config, otherwise fallback)
+        let preset_value: u8;
+        if let Some(cli_preset) = config.preset {
+            preset_value = cli_preset;
+            log_callback(&format!("Using encoder preset from CLI override: {}", preset_value));
+        } else if let Some(default_preset) = config.default_encoder_preset {
+             preset_value = default_preset;
+             log_callback(&format!("Using default encoder preset from config: {}", preset_value));
+        } else {
+            preset_value = 6; // Hardcoded fallback if neither CLI nor default config is set
+            log_callback(&format!("Using hardcoded fallback encoder preset: {}", preset_value));
+        }
         handbrake_args.push_back("--encoder-preset".to_string());
-        handbrake_args.push_back(encoder_preset.to_string());
-        log_callback(&format!("Using encoder preset: {}", encoder_preset));
+        handbrake_args.push_back(preset_value.to_string()); // Convert u8 to String for args
 
         // Quality (Use the value determined earlier based on width)
         handbrake_args.push_back("--quality".to_string());

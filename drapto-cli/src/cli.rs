@@ -80,6 +80,10 @@ pub struct EncodeArgs { // Made public
     #[arg(long, value_name = "TOPIC_URL", env = "DRAPTO_NTFY_TOPIC")]
     pub ntfy: Option<String>,
 
+    /// Optional: Override the HandBrake SVT-AV1 encoder preset (0-13, lower is slower/better quality)
+    #[arg(long, value_name = "PRESET_INT")]
+    pub preset: Option<u8>,
+
     /// Disable HandBrake's automatic cropping feature
     #[arg(long)]
     pub disable_autocrop: bool,
@@ -128,6 +132,7 @@ mod tests {
                 assert!(encode_args.grain_initial_values.is_none());
                 assert!(encode_args.grain_fallback_value.is_none());
                 assert!(encode_args.ntfy.is_none()); // Check new ntfy arg
+                assert!(encode_args.preset.is_none()); // Check new preset arg (u8)
                 assert!(!encode_args.disable_autocrop); // Check default
             },
             // Add other command checks if necessary
@@ -167,6 +172,7 @@ mod tests {
                 assert!(encode_args.quality_hd.is_none());
                 assert!(encode_args.quality_uhd.is_none());
                 assert!(encode_args.ntfy.is_none()); // Check new ntfy arg
+                assert!(encode_args.preset.is_none()); // Check new preset arg (u8)
                 assert!(!encode_args.disable_autocrop); // Check default
             },
             // Add other command checks if necessary
@@ -210,6 +216,7 @@ mod tests {
                 assert!(encode_args.quality_sd.is_none());
                 assert!(encode_args.quality_hd.is_none());
                 assert!(encode_args.quality_uhd.is_none());
+                assert!(encode_args.preset.is_none()); // Check new preset arg (u8)
                 assert!(!encode_args.disable_autocrop); // Check default
                 // assert!(encode_args.ntfy.is_none()); // Removed assertion due to potential parallel test flakiness
             },
@@ -243,6 +250,7 @@ mod tests {
                 assert_eq!(encode_args.quality_hd, Some(25));
                 assert_eq!(encode_args.quality_uhd, Some(22));
                 assert!(encode_args.ntfy.is_none()); // Check new ntfy arg
+                assert!(encode_args.preset.is_none()); // Check new preset arg (u8)
                 assert!(!encode_args.disable_autocrop); // Check default
             },
             // Add other command checks if necessary
@@ -275,6 +283,7 @@ mod tests {
                 assert!(encode_args.log_dir.is_none());
                 assert!(encode_args.quality_sd.is_none());
                 assert!(!encode_args.disable_grain_optimization);
+                assert!(encode_args.preset.is_none()); // Check new preset arg (u8)
                 assert!(!encode_args.disable_autocrop); // Check default
             },
             // Add other command checks if necessary
@@ -336,7 +345,7 @@ mod tests {
 
         assert!(!cli.interactive); // Check default interactive flag is false
 
-        match cli.command {
+        match cli.command { // Add braces for clarity
             Commands::Encode(encode_args) => {
                 assert!(encode_args.disable_autocrop); // Check flag is true
                 // Check other args are default/None
@@ -344,8 +353,36 @@ mod tests {
                 assert!(encode_args.quality_sd.is_none());
                 assert!(!encode_args.disable_grain_optimization);
                 assert!(encode_args.ntfy.is_none());
+                assert!(encode_args.preset.is_none()); // Check new preset arg (u8)
             },
             // Add other command checks if necessary
         }
     }
 }
+
+    #[test]
+    fn test_parse_encode_with_preset_arg() {
+        let args = vec![
+            "drapto-cli",
+            "encode",
+            "--input", "input", // Use long flags for clarity
+            "--output", "output",
+            "--preset", "4", // Use a numeric value
+        ];
+        let cli = Cli::parse_from(args);
+
+        assert!(!cli.interactive); // Check default interactive flag is false
+
+        match cli.command {
+            Commands::Encode(encode_args) => {
+                assert_eq!(encode_args.preset, Some(4)); // Check numeric value
+                // Check other args are default/None
+                assert!(encode_args.log_dir.is_none());
+                assert!(encode_args.quality_sd.is_none());
+                assert!(!encode_args.disable_grain_optimization);
+                assert!(!encode_args.disable_autocrop);
+                assert!(encode_args.ntfy.is_none());
+            },
+            // Add other command checks if necessary
+        }
+    }
