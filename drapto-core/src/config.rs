@@ -29,7 +29,7 @@ pub enum FilmGrainMetricType {
 // These are used by the core logic if specific values are not provided in CoreConfig.
 pub const DEFAULT_CORE_QUALITY_SD: u8 = 23;
 pub const DEFAULT_CORE_QUALITY_HD: u8 = 25;
-pub const DEFAULT_CORE_QUALITY_UHD: u8 = 27;
+pub const DEFAULT_CORE_QUALITY_UHD: u8 = 25;
 // Add other core defaults here if needed (e.g., default preset)
 
 #[derive(Debug, Clone)] // Configuration for the core processing
