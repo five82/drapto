@@ -267,9 +267,9 @@ where
          handbrake_args.push_back(output_path.to_string_lossy().to_string());
 
 
-        // Combine the base command parts (e.g., ["flatpak", "run", "..."]) with the specific arguments
-        let mut full_handbrake_args = VecDeque::from(handbrake_cmd_parts[1..].to_vec()); // Start with args like "run", "fr.handbrake..."
-        full_handbrake_args.append(&mut handbrake_args); // Append the specific encode args
+        // The handbrake_args VecDeque now contains all necessary arguments.
+        // handbrake_cmd_parts only contains the executable name.
+        let full_handbrake_args = handbrake_args; // No need to combine, args are already complete.
 
         let handbrake_executable = &handbrake_cmd_parts[0]; // The actual command to run (e.g., "HandBrakeCLI" or "flatpak")
 

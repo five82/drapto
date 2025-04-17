@@ -30,8 +30,8 @@ use std::process::{Command, Stdio};
 // Consider creating sub-modules like external/ffprobe.rs and external/handbrake.rs later.
 
 /// Checks if a required external command is available and executable.
-/// Returns the command parts (e.g., `["HandBrakeCLI"]` or `["flatpak", "run", "fr.handbrake.HandBrakeCLI"]`)
-/// if found, otherwise returns an error.
+/// Returns the command parts (e.g., `["HandBrakeCLI"]`) if found,
+/// otherwise returns an error.
 pub(crate) fn check_dependency(cmd_name: &str) -> CoreResult<Vec<String>> {
     // Use a version flag that typically exits quickly if the command exists
     let version_arg = if cmd_name == "ffprobe" { "-version" } else { "--version" };
@@ -50,50 +50,14 @@ pub(crate) fn check_dependency(cmd_name: &str) -> CoreResult<Vec<String>> {
             return Ok(direct_cmd_parts); // Found directly, return ["cmd_name"]
         }
         Err(e) => {
-            // Check if it was specifically 'NotFound' AND if it's HandBrakeCLI
-            if e.kind() == io::ErrorKind::NotFound && cmd_name == "HandBrakeCLI" {
-                // --- Second attempt: Flatpak command for HandBrakeCLI ---
-                log::debug!("'{}' not found directly, checking Flatpak...", cmd_name);
-                let flatpak_cmd_parts = vec![
-                    "flatpak".to_string(),
-                    "run".to_string(),
-                    "fr.handbrake.HandBrakeCLI".to_string(),
-                ];
-
-                let flatpak_check_result = Command::new(&flatpak_cmd_parts[0])
-                    .args(&flatpak_cmd_parts[1..]) // "run", "fr.handbrake..."
-                    .arg(version_arg) // Add the version arg for the check
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::null())
-                    .status();
-
-                match flatpak_check_result {
-                    Ok(_) => {
-                        log::info!("Found {} via Flatpak.", cmd_name);
-                        return Ok(flatpak_cmd_parts); // Found via flatpak, return ["flatpak", "run", "..."]
-                    }
-                    Err(flatpak_err) => {
-                        // If flatpak command itself fails to start (e.g., flatpak not installed)
-                        // or if the flatpak run fails (e.g., app not installed)
-                        // We report the original dependency as not found.
-                        log::warn!(
-                            "Flatpak check for {} failed: {}. Assuming dependency is unavailable.",
-                            cmd_name, flatpak_err
-                        );
-                        // Fall through to return DependencyNotFound for the original cmd_name
-                    }
-                }
-            }
-
-            // If we reach here, either:
-            // 1. The direct command failed with NotFound, and it wasn't HandBrakeCLI OR the Flatpak check also failed.
-            // 2. The direct command failed with some other error (e.g., permissions).
+            // If the direct command failed, return the appropriate error
             if e.kind() == io::ErrorKind::NotFound {
-                // Report original command as not found
-                return Err(CoreError::DependencyNotFound(cmd_name.to_string()));
+                log::warn!("Dependency '{}' not found.", cmd_name);
+                Err(CoreError::DependencyNotFound(cmd_name.to_string()))
             } else {
-                // Report other error for the direct command
-                return Err(CoreError::CommandStart(cmd_name.to_string(), e));
+                log::error!("Failed to start dependency check command '{}': {}", cmd_name, e);
+                // Use CommandStart for errors other than NotFound when trying to run the check.
+                Err(CoreError::CommandStart(cmd_name.to_string(), e))
             }
         }
     }
