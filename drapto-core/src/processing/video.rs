@@ -14,10 +14,7 @@
 //   - Retrieves audio track channel counts using `ffprobe` via the `external` module.
 //   - Calculates appropriate audio bitrates based on channel counts using the
 //     internal `calculate_audio_bitrate` helper function.
-//   - If `optimize_film_grain` is enabled in the config, it calls the
-//     `determine_optimal_grain` function (from the `film_grain` submodule)
-//     to find the best film grain setting. Otherwise, it uses the configured
-//     fallback value.
+//   - It constructs the HandBrake command with appropriate arguments.
 //   - Constructs the full argument list for the `HandBrakeCLI` command, incorporating
 //     settings from the `CoreConfig`, calculated audio bitrates, and the determined
 //     film grain value.
@@ -44,9 +41,7 @@ use crate::error::{CoreError, CoreResult};
 use crate::external::{check_dependency, get_video_width}; // Removed get_audio_channels
 use crate::utils::{format_bytes, format_duration, get_file_size}; // Added format_bytes, format_duration
 use crate::EncodeResult; // Assuming EncodeResult stays in lib.rs or is re-exported from there
-use crate::processing::{self, audio}; // To access film_grain and audio submodules
-// Import specific functions needed for dependency injection
-use crate::processing::film_grain::sampling::{extract_and_test_sample, get_video_duration_secs};
+use crate::processing::audio; // To access audio submodule
 
 use std::collections::VecDeque;
 use std::io::Read;
@@ -180,29 +175,9 @@ where
             video_width, category, quality
         ));
 
-        // --- Determine Film Grain Value ---
-        // (Film grain logic now runs *after* quality selection)
-        let film_grain_value = if config.optimize_film_grain {
-            log_callback(&format!(
-                "Attempting to determine optimal film grain value for {}...",
-                filename
-            ));
-            // Pass handbrake_cmd_parts to determine_optimal_grain
-            // Pass a mutable reference to the clone for film grain optimization logging
-            match processing::film_grain::determine_optimal_grain(input_path, config, &mut log_callback, get_video_duration_secs, extract_and_test_sample, &handbrake_cmd_parts) {
-                Ok(optimal_value) => {
-                    log_callback(&format!("Optimal film grain value determined: {}", optimal_value));
-                    optimal_value
-                }
-                Err(e) => {
-                    let fallback = config.film_grain_fallback_value.unwrap_or(0);
-                    log_callback(&format!("Warning: Film grain optimization failed: {}. Using fallback value: {}", e, fallback));
-                    fallback
-                }
-            }
-        } else {
-            config.film_grain_fallback_value.unwrap_or(0)
-        };
+        // --- Film Grain Removed ---
+        // Film grain optimization logic has been removed from the codebase.
+        // The --encopts related to film-grain will also be removed below.
 
         // --- Prepare Audio Options ---
         // Call the new function from the audio module
@@ -231,10 +206,7 @@ where
         handbrake_args.push_back("svt_av1_10bit".to_string());
         handbrake_args.push_back("--encoder-tune".to_string());
         handbrake_args.push_back("0".to_string()); // Assuming tune 0 is always desired
-         // Dynamic film grain setting
-         let encopts = format!("film-grain={}:film-grain-denoise=1", film_grain_value); // Use determined/fallback value
-         handbrake_args.push_back("--encopts".to_string());
-         handbrake_args.push_back(encopts);
+         // Film grain encopts removed.
 
         // Encoder Preset (Use CLI override if provided, otherwise use default from config, otherwise fallback)
         let preset_value: u8;

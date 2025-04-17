@@ -131,17 +131,6 @@ pub fn run_encode(
         } else {
             config::DEFAULT_CROP_MODE.to_string() // Use default otherwise
         }),
-        film_grain_sample_crop_mode: Some(config::DEFAULT_CROP_MODE.to_string()), // Always use default for sampling
-        film_grain_metric_type: None, // Keep defaults for now
-        film_grain_knee_threshold: None,
-        film_grain_refinement_range_delta: None,
-        film_grain_max_value: None,
-        film_grain_refinement_points_count: None,
-        optimize_film_grain: args.enable_grain_optimization, // Use the new flag directly
-        film_grain_sample_duration: args.grain_sample_duration,
-        film_grain_sample_count: args.grain_sample_count,
-        film_grain_initial_values: args.grain_initial_values,
-        film_grain_fallback_value: args.grain_fallback_value,
         ntfy_topic: args.ntfy, // Pass the ntfy topic URL from CLI args/env
         preset: args.preset.clone(), // Pass the preset from CLI args
     };

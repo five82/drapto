@@ -12,8 +12,7 @@
 //! - `error`: Defines custom error types (`CoreError`) and results (`CoreResult`) for the library.
 //! - `external`: Handles interactions with external command-line tools like HandBrakeCLI.
 //! - `processing`: Contains the main video processing logic, including encoding orchestration
-//!   (`process_videos`) and specific optimizations like film grain analysis
-//!   (`determine_optimal_grain`).
+//!   (`process_videos`).
 //! - `utils`: Provides common utility functions (e.g., `format_bytes`, `format_duration`).
 //!
 //! ## Public API
@@ -46,7 +45,7 @@ pub use discovery::find_processable_files;
 pub use error::{CoreError, CoreResult};
 
 // From processing module (which itself re-exports from submodules)
-pub use processing::{determine_optimal_grain, process_videos};
+pub use processing::process_videos;
 
 // From utils module (public helper functions)
 pub use utils::{format_bytes, format_duration};

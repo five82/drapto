@@ -57,23 +57,6 @@ pub struct EncodeArgs { // Made public
     #[arg(long, value_name = "CRF_UHD")]
     pub quality_uhd: Option<u8>,
 
-    // --- Film Grain Optimization Flags ---
-    /// Enable automatic film grain optimization (it's disabled by default)
-    #[arg(long = "enable-grain-optimization")] // Explicitly set the long flag name
-    pub enable_grain_optimization: bool, // Renamed field
-    /// Duration (seconds) for each optimization sample clip
-    #[arg(long, value_name = "SECONDS")]
-    pub grain_sample_duration: Option<u32>,
-    /// Number of sample points for optimization
-    #[arg(long, value_name = "COUNT")]
-    pub grain_sample_count: Option<usize>,
-    /// Comma-separated initial grain values to test (e.g., 0,8,20)
-    #[arg(long, value_delimiter = ',', value_name = "VALS")]
-    pub grain_initial_values: Option<Vec<u8>>,
-    /// Fallback grain value if optimization fails/disabled (default: 0)
-    #[arg(long, value_name = "VALUE")]
-    pub grain_fallback_value: Option<u8>,
-
     // --- Notifications ---
     /// Optional: ntfy.sh topic URL for sending notifications (e.g., https://ntfy.sh/your_topic)
     /// Can also be set via the DRAPTO_NTFY_TOPIC environment variable.
@@ -125,12 +108,6 @@ mod tests {
                 assert!(encode_args.quality_sd.is_none());
                 assert!(encode_args.quality_hd.is_none());
                 assert!(encode_args.quality_uhd.is_none());
-                // Check grain args
-                assert!(!encode_args.enable_grain_optimization); // Default is false (optimization disabled)
-                assert!(encode_args.grain_sample_duration.is_none());
-                assert!(encode_args.grain_sample_count.is_none());
-                assert!(encode_args.grain_initial_values.is_none());
-                assert!(encode_args.grain_fallback_value.is_none());
                 assert!(encode_args.ntfy.is_none()); // Check new ntfy arg
                 assert!(encode_args.preset.is_none()); // Check new preset arg (u8)
                 assert!(!encode_args.disable_autocrop); // Check default
@@ -184,47 +161,7 @@ mod tests {
         }
     }
 
-     #[test]
-    fn test_parse_encode_with_grain_args() {
-        // NOTE: Removed environment variable manipulation for DRAPTO_NTFY_TOPIC
-        // as it can cause flaky failures when tests run in parallel.
-        // The ntfy argument parsing is tested separately.
-
-        let args = vec![
-            "drapto-cli",
-            "encode",
-            "--input", "input",
-            "--output", "output",
-            "--enable-grain-optimization", // Use the new flag
-            "--grain-sample-duration", "15",
-            "--grain-sample-count", "5",
-            "--grain-initial-values", "4,12,24",
-            "--grain-fallback-value", "6",
-        ];
-        let cli = Cli::parse_from(args);
-
-        assert!(!cli.interactive); // Check default interactive flag is false
-
-        match cli.command {
-            Commands::Encode(encode_args) => {
-                assert!(encode_args.enable_grain_optimization); // Check the new flag is true when passed
-                assert_eq!(encode_args.grain_sample_duration, Some(15));
-                assert_eq!(encode_args.grain_sample_count, Some(5));
-                assert_eq!(encode_args.grain_initial_values, Some(vec![4, 12, 24]));
-                assert_eq!(encode_args.grain_fallback_value, Some(6));
-                // Check quality args are still None
-                assert!(encode_args.quality_sd.is_none());
-                assert!(encode_args.quality_hd.is_none());
-                assert!(encode_args.quality_uhd.is_none());
-                assert!(encode_args.preset.is_none()); // Check new preset arg (u8)
-                assert!(!encode_args.disable_autocrop); // Check default
-                // assert!(encode_args.ntfy.is_none()); // Removed assertion due to potential parallel test flakiness
-            },
-            // Add other command checks if necessary
-        }
-
-        // NOTE: Removed environment variable restoration block.
-    }
+    // Test for removed grain args is deleted.
     #[test]
     fn test_parse_encode_with_quality_args() {
         // Temporarily unset env var
@@ -282,7 +219,6 @@ mod tests {
                 // Check other args are default/None
                 assert!(encode_args.log_dir.is_none());
                 assert!(encode_args.quality_sd.is_none());
-                assert!(!encode_args.enable_grain_optimization); // Check default is false
                 assert!(encode_args.preset.is_none()); // Check new preset arg (u8)
                 assert!(!encode_args.disable_autocrop); // Check default
             },
@@ -351,7 +287,6 @@ mod tests {
                 // Check other args are default/None
                 assert!(encode_args.log_dir.is_none());
                 assert!(encode_args.quality_sd.is_none());
-                assert!(!encode_args.enable_grain_optimization); // Check default is false
                 assert!(encode_args.ntfy.is_none());
                 assert!(encode_args.preset.is_none()); // Check new preset arg (u8)
             },
@@ -379,7 +314,6 @@ mod tests {
                 // Check other args are default/None
                 assert!(encode_args.log_dir.is_none());
                 assert!(encode_args.quality_sd.is_none());
-                assert!(!encode_args.enable_grain_optimization); // Check default is false
                 assert!(!encode_args.disable_autocrop);
                 assert!(encode_args.ntfy.is_none());
             },

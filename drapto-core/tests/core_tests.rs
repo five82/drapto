@@ -22,9 +22,6 @@ use std::fs::{self, File};
 use std::path::PathBuf;
 use std::time::Duration;
 use tempfile::tempdir; // Use tempfile for creating temporary directories/files
-
-mod film_grain_tests; // Add module for film grain integration tests
-
 // --- Test Helper Functions ---
 
 // Note: We can't directly test the private `get_file_size` function here

@@ -139,9 +139,6 @@ pub(crate) fn get_audio_channels(input_path: &Path) -> CoreResult<Vec<u32>> {
         .collect()
 }
 
-// TODO: Move get_video_duration_secs from processing/film_grain.rs here
-
-
 // --- ffprobe JSON Structures ---
 
 #[derive(Deserialize, Debug)]
