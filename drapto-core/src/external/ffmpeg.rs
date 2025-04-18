@@ -7,9 +7,18 @@ use crate::error::CoreResult;
 use crate::processing::audio; // To access calculate_audio_bitrate (needs to be pub(crate))
 use std::path::PathBuf;
 
+/// Represents the type of hardware acceleration to use for decoding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HardwareAccel { // Changed to pub
+    None,
+    Vaapi,        // Linux AMD/Intel
+    VideoToolbox, // macOS
+}
+
 // Struct containing necessary info for building ffmpeg args
 pub(crate) struct FfmpegCommandArgs {
     pub input_path: PathBuf,
+    pub hw_accel: HardwareAccel, // Added hardware acceleration type
     pub output_path: PathBuf,
     pub quality: u32, // CRF value
     pub preset: u8,   // SVT-AV1 preset
@@ -24,6 +33,24 @@ pub(crate) fn build_ffmpeg_args(
     let mut ffmpeg_args: Vec<String> = Vec::new();
 
     ffmpeg_args.push("-hide_banner".to_string());
+
+    // Hardware Acceleration (Input Option - must come before -i)
+    match cmd_args.hw_accel {
+        HardwareAccel::Vaapi => {
+            ffmpeg_args.extend(vec![
+                "-hwaccel".to_string(),
+                "vaapi".to_string(),
+                "-hwaccel_output_format".to_string(),
+                "vaapi".to_string(), // VAAPI often requires specifying the output format
+            ]);
+        }
+        HardwareAccel::VideoToolbox => {
+            ffmpeg_args.extend(vec!["-hwaccel".to_string(), "videotoolbox".to_string()]);
+        }
+        HardwareAccel::None => {
+            // No hwaccel args needed
+        }
+    }
 
     // Input
     ffmpeg_args.extend(vec!["-i".to_string(), cmd_args.input_path.to_string_lossy().to_string()]);
@@ -85,4 +112,106 @@ pub(crate) fn build_ffmpeg_args(
     ffmpeg_args.push(cmd_args.output_path.to_string_lossy().to_string());
 
     Ok(ffmpeg_args)
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*; // Import items from parent module (ffmpeg.rs)
+    use std::path::PathBuf;
+
+    // Helper to create default args for tests
+    fn default_test_args() -> FfmpegCommandArgs {
+        FfmpegCommandArgs {
+            input_path: PathBuf::from("input.mkv"),
+            hw_accel: HardwareAccel::None, // Default to None, override in tests
+            output_path: PathBuf::from("output.mkv"),
+            quality: 25,
+            preset: 6,
+            crop_filter: None,
+            audio_channels: vec![2], // Example: stereo
+        }
+    }
+
+    #[test]
+    fn test_build_ffmpeg_args_no_hwaccel() {
+        let args = default_test_args(); // hw_accel is None by default
+        let ffmpeg_args = build_ffmpeg_args(&args).unwrap();
+
+        // Check that no hwaccel flags are present
+        assert!(!ffmpeg_args.contains(&"-hwaccel".to_string()));
+        assert!(!ffmpeg_args.contains(&"vaapi".to_string()));
+        assert!(!ffmpeg_args.contains(&"-hwaccel_output_format".to_string()));
+        assert!(!ffmpeg_args.contains(&"videotoolbox".to_string()));
+
+        // Basic check that input/output are present
+        assert!(ffmpeg_args.contains(&"-i".to_string()));
+        assert!(ffmpeg_args.contains(&"input.mkv".to_string()));
+        assert_eq!(ffmpeg_args.last().unwrap(), "output.mkv");
+    }
+
+    #[test]
+    fn test_build_ffmpeg_args_vaapi() {
+        let mut args = default_test_args();
+        args.hw_accel = HardwareAccel::Vaapi;
+        let ffmpeg_args = build_ffmpeg_args(&args).unwrap();
+
+        // Check that VAAPI flags are present and in the correct order (before -i)
+        let hwaccel_pos = ffmpeg_args.iter().position(|r| r == "-hwaccel").unwrap();
+        let vaapi_pos1 = ffmpeg_args.iter().position(|r| r == "vaapi").unwrap(); // First vaapi
+        let hwaccel_out_pos = ffmpeg_args.iter().position(|r| r == "-hwaccel_output_format").unwrap();
+        // Find the *second* occurrence of "vaapi"
+        let vaapi_pos2 = ffmpeg_args.iter().enumerate()
+            .filter(|&(_, r)| r == "vaapi")
+            .nth(1) // Get the second one
+            .map(|(i, _)| i)
+            .unwrap();
+        let input_pos = ffmpeg_args.iter().position(|r| r == "-i").unwrap();
+
+
+        assert_eq!(hwaccel_pos, 1, "Expected -hwaccel at index 1"); // After -hide_banner
+        assert_eq!(vaapi_pos1, 2, "Expected first vaapi at index 2");
+        assert_eq!(hwaccel_out_pos, 3, "Expected -hwaccel_output_format at index 3");
+        assert_eq!(vaapi_pos2, 4, "Expected second vaapi at index 4");
+        assert_eq!(input_pos, 5, "Expected -i at index 5"); // Ensure -i comes after hwaccel flags
+
+        assert!(ffmpeg_args.contains(&"-hwaccel".to_string()));
+        assert!(ffmpeg_args.contains(&"vaapi".to_string()));
+        assert!(ffmpeg_args.contains(&"-hwaccel_output_format".to_string()));
+        // Check that videotoolbox is NOT present
+        assert!(!ffmpeg_args.contains(&"videotoolbox".to_string()));
+    }
+
+     #[test]
+    fn test_build_ffmpeg_args_videotoolbox() {
+        let mut args = default_test_args();
+        args.hw_accel = HardwareAccel::VideoToolbox;
+        let ffmpeg_args = build_ffmpeg_args(&args).unwrap();
+
+        // Check that VideoToolbox flags are present and in the correct order (before -i)
+        let hwaccel_pos = ffmpeg_args.iter().position(|r| r == "-hwaccel").unwrap();
+        let videotoolbox_pos = ffmpeg_args.iter().position(|r| r == "videotoolbox").unwrap();
+        let input_pos = ffmpeg_args.iter().position(|r| r == "-i").unwrap();
+
+        assert_eq!(hwaccel_pos, 1, "Expected -hwaccel at index 1"); // After -hide_banner
+        assert_eq!(videotoolbox_pos, 2, "Expected videotoolbox at index 2");
+        assert_eq!(input_pos, 3, "Expected -i at index 3"); // Ensure -i comes after hwaccel flags
+
+        assert!(ffmpeg_args.contains(&"-hwaccel".to_string()));
+        assert!(ffmpeg_args.contains(&"videotoolbox".to_string()));
+        // Check that VAAPI flags are NOT present
+        assert!(!ffmpeg_args.contains(&"vaapi".to_string()));
+        assert!(!ffmpeg_args.contains(&"-hwaccel_output_format".to_string()));
+    }
+
+    // Add more tests as needed, e.g., with crop filters, multiple audio tracks etc.
+    #[test]
+    fn test_build_ffmpeg_args_with_crop() {
+        let mut args = default_test_args();
+        args.crop_filter = Some("crop=1920:800:0:140".to_string());
+        let ffmpeg_args = build_ffmpeg_args(&args).unwrap();
+
+        assert!(ffmpeg_args.contains(&"-vf".to_string()));
+        assert!(ffmpeg_args.contains(&"crop=1920:800:0:140".to_string()));
+    }
 }

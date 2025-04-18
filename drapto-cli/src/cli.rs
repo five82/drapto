@@ -70,6 +70,7 @@ pub struct EncodeArgs { // Made public
     /// Disable automatic crop detection (uses ffmpeg's cropdetect)
     #[arg(long)]
     pub disable_autocrop: bool,
+
 }
 
 

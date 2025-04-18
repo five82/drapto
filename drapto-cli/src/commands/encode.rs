@@ -5,7 +5,7 @@
 use crate::cli::EncodeArgs; // Use the definition from cli.rs
 use crate::config; // Access defaults from config.rs
 use crate::logging::{create_log_callback, get_timestamp}; // Use logging helpers
-use drapto_core::{CoreConfig, CoreError, EncodeResult};
+use drapto_core::{CoreConfig, CoreError, EncodeResult, external::ffmpeg::HardwareAccel}; // Import HardwareAccel
 use std::fs::{self, File};
 // use std::path::PathBuf; // Removed unused import
 use std::time::Instant;
@@ -102,6 +102,33 @@ pub fn run_encode(
     log_callback(&format!("Log directory: {}", log_dir.display()));
     log_callback(&format!("Main log file: {}", main_log_path.display()));
     log_callback(&format!("Interactive mode: {}", interactive)); // Log mode
+
+    // --- Determine and Log Hardware Acceleration ---
+    let hw_accel_mode = {
+        #[cfg(target_os = "linux")]
+        {
+            // Basic check for Linux, assume VAAPI for AMD/Intel as requested
+            // TODO: Add more robust detection if needed (e.g., check for /dev/dri)
+            HardwareAccel::Vaapi
+        }
+        #[cfg(target_os = "macos")]
+        {
+            // Basic check for macOS, assume VideoToolbox
+            HardwareAccel::VideoToolbox
+        }
+        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+        {
+            // Default to None for other OSes
+            HardwareAccel::None
+        }
+    };
+
+    match hw_accel_mode {
+        HardwareAccel::Vaapi => log_callback("Hardware Decoding: Enabled (VAAPI for Linux)"),
+        HardwareAccel::VideoToolbox => log_callback("Hardware Decoding: Enabled (VideoToolbox for macOS)"),
+        HardwareAccel::None => log_callback("Hardware Decoding: Disabled (Software decoding will be used)"),
+    }
+
     log_callback("========================================");
 
     // --- PID File Handling (Daemon Mode Only) ---
@@ -133,6 +160,7 @@ pub fn run_encode(
         }),
         ntfy_topic: args.ntfy, // Pass the ntfy topic URL from CLI args/env
         preset: args.preset.clone(), // Pass the preset from CLI args
+        hw_accel: hw_accel_mode, // Pass the detected mode
     };
 
     // --- Execute Core Logic ---

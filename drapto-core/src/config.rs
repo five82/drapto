@@ -17,6 +17,7 @@
 // (like `drapto-cli`) and passed into the main processing functions.
 
 use std::path::PathBuf;
+use crate::external::ffmpeg::HardwareAccel; // Import the enum
 
 #[derive(Debug, Clone, PartialEq, Eq)] // Added PartialEq, Eq for comparison
 pub enum FilmGrainMetricType {
@@ -48,4 +49,7 @@ pub struct CoreConfig {
     // --- Notifications ---
     /// Optional ntfy.sh topic URL for notifications
     pub ntfy_topic: Option<String>,
+    // --- Hardware Acceleration ---
+    /// Detected hardware acceleration mode
+    pub hw_accel: HardwareAccel,
 }

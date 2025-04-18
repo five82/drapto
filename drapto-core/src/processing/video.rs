@@ -209,6 +209,7 @@ where
         // Prepare args for the builder function
         let builder_input_args = ffmpeg_builder::FfmpegCommandArgs {
             input_path: input_path.to_path_buf(), // Clone path
+            hw_accel: config.hw_accel, // Pass the detected hw_accel mode from config
             output_path: output_path.clone(),    // Clone path
             quality: quality.into(), // Use quality determined earlier, CONVERT u8 to u32
             preset: preset_value,
