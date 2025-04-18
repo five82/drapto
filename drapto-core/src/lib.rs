@@ -1,8 +1,7 @@
 //! # drapto-core
 //!
 //! This crate provides the core logic for video processing tasks, primarily focusing
-//! on interacting with HandBrakeCLI for encoding and potentially other tools for
-//! analysis and optimization (like film grain detection).
+//! on interacting with ffmpeg for encoding and ffprobe for analysis.
 //!
 //! ## Structure
 //!
@@ -10,7 +9,7 @@
 //! - `config`: Defines configuration structures (`CoreConfig`) used throughout the library.
 //! - `discovery`: Contains functions for finding processable video files (`find_processable_files`).
 //! - `error`: Defines custom error types (`CoreError`) and results (`CoreResult`) for the library.
-//! - `external`: Handles interactions with external command-line tools like HandBrakeCLI.
+//! - `external`: Handles interactions with external command-line tools like ffmpeg and ffprobe.
 //! - `processing`: Contains the main video processing logic, including encoding orchestration
 //!   (`process_videos`).
 //! - `utils`: Provides common utility functions (e.g., `format_bytes`, `format_duration`).

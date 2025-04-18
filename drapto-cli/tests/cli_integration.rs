@@ -18,10 +18,10 @@ fn test_encode_command_basic_args() -> Result<(), Box<dyn Error>> {
 
     let output_file = output_dir.path().join("fake_output.mp4");
 
-    // TODO: Implement mocking for HandBrakeCLI execution
+    // TODO: Implement mocking for ffmpeg/ffprobe execution or use real binaries with dummy files.
     // For now, this test primarily checks if the command runs without panicking
     // and accepts basic arguments. A future step will involve verifying the
-    // generated HandBrake command.
+    // generated ffmpeg command or the output file.
 
     let mut cmd = drapto_cmd();
     cmd.arg("encode")
@@ -32,9 +32,9 @@ fn test_encode_command_basic_args() -> Result<(), Box<dyn Error>> {
         .arg("--preset")
         .arg("Fast 1080p30"); // Example preset
 
-    // We expect this to fail because HandBrakeCLI isn't found or mocked yet,
-    // but it shouldn't panic due to argument parsing issues.
-    // We'll refine the assertion once mocking is in place.
+    // We expect this to likely fail because ffmpeg/ffprobe aren't found or mocked,
+    // or because the dummy input file is invalid.
+    // The main goal here is that it shouldn't panic due to CLI argument parsing issues.
     cmd.assert().failure(); // Or success() once mocking is implemented
 
     Ok(())
@@ -45,4 +45,4 @@ fn test_encode_command_basic_args() -> Result<(), Box<dyn Error>> {
 // - Specifying config file
 // - Handling non-existent input
 // - Handling invalid arguments
-// - Verifying mocked HandBrakeCLI command generation
+// - Verifying mocked ffmpeg command generation or output file properties

@@ -6,7 +6,7 @@
 // Responsibilities of `process_videos`:
 // - Takes a `CoreConfig`, a list of video files (`files_to_process`), and a
 //   logging callback (`log_callback`) as input.
-// - Performs initial checks for required external dependencies (`HandBrakeCLI`, `ffprobe`)
+// - Performs initial checks for required external dependencies (`ffmpeg`, `ffprobe`)
 //   using functions from the `external` module.
 // - Iterates through each provided video file path.
 // - For each file:
@@ -14,17 +14,16 @@
 //   - Retrieves audio track channel counts using `ffprobe` via the `external` module.
 //   - Calculates appropriate audio bitrates based on channel counts using the
 //     internal `calculate_audio_bitrate` helper function.
-//   - It constructs the HandBrake command with appropriate arguments.
-//   - Constructs the full argument list for the `HandBrakeCLI` command, incorporating
-//     settings from the `CoreConfig`, calculated audio bitrates, and the determined
-//     film grain value.
-//   - Spawns `HandBrakeCLI` as a subprocess, capturing its stdout and stderr.
+//   - It constructs the ffmpeg command with appropriate arguments using the `external::ffmpeg` module.
+//   - Constructs the full argument list for the `ffmpeg` command, incorporating
+//     settings from the `CoreConfig`, detected crop filter, and audio parameters.
+//   - Spawns `ffmpeg` as a subprocess, capturing its stderr (stdout is ignored as progress goes to stderr).
 //   - Uses separate threads to concurrently read stdout and stderr, sending chunks
 //     of output through an MPSC channel to the main thread.
 //   - The main thread receives these chunks and passes them to the `log_callback`
 //     for real-time progress reporting. Stderr is also captured separately for
 //     potential error messages.
-//   - Waits for the `HandBrakeCLI` process to complete.
+//   - Waits for the `ffmpeg` process to complete.
 //   - If the process succeeds:
 //     - Retrieves input and output file sizes using `utils::get_file_size`.
 //     - Creates an `EncodeResult` struct containing filename, duration, and sizes.
@@ -38,12 +37,13 @@
 use crate::config::{CoreConfig, DEFAULT_CORE_QUALITY_HD, DEFAULT_CORE_QUALITY_SD, DEFAULT_CORE_QUALITY_UHD};
 use crate::notifications::send_ntfy; // Added for ntfy support
 use crate::error::{CoreError, CoreResult};
-use crate::external::{check_dependency, get_video_width}; // Removed get_audio_channels
+use crate::external::{check_dependency, get_video_width, ffmpeg as ffmpeg_builder}; // Import the new ffmpeg module
+use crate::processing::audio; // To access audio submodule
+use crate::processing::detection; // Import the new detection module
 use crate::utils::{format_bytes, format_duration, get_file_size}; // Added format_bytes, format_duration
 use crate::EncodeResult; // Assuming EncodeResult stays in lib.rs or is re-exported from there
-use crate::processing::audio; // To access audio submodule
 
-use std::collections::VecDeque;
+// Remove VecDeque as it's no longer needed for args
 use std::io::Read;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -67,10 +67,10 @@ where
     // --- Check Dependencies ---
     // No need to clone here, use the mutable reference directly
     log_callback("Checking for required external commands...");
-    // Store the command parts for HandBrakeCLI
-    let handbrake_cmd_parts = check_dependency("HandBrakeCLI")?;
-    log_callback(&format!("  [OK] HandBrakeCLI found (using: {:?}).", handbrake_cmd_parts));
-    // Assuming ffprobe is direct for now, but could use check_dependency too
+    // Check for ffmpeg
+    let _ffmpeg_cmd_parts = check_dependency("ffmpeg")?;
+    log_callback("  [OK] ffmpeg found."); // Update log message
+    // Check for ffprobe
     let _ffprobe_cmd_parts = check_dependency("ffprobe")?;
     log_callback("  [OK] ffprobe found.");
     log_callback("External dependency check passed.");
@@ -83,7 +83,7 @@ where
 
 
     let mut results: Vec<EncodeResult> = Vec::new();
-    // cmd_handbrake is now replaced by handbrake_cmd_parts
+    // Removed cmd_handbrake reference
 
     for input_path in files_to_process {
         let file_start_time = Instant::now();
@@ -175,173 +175,84 @@ where
             video_width, category, quality
         ));
 
-        // --- Film Grain Removed ---
-        // Film grain optimization logic has been removed from the codebase.
-        // The --encopts related to film-grain will also be removed below.
-
-        // --- Prepare Audio Options ---
-        // Call the new function from the audio module
-        let audio_cli_args = match audio::prepare_audio_options(input_path, &mut log_callback) {
-             Ok(args) => args,
+        // --- Crop Detection ---
+        // Determine if crop should be disabled (using config default_crop_mode for now)
+        // TODO: Add a specific config option like `disable_crop_detection`?
+        let disable_crop = config.default_crop_mode.as_deref() == Some("off"); // Treat "off" as disable
+        let (crop_filter_opt, _is_hdr) = match detection::detect_crop(input_path, disable_crop) {
+             Ok(result) => result,
              Err(e) => {
-                 // Although prepare_audio_options currently handles internal errors gracefully,
-                 // we still log if the function itself returns an Err.
-                 log_callback(&format!("Error preparing audio options for {}: {}. Proceeding without specific audio args.", filename, e));
-                 // Provide minimal default audio args if the function fails unexpectedly
-                 vec![
-                     "--aencoder".to_string(), "opus".to_string(),
-                     "--all-audio".to_string(), "--mixdown".to_string(), "none".to_string()
-                 ]
+                 log_callback(&format!("Warning: Crop detection failed for {}: {}. Proceeding without cropping.", filename, e));
+                 (None, false) // Default to no crop on error
              }
          };
 
-        // --- Build HandBrakeCLI Command ---
-        // TODO: Extract this logic into external/handbrake.rs as per plan
-        let mut handbrake_args: VecDeque<String> = VecDeque::new();
+        // --- Prepare Audio Options ---
+        // Log audio info (channels, calculated bitrates)
+        // We ignore the result as errors are logged internally by log_audio_info
+        let _ = audio::log_audio_info(input_path, &mut log_callback);
 
-        // --- Build HandBrakeCLI Command using Config Defaults ---
+        // --- Build ffmpeg Command ---
+        // Get preset value (same logic as before HandBrakeCLI removal)
+        let preset_value = config.preset.or(config.default_encoder_preset).unwrap_or(6);
 
-        // Fixed options (Encoder, Tune, etc.)
-        handbrake_args.push_back("--encoder".to_string());
-        handbrake_args.push_back("svt_av1_10bit".to_string());
-        handbrake_args.push_back("--encoder-tune".to_string());
-        handbrake_args.push_back("0".to_string()); // Assuming tune 0 is always desired
-         // Film grain encopts removed.
+        // Get audio channels (re-fetch for now, ideally refactor later)
+        // Note: This might log channel detection warnings twice if prepare_audio_options also failed.
+        let audio_channels = match crate::external::get_audio_channels(input_path) {
+             Ok(channels) => channels,
+             Err(e) => {
+                 log_callback(&format!("Warning: Error getting audio channels for ffmpeg command build: {}. Using empty list.", e));
+                 vec![] // Default to empty if error
+             }
+         };
 
-        // Encoder Preset (Use CLI override if provided, otherwise use default from config, otherwise fallback)
-        let preset_value: u8;
-        if let Some(cli_preset) = config.preset {
-            preset_value = cli_preset;
-            log_callback(&format!("Using encoder preset from CLI override: {}", preset_value));
-        } else if let Some(default_preset) = config.default_encoder_preset {
-             preset_value = default_preset;
-             log_callback(&format!("Using default encoder preset from config: {}", preset_value));
-        } else {
-            preset_value = 6; // Hardcoded fallback if neither CLI nor default config is set
-            log_callback(&format!("Using hardcoded fallback encoder preset: {}", preset_value));
-        }
-        handbrake_args.push_back("--encoder-preset".to_string());
-        handbrake_args.push_back(preset_value.to_string()); // Convert u8 to String for args
+        // Prepare args for the builder function
+        let builder_input_args = ffmpeg_builder::FfmpegCommandArgs {
+            input_path: input_path.to_path_buf(), // Clone path
+            output_path: output_path.clone(),    // Clone path
+            quality: quality.into(), // Use quality determined earlier, CONVERT u8 to u32
+            preset: preset_value,
+            crop_filter: crop_filter_opt, // Use crop filter determined earlier
+            audio_channels, // Use fetched channels
+        };
 
-        // Quality (Use the value determined earlier based on width)
-        handbrake_args.push_back("--quality".to_string());
-        handbrake_args.push_back(quality.to_string());
-        // Logging for quality is now done immediately after width detection
+        // Build the actual ffmpeg arguments
+        let ffmpeg_args = match ffmpeg_builder::build_ffmpeg_args(&builder_input_args) {
+            Ok(args) => args,
+            Err(e) => {
+                // Handle error during argument building (e.g., log and skip)
+                log_callback(&format!("ERROR: Failed to build ffmpeg arguments for {}: {}. Skipping file.", filename, e));
+                continue;
+            }
+        };
 
-        // Crop Mode (Only add if specified in config)
-        if let Some(crop_mode) = &config.default_crop_mode {
-            handbrake_args.push_back("--crop-mode".to_string());
-            handbrake_args.push_back(crop_mode.clone()); // Clone the string
-             log_callback(&format!("Using crop mode: {}", crop_mode));
-        } else {
-             log_callback("Using Handbrake's default crop mode (likely 'off')");
-        }
-
-
-        // Other fixed options
-         handbrake_args.push_back("--auto-anamorphic".to_string());
-         handbrake_args.push_back("--all-subtitles".to_string());
-         // Static audio args are now handled by prepare_audio_options
-         handbrake_args.push_back("none".to_string());
-         handbrake_args.push_back("--enable-hw-decoding".to_string());
-         handbrake_args.push_back("--no-comb-detect".to_string());
-         handbrake_args.push_back("--no-deinterlace".to_string());
-         handbrake_args.push_back("--no-bwdif".to_string());
-         handbrake_args.push_back("--no-decomb".to_string());
-         handbrake_args.push_back("--no-detelecine".to_string());
-         handbrake_args.push_back("--no-hqdn3d".to_string());
-         handbrake_args.push_back("--no-nlmeans".to_string());
-         handbrake_args.push_back("--no-chroma-smooth".to_string());
-         handbrake_args.push_back("--no-unsharp".to_string());
-         handbrake_args.push_back("--no-lapsharp".to_string());
-         handbrake_args.push_back("--no-deblock".to_string());
-
-         // Append the prepared audio arguments
-         for arg in audio_cli_args {
-             handbrake_args.push_back(arg);
-         }
-         // Input and Output files
-         handbrake_args.push_back("-i".to_string());
-         handbrake_args.push_back(input_path.to_string_lossy().to_string());
-         handbrake_args.push_back("-o".to_string());
-         handbrake_args.push_back(output_path.to_string_lossy().to_string());
+        let ffmpeg_executable = "ffmpeg"; // Assuming ffmpeg is in PATH
 
 
-        // The handbrake_args VecDeque now contains all necessary arguments.
-        // handbrake_cmd_parts only contains the executable name.
-        let full_handbrake_args = handbrake_args; // No need to combine, args are already complete.
-
-        let handbrake_executable = &handbrake_cmd_parts[0]; // The actual command to run (e.g., "HandBrakeCLI" or "flatpak")
-
-        log_callback(&format!("Starting HandBrakeCLI for {}...", filename));
-        // Log the command correctly, showing the executable and all arguments
-        log_callback(&format!("Command: {} {}", handbrake_executable, full_handbrake_args.iter().map(|s| format!("\"{}\"", s)).collect::<Vec<_>>().join(" ")));
+        log_callback(&format!("Starting ffmpeg for {}...", filename));
+        // Log the command correctly
+        log_callback(&format!("Command: {} {}", ffmpeg_executable, ffmpeg_args.iter().map(|s| format!("\"{}\"", s)).collect::<Vec<_>>().join(" ")));
 
 
-        // --- Execute HandBrakeCLI ---
-        let mut child = Command::new(handbrake_executable) // Use the determined executable
-            .args(Vec::from(full_handbrake_args)) // Use the combined arguments
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped()) // Capture stderr
+        // --- Execute ffmpeg ---
+        let mut child = Command::new(ffmpeg_executable)
+            .args(&ffmpeg_args) // Use the generated ffmpeg args
+            .stdout(Stdio::null()) // ffmpeg progress goes to stderr with "-progress -"
+            .stderr(Stdio::piped()) // Capture stderr for progress and errors
             .spawn()
-            .map_err(|e| CoreError::CommandStart(handbrake_executable.to_string(), e))?; // Use correct executable in error
+            .map_err(|e| CoreError::CommandStart(ffmpeg_executable.to_string(), e))?;
 
          // --- Stream Output to Log Callback ---
          // Combine stdout and stderr readers
          // Use raw readers, BufReader might add unwanted buffering here
-         let mut stdout_reader = child.stdout.take().unwrap();
-         let mut stderr_reader = child.stderr.take().unwrap();
-         // Removed initial declaration of stderr_output
+         let mut stderr_reader = child.stderr.take().unwrap(); // Keep this line (was 249)
 
-         // --- Process stdout/stderr concurrently (more robust) ---
+         // --- Process stderr concurrently ---
 
-         let (tx, rx) = mpsc::channel(); // Channel to send output lines/chunks
+         let (tx, rx) = mpsc::channel(); // Channel to send output lines/chunks (was 254)
 
-         let stdout_tx = tx.clone();
-         // Remove the clone attempt, threads will only send data
-         // For now, assume logging only happens on the main thread receiving from the channel
-         let stdout_thread = thread::spawn(move || {
-             let mut buffer = [0; 1024]; // Read in chunks
-             let mut line_buffer = String::new(); // Buffer for incomplete lines
-             loop {
-                 match stdout_reader.read(&mut buffer) {
-                     Ok(0) => { // EOF
-                         // Send any remaining data in the buffer as the last line
-                         if !line_buffer.is_empty() {
-                             let _ = stdout_tx.send(line_buffer);
-                         }
-                         break;
-                     }
-                     Ok(n) => {
-                         let chunk = String::from_utf8_lossy(&buffer[..n]);
-                         line_buffer.push_str(&chunk);
-
-                         // Process complete lines within the buffer
-                         while let Some(delimiter_pos) = line_buffer.find(|c| c == '\n' || c == '\r') {
-                             let line_end = delimiter_pos + 1; // Include the delimiter
-                             let line = line_buffer[..line_end].to_string();
-
-                             // Send the complete line
-                             // Only send the line, do not log here
-                             // Send the line (might be redundant if logging handles everything, but keep for now)
-                             if stdout_tx.send(line).is_err() {
-                                 // Cannot send, receiver likely gone, stop thread
-                                 return;
-                             }
-
-                             // Remove the processed line from the buffer
-                             line_buffer.drain(..line_end);
-                         }
-                         // Any remaining part stays in line_buffer for the next read
-                     }
-                     Err(_) => break, // Error reading
-                 }
-             }
-         });
-
-         let stderr_tx = tx; // No need to clone tx again
-         // Remove the clone attempt
-         let stderr_thread = thread::spawn(move || {
+         // Thread to read stderr, capture lines, and send them
+         let stderr_thread = thread::spawn(move || { // Use tx directly (was 300)
              let mut buffer = [0; 1024]; // Read in chunks
              let mut line_buffer = String::new(); // Buffer for incomplete lines
              let mut captured_stderr_lines = Vec::new(); // Capture lines for error reporting
@@ -352,7 +263,7 @@ where
                          // Send any remaining data in the buffer as the last line
                          if !line_buffer.is_empty() {
                              captured_stderr_lines.push(line_buffer.clone()); // Capture final part
-                             let _ = stderr_tx.send(line_buffer);
+                             let _ = tx.send(line_buffer); // Use tx
                          }
                          break;
                      }
@@ -367,9 +278,8 @@ where
 
                              captured_stderr_lines.push(line.clone()); // Capture the line
 
-                             // Only capture the line, do not log here
-                             // Send the line (might be redundant if logging handles everything, but keep for now)
-                             if stderr_tx.send(line).is_err() {
+                             // Send the line
+                             if tx.send(line).is_err() { // Use tx
                                  // Cannot send, receiver likely gone, stop thread
                                  // Return what we captured so far
                                  return captured_stderr_lines.join(""); // Return captured stderr on send error
@@ -386,25 +296,20 @@ where
              captured_stderr_lines.join("") // Return combined captured stderr lines
          });
 
-         // --- Receive and log output from both threads ---
-         // Drop the original tx so the loop terminates when threads finish
-         // drop(tx); // This was incorrect, tx is moved into stderr_thread
-
-         // Receive messages (now guaranteed to be lines) until the channel is closed
-         // Receive messages from threads and log them on the main thread
+         // --- Receive and log output from stderr thread ---
+         // Receive messages (lines) until the channel is closed (when stderr_thread finishes)
          for received_line in rx {
              log_callback(&received_line); // Log received lines here
          }
 
-         // --- Wait for threads and get captured stderr ---
-         stdout_thread.join().expect("Stdout reading thread panicked");
+         // --- Wait for stderr thread and get captured stderr ---
          // Join stderr thread and get the captured output
-         let stderr_output = stderr_thread.join().expect("Stderr reading thread panicked"); // Declare and assign here
+         let stderr_output = stderr_thread.join().expect("Stderr reading thread panicked");
 
 
-         let status = child.wait().map_err(|e| CoreError::CommandWait(handbrake_executable.to_string(), e))?; // Use correct executable in error
-
-
+         let status = child.wait().map_err(|e| CoreError::CommandWait(ffmpeg_executable.to_string(), e))?; // Use ffmpeg executable in error
+ 
+ 
         // --- Handle Result ---
         if status.success() {
             let file_elapsed_time = file_start_time.elapsed();
@@ -449,11 +354,12 @@ where
             // Log error including captured stderr, then continue processing other files
              // Log the error using the iteration's logger clone
              log_callback(&format!(
-                "ERROR: HandBrakeCLI failed for {} with status {}. Stderr:\n{}",
+                "ERROR: ffmpeg failed for {} with status {}. Stderr:\n{}", // Update error message
                  filename, status, stderr_output.trim() // Use the captured stderr
              ));
+             // Keep the second, simpler error log message
              log_callback(&format!(
-                "ERROR: HandBrakeCLI failed for {} with status {}. Check log for details.",
+                "ERROR: ffmpeg failed for {} with status {}. Check log for details.", // Update error message
                  filename, status
              ));
             // Consider returning a partial success / error report instead of just Vec<EncodeResult>
@@ -462,9 +368,9 @@ where
             // --- Send Error Notification ---
             if let Some(topic) = &config.ntfy_topic {
                 let error_message = format!(
-                    "[{hostname}]: Error encoding {filename}: HandBrakeCLI failed with status {status}.",
-                    hostname = hostname, // Add hostname
-                    filename = filename,
+                    "[{hostname}]: Error encoding {filename}: ffmpeg failed with status {status}.", // Update notification message
+                     hostname = hostname, // Add hostname
+                     filename = filename,
                     status = status
                 );
                  if let Err(e) = send_ntfy(topic, &error_message, Some("Drapto Encode Error"), Some(5), Some("x,rotating_light")) {

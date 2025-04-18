@@ -14,7 +14,7 @@
 //     - Errors when external commands exit with a non-zero status (`CommandFailed`).
 //     - Issues parsing output from tools like `ffprobe` (`FfprobeParse`).
 //     - Cases where no processable video files are found (`NoFilesFound`).
-//     - Situations where required external dependencies (like HandBrakeCLI or ffprobe)
+//     - Situations where required external dependencies (like ffmpeg or ffprobe)
 //       are not found or executable (`DependencyNotFound`).
 //     - Specific errors related to the film grain optimization process, such as
 //       sample encoding failures (`FilmGrainEncodingFailed`) or analysis problems
@@ -42,7 +42,7 @@ pub enum CoreError {
     CommandStart(String, io::Error), // e.g., "ffprobe", source error
 
     #[error("Failed to wait for {0}: {1}")]
-    CommandWait(String, io::Error), // e.g., "HandBrakeCLI", source error
+    CommandWait(String, io::Error), // e.g., "ffmpeg", source error
 
     #[error("Command {0} failed with status {1}. Stderr: {2}")]
     CommandFailed(String, std::process::ExitStatus, String), // e.g., "ffprobe", status, stderr

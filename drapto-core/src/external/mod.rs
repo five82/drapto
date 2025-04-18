@@ -2,7 +2,7 @@
 //
 // This module encapsulates all interactions with external command-line interface (CLI)
 // tools that `drapto-core` relies on, such as `ffprobe` (for media analysis) and
-// `HandBrakeCLI` (for encoding).
+// `ffmpeg` (for encoding and analysis).
 //
 // Its primary responsibilities include:
 // - Providing functions to check for the presence and executability of required
@@ -10,13 +10,13 @@
 // - Abstracting the execution of these tools and parsing their output.
 // - Defining helper functions that utilize these tools to gather information
 //   (e.g., `get_audio_channels` using `ffprobe`).
-// - (Future) Containing the logic for constructing and executing HandBrakeCLI commands.
+// - (Future) Containing the logic for constructing and executing ffmpeg commands.
 //
 // Functions within this module are typically marked `pub(crate)` as they represent
 // internal implementation details of the core library, not intended for direct
 // external consumption, but used by other modules within `drapto-core` (like `processing`).
 //
-// Consider creating sub-modules like `external::ffprobe` and `external::handbrake`
+// Consider creating sub-modules like `external::ffprobe` and `external::ffmpeg`
 // as the complexity grows.
 
 use crate::error::{CoreError, CoreResult}; // Use crate:: prefix
@@ -25,16 +25,20 @@ use std::path::Path;
 use serde::Deserialize; // Added for JSON parsing
 use std::process::{Command, Stdio};
 
+// Declare submodules
+pub mod ffmpeg;
+
 // TODO: Move get_video_duration_secs here.
-// TODO: Extract HandBrakeCLI command-building logic here.
-// Consider creating sub-modules like external/ffprobe.rs and external/handbrake.rs later.
+// TODO: Extract ffmpeg command-building logic to ffmpeg.rs.
+// Consider creating external/ffprobe.rs later.
 
 /// Checks if a required external command is available and executable.
-/// Returns the command parts (e.g., `["HandBrakeCLI"]`) if found,
+/// Returns the command parts (e.g., `["ffmpeg"]`) if found,
 /// otherwise returns an error.
 pub(crate) fn check_dependency(cmd_name: &str) -> CoreResult<Vec<String>> {
     // Use a version flag that typically exits quickly if the command exists
-    let version_arg = if cmd_name == "ffprobe" { "-version" } else { "--version" };
+    // Both ffmpeg and ffprobe use "-version"
+    let version_arg = "-version";
 
     // --- First attempt: Direct command ---
     let direct_cmd_parts = vec![cmd_name.to_string()];

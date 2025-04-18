@@ -21,6 +21,7 @@
 // Declare submodules
 pub mod video;
 pub mod audio; // Add the new audio module
+pub mod detection; // Add the new detection module
 
 // Re-export public API functions
 pub use video::process_videos;

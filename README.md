@@ -1,17 +1,17 @@
 # Drapto
 
-HandbrakeCLI video encoding wrapper.
+ffmpeg video encoding wrapper.
 
-Drapto provides a convenient command-line interface to automate video encoding tasks using HandBrakeCLI. It simplifies the process by allowing you to define encoding presets and apply them easily.
+Drapto provides a convenient command-line interface to automate video encoding tasks using ffmpeg (with libsvtav1 and libopus). It simplifies the process by using sensible defaults and automatic crop detection.
 
 ## Features
 
-*   Wraps HandBrakeCLI for powerful and flexible video encoding.
+*   Wraps ffmpeg for powerful and flexible video encoding using libsvtav1 (AV1) and libopus.
 *   Uses built-in default encoding settings.
 
 ## Installation
 
-1.  **Install HandBrakeCLI:** Ensure you have `HandBrakeCLI` installed and available in your system's PATH. You can download it from the [official HandBrake website](https://handbrake.fr/downloads2.php).
+1.  **Install ffmpeg & ffprobe:** Ensure you have `ffmpeg` (built with `--enable-libsvtav1` and `--enable-libopus`) and `ffprobe` installed and available in your system's PATH. You can download them from the [official FFmpeg website](https://ffmpeg.org/download.html) or use your system's package manager (e.g., `apt install ffmpeg`, `brew install ffmpeg`).
 2.  **Install Rust:** If you don't have Rust installed, follow the instructions at [rustup.rs](https://rustup.rs/).
 3.  **Install Drapto:** Install directly from the Git repository using `cargo install`.
     ```bash
@@ -51,7 +51,7 @@ Drapto can send notifications about encoding progress (start, success, error) to
 ### Common Options
 
 *   `--interactive`: Run in the foreground instead of the background (daemon mode).
-*   `--disable-autocrop`: Prevent HandBrake from automatically cropping black bars.
+*   `--disable-autocrop`: Disable automatic black bar detection (using ffmpeg's `cropdetect`).
 *   `--preset <0-13>`: Override the default SVT-AV1 encoder preset (lower is slower/better).
 *   `--quality-sd/hd/uhd <CRF>`: Override the default CRF quality value for specific resolutions.
 *   `--log-dir <PATH>`: Specify a custom directory for log files.

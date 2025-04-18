@@ -12,7 +12,7 @@ use std::path::PathBuf;
     author,
     version, // Reads from Cargo.toml via "cargo" feature in clap
     about = "Drapto: Video encoding tool",
-    long_about = "Handles video encoding tasks using HandBrakeCLI via drapto-core library."
+    long_about = "Handles video encoding tasks using ffmpeg via drapto-core library."
 )]
 pub struct Cli { // Made public
     #[command(subcommand)]
@@ -63,11 +63,11 @@ pub struct EncodeArgs { // Made public
     #[arg(long, value_name = "TOPIC_URL", env = "DRAPTO_NTFY_TOPIC")]
     pub ntfy: Option<String>,
 
-    /// Optional: Override the HandBrake SVT-AV1 encoder preset (0-13, lower is slower/better quality)
+    /// Optional: Override the ffmpeg libsvtav1 encoder preset (0-13, lower is slower/better quality)
     #[arg(long, value_name = "PRESET_INT")]
     pub preset: Option<u8>,
 
-    /// Disable HandBrake's automatic cropping feature
+    /// Disable automatic crop detection (uses ffmpeg's cropdetect)
     #[arg(long)]
     pub disable_autocrop: bool,
 }
