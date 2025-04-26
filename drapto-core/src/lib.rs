@@ -22,7 +22,6 @@
 //! of individual file encoding operations.
 
 // --- Modules ---
-// Declare all the top-level modules as per the refactoring plan.
 pub mod config;
 pub mod discovery;
 pub mod error;
@@ -64,5 +63,3 @@ pub struct EncodeResult {
     pub output_size: u64,
 }
 
-// Note: Removed unused imports like std::fs, std::io, std::process, etc.
-// Note: Path and PathBuf are no longer directly used in lib.rs's remaining code.

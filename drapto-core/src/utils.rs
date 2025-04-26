@@ -1,19 +1,9 @@
 // drapto-core/src/utils.rs
 //
-// This module provides general-purpose utility functions used across the
-// `drapto-core` library. These functions are not tied to a specific domain
-// like encoding or discovery but offer common helper functionalities.
-//
-// Includes:
-// - `get_file_size`: A private helper function (`pub(crate)`) to retrieve the
-//   size of a file in bytes, returning a `CoreResult`.
-// - `format_duration`: A public function (`pub`) that takes a `std::time::Duration`
-//   and formats it into a human-readable string (e.g., "1h 23m 45s").
-// - `format_bytes`: A public function (`pub`) that takes a number of bytes (u64)
-//   and formats it into a human-readable string with appropriate binary prefixes
-//   (B, KiB, MiB, GiB).
+// Provides general-purpose utility functions for file size retrieval,
+// duration formatting, and byte formatting used across `drapto-core`.
 
-use crate::error::CoreResult; // Use crate:: prefix
+use crate::error::CoreResult;
 use std::fs;
 use std::path::Path;
 use std::time::Duration;

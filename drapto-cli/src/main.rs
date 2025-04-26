@@ -3,27 +3,21 @@
 // Main entry point for the Drapto CLI application.
 // Parses arguments and dispatches to command handlers.
 
-// Use items from the drapto_cli library crate
 use drapto_cli::{Cli, Commands, run_encode};
-use drapto_cli::commands::encode::discover_encode_files; // Import the discovery function
-use drapto_cli::logging::get_timestamp; // Import timestamp function
+use drapto_cli::commands::encode::discover_encode_files;
+use drapto_cli::logging::get_timestamp;
 use clap::Parser;
-use daemonize::Daemonize; // Import Daemonize
-// Removed unused fs import
-use std::io::{self, Write}; // Import io for stderr().flush()
-use std::path::PathBuf; // Import PathBuf
+use daemonize::Daemonize;
+use std::io::{self, Write};
+use std::path::PathBuf;
 use std::process;
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
-// Removed unused thread and Duration imports
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Parse the top-level arguments using the struct from the cli module
     let cli_args = Cli::parse();
 
-    // Store interactive flag before potentially moving cli_args
     let interactive_mode = cli_args.interactive;
 
-    // Daemonization logic moved inside the match arm for Encode command
 
     // Match on the command provided - runs in original process (interactive) or daemon process
     let result = match cli_args.command {
@@ -37,13 +31,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                      stderr.set_color(ColorSpec::new().set_fg(Some(Color::Red)).set_bold(true))?;
                      writeln!(&mut stderr, "Error during file discovery: {}", e)?;
                      stderr.reset()?;
-                     process::exit(1); // Exit on discovery error
+                     process::exit(1);
                  }
             };
 
             // --- Calculate potential log path (needed before daemonization for printing) ---
             // This logic mirrors the start of run_encode to predict the log path.
-            let (actual_output_dir, _target_filename_override_os) = // Renamed variable for clarity
+            let (actual_output_dir, _target_filename_override_os) =
                 if discovered_files.len() == 1 && args.output_dir.extension().is_some() {
                     let target_file = args.output_dir.clone();
                     let parent_dir = target_file.parent()
@@ -59,7 +53,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Note: We don't create the log dir here, run_encode will do it.
             // We also don't need the full log_callback setup here, just the path.
             let main_log_filename = format!("drapto_encode_run_{}.log", get_timestamp());
-            let main_log_path = log_dir.join(&main_log_filename); // Borrow filename
+            let main_log_path = log_dir.join(&main_log_filename);
 
 
             // --- Daemonize if needed ---
@@ -67,7 +61,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // Print discovered files *before* daemon message
                 if !discovered_files.is_empty() {
                     eprintln!("Will encode the following files:");
-                    for file in &discovered_files { // Borrow files here
+                    for file in &discovered_files {
                         eprintln!("  - {}", file.display());
                     }
                 } else {
@@ -78,7 +72,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                  });
 
                 // Print log file path *before* daemon message
-                eprintln!("Log file: {}", main_log_path.display()); // Display the calculated log path
+                eprintln!("Log file: {}", main_log_path.display());
                 io::stderr().flush().unwrap_or_else(|e| {
                     eprintln!("Warning: Failed to flush stderr before daemonizing: {}", e);
                 });
@@ -92,7 +86,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 // We don't configure PID file here; it will be handled in run_encode after log setup.
                 let daemonize = Daemonize::new()
-                    .working_directory("."); // Keep current working directory
+                    .working_directory(".");
                 match daemonize.start() {
                     Ok(_) => {
                         // Parent process exits successfully after fork.
@@ -113,7 +107,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         } // Add other command arms here
     };
 
-    // Handle the result from the command function
     if let Err(e) = result {
         // Error handling:
         // In interactive mode, this prints to the original terminal's stderr.
@@ -130,9 +123,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // The primary error reporting mechanism is the log file handled within run_encode.
             eprintln!("Daemon Error: {}", e);
         }
-        process::exit(1); // Exit with error code
+        process::exit(1);
     }
 
-    // If result was Ok, the process will exit with 0 implicitly when main returns Ok.
     Ok(())
 }

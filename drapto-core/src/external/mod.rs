@@ -1,32 +1,12 @@
 // drapto-core/src/external/mod.rs
 //
-// This module encapsulates all interactions with external command-line interface (CLI)
-// tools that `drapto-core` relies on, such as `ffprobe` (for media analysis) and
-// `ffmpeg` (for encoding and analysis).
-//
-// Its primary responsibilities include:
-// - Providing functions to check for the presence and executability of required
-//   external tools (`check_dependency`).
-// - Abstracting the execution of these tools and parsing their output.
-// - Defining helper functions that utilize these tools to gather information
-//   (e.g., `get_audio_channels` using `ffprobe`).
-// - (Future) Containing the logic for constructing and executing ffmpeg commands.
-//
-// Functions within this module are typically marked `pub(crate)` as they represent
-// internal implementation details of the core library, not intended for direct
-// external consumption, but used by other modules within `drapto-core` (like `processing`).
-//
-// Consider creating sub-modules like `external::ffprobe` and `external::ffmpeg`
-// as the complexity grows.
+// Encapsulates interactions with external CLI tools like ffmpeg and ffprobe.
+// Provides functions for dependency checking and abstracting tool execution.
 
-use crate::error::{CoreError, CoreResult}; // Use crate:: prefix
+use crate::error::{CoreError, CoreResult};
 use std::io;
 use std::path::Path;
-// Removed unused serde::Deserialize import
 use std::process::{Command, Stdio};
-// Removed incorrect FfprobeCommand import
-// Removed unused HashMap import
-// Declare submodules
 pub mod ffmpeg;
 
 // TODO: Move get_video_duration_secs here.
@@ -52,7 +32,7 @@ pub(crate) fn check_dependency(cmd_name: &str) -> CoreResult<Vec<String>> {
     match direct_result {
         Ok(_) => {
             log::debug!("Found dependency directly: {}", cmd_name);
-            return Ok(direct_cmd_parts); // Found directly, return ["cmd_name"]
+            return Ok(direct_cmd_parts);
         }
         Err(e) => {
             // If the direct command failed, return the appropriate error

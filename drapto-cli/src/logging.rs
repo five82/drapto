@@ -17,7 +17,7 @@ pub fn get_timestamp() -> String {
 // Creates the logging closure that writes to both console (with color) and a file.
 pub fn create_log_callback(
     log_file: File,
-    enable_console: bool, // Add parameter to control console output
+    enable_console: bool,
 ) -> Result<Box<dyn FnMut(&str) + Send + 'static>, Box<dyn std::error::Error>> {
     // Wrap shared state in Arc<Mutex> for thread safety
     let logger = Arc::new(Mutex::new(BufWriter::new(log_file)));
@@ -60,7 +60,7 @@ pub fn create_log_callback(
         // Create a new stdout handle each time to avoid capturing non-Send/Clone type
         let mut stdout = StandardStream::stdout(ColorChoice::Auto);
         let msg_trimmed = msg.trim_end();
-        let mut last_was_progress_guard = last_was_progress.lock().unwrap(); // Lock for console logic
+        let mut last_was_progress_guard = last_was_progress.lock().unwrap();
 
         if is_progress {
             stdout.set_color(ColorSpec::new().set_fg(Some(Color::Blue)).set_bold(false).set_dimmed(false).set_intense(false)).ok();
@@ -83,7 +83,7 @@ pub fn create_log_callback(
                 "  Encode time: ", "  Input size:  ", "  Output size: ", "  Reduced by:  ",
             ];
 
-            // Style: Bold Labels, Normal Values
+            // Style: Bold Labels
             for prefix in bold_label_prefixes {
                 if msg_trimmed.starts_with(prefix) {
                     if let Some(value) = msg_trimmed.strip_prefix(prefix) {
@@ -97,7 +97,7 @@ pub fn create_log_callback(
                 }
             }
 
-            // Style: Normal Labels, Bold Values
+            // Style: Bold Values
             if !handled {
                 for prefix in summary_value_prefixes {
                     if msg_trimmed.starts_with(prefix) {
@@ -205,9 +205,8 @@ pub fn create_log_callback(
             stdout.flush().ok();
             }
             stdout.flush().ok(); // Ensure flush happens even if not progress
-        } // End of if enable_console
+        }
     };
 
-    // Box the closure and return it
     Ok(Box::new(log_callback))
 }

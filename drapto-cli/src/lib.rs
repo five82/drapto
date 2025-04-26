@@ -3,7 +3,6 @@
 // Library portion of the Drapto CLI application.
 // Contains argument definitions and command logic.
 
-// Declare modules
 pub mod cli;
 pub mod commands;
 pub mod config;
