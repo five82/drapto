@@ -7,8 +7,11 @@
 use crate::error::{CoreError, CoreResult};
 use serde::Deserialize; // For parsing ffprobe JSON
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::{Command, Stdio}; // Keep Command, Stdio for ffprobe
 use regex::Regex; // For parsing ffmpeg output
+use ffmpeg_sidecar::command::FfmpegCommand; // FfmpegCommand is in command module
+// Removed FfprobeCommand import
+use ffmpeg_sidecar::event::FfmpegEvent; // Import events for stderr capture
 // Removed unused StdDuration import
 
 // --- Structs for ffprobe JSON output ---
@@ -75,41 +78,65 @@ fn determine_crop_threshold(props: &VideoProperties) -> (u32, bool) {
 
 /// Runs ffmpeg blackdetect on sample frames for HDR content to refine the threshold.
 fn run_hdr_blackdetect(input_file: &Path, initial_threshold: u32) -> CoreResult<u32> {
-    let cmd_ffmpeg = "ffmpeg";
-    let args = [
-        "-hide_banner",
-        "-i", &input_file.to_string_lossy(),
-        // Select a few frames (e.g., 0, 100, 200) and run blackdetect
-        "-vf", "select='eq(n,0)+eq(n,100)+eq(n,200)',blackdetect=d=0:pic_th=0.1",
-        "-f", "null",
-        "-"
-    ];
+    log::debug!("Running ffmpeg (sidecar) for HDR black level analysis on {}", input_file.display());
 
-    log::debug!("Running ffmpeg for HDR black level analysis: {} {:?}", cmd_ffmpeg, args);
+    let filter = "select='eq(n,0)+eq(n,100)+eq(n,200)',blackdetect=d=0:pic_th=0.1";
 
-    let output = Command::new(cmd_ffmpeg)
-        .args(&args)
-        .stdout(Stdio::null()) // We only care about stderr
-        .stderr(Stdio::piped())
-        .output()
-        .map_err(|e| CoreError::CommandStart(cmd_ffmpeg.to_string(), e))?;
+    let mut cmd = FfmpegCommand::new();
+    cmd.hide_banner()
+        .input(input_file.to_string_lossy().into_owned()) // Convert Path -> String
+        .filter_complex(filter) // Use filter_complex for flexibility
+        .format("null") // Output format null
+        .output("-"); // Output target null
 
-    // ffmpeg often prints filter info to stderr
-    let stderr = String::from_utf8_lossy(&output.stderr);
+    // log::debug!("Constructed ffmpeg HDR blackdetect command (sidecar): {:?}", cmd.as_args()); // Removed as_args
 
-    if !output.status.success() {
-        log::error!("ffmpeg failed during HDR blackdetect on {}: {}", input_file.display(), stderr.trim());
+    let mut stderr_output = String::new();
+    // Spawn the child process, handling potential spawn errors immediately
+    let mut child = cmd.spawn()
+        .map_err(|e| CoreError::CommandStart("ffmpeg (sidecar - hdr blackdetect spawn)".to_string(), e))?;
+
+    // Get the iterator Result
+    let iter_result = child.iter();
+
+    // Match on the iterator Result
+    let process_result = match iter_result {
+        Ok(iterator) => {
+            // Iterate through events if iter() succeeded
+            for event in iterator {
+                 match event {
+                    // Capture relevant stderr lines for parsing
+                    FfmpegEvent::Log(_, line) | FfmpegEvent::Error(line) => {
+                        if line.contains("black_level") {
+                            stderr_output.push_str(&line);
+                            stderr_output.push('\n');
+                        }
+                    }
+                    _ => {} // Ignore other events
+                }
+            }
+            Ok(()) // Indicate successful iteration and process completion
+        }
+        Err(e) => {
+            // Handle error from iter() itself (e.g., pipe broken)
+            Err(CoreError::CommandFailed("ffmpeg (sidecar - hdr blackdetect iter)".to_string(), std::process::ExitStatus::default(), e.to_string()))
+        }
+    };
+
+    // Check if the iteration process failed
+    if let Err(e) = process_result {
+        log::error!("ffmpeg (sidecar) failed during HDR blackdetect on {}: {}", input_file.display(), e);
         // Return initial threshold on failure, maybe log a warning
         log::warn!("HDR blackdetect failed, using initial threshold: {}", initial_threshold);
         return Ok(initial_threshold);
     }
 
-    log::trace!("ffmpeg HDR blackdetect output for {}: {}", input_file.display(), stderr);
+    log::trace!("ffmpeg HDR blackdetect stderr output for {}: {}", input_file.display(), stderr_output);
 
     // Parse black_level from stderr
     // Example output line: [blackdetect @ 0x...] black_start:0 black_end:10 black_level: 64
     let black_level_re = Regex::new(r"black_level:\s*([0-9.]+)").unwrap();
-    let matches: Vec<f64> = black_level_re.captures_iter(&stderr)
+    let matches: Vec<f64> = black_level_re.captures_iter(&stderr_output)
         .filter_map(|cap| cap.get(1)?.as_str().parse::<f64>().ok())
         .collect();
 
@@ -169,42 +196,66 @@ fn run_cropdetect(
 
     let cropdetect_filter = format!("cropdetect=limit={}:round=2:reset=1", crop_threshold);
 
-    let cmd_ffmpeg = "ffmpeg";
-    let args = [
-        "-hide_banner",
-        "-i", &input_file.to_string_lossy(),
-        "-vf", &cropdetect_filter,
-        "-frames:v", &frames_to_scan.to_string(), // Scan calculated number of frames
-        "-f", "null",
-        "-"
-    ];
+    log::debug!("Running ffmpeg (sidecar) cropdetect on {}", input_file.display());
 
-    log::debug!("Running ffmpeg cropdetect: {} {:?}", cmd_ffmpeg, args);
+    let mut cmd = FfmpegCommand::new();
+    cmd.hide_banner()
+        .input(input_file.to_string_lossy().into_owned()) // Convert Path -> String
+        .filter_complex(&cropdetect_filter) // Use filter_complex
+        .frames(frames_to_scan) // Use .frames() instead of .frames_video()
+        .format("null") // Output format null
+        .output("-"); // Output target null
 
-    let output = Command::new(cmd_ffmpeg)
-        .args(&args)
-        .stdout(Stdio::null()) // We only care about stderr
-        .stderr(Stdio::piped())
-        .output()
-        .map_err(|e| CoreError::CommandStart(cmd_ffmpeg.to_string(), e))?;
+    // log::debug!("Constructed ffmpeg cropdetect command (sidecar): {:?}", cmd.as_args()); // Removed as_args
 
-    let stderr = String::from_utf8_lossy(&output.stderr);
+    let mut stderr_output = String::new();
+    // Spawn the child process, handling potential spawn errors immediately
+    let mut child = cmd.spawn()
+        .map_err(|e| CoreError::CommandStart("ffmpeg (sidecar - cropdetect spawn)".to_string(), e))?;
 
-    // Note: cropdetect might not fail even if it finds nothing. Check stderr.
-    if !output.status.success() {
-         log::error!("ffmpeg failed during cropdetect on {}: {}", input_file.display(), stderr.trim());
-         // Don't error out, just return None for crop filter
-         return Ok(None);
+    // Get the iterator Result
+    let iter_result = child.iter();
+
+    // Match on the iterator Result
+    let process_result = match iter_result {
+         Ok(iterator) => {
+            // Iterate through events if iter() succeeded
+            for event in iterator {
+                 match event {
+                    // Capture relevant stderr lines for parsing
+                    FfmpegEvent::Log(_, line) | FfmpegEvent::Error(line) => {
+                        if line.contains("crop=") {
+                            stderr_output.push_str(&line);
+                            stderr_output.push('\n');
+                        }
+                    }
+                    _ => {} // Ignore other events
+                }
+            }
+            Ok(()) // Indicate successful iteration and process completion
+        }
+        Err(e) => {
+            // Handle error from iter() itself (e.g., pipe broken)
+            Err(CoreError::CommandFailed("ffmpeg (sidecar - cropdetect iter)".to_string(), std::process::ExitStatus::default(), e.to_string()))
+        }
+    };
+
+    // Note: cropdetect often finishes successfully even if no crop is detected.
+    // We rely on parsing the stderr_output. Errors during execution are handled below.
+    if let Err(e) = process_result {
+        log::error!("ffmpeg (sidecar) failed during cropdetect on {}: {}", input_file.display(), e);
+        // Don't error out, just return None for crop filter
+        return Ok(None);
     }
 
-    log::trace!("ffmpeg cropdetect output for {}: {}", input_file.display(), stderr);
+    log::trace!("ffmpeg cropdetect stderr output for {}: {}", input_file.display(), stderr_output);
 
     // Parse crop=W:H:X:Y values from stderr
     let crop_re = Regex::new(r"crop=(\d+):(\d+):(\d+):(\d+)").unwrap();
     let mut crop_counts: std::collections::HashMap<(u32, u32, u32, u32), usize> = std::collections::HashMap::new();
     let mut valid_crops_found = false;
 
-    for cap in crop_re.captures_iter(&stderr) {
+    for cap in crop_re.captures_iter(&stderr_output) {
         // Okay to unwrap here as regex ensures digits
         let w: u32 = cap[1].parse().unwrap();
         let h: u32 = cap[2].parse().unwrap();
@@ -259,6 +310,7 @@ fn run_cropdetect(
 // TODO: Implement detect_crop (Step 6) - Partially implemented below
 
 /// Gets video properties using ffprobe.
+#[cfg(not(feature = "test-mock-ffprobe"))] // Original implementation
 pub(crate) fn get_video_properties(input_file: &Path) -> CoreResult<VideoProperties> {
     let cmd_ffprobe = "ffprobe";
     let args = [
@@ -322,9 +374,29 @@ pub(crate) fn get_video_properties(input_file: &Path) -> CoreResult<VideoPropert
     })
 }
 
+// Mock implementation for get_video_properties
+#[cfg(feature = "test-mock-ffprobe")]
+pub(crate) fn get_video_properties(input_file: &Path) -> CoreResult<VideoProperties> {
+    log::warn!("Using MOCKED get_video_properties for path: {}", input_file.display());
+    // Return some default valid data for testing purposes
+    Ok(VideoProperties {
+        width: 1920,
+        height: 1080,
+        duration: 120.0, // 2 minutes
+        color_space: Some("bt709".to_string()),
+        color_transfer: Some("bt709".to_string()),
+        color_primaries: Some("bt709".to_string()),
+    })
+}
+
+
 /// Main crop detection function (entry point).
 /// Returns a tuple: (Option<crop_filter_string>, is_hdr)
-pub(crate) fn detect_crop(input_file: &Path, disable_crop: bool) -> CoreResult<(Option<String>, bool)> {
+pub(crate) fn detect_crop(
+    input_file: &Path,
+    video_props: &VideoProperties, // Accept pre-fetched properties
+    disable_crop: bool,
+) -> CoreResult<(Option<String>, bool)> {
     // TODO: Use config value if disable_crop is None (requires config access)
     // For now, only use the direct parameter.
     if disable_crop {
@@ -332,14 +404,7 @@ pub(crate) fn detect_crop(input_file: &Path, disable_crop: bool) -> CoreResult<(
         return Ok((None, false));
     }
 
-    println!("🔍 Analyzing video properties for {}...", input_file.display()); // User-facing message
-    log::info!("Analyzing video properties for {}...", input_file.display());
-    let video_props = get_video_properties(input_file)?;
-
-    if video_props.width == 0 || video_props.height == 0 || video_props.duration <= 0.0 {
-         log::error!("Invalid video properties obtained for {}: {:?}", input_file.display(), video_props);
-         return Err(CoreError::VideoInfoError(format!("Invalid video properties for {}", input_file.display())));
-    }
+    // video_props are now passed in, no need to fetch or validate basic properties here.
 
     // Determine initial threshold and HDR status
     let (mut crop_threshold, is_hdr) = determine_crop_threshold(&video_props);

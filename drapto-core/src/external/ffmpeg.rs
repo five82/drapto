@@ -1,217 +1,305 @@
 // drapto-core/src/external/ffmpeg.rs
 //
-// This module will encapsulate the logic for building and potentially
-// executing ffmpeg commands.
+// This module encapsulates the logic for executing ffmpeg commands using ffmpeg-sidecar.
 
-use crate::error::CoreResult;
-use crate::processing::audio; // To access calculate_audio_bitrate (needs to be pub(crate))
-use std::path::PathBuf;
+use crate::error::{CoreError, CoreResult};
+use crate::processing::audio; // To access calculate_audio_bitrate
+use ffmpeg_sidecar::command::FfmpegCommand;
+use ffmpeg_sidecar::event::{FfmpegEvent, LogLevel as FfmpegLogLevel}; // Renamed LogLevel to avoid conflict
+use std::path::PathBuf; // Keep PathBuf, remove unused Path
+// Removed unused Duration import
 
 /// Represents the type of hardware acceleration to use for decoding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum HardwareAccel { // Changed to pub
+pub enum HardwareAccel { // Kept pub as it might be needed by calling code
     None,
     Vaapi,        // Linux AMD/Intel
     VideoToolbox, // macOS
 }
 
-// Struct containing necessary info for building ffmpeg args
-pub(crate) struct FfmpegCommandArgs {
+/// Parameters required for running an FFmpeg encode operation.
+#[derive(Debug, Clone)]
+pub struct EncodeParams {
     pub input_path: PathBuf,
-    pub hw_accel: HardwareAccel, // Added hardware acceleration type
     pub output_path: PathBuf,
     pub quality: u32, // CRF value
     pub preset: u8,   // SVT-AV1 preset
-    pub crop_filter: Option<String>, // Optional crop filter string "crop=..."
+    pub hw_accel: HardwareAccel,
+    pub crop_filter: Option<String>, // Optional crop filter string "crop=W:H:X:Y"
     pub audio_channels: Vec<u32>, // Detected audio channels for bitrate mapping
+    pub duration: f64, // Total video duration in seconds for progress calculation
+    // Add other parameters as needed (e.g., specific audio/subtitle stream selection)
 }
 
-/// Builds the ffmpeg command arguments as a Vec<String>.
-pub(crate) fn build_ffmpeg_args(
-    cmd_args: &FfmpegCommandArgs,
-) -> CoreResult<Vec<String>> {
-    let mut ffmpeg_args: Vec<String> = Vec::new();
+/// Executes an FFmpeg encode operation using ffmpeg-sidecar based on the provided parameters.
+/// Logs progress information.
+pub fn run_ffmpeg_encode(params: &EncodeParams) -> CoreResult<()> {
+    log::info!(
+        "Starting FFmpeg encode for: {}",
+        params.input_path.display()
+    );
+    log::debug!("Encode parameters: {:?}", params);
 
-    ffmpeg_args.push("-hide_banner".to_string());
+    let mut cmd = FfmpegCommand::new();
 
-    // Hardware Acceleration (Input Option - must come before -i)
-    match cmd_args.hw_accel {
+    // --- Input Arguments ---
+    cmd.hide_banner(); // Equivalent to -hide_banner
+
+    // Hardware Acceleration (Input Option - must come before input())
+    match params.hw_accel {
         HardwareAccel::Vaapi => {
-            ffmpeg_args.extend(vec![
-                "-hwaccel".to_string(),
-                "vaapi".to_string(),
-                "-hwaccel_output_format".to_string(),
-                "vaapi".to_string(), // VAAPI often requires specifying the output format
-            ]);
+            cmd.hwaccel("vaapi");
+            // VAAPI often requires specifying the output format - use raw args
+            cmd.arg("-hwaccel_output_format").arg("vaapi");
         }
         HardwareAccel::VideoToolbox => {
-            ffmpeg_args.extend(vec!["-hwaccel".to_string(), "videotoolbox".to_string()]);
+            cmd.hwaccel("videotoolbox");
         }
         HardwareAccel::None => {
             // No hwaccel args needed
         }
     }
 
-    // Input
-    ffmpeg_args.extend(vec!["-i".to_string(), cmd_args.input_path.to_string_lossy().to_string()]);
+    cmd.input(params.input_path.to_string_lossy().into_owned()); // Convert PathBuf -> String
 
-    // Video Filters (Crop)
-    // Combine all video filters with comma if multiple exist in the future
-    let mut vf_filters: Vec<String> = Vec::new();
-    if let Some(crop) = &cmd_args.crop_filter {
-        vf_filters.push(crop.clone());
-    }
-    // Add other video filters here if needed
-    if !vf_filters.is_empty() {
-        ffmpeg_args.extend(vec!["-vf".to_string(), vf_filters.join(",")]);
+    // --- Filters and Stream Mapping ---
+    // Audio filter for channel layout workaround - use raw args
+    let af_filters = vec!["aformat=channel_layouts=7.1|5.1|stereo|mono"];
+    cmd.arg("-af").arg(af_filters.join(","));
+
+    // Video filter and mapping
+    if let Some(crop_filter_string) = &params.crop_filter {
+        // If crop filter exists, use filter_complex with labeled pads
+        let filtergraph = format!("[0:v:0]{}[vout]", crop_filter_string);
+        cmd.filter_complex(&filtergraph);
+        cmd.arg("-map").arg("[vout]"); // Map the output of the filtergraph
+    } else {
+        // If no crop filter, map the video stream directly
+        cmd.arg("-map").arg("0:v:0?"); // Map first video stream (optional)
     }
 
-    // Stream Mapping
-    ffmpeg_args.extend(vec![
-        "-map".to_string(), "0:v:0?".to_string(), // Map first video stream (optional)
-        "-map".to_string(), "0:a?".to_string(), // Map all audio streams (optional)
-        "-map".to_string(), "0:s?".to_string(), // Map all subtitle streams (optional)
-        "-map_metadata".to_string(), "0".to_string(), // Copy global metadata
-        "-map_chapters".to_string(), "0".to_string(), // Copy chapters
-    ]);
+    // Map other streams directly
+    cmd.arg("-map").arg("0:a?");   // Map all audio streams (optional)
+    cmd.arg("-map").arg("0:s?");   // Map all subtitle streams (optional)
+    cmd.arg("-map_metadata").arg("0"); // Copy global metadata
+    cmd.arg("-map_chapters").arg("0"); // Copy chapters
+
+    // --- Output Arguments ---
 
     // Video Codec and Params
-    ffmpeg_args.extend(vec![
-        "-c:v".to_string(), "libsvtav1".to_string(),
-        "-pix_fmt".to_string(), "yuv420p10le".to_string(), // Ensure 10-bit
-        "-crf".to_string(), cmd_args.quality.to_string(),
-        "-preset".to_string(), cmd_args.preset.to_string(),
-        // TODO: Verify if tune=0 is needed or default for SVT-AV1
-        // "-svtav1-params".to_string(), "tune=0".to_string(),
-    ]);
+    cmd.codec_video("libsvtav1");
+    cmd.pix_fmt("yuv420p10le"); // Ensure 10-bit
+    cmd.arg("-crf").arg(params.quality.to_string());
+    cmd.arg("-preset").arg(params.preset.to_string());
+    // TODO: Verify if tune=0 is needed or default for SVT-AV1
+    // cmd.arg("-svtav1-params").arg("tune=0");
 
     // Audio Codec and Params
-    ffmpeg_args.extend(vec![
-        "-c:a".to_string(), "libopus".to_string(),
-    ]);
-    for (i, &channels) in cmd_args.audio_channels.iter().enumerate() {
-        // Use the helper from the audio module (needs to be pub(crate))
+    cmd.codec_audio("libopus");
+    for (i, &channels) in params.audio_channels.iter().enumerate() {
         let bitrate = audio::calculate_audio_bitrate(channels);
-        ffmpeg_args.push(format!("-b:a:{}", i));
-        ffmpeg_args.push(format!("{}k", bitrate));
+        // Use raw args for stream-specific bitrate
+        cmd.arg(format!("-b:a:{}", i)).arg(format!("{}k", bitrate));
     }
-    // Add the channel layout workaround filter
-    // Combine audio filters if more are added later
-    let af_filters = vec!["aformat=channel_layouts=7.1|5.1|stereo|mono".to_string()];
-    ffmpeg_args.extend(vec!["-af".to_string(), af_filters.join(",")]);
 
     // Subtitle Codec (copy)
-    ffmpeg_args.extend(vec![
-        "-c:s".to_string(), "copy".to_string(),
-    ]);
+    cmd.codec_subtitle("copy");
 
-    // Progress Reporting
-    ffmpeg_args.extend(vec!["-progress".to_string(), "-".to_string()]); // Report progress to stderr
+    // Progress Reporting (-progress -) is handled automatically by sidecar's event loop
 
-    // Output Path (must be the last argument)
-    ffmpeg_args.push(cmd_args.output_path.to_string_lossy().to_string());
+    // Output Path
+    cmd.output(params.output_path.to_string_lossy().into_owned()); // Convert PathBuf -> String
 
-    Ok(ffmpeg_args)
-}
+    // Log the constructed command before spawning using Debug format
+    let cmd_debug = format!("{:?}", cmd); // Format the debug string once
+    log::info!(
+        "Executing FFmpeg command (Debug representation):\n  {}",
+        cmd_debug
+    );
+    // Also print to console
+    println!(
+        "🔧 FFmpeg command details:\n  {}",
+        cmd_debug
+    );
 
 
-#[cfg(test)]
-mod tests {
-    use super::*; // Import items from parent module (ffmpeg.rs)
-    use std::path::PathBuf;
+    // --- Execution and Progress ---
+    println!("🚀 Starting encode process..."); // User-facing message
 
-    // Helper to create default args for tests
-    fn default_test_args() -> FfmpegCommandArgs {
-        FfmpegCommandArgs {
-            input_path: PathBuf::from("input.mkv"),
-            hw_accel: HardwareAccel::None, // Default to None, override in tests
-            output_path: PathBuf::from("output.mkv"),
-            quality: 25,
-            preset: 6,
-            crop_filter: None,
-            audio_channels: vec![2], // Example: stereo
+    let mut child = cmd.spawn().map_err(|e| {
+        log::error!("Failed to spawn ffmpeg (sidecar): {}", e);
+        CoreError::CommandStart("ffmpeg (sidecar)".to_string(), e)
+    })?;
+
+    // Initialize duration from params
+    let duration_secs: Option<f64> = if params.duration > 0.0 { Some(params.duration) } else { None };
+    if duration_secs.is_some() {
+        log::info!("Using provided duration for progress: {}", format_duration(params.duration));
+    } else {
+        log::warn!("Video duration not provided or zero; progress percentage will not be accurate.");
+    }
+    let mut stderr_buffer = String::new(); // Buffer to capture stderr lines
+
+    // Event loop using try_for_each, handling errors from iter() and the closure
+    child.iter()
+        .map_err(|e| CoreError::CommandFailed("ffmpeg (sidecar - iter)".to_string(), std::process::ExitStatus::default(), e.to_string()))?
+        .try_for_each(|event| -> CoreResult<()> { // Specify return type for try_for_each closure
+            match event {
+                // FfmpegEvent::Output does not exist
+                FfmpegEvent::Progress(progress) => {
+                    // Duration is now initialized from params
+
+                    // progress.time is a String "HH:MM:SS.ms" - parse it
+                    let current_secs = parse_ffmpeg_time(&progress.time).unwrap_or(0.0);
+
+                    let percent = duration_secs
+                        .filter(|&d| d > 0.0)
+                        .map(|d| (current_secs / d * 100.0).min(100.0)) // Ensure percent doesn't exceed 100
+                    .unwrap_or(0.0); // Default to 0% if duration is unknown or zero
+
+                // Log progress less frequently to avoid spamming logs
+                // Example: Log every 5% or every 30 seconds
+                // For now, just print/log every progress event
+                println!(
+                    "⏳ Encoding progress: {:.2}% ({} / {}), Speed: {:.2}x",
+                    percent,
+                    format_duration(current_secs),
+                    duration_secs.map_or("??:??:??".to_string(), format_duration),
+                    progress.speed
+                );
+                log::debug!(
+                    "Progress: frame={}, fps={:.2}, time={}, bitrate={:.2}kbits/s, speed={:.2}x, size={}kB, percent={:.2}%",
+                    progress.frame,
+                    progress.fps,
+                    format_duration(current_secs),
+                    progress.bitrate_kbps,
+                    progress.speed,
+                    progress.size_kb,
+                    percent,
+                );
+            }
+            FfmpegEvent::Error(err_str) => {
+                // Error log line from ffmpeg stderr
+                log::error!("ffmpeg stderr error: {}", err_str); // Log via macro
+                stderr_buffer.push_str(&err_str); // Also capture to buffer
+                stderr_buffer.push('\n');
+            }
+            // FfmpegEvent::Warning does not exist
+            FfmpegEvent::Log(level, log_str) => {
+                // Other log lines from ffmpeg stderr, mapped to log levels
+                // Pass level by reference to avoid move
+                let rust_log_level = map_ffmpeg_log_level(&level);
+                log::log!(target: "ffmpeg_log", rust_log_level, "{}", log_str); // Log via macro
+
+                // Print SVT-AV1 info lines to console as well
+                if log_str.starts_with("Svt[info]:") {
+                    println!("{}", log_str);
+                }
+
+                // Capture ALL log messages to buffer to ensure we don't miss the error
+                // Use Debug format for LogLevel as it doesn't implement Display
+                stderr_buffer.push_str(&format!("[{:?}] {}", level, log_str)); // Add level prefix
+                stderr_buffer.push('\n');
+            }
+            FfmpegEvent::ParsedOutput(parsed) => {
+                 // Structured info parsed from stderr (like stream maps, headers)
+                 log::debug!("ffmpeg parsed output: {:?}", parsed);
+                 // Duration is now passed via params, no need to extract here.
+            }
+            // FfmpegEvent::Input / FfmpegEvent::OutputFrame / FfmpegEvent::OutputStream / FfmpegEvent::Done
+            // are less relevant when just running a command without piping data in/out.
+            _ => {} // Ignore other event types for now
         }
-    }
+        Ok(()) // Continue iteration
+    })?; // Propagate errors from try_for_each
 
-    #[test]
-    fn test_build_ffmpeg_args_no_hwaccel() {
-        let args = default_test_args(); // hw_accel is None by default
-        let ffmpeg_args = build_ffmpeg_args(&args).unwrap();
+    // After iterating through events, explicitly wait for the process to exit
+    // and check its status code.
+    let status = child.wait().map_err(|e| {
+        log::error!("Failed to wait for ffmpeg child process: {}", e);
+        CoreError::CommandWait("ffmpeg (sidecar)".to_string(), e)
+    })?;
 
-        // Check that no hwaccel flags are present
-        assert!(!ffmpeg_args.contains(&"-hwaccel".to_string()));
-        assert!(!ffmpeg_args.contains(&"vaapi".to_string()));
-        assert!(!ffmpeg_args.contains(&"-hwaccel_output_format".to_string()));
-        assert!(!ffmpeg_args.contains(&"videotoolbox".to_string()));
+    // Check if the iteration itself encountered an error (handled by `?` above)
+    // Now check the final exit status
 
-        // Basic check that input/output are present
-        assert!(ffmpeg_args.contains(&"-i".to_string()));
-        assert!(ffmpeg_args.contains(&"input.mkv".to_string()));
-        assert_eq!(ffmpeg_args.last().unwrap(), "output.mkv");
-    }
-
-    #[test]
-    fn test_build_ffmpeg_args_vaapi() {
-        let mut args = default_test_args();
-        args.hw_accel = HardwareAccel::Vaapi;
-        let ffmpeg_args = build_ffmpeg_args(&args).unwrap();
-
-        // Check that VAAPI flags are present and in the correct order (before -i)
-        let hwaccel_pos = ffmpeg_args.iter().position(|r| r == "-hwaccel").unwrap();
-        let vaapi_pos1 = ffmpeg_args.iter().position(|r| r == "vaapi").unwrap(); // First vaapi
-        let hwaccel_out_pos = ffmpeg_args.iter().position(|r| r == "-hwaccel_output_format").unwrap();
-        // Find the *second* occurrence of "vaapi"
-        let vaapi_pos2 = ffmpeg_args.iter().enumerate()
-            .filter(|&(_, r)| r == "vaapi")
-            .nth(1) // Get the second one
-            .map(|(i, _)| i)
-            .unwrap();
-        let input_pos = ffmpeg_args.iter().position(|r| r == "-i").unwrap();
-
-
-        assert_eq!(hwaccel_pos, 1, "Expected -hwaccel at index 1"); // After -hide_banner
-        assert_eq!(vaapi_pos1, 2, "Expected first vaapi at index 2");
-        assert_eq!(hwaccel_out_pos, 3, "Expected -hwaccel_output_format at index 3");
-        assert_eq!(vaapi_pos2, 4, "Expected second vaapi at index 4");
-        assert_eq!(input_pos, 5, "Expected -i at index 5"); // Ensure -i comes after hwaccel flags
-
-        assert!(ffmpeg_args.contains(&"-hwaccel".to_string()));
-        assert!(ffmpeg_args.contains(&"vaapi".to_string()));
-        assert!(ffmpeg_args.contains(&"-hwaccel_output_format".to_string()));
-        // Check that videotoolbox is NOT present
-        assert!(!ffmpeg_args.contains(&"videotoolbox".to_string()));
-    }
-
-     #[test]
-    fn test_build_ffmpeg_args_videotoolbox() {
-        let mut args = default_test_args();
-        args.hw_accel = HardwareAccel::VideoToolbox;
-        let ffmpeg_args = build_ffmpeg_args(&args).unwrap();
-
-        // Check that VideoToolbox flags are present and in the correct order (before -i)
-        let hwaccel_pos = ffmpeg_args.iter().position(|r| r == "-hwaccel").unwrap();
-        let videotoolbox_pos = ffmpeg_args.iter().position(|r| r == "videotoolbox").unwrap();
-        let input_pos = ffmpeg_args.iter().position(|r| r == "-i").unwrap();
-
-        assert_eq!(hwaccel_pos, 1, "Expected -hwaccel at index 1"); // After -hide_banner
-        assert_eq!(videotoolbox_pos, 2, "Expected videotoolbox at index 2");
-        assert_eq!(input_pos, 3, "Expected -i at index 3"); // Ensure -i comes after hwaccel flags
-
-        assert!(ffmpeg_args.contains(&"-hwaccel".to_string()));
-        assert!(ffmpeg_args.contains(&"videotoolbox".to_string()));
-        // Check that VAAPI flags are NOT present
-        assert!(!ffmpeg_args.contains(&"vaapi".to_string()));
-        assert!(!ffmpeg_args.contains(&"-hwaccel_output_format".to_string()));
-    }
-
-    // Add more tests as needed, e.g., with crop filters, multiple audio tracks etc.
-    #[test]
-    fn test_build_ffmpeg_args_with_crop() {
-        let mut args = default_test_args();
-        args.crop_filter = Some("crop=1920:800:0:140".to_string());
-        let ffmpeg_args = build_ffmpeg_args(&args).unwrap();
-
-        assert!(ffmpeg_args.contains(&"-vf".to_string()));
-        assert!(ffmpeg_args.contains(&"crop=1920:800:0:140".to_string()));
+    if status.success() {
+        println!("✅ Encode finished successfully for {}", params.output_path.display()); // User-facing message
+        log::info!("FFmpeg encode finished successfully for: {}", params.output_path.display());
+        Ok(())
+    } else {
+        // Log the failure status and include the captured stderr buffer
+        let error_message = format!(
+            "FFmpeg process exited with non-zero status ({:?}). Stderr output:\n{}",
+            status.code(),
+            stderr_buffer.trim()
+        );
+        log::error!(
+            "FFmpeg encode failed for {}: {}",
+            params.input_path.display(),
+            error_message
+        );
+        Err(CoreError::CommandFailed(
+            "ffmpeg (sidecar)".to_string(),
+            status,
+            error_message, // Include captured stderr in the error
+        ))
     }
 }
+
+/// Helper to format seconds into HH:MM:SS.ms
+fn format_duration(total_seconds: f64) -> String {
+    if total_seconds < 0.0 || !total_seconds.is_finite() {
+        return "??:??:??".to_string();
+    }
+    let seconds_int = total_seconds.trunc() as u64;
+    let millis = (total_seconds.fract() * 1000.0).round() as u32;
+    let hours = seconds_int / 3600;
+    let minutes = (seconds_int % 3600) / 60;
+    let seconds = seconds_int % 60;
+    format!("{:02}:{:02}:{:02}.{:03}", hours, minutes, seconds, millis)
+}
+
+/// Helper function to parse ffmpeg time string "HH:MM:SS.ms" into seconds (f64)
+fn parse_ffmpeg_time(time_str: &str) -> Result<f64, &'static str> {
+    let parts: Vec<&str> = time_str.split(':').collect();
+    if parts.len() != 3 {
+        return Err("Invalid time format: Expected HH:MM:SS.ms");
+    }
+    let hours: f64 = parts[0].parse().map_err(|_| "Failed to parse hours")?;
+    let minutes: f64 = parts[1].parse().map_err(|_| "Failed to parse minutes")?;
+    let sec_ms: Vec<&str> = parts[2].split('.').collect();
+    if sec_ms.len() != 2 {
+         // Handle cases like "00:00:00" without milliseconds
+         if sec_ms.len() == 1 {
+             let seconds: f64 = sec_ms[0].parse().map_err(|_| "Failed to parse seconds")?;
+             return Ok(hours * 3600.0 + minutes * 60.0 + seconds);
+         }
+        return Err("Invalid seconds/milliseconds format");
+    }
+    let seconds: f64 = sec_ms[0].parse().map_err(|_| "Failed to parse seconds")?;
+    // Ensure milliseconds part has consistent length (e.g., pad with zeros if needed, or truncate)
+    let ms_str = format!("{:0<3}", sec_ms[1]); // Pad with zeros to 3 digits
+    let milliseconds: f64 = ms_str[..3].parse().map_err(|_| "Failed to parse milliseconds")?;
+
+    Ok(hours * 3600.0 + minutes * 60.0 + seconds + milliseconds / 1000.0)
+}
+
+// Removed unused function extract_duration_from_log
+
+/// Helper to map ffmpeg log levels to Rust log levels
+fn map_ffmpeg_log_level(level: &FfmpegLogLevel) -> log::Level { // Accept by reference
+    match level { // Match on reference
+        // Map based on available variants in ffmpeg-sidecar v2.0.5 LogLevel
+        FfmpegLogLevel::Unknown => log::Level::Trace, // Treat Unknown as Trace
+        FfmpegLogLevel::Info => log::Level::Info,
+        FfmpegLogLevel::Warning => log::Level::Warn,
+        FfmpegLogLevel::Error => log::Level::Error,
+        // Handle potential future variants or unexpected values gracefully
+        _ => log::Level::Debug, // Default to Debug for any other variants (future-proofing)
+    }
+}
+
+
+// No tests for now, as testing requires mocking ffmpeg execution.
+// The previous tests were for argument building, which is now handled by ffmpeg-sidecar.

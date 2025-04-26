@@ -22,9 +22,10 @@
 use crate::error::{CoreError, CoreResult}; // Use crate:: prefix
 use std::io;
 use std::path::Path;
-use serde::Deserialize; // Added for JSON parsing
+// Removed unused serde::Deserialize import
 use std::process::{Command, Stdio};
-
+// Removed incorrect FfprobeCommand import
+// Removed unused HashMap import
 // Declare submodules
 pub mod ffmpeg;
 
@@ -69,9 +70,9 @@ pub(crate) fn check_dependency(cmd_name: &str) -> CoreResult<Vec<String>> {
 
 
 // Gets audio channel counts using ffprobe
+#[cfg(not(feature = "test-mock-ffprobe"))] // Original implementation
 pub(crate) fn get_audio_channels(input_path: &Path) -> CoreResult<Vec<u32>> {
-    // We assume ffprobe is found directly for now. If Flatpak ffprobe becomes a thing,
-    // this would need similar logic or use check_dependency.
+    // We assume ffprobe is found directly for now.
     let cmd_name = "ffprobe";
     let output = Command::new(cmd_name)
         .args([
@@ -107,72 +108,14 @@ pub(crate) fn get_audio_channels(input_path: &Path) -> CoreResult<Vec<u32>> {
         .collect()
 }
 
-// --- ffprobe JSON Structures ---
-
-#[derive(Deserialize, Debug)]
-struct FfprobeOutput {
-    streams: Vec<StreamInfo>,
-}
-
-#[derive(Deserialize, Debug)]
-struct StreamInfo {
-    // codec_type: String, // Removed as it's unused
-    width: Option<u32>,
-    // Add other fields if needed later, e.g., height, duration
+// Mock implementation for get_audio_channels
+#[cfg(feature = "test-mock-ffprobe")]
+pub(crate) fn get_audio_channels(input_path: &Path) -> CoreResult<Vec<u32>> {
+    log::warn!("Using MOCKED get_audio_channels for path: {}", input_path.display());
+    // Return some default valid data for testing purposes
+    Ok(vec![2]) // e.g., Stereo
 }
 
 
-/// Gets the width of the first video stream in the file using ffprobe.
-///
-/// # Arguments
-///
-/// * `file_path` - Path to the video file.
-///
-/// # Returns
-///
-/// * `CoreResult<u32>` - The width of the video stream, or an error.
-pub fn get_video_width(file_path: &Path) -> CoreResult<u32> {
-    let cmd_ffprobe = "ffprobe";
-    let args = [
-        "-v", "error", // Only show errors
-        "-select_streams", "v:0", // Select the first video stream
-        "-show_entries", "stream=width", // Show only the width entry
-        "-of", "json", // Output in JSON format
-        &file_path.to_string_lossy(),
-    ];
-
-    // Using log crate assuming it's configured elsewhere (e.g., in drapto-cli)
-    // If not, replace log::debug!/error!/trace! with println! or similar for now.
-    log::debug!("Running ffprobe to get width: {} {:?}", cmd_ffprobe, args);
-
-    let output = Command::new(cmd_ffprobe)
-        .args(&args)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped()) // Capture stderr as well
-        .output()
-        .map_err(|e| CoreError::CommandStart(cmd_ffprobe.to_string(), e))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        log::error!("ffprobe failed for width check on {}: {}", file_path.display(), stderr.trim());
-        // Use the existing CommandFailed variant, assuming it takes status code and stderr string
-        return Err(CoreError::CommandFailed(
-            cmd_ffprobe.to_string(),
-            output.status, // Pass the whole status
-            stderr.trim().to_string(),
-        ));
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    log::trace!("ffprobe width output for {}: {}", file_path.display(), stdout);
-
-    let ffprobe_data: FfprobeOutput = serde_json::from_str(&stdout)
-        .map_err(|e| CoreError::JsonParseError(format!("ffprobe width output: {}", e)))?;
-
-    // Find the first stream (should be the only one due to -select_streams v:0)
-    // and extract its width.
-    ffprobe_data.streams
-        .first()
-        .and_then(|stream| stream.width) // Get the width if the stream and width exist
-        .ok_or_else(|| CoreError::VideoInfoError(format!("Could not find video width for {}", file_path.display())))
-}
+// Removed get_video_width function and related structs (FfprobeOutput, StreamInfo)
+// as width is now obtained via detection::get_video_properties.

@@ -37,18 +37,20 @@
 use crate::config::{CoreConfig, DEFAULT_CORE_QUALITY_HD, DEFAULT_CORE_QUALITY_SD, DEFAULT_CORE_QUALITY_UHD};
 use crate::notifications::send_ntfy; // Added for ntfy support
 use crate::error::{CoreError, CoreResult};
-use crate::external::{check_dependency, get_video_width, ffmpeg as ffmpeg_builder}; // Import the new ffmpeg module
+use crate::external::check_dependency; // Removed ffmpeg import
+use crate::external::ffmpeg::{run_ffmpeg_encode, EncodeParams}; // Import function and params struct
 use crate::processing::audio; // To access audio submodule
 use crate::processing::detection; // Import the new detection module
 use crate::utils::{format_bytes, format_duration, get_file_size}; // Added format_bytes, format_duration
 use crate::EncodeResult; // Assuming EncodeResult stays in lib.rs or is re-exported from there
 
 // Remove VecDeque as it's no longer needed for args
-use std::io::Read;
+// Remove unused imports related to manual process handling
+// use std::io::Read;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
-use std::sync::mpsc;
-use std::thread;
+// use std::process::{Command, Stdio};
+// use std::sync::mpsc;
+// use std::thread;
 use std::time::Instant;
 
 
@@ -143,14 +145,15 @@ where
             }
         }
 
-        // --- Get Video Width ---
-        let video_width = match get_video_width(input_path) {
-             Ok(width) => width, // Get width, log combined message later
-             Err(e) => {
-                 log_callback(&format!("Warning: Error getting video width for {}: {}. Cannot determine resolution-specific quality. Skipping file.", filename, e));
-                 continue; // Skip this file if we can't get the width
-             }
-         };
+        // --- Get Video Properties (including width) ---
+        let video_props = match detection::get_video_properties(input_path) {
+            Ok(props) => props,
+            Err(e) => {
+                log_callback(&format!("ERROR: Failed to get video properties for {}: {}. Skipping file.", filename, e));
+                continue; // Skip if we can't get essential properties
+            }
+        };
+        let video_width = video_props.width; // Use width from fetched properties
 
         // --- Determine Quality based on Width ---
         const UHD_WIDTH_THRESHOLD: u32 = 3840;
@@ -179,13 +182,14 @@ where
         // Determine if crop should be disabled (using config default_crop_mode for now)
         // TODO: Add a specific config option like `disable_crop_detection`?
         let disable_crop = config.default_crop_mode.as_deref() == Some("off"); // Treat "off" as disable
-        let (crop_filter_opt, _is_hdr) = match detection::detect_crop(input_path, disable_crop) {
-             Ok(result) => result,
-             Err(e) => {
-                 log_callback(&format!("Warning: Crop detection failed for {}: {}. Proceeding without cropping.", filename, e));
-                 (None, false) // Default to no crop on error
-             }
-         };
+        // Pass video_props to detect_crop (requires modifying detect_crop signature)
+        let (crop_filter_opt, _is_hdr) = match detection::detect_crop(input_path, &video_props, disable_crop) {
+            Ok(result) => result,
+            Err(e) => {
+                log_callback(&format!("Warning: Crop detection failed for {}: {}. Proceeding without cropping.", filename, e));
+                (None, false) // Default to no crop on error
+            }
+        };
 
         // --- Prepare Audio Options ---
         // Log audio info (channels, calculated bitrates)
@@ -206,113 +210,28 @@ where
              }
          };
 
-        // Prepare args for the builder function
-        let builder_input_args = ffmpeg_builder::FfmpegCommandArgs {
-            input_path: input_path.to_path_buf(), // Clone path
+        // Prepare parameters for the new encode function
+        let encode_params = EncodeParams {
+            input_path: input_path.to_path_buf(), // Clone path for ownership
             hw_accel: config.hw_accel, // Pass the detected hw_accel mode from config
             output_path: output_path.clone(),    // Clone path
             quality: quality.into(), // Use quality determined earlier, CONVERT u8 to u32
             preset: preset_value,
             crop_filter: crop_filter_opt, // Use crop filter determined earlier
             audio_channels, // Use fetched channels
+            duration: video_props.duration, // Pass the duration
         };
 
-        // Build the actual ffmpeg arguments
-        let ffmpeg_args = match ffmpeg_builder::build_ffmpeg_args(&builder_input_args) {
-            Ok(args) => args,
-            Err(e) => {
-                // Handle error during argument building (e.g., log and skip)
-                log_callback(&format!("ERROR: Failed to build ffmpeg arguments for {}: {}. Skipping file.", filename, e));
-                continue;
-            }
-        };
+        log_callback(&format!("Starting ffmpeg (via sidecar) for {}...", filename));
+        // Log command is handled inside run_ffmpeg_encode now
 
-        let ffmpeg_executable = "ffmpeg"; // Assuming ffmpeg is in PATH
+        // --- Execute ffmpeg via sidecar ---
+        let encode_result = run_ffmpeg_encode(&encode_params);
 
 
-        log_callback(&format!("Starting ffmpeg for {}...", filename));
-        // Log the command correctly
-        log_callback(&format!("Command: {} {}", ffmpeg_executable, ffmpeg_args.iter().map(|s| format!("\"{}\"", s)).collect::<Vec<_>>().join(" ")));
-
-
-        // --- Execute ffmpeg ---
-        let mut child = Command::new(ffmpeg_executable)
-            .args(&ffmpeg_args) // Use the generated ffmpeg args
-            .stdout(Stdio::null()) // ffmpeg progress goes to stderr with "-progress -"
-            .stderr(Stdio::piped()) // Capture stderr for progress and errors
-            .spawn()
-            .map_err(|e| CoreError::CommandStart(ffmpeg_executable.to_string(), e))?;
-
-         // --- Stream Output to Log Callback ---
-         // Combine stdout and stderr readers
-         // Use raw readers, BufReader might add unwanted buffering here
-         let mut stderr_reader = child.stderr.take().unwrap(); // Keep this line (was 249)
-
-         // --- Process stderr concurrently ---
-
-         let (tx, rx) = mpsc::channel(); // Channel to send output lines/chunks (was 254)
-
-         // Thread to read stderr, capture lines, and send them
-         let stderr_thread = thread::spawn(move || { // Use tx directly (was 300)
-             let mut buffer = [0; 1024]; // Read in chunks
-             let mut line_buffer = String::new(); // Buffer for incomplete lines
-             let mut captured_stderr_lines = Vec::new(); // Capture lines for error reporting
-
-             loop {
-                 match stderr_reader.read(&mut buffer) {
-                     Ok(0) => { // EOF
-                         // Send any remaining data in the buffer as the last line
-                         if !line_buffer.is_empty() {
-                             captured_stderr_lines.push(line_buffer.clone()); // Capture final part
-                             let _ = tx.send(line_buffer); // Use tx
-                         }
-                         break;
-                     }
-                     Ok(n) => {
-                         let chunk = String::from_utf8_lossy(&buffer[..n]);
-                         line_buffer.push_str(&chunk);
-
-                         // Process complete lines within the buffer
-                         while let Some(delimiter_pos) = line_buffer.find(|c| c == '\n' || c == '\r') {
-                             let line_end = delimiter_pos + 1; // Include the delimiter
-                             let line = line_buffer[..line_end].to_string();
-
-                             captured_stderr_lines.push(line.clone()); // Capture the line
-
-                             // Send the line
-                             if tx.send(line).is_err() { // Use tx
-                                 // Cannot send, receiver likely gone, stop thread
-                                 // Return what we captured so far
-                                 return captured_stderr_lines.join(""); // Return captured stderr on send error
-                             }
-
-                             // Remove the processed line from the buffer
-                             line_buffer.drain(..line_end);
-                         }
-                         // Any remaining part stays in line_buffer for the next read
-                     }
-                     Err(_) => break, // Error reading
-                 }
-             }
-             captured_stderr_lines.join("") // Return combined captured stderr lines
-         });
-
-         // --- Receive and log output from stderr thread ---
-         // Receive messages (lines) until the channel is closed (when stderr_thread finishes)
-         for received_line in rx {
-             log_callback(&received_line); // Log received lines here
-         }
-
-         // --- Wait for stderr thread and get captured stderr ---
-         // Join stderr thread and get the captured output
-         let stderr_output = stderr_thread.join().expect("Stderr reading thread panicked");
-
-
-         let status = child.wait().map_err(|e| CoreError::CommandWait(ffmpeg_executable.to_string(), e))?; // Use ffmpeg executable in error
- 
- 
         // --- Handle Result ---
-        if status.success() {
+        match encode_result {
+            Ok(()) => { // Encode succeeded
             let file_elapsed_time = file_start_time.elapsed();
             // Use ?. below, as they now return CoreResult
             let input_size = get_file_size(input_path)?; // Use crate::utils::get_file_size
@@ -351,28 +270,23 @@ where
                 }
             }
 
-        } else {
-            // Log error including captured stderr, then continue processing other files
-             // Log the error using the iteration's logger clone
-             log_callback(&format!(
-                "ERROR: ffmpeg failed for {} with status {}. Stderr:\n{}", // Update error message
-                 filename, status, stderr_output.trim() // Use the captured stderr
-             ));
-             // Keep the second, simpler error log message
-             log_callback(&format!(
-                "ERROR: ffmpeg failed for {} with status {}. Check log for details.", // Update error message
-                 filename, status
-             ));
+            }
+            Err(e) => { // Encode failed
+                // run_ffmpeg_encode logs details internally via log::error
+                // Log a high-level error message here using the callback
+                log_callback(&format!(
+                    "ERROR: ffmpeg encode failed for {}: {}. Check logs for details.",
+                    filename, e
+                ));
             // Consider returning a partial success / error report instead of just Vec<EncodeResult>
             // Or just log it and don't add to results, as done here.
 
             // --- Send Error Notification ---
             if let Some(topic) = &config.ntfy_topic {
                 let error_message = format!(
-                    "[{hostname}]: Error encoding {filename}: ffmpeg failed with status {status}.", // Update notification message
-                     hostname = hostname, // Add hostname
-                     filename = filename,
-                    status = status
+                    "[{hostname}]: Error encoding {filename}: ffmpeg failed.", // Simplified error message
+                    hostname = hostname,
+                    filename = filename
                 );
                  if let Err(e) = send_ntfy(topic, &error_message, Some("Drapto Encode Error"), Some(5), Some("x,rotating_light")) {
                     // Use the clone for logging within the iteration
@@ -380,6 +294,7 @@ where
                 }
             }
             // Logging already done above
+            }
         }
          log_callback("----------------------------------------");
 
