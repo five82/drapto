@@ -139,6 +139,7 @@ pub fn run_ffmpeg_encode(params: &EncodeParams) -> CoreResult<()> {
         log::warn!("Video duration not provided or zero; progress percentage will not be accurate.");
     }
     let mut stderr_buffer = String::new(); // Buffer to capture stderr lines
+    let mut last_reported_percent = -3.0; // Initialize to ensure the first report (near 0%) happens
 
     // Event loop using try_for_each, handling errors from iter() and the closure
     child.iter()
@@ -155,29 +156,30 @@ pub fn run_ffmpeg_encode(params: &EncodeParams) -> CoreResult<()> {
                     let percent = duration_secs
                         .filter(|&d| d > 0.0)
                         .map(|d| (current_secs / d * 100.0).min(100.0)) // Ensure percent doesn't exceed 100
-                    .unwrap_or(0.0); // Default to 0% if duration is unknown or zero
+                        .unwrap_or(0.0); // Default to 0% if duration is unknown or zero
 
-                // Log progress less frequently to avoid spamming logs
-                // Example: Log every 5% or every 30 seconds
-                // For now, just print/log every progress event
-                println!(
-                    "⏳ Encoding progress: {:.2}% ({} / {}), Speed: {:.2}x",
-                    percent,
-                    format_duration(current_secs),
-                    duration_secs.map_or("??:??:??".to_string(), format_duration),
-                    progress.speed
-                );
-                log::debug!(
-                    "Progress: frame={}, fps={:.2}, time={}, bitrate={:.2}kbits/s, speed={:.2}x, size={}kB, percent={:.2}%",
-                    progress.frame,
-                    progress.fps,
-                    format_duration(current_secs),
-                    progress.bitrate_kbps,
-                    progress.speed,
-                    progress.size_kb,
-                    percent,
-                );
-            }
+                    // Only report progress every 3% or at 100%
+                    if percent >= last_reported_percent + 3.0 || (percent >= 100.0 && last_reported_percent < 100.0) {
+                        println!(
+                            "⏳ Encoding progress: {:.2}% ({} / {}), Speed: {:.2}x",
+                            percent,
+                            format_duration(current_secs),
+                            duration_secs.map_or("??:??:??".to_string(), format_duration),
+                            progress.speed
+                        );
+                        log::debug!(
+                            "Progress: frame={}, fps={:.2}, time={}, bitrate={:.2}kbits/s, speed={:.2}x, size={}kB, percent={:.2}%",
+                            progress.frame,
+                            progress.fps,
+                            format_duration(current_secs),
+                            progress.bitrate_kbps,
+                            progress.speed,
+                            progress.size_kb,
+                            percent,
+                        );
+                        last_reported_percent = percent; // Update last reported percentage
+                    }
+                }
             FfmpegEvent::Error(err_str) => {
                 // Error log line from ffmpeg stderr
                 log::error!("ffmpeg stderr error: {}", err_str); // Log via macro
