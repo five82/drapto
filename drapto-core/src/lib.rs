@@ -1,8 +1,7 @@
 //! # drapto-core
 //!
 //! This crate provides the core logic for video processing tasks, primarily focusing
-//! on interacting with HandBrakeCLI for encoding and potentially other tools for
-//! analysis and optimization (like film grain detection).
+//! on interacting with ffmpeg for encoding and ffprobe for analysis.
 //!
 //! ## Structure
 //!
@@ -10,10 +9,9 @@
 //! - `config`: Defines configuration structures (`CoreConfig`) used throughout the library.
 //! - `discovery`: Contains functions for finding processable video files (`find_processable_files`).
 //! - `error`: Defines custom error types (`CoreError`) and results (`CoreResult`) for the library.
-//! - `external`: Handles interactions with external command-line tools like HandBrakeCLI.
+//! - `external`: Handles interactions with external command-line tools like ffmpeg and ffprobe.
 //! - `processing`: Contains the main video processing logic, including encoding orchestration
-//!   (`process_videos`) and specific optimizations like film grain analysis
-//!   (`determine_optimal_grain`).
+//!   (`process_videos`).
 //! - `utils`: Provides common utility functions (e.g., `format_bytes`, `format_duration`).
 //!
 //! ## Public API
@@ -24,7 +22,6 @@
 //! of individual file encoding operations.
 
 // --- Modules ---
-// Declare all the top-level modules as per the refactoring plan.
 pub mod config;
 pub mod discovery;
 pub mod error;
@@ -46,7 +43,7 @@ pub use discovery::find_processable_files;
 pub use error::{CoreError, CoreResult};
 
 // From processing module (which itself re-exports from submodules)
-pub use processing::{determine_optimal_grain, process_videos};
+pub use processing::process_videos;
 
 // From utils module (public helper functions)
 pub use utils::{format_bytes, format_duration};
@@ -66,5 +63,3 @@ pub struct EncodeResult {
     pub output_size: u64,
 }
 
-// Note: Removed unused imports like std::fs, std::io, std::process, etc.
-// Note: Path and PathBuf are no longer directly used in lib.rs's remaining code.

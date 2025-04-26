@@ -2,14 +2,13 @@
 //
 // Contains the logic for the 'encode' subcommand.
 
-use crate::cli::EncodeArgs; // Use the definition from cli.rs
-use crate::config; // Access defaults from config.rs
-use crate::logging::{create_log_callback, get_timestamp}; // Use logging helpers
-use drapto_core::{CoreConfig, CoreError, EncodeResult};
+use crate::cli::EncodeArgs;
+use crate::config;
+use crate::logging::{create_log_callback, get_timestamp};
+use drapto_core::{CoreConfig, CoreError, EncodeResult, external::ffmpeg::HardwareAccel};
 use std::fs::{self, File};
-// use std::path::PathBuf; // Removed unused import
 use std::time::Instant;
-use std::path::PathBuf; // Ensure PathBuf is imported, remove unused Path
+use std::path::PathBuf;
 
 // --- New function to discover files ---
 pub fn discover_encode_files(args: &EncodeArgs) -> Result<(Vec<PathBuf>, PathBuf), Box<dyn std::error::Error>> {
@@ -20,14 +19,12 @@ pub fn discover_encode_files(args: &EncodeArgs) -> Result<(Vec<PathBuf>, PathBuf
         .map_err(|e| format!("Failed to access input path '{}': {}", input_path.display(), e))?;
 
     if metadata.is_dir() {
-        // Input is a directory
         match drapto_core::find_processable_files(&input_path) {
              Ok(files) => Ok((files, input_path.clone())),
              Err(CoreError::NoFilesFound) => Ok((Vec::new(), input_path.clone())), // Return empty vec if no files found
              Err(e) => Err(e.into()), // Propagate other core errors
         }
     } else if metadata.is_file() {
-        // Input is a file
         if input_path.extension().map_or(false, |ext| ext.eq_ignore_ascii_case("mkv")) {
             let parent_dir = input_path.parent().ok_or_else(|| {
                 CoreError::PathError(format!("Could not determine parent directory for file '{}'", input_path.display()))
@@ -43,18 +40,17 @@ pub fn discover_encode_files(args: &EncodeArgs) -> Result<(Vec<PathBuf>, PathBuf
 
 
 
-// Renamed the main logic function to reflect the 'encode' action
 // --- Modified run_encode function ---
 pub fn run_encode(
     args: EncodeArgs,
     interactive: bool,
-    files_to_process: Vec<PathBuf>, // Accept discovered files
-    effective_input_dir: PathBuf,   // Accept effective input dir
+    files_to_process: Vec<PathBuf>,
+    effective_input_dir: PathBuf,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let total_start_time = Instant::now();
 
     // Determine actual output directory and potential target filename
-    let (actual_output_dir, target_filename_override_os) = // Renamed variable for clarity
+    let (actual_output_dir, target_filename_override_os) =
         if files_to_process.len() == 1 && args.output_dir.extension().is_some() {
             // Input is single file and output looks like a file path
             let target_file = args.output_dir.clone();
@@ -77,31 +73,56 @@ pub fn run_encode(
     // Use the determined actual_output_dir for logs unless a specific log_dir is given
     let log_dir = args.log_dir.unwrap_or_else(|| actual_output_dir.join("logs"));
 
-    // File discovery logic moved to discover_encode_files
 
     // --- Create Output/Log Dirs ---
-    fs::create_dir_all(&actual_output_dir)?; // Create the actual output directory
+    fs::create_dir_all(&actual_output_dir)?;
     fs::create_dir_all(&log_dir)?;
 
     // --- Setup Logging ---
     let main_log_filename = format!("drapto_encode_run_{}.log", get_timestamp());
     let main_log_path = log_dir.join(main_log_filename);
     let log_file = File::create(&main_log_path)?;
-    // create_log_callback returns Box<dyn FnMut...>
-    let mut log_callback = create_log_callback(log_file, interactive)?; // Pass interactive flag
+    let mut log_callback = create_log_callback(log_file, interactive)?;
 
     // --- Log Initial Info ---
     log_callback("========================================");
     log_callback(&format!("Drapto Encode Run Started: {}", chrono::Local::now()));
-    log_callback(&format!("Original Input arg: {}", args.input_path.display())); // Log original arg
-    log_callback(&format!("Original Output arg: {}", args.output_dir.display())); // Log original arg
+    log_callback(&format!("Original Input arg: {}", args.input_path.display()));
+    log_callback(&format!("Original Output arg: {}", args.output_dir.display()));
     log_callback(&format!("Effective Output directory: {}", actual_output_dir.display()));
     if let Some(fname) = &target_filename_override {
         log_callback(&format!("Effective Output filename: {}", fname.display()));
     }
     log_callback(&format!("Log directory: {}", log_dir.display()));
     log_callback(&format!("Main log file: {}", main_log_path.display()));
-    log_callback(&format!("Interactive mode: {}", interactive)); // Log mode
+    log_callback(&format!("Interactive mode: {}", interactive));
+
+    // --- Determine and Log Hardware Acceleration ---
+    let hw_accel_mode = {
+        #[cfg(target_os = "linux")]
+        {
+            // Basic check for Linux, assume VAAPI for AMD/Intel as requested
+            // TODO: Add more robust detection if needed (e.g., check for /dev/dri)
+            HardwareAccel::Vaapi
+        }
+        #[cfg(target_os = "macos")]
+        {
+            // Basic check for macOS, assume VideoToolbox
+            HardwareAccel::VideoToolbox
+        }
+        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+        {
+            // Default to None for other OSes
+            HardwareAccel::None
+        }
+    };
+
+    match hw_accel_mode {
+        HardwareAccel::Vaapi => log_callback("Hardware Decoding: Enabled (VAAPI for Linux)"),
+        HardwareAccel::VideoToolbox => log_callback("Hardware Decoding: Enabled (VideoToolbox for macOS)"),
+        HardwareAccel::None => log_callback("Hardware Decoding: Disabled (Software decoding will be used)"),
+    }
+
     log_callback("========================================");
 
     // --- PID File Handling (Daemon Mode Only) ---
@@ -119,8 +140,8 @@ pub fn run_encode(
 
     // --- Prepare Core Configuration ---
     let config = CoreConfig {
-        input_dir: effective_input_dir, // Use passed effective_input_dir
-        output_dir: actual_output_dir.clone(), // Use the determined directory
+        input_dir: effective_input_dir,
+        output_dir: actual_output_dir.clone(),
         log_dir: log_dir.clone(),
         default_encoder_preset: Some(config::DEFAULT_ENCODER_PRESET as u8),
         quality_sd: args.quality_sd,
@@ -131,34 +152,23 @@ pub fn run_encode(
         } else {
             config::DEFAULT_CROP_MODE.to_string() // Use default otherwise
         }),
-        film_grain_sample_crop_mode: Some(config::DEFAULT_CROP_MODE.to_string()), // Always use default for sampling
-        film_grain_metric_type: None, // Keep defaults for now
-        film_grain_knee_threshold: None,
-        film_grain_refinement_range_delta: None,
-        film_grain_max_value: None,
-        film_grain_refinement_points_count: None,
-        optimize_film_grain: args.enable_grain_optimization, // Use the new flag directly
-        film_grain_sample_duration: args.grain_sample_duration,
-        film_grain_sample_count: args.grain_sample_count,
-        film_grain_initial_values: args.grain_initial_values,
-        film_grain_fallback_value: args.grain_fallback_value,
-        ntfy_topic: args.ntfy, // Pass the ntfy topic URL from CLI args/env
-        preset: args.preset.clone(), // Pass the preset from CLI args
+        ntfy_topic: args.ntfy,
+        preset: args.preset.clone(),
+        hw_accel: hw_accel_mode,
     };
 
     // --- Execute Core Logic ---
     let processing_result: Result<Vec<EncodeResult>, CoreError>;
-    log_callback(&format!("Processing {} file(s).", files_to_process.len())); // Use passed files_to_process
+    log_callback(&format!("Processing {} file(s).", files_to_process.len()));
     if files_to_process.is_empty() {
          log_callback("No processable .mkv files found in the specified input path.");
          processing_result = Ok(Vec::new());
     } else {
-         // Pass mutable reference to the dereferenced Box<dyn FnMut...>
          // Pass the Option<PathBuf> target_filename_override
          processing_result = drapto_core::process_videos(
              &config,
              &files_to_process,
-             target_filename_override, // Pass the override
+             target_filename_override,
              &mut *log_callback
          );
     }
@@ -176,12 +186,11 @@ pub fn run_encode(
         }
         Err(e) => {
             log_callback(&format!("FATAL CORE ERROR during processing: {}", e));
-            // logger is no longer directly accessible here, log_callback handles file write
             return Err(e.into());
         }
     }
  
-    // --- Clean up temporary grain sampling directory ---
+    // --- Clean up temporary directory ---
     let grain_tmp_dir = actual_output_dir.join("grain_samples_tmp");
     if grain_tmp_dir.exists() { // Check if it exists before trying to remove
         log_callback(&format!("[INFO] Cleaning up temporary directory: {}", grain_tmp_dir.display()));

@@ -4,7 +4,6 @@
 
 use crate::error::{CoreError, CoreResult};
 use reqwest::blocking::Client;
-// Removed unused: use serde_json::json;
 use std::time::Duration;
 
 const NTFY_TIMEOUT_SECS: u64 = 10;
@@ -56,7 +55,7 @@ pub fn send_ntfy(
         request_builder = request_builder.header("Tags", tg);
     }
 
-    // Add a default tag indicating the source application
+    // Add a default 'drapto' tag to all notifications for easier filtering.
     request_builder = request_builder.header("Tags", "drapto");
 
 
@@ -82,8 +81,7 @@ pub fn send_ntfy(
 
 #[cfg(test)]
 mod tests {
-    // Removed: use super::*; // Import send_ntfy (not needed as send_ntfy is called via super::)
-    use crate::error::CoreError; // Import CoreError for matching
+    use crate::error::CoreError;
 
     // Note: These tests require a running ntfy server accessible at the specified URL
     // or a mock HTTP server. For simplicity, we'll just test the function structure here.

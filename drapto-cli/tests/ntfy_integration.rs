@@ -34,11 +34,6 @@ fn test_ntfy_warnings_logged_on_failure() {
         quality_sd: None,
         quality_hd: None,
         quality_uhd: None,
-        enable_grain_optimization: false, // Keep grain disabled (default) to simplify test
-        grain_sample_duration: None,
-        grain_sample_count: None,
-        grain_initial_values: None,
-        grain_fallback_value: None,
         ntfy: Some(invalid_ntfy_url.to_string()), // Provide the invalid URL
         disable_autocrop: false, // Add the missing field
         preset: None, // Add the missing preset field

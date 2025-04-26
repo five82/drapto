@@ -12,11 +12,11 @@ use std::path::PathBuf;
     author,
     version, // Reads from Cargo.toml via "cargo" feature in clap
     about = "Drapto: Video encoding tool",
-    long_about = "Handles video encoding tasks using HandBrakeCLI via drapto-core library."
+    long_about = "Handles video encoding tasks using ffmpeg via drapto-core library."
 )]
-pub struct Cli { // Made public
+pub struct Cli {
     #[command(subcommand)]
-    pub command: Commands, // Made public
+    pub command: Commands,
 
     /// Run in interactive mode (foreground) instead of daemonizing.
     #[arg(long, global = true, default_value_t = false)]
@@ -24,14 +24,14 @@ pub struct Cli { // Made public
 }
 
 #[derive(Subcommand, Debug)]
-pub enum Commands { // Made public
+pub enum Commands {
     /// Encodes video files from an input directory to an output directory
     Encode(EncodeArgs),
     // Add other subcommands here later (e.g., analyze, config)
 }
 
-#[derive(Parser, Debug)] // Use Parser derive for args struct as well
-pub struct EncodeArgs { // Made public
+#[derive(Parser, Debug)]
+pub struct EncodeArgs {
     /// Input file or directory containing .mkv files
     #[arg(short = 'i', long = "input", required = true, value_name = "INPUT_PATH")]
     pub input_path: PathBuf,
@@ -57,42 +57,26 @@ pub struct EncodeArgs { // Made public
     #[arg(long, value_name = "CRF_UHD")]
     pub quality_uhd: Option<u8>,
 
-    // --- Film Grain Optimization Flags ---
-    /// Enable automatic film grain optimization (it's disabled by default)
-    #[arg(long = "enable-grain-optimization")] // Explicitly set the long flag name
-    pub enable_grain_optimization: bool, // Renamed field
-    /// Duration (seconds) for each optimization sample clip
-    #[arg(long, value_name = "SECONDS")]
-    pub grain_sample_duration: Option<u32>,
-    /// Number of sample points for optimization
-    #[arg(long, value_name = "COUNT")]
-    pub grain_sample_count: Option<usize>,
-    /// Comma-separated initial grain values to test (e.g., 0,8,20)
-    #[arg(long, value_delimiter = ',', value_name = "VALS")]
-    pub grain_initial_values: Option<Vec<u8>>,
-    /// Fallback grain value if optimization fails/disabled (default: 0)
-    #[arg(long, value_name = "VALUE")]
-    pub grain_fallback_value: Option<u8>,
-
     // --- Notifications ---
     /// Optional: ntfy.sh topic URL for sending notifications (e.g., https://ntfy.sh/your_topic)
     /// Can also be set via the DRAPTO_NTFY_TOPIC environment variable.
     #[arg(long, value_name = "TOPIC_URL", env = "DRAPTO_NTFY_TOPIC")]
     pub ntfy: Option<String>,
 
-    /// Optional: Override the HandBrake SVT-AV1 encoder preset (0-13, lower is slower/better quality)
+    /// Optional: Override the ffmpeg libsvtav1 encoder preset (0-13, lower is slower/better quality)
     #[arg(long, value_name = "PRESET_INT")]
     pub preset: Option<u8>,
 
-    /// Disable HandBrake's automatic cropping feature
+    /// Disable automatic crop detection (uses ffmpeg's cropdetect)
     #[arg(long)]
     pub disable_autocrop: bool,
+
 }
 
 
 #[cfg(test)]
 mod tests {
-    use super::*; // Import items from parent module (cli.rs)
+    use super::*;
     use std::path::PathBuf;
 
     // Helper function to create temporary directories/files for tests
@@ -107,33 +91,26 @@ mod tests {
         unsafe { std::env::remove_var("DRAPTO_NTFY_TOPIC"); }
 
         let args = vec![
-            "drapto-cli", // Program name
-            "encode",     // Subcommand
-            "--input", "input_dir",  // input_path using long flag
-            "--output", "output_dir", // output_dir using long flag
+            "drapto-cli",
+            "encode",
+            "--input", "input_dir",
+            "--output", "output_dir",
         ];
         let cli = Cli::parse_from(args);
 
-        assert!(!cli.interactive); // Check default interactive flag is false
+        assert!(!cli.interactive);
 
         match cli.command {
             Commands::Encode(encode_args) => {
                 assert_eq!(encode_args.input_path, PathBuf::from("input_dir"));
                 assert_eq!(encode_args.output_dir, PathBuf::from("output_dir"));
                 assert!(encode_args.log_dir.is_none());
-                // Check new quality args are None by default
                 assert!(encode_args.quality_sd.is_none());
                 assert!(encode_args.quality_hd.is_none());
                 assert!(encode_args.quality_uhd.is_none());
-                // Check grain args
-                assert!(!encode_args.enable_grain_optimization); // Default is false (optimization disabled)
-                assert!(encode_args.grain_sample_duration.is_none());
-                assert!(encode_args.grain_sample_count.is_none());
-                assert!(encode_args.grain_initial_values.is_none());
-                assert!(encode_args.grain_fallback_value.is_none());
-                assert!(encode_args.ntfy.is_none()); // Check new ntfy arg
-                assert!(encode_args.preset.is_none()); // Check new preset arg (u8)
-                assert!(!encode_args.disable_autocrop); // Check default
+                assert!(encode_args.ntfy.is_none());
+                assert!(encode_args.preset.is_none());
+                assert!(!encode_args.disable_autocrop);
             },
             // Add other command checks if necessary
         }
@@ -153,27 +130,26 @@ mod tests {
         let args = vec![
             "drapto-cli",
             "encode",
-            "-i", "input.mkv", // Use short flag
-            "-o", "out",       // Use short flag
+            "-i", "input.mkv",
+            "-o", "out",
             "--log-dir",
             "custom_logs",
         ];
         let cli = Cli::parse_from(args);
 
-        assert!(!cli.interactive); // Check default interactive flag is false
+        assert!(!cli.interactive);
 
         match cli.command {
             Commands::Encode(encode_args) => {
                 assert_eq!(encode_args.input_path, PathBuf::from("input.mkv"));
                 assert_eq!(encode_args.output_dir, PathBuf::from("out"));
                 assert_eq!(encode_args.log_dir, Some(PathBuf::from("custom_logs")));
-                // Check quality args are still None
                 assert!(encode_args.quality_sd.is_none());
                 assert!(encode_args.quality_hd.is_none());
                 assert!(encode_args.quality_uhd.is_none());
-                assert!(encode_args.ntfy.is_none()); // Check new ntfy arg
-                assert!(encode_args.preset.is_none()); // Check new preset arg (u8)
-                assert!(!encode_args.disable_autocrop); // Check default
+                assert!(encode_args.ntfy.is_none());
+                assert!(encode_args.preset.is_none());
+                assert!(!encode_args.disable_autocrop);
             },
             // Add other command checks if necessary
         }
@@ -184,47 +160,6 @@ mod tests {
         }
     }
 
-     #[test]
-    fn test_parse_encode_with_grain_args() {
-        // NOTE: Removed environment variable manipulation for DRAPTO_NTFY_TOPIC
-        // as it can cause flaky failures when tests run in parallel.
-        // The ntfy argument parsing is tested separately.
-
-        let args = vec![
-            "drapto-cli",
-            "encode",
-            "--input", "input",
-            "--output", "output",
-            "--enable-grain-optimization", // Use the new flag
-            "--grain-sample-duration", "15",
-            "--grain-sample-count", "5",
-            "--grain-initial-values", "4,12,24",
-            "--grain-fallback-value", "6",
-        ];
-        let cli = Cli::parse_from(args);
-
-        assert!(!cli.interactive); // Check default interactive flag is false
-
-        match cli.command {
-            Commands::Encode(encode_args) => {
-                assert!(encode_args.enable_grain_optimization); // Check the new flag is true when passed
-                assert_eq!(encode_args.grain_sample_duration, Some(15));
-                assert_eq!(encode_args.grain_sample_count, Some(5));
-                assert_eq!(encode_args.grain_initial_values, Some(vec![4, 12, 24]));
-                assert_eq!(encode_args.grain_fallback_value, Some(6));
-                // Check quality args are still None
-                assert!(encode_args.quality_sd.is_none());
-                assert!(encode_args.quality_hd.is_none());
-                assert!(encode_args.quality_uhd.is_none());
-                assert!(encode_args.preset.is_none()); // Check new preset arg (u8)
-                assert!(!encode_args.disable_autocrop); // Check default
-                // assert!(encode_args.ntfy.is_none()); // Removed assertion due to potential parallel test flakiness
-            },
-            // Add other command checks if necessary
-        }
-
-        // NOTE: Removed environment variable restoration block.
-    }
     #[test]
     fn test_parse_encode_with_quality_args() {
         // Temporarily unset env var
@@ -242,16 +177,16 @@ mod tests {
         ];
         let cli = Cli::parse_from(args);
 
-        assert!(!cli.interactive); // Check default interactive flag is false
+        assert!(!cli.interactive);
 
         match cli.command {
             Commands::Encode(encode_args) => {
                 assert_eq!(encode_args.quality_sd, Some(30));
                 assert_eq!(encode_args.quality_hd, Some(25));
                 assert_eq!(encode_args.quality_uhd, Some(22));
-                assert!(encode_args.ntfy.is_none()); // Check new ntfy arg
-                assert!(encode_args.preset.is_none()); // Check new preset arg (u8)
-                assert!(!encode_args.disable_autocrop); // Check default
+                assert!(encode_args.ntfy.is_none());
+                assert!(encode_args.preset.is_none());
+                assert!(!encode_args.disable_autocrop);
             },
             // Add other command checks if necessary
         }
@@ -274,17 +209,15 @@ mod tests {
         ];
         let cli = Cli::parse_from(args);
 
-        assert!(!cli.interactive); // Check default interactive flag is false
+        assert!(!cli.interactive);
 
         match cli.command {
             Commands::Encode(encode_args) => {
                 assert_eq!(encode_args.ntfy, Some("https://ntfy.sh/mytopic".to_string()));
-                // Check other args are default/None
                 assert!(encode_args.log_dir.is_none());
                 assert!(encode_args.quality_sd.is_none());
-                assert!(!encode_args.enable_grain_optimization); // Check default is false
-                assert!(encode_args.preset.is_none()); // Check new preset arg (u8)
-                assert!(!encode_args.disable_autocrop); // Check default
+                assert!(encode_args.preset.is_none());
+                assert!(!encode_args.disable_autocrop);
             },
             // Add other command checks if necessary
         }
@@ -315,14 +248,14 @@ mod tests {
     fn test_parse_encode_interactive_flag() {
         let args = vec![
             "drapto-cli",
-            "--interactive", // Add the global flag
+            "--interactive",
             "encode",
             "-i", "input",
             "-o", "output",
         ];
         let cli = Cli::parse_from(args);
 
-        assert!(cli.interactive); // Check interactive flag is true
+        assert!(cli.interactive);
 
         match cli.command {
             Commands::Encode(encode_args) => {
@@ -339,21 +272,19 @@ mod tests {
             "encode",
             "-i", "input",
             "-o", "output",
-            "--disable-autocrop", // Add the flag
+            "--disable-autocrop",
         ];
         let cli = Cli::parse_from(args);
 
-        assert!(!cli.interactive); // Check default interactive flag is false
+        assert!(!cli.interactive);
 
-        match cli.command { // Add braces for clarity
+        match cli.command {
             Commands::Encode(encode_args) => {
-                assert!(encode_args.disable_autocrop); // Check flag is true
-                // Check other args are default/None
+                assert!(encode_args.disable_autocrop);
                 assert!(encode_args.log_dir.is_none());
                 assert!(encode_args.quality_sd.is_none());
-                assert!(!encode_args.enable_grain_optimization); // Check default is false
                 assert!(encode_args.ntfy.is_none());
-                assert!(encode_args.preset.is_none()); // Check new preset arg (u8)
+                assert!(encode_args.preset.is_none());
             },
             // Add other command checks if necessary
         }
@@ -365,21 +296,19 @@ mod tests {
         let args = vec![
             "drapto-cli",
             "encode",
-            "--input", "input", // Use long flags for clarity
+            "--input", "input",
             "--output", "output",
-            "--preset", "4", // Use a numeric value
+            "--preset", "4",
         ];
         let cli = Cli::parse_from(args);
 
-        assert!(!cli.interactive); // Check default interactive flag is false
+        assert!(!cli.interactive);
 
         match cli.command {
             Commands::Encode(encode_args) => {
-                assert_eq!(encode_args.preset, Some(4)); // Check numeric value
-                // Check other args are default/None
+                assert_eq!(encode_args.preset, Some(4));
                 assert!(encode_args.log_dir.is_none());
                 assert!(encode_args.quality_sd.is_none());
-                assert!(!encode_args.enable_grain_optimization); // Check default is false
                 assert!(!encode_args.disable_autocrop);
                 assert!(encode_args.ntfy.is_none());
             },
