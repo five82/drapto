@@ -160,15 +160,30 @@ pub fn run_ffmpeg_encode(params: &EncodeParams) -> CoreResult<()> {
 
                     // Only report progress every 3% or at 100%
                     if percent >= last_reported_percent + 3.0 || (percent >= 100.0 && last_reported_percent < 100.0) {
+                        // Calculate ETA
+                        let eta_str = if let Some(total_duration) = duration_secs {
+                            if progress.speed > 0.01 && total_duration > current_secs { // Avoid division by zero/small numbers and negative ETA
+                                let remaining_seconds = (total_duration - current_secs) / (progress.speed as f64);
+                                format_duration_seconds(remaining_seconds) // Use the new function
+                            } else if percent < 100.0 { // If speed is too low but not finished
+                                "??:??:??".to_string()
+                            } else { // If finished or nearly finished
+                                format_duration_seconds(0.0) // Use the new function
+                            }
+                        } else { // Duration unknown
+                            "??:??:??".to_string()
+                        };
+
                         println!(
-                            "⏳ Encoding progress: {:.2}% ({} / {}), Speed: {:.2}x",
+                            "⏳ Encoding progress: {:.2}% ({} / {}), Speed: {:.2}x, ETA: {}",
                             percent,
-                            format_duration(current_secs),
-                            duration_secs.map_or("??:??:??".to_string(), format_duration),
-                            progress.speed
+                            format_duration_seconds(current_secs), // Use rounded format
+                            duration_secs.map_or("??:??:??".to_string(), format_duration_seconds), // Use rounded format
+                            progress.speed,
+                            eta_str // Add ETA here
                         );
                         log::debug!(
-                            "Progress: frame={}, fps={:.2}, time={}, bitrate={:.2}kbits/s, speed={:.2}x, size={}kB, percent={:.2}%",
+                            "Progress: frame={}, fps={:.2}, time={}, bitrate={:.2}kbits/s, speed={:.2}x, size={}kB, percent={:.2}%, ETA={}",
                             progress.frame,
                             progress.fps,
                             format_duration(current_secs),
@@ -176,6 +191,7 @@ pub fn run_ffmpeg_encode(params: &EncodeParams) -> CoreResult<()> {
                             progress.speed,
                             progress.size_kb,
                             percent,
+                            eta_str // Also add ETA to debug log
                         );
                         last_reported_percent = percent; // Update last reported percentage
                     }
@@ -261,6 +277,18 @@ fn format_duration(total_seconds: f64) -> String {
     let seconds = seconds_int % 60;
     format!("{:02}:{:02}:{:02}.{:03}", hours, minutes, seconds, millis)
 }
+/// Helper to format seconds into HH:MM:SS, rounded to the nearest second.
+    fn format_duration_seconds(total_seconds: f64) -> String {
+        if total_seconds < 0.0 || !total_seconds.is_finite() {
+            return "??:??:??".to_string();
+        }
+        // Round to the nearest second
+        let rounded_seconds = total_seconds.round() as u64;
+        let hours = rounded_seconds / 3600;
+        let minutes = (rounded_seconds % 3600) / 60;
+        let seconds = rounded_seconds % 60;
+        format!("{:02}:{:02}:{:02}", hours, minutes, seconds)
+    }
 
 /// Helper function to parse ffmpeg time string "HH:MM:SS.ms" into seconds (f64)
 fn parse_ffmpeg_time(time_str: &str) -> Result<f64, &'static str> {
