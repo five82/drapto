@@ -6,6 +6,7 @@ use crate::error::{CoreError, CoreResult};
 use crate::processing::audio; // To access calculate_audio_bitrate
 use ffmpeg_sidecar::command::FfmpegCommand;
 use ffmpeg_sidecar::event::{FfmpegEvent, LogLevel as FfmpegLogLevel}; // Renamed LogLevel to avoid conflict
+use std::time::Instant;
 use std::path::PathBuf; // Keep PathBuf, remove unused Path
 // Removed unused Duration import
 
@@ -125,6 +126,7 @@ pub fn run_ffmpeg_encode(params: &EncodeParams) -> CoreResult<()> {
 
     // --- Execution and Progress ---
     println!("🚀 Starting encode process..."); // User-facing message
+    let start_time = Instant::now(); // Record start time
 
     let mut child = cmd.spawn().map_err(|e| {
         log::error!("Failed to spawn ffmpeg (sidecar): {}", e);
@@ -174,19 +176,30 @@ pub fn run_ffmpeg_encode(params: &EncodeParams) -> CoreResult<()> {
                             "??:??:??".to_string()
                         };
 
+                        // Calculate elapsed wall-clock time
+                        let elapsed_wall_clock = start_time.elapsed().as_secs_f64();
+
+                        // Calculate Average Encoding FPS using wall-clock time
+                        let avg_encoding_fps = if elapsed_wall_clock > 0.01 { // Avoid division by zero early on
+                            progress.frame as f64 / elapsed_wall_clock
+                        } else {
+                            0.0
+                        };
+
                         println!(
-                            "⏳ Encoding progress: {:.2}% ({} / {}), Speed: {:.2}x, ETA: {}",
+                            "⏳ Encoding progress: {:.2}% ({} / {}), Speed: {:.2}x, Avg FPS: {:.2}, ETA: {}", // Kept label AVG FPS
                             percent,
-                            format_duration_seconds(current_secs), // Use rounded format
-                            duration_secs.map_or("??:??:??".to_string(), format_duration_seconds), // Use rounded format
+                            format_duration_seconds(current_secs), // Use rounded format for video time
+                            duration_secs.map_or("??:??:??".to_string(), format_duration_seconds), // Use rounded format for video duration
                             progress.speed,
+                            avg_encoding_fps, // Use calculated average *encoding* FPS
                             eta_str // Add ETA here
                         );
                         log::debug!(
-                            "Progress: frame={}, fps={:.2}, time={}, bitrate={:.2}kbits/s, speed={:.2}x, size={}kB, percent={:.2}%, ETA={}",
+                            "Progress: frame={}, avg_encoding_fps={:.2}, time={}, bitrate={:.2}kbits/s, speed={:.2}x, size={}kB, percent={:.2}%, ETA={}", // Changed label in debug
                             progress.frame,
-                            progress.fps,
-                            format_duration(current_secs),
+                            avg_encoding_fps, // Use calculated average *encoding* FPS in debug
+                            format_duration(current_secs), // Keep original video time for debug log context
                             progress.bitrate_kbps,
                             progress.speed,
                             progress.size_kb,
