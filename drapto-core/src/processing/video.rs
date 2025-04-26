@@ -226,7 +226,8 @@ where
         // Log command is handled inside run_ffmpeg_encode now
 
         // --- Execute ffmpeg via sidecar ---
-        let encode_result = run_ffmpeg_encode(&encode_params);
+        // Pass the log_callback to the encode function
+        let encode_result = run_ffmpeg_encode(&encode_params, &mut log_callback);
 
 
         // --- Handle Result ---

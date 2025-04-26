@@ -9,7 +9,7 @@ use drapto_cli::commands::encode::discover_encode_files; // Import the discovery
 use drapto_cli::logging::get_timestamp; // Import timestamp function
 use clap::Parser;
 use daemonize::Daemonize; // Import Daemonize
-use std::fs; // Import fs for directory creation check (optional but good practice)
+// Removed unused fs import
 use std::io::{self, Write}; // Import io for stderr().flush()
 use std::path::PathBuf; // Import PathBuf
 use std::process;

@@ -33,8 +33,12 @@ pub struct EncodeParams {
 }
 
 /// Executes an FFmpeg encode operation using ffmpeg-sidecar based on the provided parameters.
-/// Logs progress information.
-pub fn run_ffmpeg_encode(params: &EncodeParams) -> CoreResult<()> {
+/// Uses the provided callback for logging user-facing messages and progress.
+pub fn run_ffmpeg_encode<F>(params: &EncodeParams, mut log_callback: F) -> CoreResult<()>
+where
+    F: FnMut(&str),
+{
+    // Use log::info for internal/debug logging
     log::info!(
         "Starting FFmpeg encode for: {}",
         params.input_path.display()
@@ -117,15 +121,15 @@ pub fn run_ffmpeg_encode(params: &EncodeParams) -> CoreResult<()> {
         "Executing FFmpeg command (Debug representation):\n  {}",
         cmd_debug
     );
-    // Also print to console
-    println!(
+    // Use callback for user-facing command details
+    log_callback(&format!(
         "🔧 FFmpeg command details:\n  {}",
         cmd_debug
-    );
+    ));
 
 
     // --- Execution and Progress ---
-    println!("🚀 Starting encode process..."); // User-facing message
+    log_callback("🚀 Starting encode process..."); // Use callback
     let start_time = Instant::now(); // Record start time
 
     let mut child = cmd.spawn().map_err(|e| {
@@ -186,15 +190,16 @@ pub fn run_ffmpeg_encode(params: &EncodeParams) -> CoreResult<()> {
                             0.0
                         };
 
-                        println!(
-                            "⏳ Encoding progress: {:.2}% ({} / {}), Speed: {:.2}x, Avg FPS: {:.2}, ETA: {}", // Kept label AVG FPS
+                        // Use callback for progress updates
+                        log_callback(&format!(
+                            "⏳ Encoding progress: {:.2}% ({} / {}), Speed: {:.2}x, Avg FPS: {:.2}, ETA: {}",
                             percent,
-                            format_duration_seconds(current_secs), // Use rounded format for video time
+                            format_duration_seconds(current_secs),
                             duration_secs.map_or("??:??:??".to_string(), format_duration_seconds), // Use rounded format for video duration
                             progress.speed,
                             avg_encoding_fps, // Use calculated average *encoding* FPS
                             eta_str // Add ETA here
-                        );
+                        )); // <-- Added missing closing parenthesis and semicolon
                         log::debug!(
                             "Progress: frame={}, avg_encoding_fps={:.2}, time={}, bitrate={:.2}kbits/s, speed={:.2}x, size={}kB, percent={:.2}%, ETA={}", // Changed label in debug
                             progress.frame,
@@ -222,9 +227,9 @@ pub fn run_ffmpeg_encode(params: &EncodeParams) -> CoreResult<()> {
                 let rust_log_level = map_ffmpeg_log_level(&level);
                 log::log!(target: "ffmpeg_log", rust_log_level, "{}", log_str); // Log via macro
 
-                // Print SVT-AV1 info lines to console as well
+                // Use callback for SVT-AV1 info lines
                 if log_str.starts_with("Svt[info]:") {
-                    println!("{}", log_str);
+                    log_callback(&log_str); // Borrow log_str as &str
                 }
 
                 // Capture ALL log messages to buffer to ensure we don't miss the error
@@ -255,8 +260,8 @@ pub fn run_ffmpeg_encode(params: &EncodeParams) -> CoreResult<()> {
     // Now check the final exit status
 
     if status.success() {
-        println!("✅ Encode finished successfully for {}", params.output_path.display()); // User-facing message
-        log::info!("FFmpeg encode finished successfully for: {}", params.output_path.display());
+        log_callback(&format!("✅ Encode finished successfully for {}", params.output_path.display())); // Use callback
+        log::info!("FFmpeg encode finished successfully for: {}", params.output_path.display()); // Keep internal log
         Ok(())
     } else {
         // Log the failure status and include the captured stderr buffer
