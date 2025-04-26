@@ -6,10 +6,12 @@
 // Use items from the drapto_cli library crate
 use drapto_cli::{Cli, Commands, run_encode};
 use drapto_cli::commands::encode::discover_encode_files; // Import the discovery function
+use drapto_cli::logging::get_timestamp; // Import timestamp function
 use clap::Parser;
 use daemonize::Daemonize; // Import Daemonize
+use std::fs; // Import fs for directory creation check (optional but good practice)
 use std::io::{self, Write}; // Import io for stderr().flush()
-// Removed unused PathBuf import
+use std::path::PathBuf; // Import PathBuf
 use std::process;
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 // Removed unused thread and Duration imports
@@ -39,6 +41,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                  }
             };
 
+            // --- Calculate potential log path (needed before daemonization for printing) ---
+            // This logic mirrors the start of run_encode to predict the log path.
+            let (actual_output_dir, _target_filename_override_os) = // Renamed variable for clarity
+                if discovered_files.len() == 1 && args.output_dir.extension().is_some() {
+                    let target_file = args.output_dir.clone();
+                    let parent_dir = target_file.parent()
+                        .map(|p| p.to_path_buf())
+                        .filter(|p| !p.as_os_str().is_empty())
+                        .unwrap_or_else(|| PathBuf::from("."));
+                    let filename_os = target_file.file_name().map(|name| name.to_os_string());
+                    (parent_dir, filename_os)
+                } else {
+                    (args.output_dir.clone(), None)
+                };
+            let log_dir = args.log_dir.clone().unwrap_or_else(|| actual_output_dir.join("logs"));
+            // Note: We don't create the log dir here, run_encode will do it.
+            // We also don't need the full log_callback setup here, just the path.
+            let main_log_filename = format!("drapto_encode_run_{}.log", get_timestamp());
+            let main_log_path = log_dir.join(&main_log_filename); // Borrow filename
+
+
             // --- Daemonize if needed ---
             if !interactive_mode {
                 // Print discovered files *before* daemon message
@@ -53,6 +76,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                  io::stderr().flush().unwrap_or_else(|e| {
                      eprintln!("Warning: Failed to flush stderr before daemonizing: {}", e);
                  });
+
+                // Print log file path *before* daemon message
+                eprintln!("Log file: {}", main_log_path.display()); // Display the calculated log path
+                io::stderr().flush().unwrap_or_else(|e| {
+                    eprintln!("Warning: Failed to flush stderr before daemonizing: {}", e);
+                });
+
 
                 // Print daemon start message *before* attempting to daemonize
                 eprintln!("Starting Drapto daemon in the background...");
