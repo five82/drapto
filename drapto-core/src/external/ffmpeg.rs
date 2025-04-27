@@ -80,8 +80,8 @@ where
     cmd.pix_fmt("yuv420p10le"); // Ensure 10-bit
     cmd.arg("-crf").arg(params.quality.to_string());
     cmd.arg("-preset").arg(params.preset.to_string());
-    // TODO: Verify if tune=0 is needed or default for SVT-AV1
-    // cmd.arg("-svtav1-params").arg("tune=0");
+    // Set tune=3 for psychovisual optimization (svt-av1-psy)
+    cmd.arg("-svtav1-params").arg("tune=3");
 
     // Audio Codec and Params
     cmd.codec_audio("libopus");
