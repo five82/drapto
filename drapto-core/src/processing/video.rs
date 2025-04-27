@@ -213,7 +213,7 @@ where
         // Prepare parameters for the new encode function
         let encode_params = EncodeParams {
             input_path: input_path.to_path_buf(), // Clone path for ownership
-            hw_accel: config.hw_accel, // Pass the detected hw_accel mode from config
+            // hw_accel field removed from EncodeParams and CoreConfig
             output_path: output_path.clone(),    // Clone path
             quality: quality.into(), // Use quality determined earlier, CONVERT u8 to u32
             preset: preset_value,

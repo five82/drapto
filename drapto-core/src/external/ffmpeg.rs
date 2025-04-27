@@ -8,15 +8,6 @@ use ffmpeg_sidecar::command::FfmpegCommand;
 use ffmpeg_sidecar::event::{FfmpegEvent, LogLevel as FfmpegLogLevel}; // Renamed LogLevel to avoid conflict
 use std::time::Instant;
 use std::path::PathBuf; // Keep PathBuf, remove unused Path
-// Removed unused Duration import
-
-/// Represents the type of hardware acceleration to use for decoding.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum HardwareAccel { // Kept pub as it might be needed by calling code
-    None,
-    Vaapi,        // Linux AMD/Intel
-    VideoToolbox, // macOS
-}
 
 /// Parameters required for running an FFmpeg encode operation.
 #[derive(Debug, Clone)]
@@ -25,7 +16,7 @@ pub struct EncodeParams {
     pub output_path: PathBuf,
     pub quality: u32, // CRF value
     pub preset: u8,   // SVT-AV1 preset
-    pub hw_accel: HardwareAccel,
+    // hw_accel field removed
     pub crop_filter: Option<String>, // Optional crop filter string "crop=W:H:X:Y"
     pub audio_channels: Vec<u32>, // Detected audio channels for bitrate mapping
     pub duration: f64, // Total video duration in seconds for progress calculation
@@ -51,19 +42,12 @@ where
     cmd.hide_banner(); // Equivalent to -hide_banner
 
     // Hardware Acceleration (Input Option - must come before input())
-    match params.hw_accel {
-        HardwareAccel::Vaapi => {
-            cmd.hwaccel("vaapi");
-            // VAAPI often requires specifying the output format - use raw args
-            cmd.arg("-hwaccel_output_format").arg("vaapi");
-        }
-        HardwareAccel::VideoToolbox => {
-            cmd.hwaccel("videotoolbox");
-        }
-        HardwareAccel::None => {
-            // No hwaccel args needed
-        }
-    }
+    // Hardware acceleration is no longer supported, only HardwareAccel::None exists.
+    // No arguments needed for software decoding.
+    // The match statement is removed as there's only one variant left.
+    // If params.hw_accel is somehow not None (which shouldn't happen after other changes),
+    // ffmpeg-sidecar will likely ignore it or error, but we rely on upstream logic
+    // ensuring only HardwareAccel::None is passed.
 
     cmd.input(params.input_path.to_string_lossy().into_owned()); // Convert PathBuf -> String
 

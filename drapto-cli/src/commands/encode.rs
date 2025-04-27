@@ -5,7 +5,7 @@
 use crate::cli::EncodeArgs;
 use crate::config;
 use crate::logging::{create_log_callback, get_timestamp};
-use drapto_core::{CoreConfig, CoreError, EncodeResult, external::ffmpeg::HardwareAccel};
+use drapto_core::{CoreConfig, CoreError, EncodeResult};
 use std::fs::{self, File};
 use std::time::Instant;
 use std::path::PathBuf;
@@ -97,31 +97,7 @@ pub fn run_encode(
     log_callback(&format!("Main log file: {}", main_log_path.display()));
     log_callback(&format!("Interactive mode: {}", interactive));
 
-    // --- Determine and Log Hardware Acceleration ---
-    let hw_accel_mode = {
-        #[cfg(target_os = "linux")]
-        {
-            // Basic check for Linux, assume VAAPI for AMD/Intel as requested
-            // TODO: Add more robust detection if needed (e.g., check for /dev/dri)
-            HardwareAccel::Vaapi
-        }
-        #[cfg(target_os = "macos")]
-        {
-            // Basic check for macOS, assume VideoToolbox
-            HardwareAccel::VideoToolbox
-        }
-        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
-        {
-            // Default to None for other OSes
-            HardwareAccel::None
-        }
-    };
-
-    match hw_accel_mode {
-        HardwareAccel::Vaapi => log_callback("Hardware Decoding: Enabled (VAAPI for Linux)"),
-        HardwareAccel::VideoToolbox => log_callback("Hardware Decoding: Enabled (VideoToolbox for macOS)"),
-        HardwareAccel::None => log_callback("Hardware Decoding: Disabled (Software decoding will be used)"),
-    }
+    // Hardware acceleration has been removed. Software decoding is always used.
 
     log_callback("========================================");
 
@@ -154,7 +130,7 @@ pub fn run_encode(
         }),
         ntfy_topic: args.ntfy,
         preset: args.preset.clone(),
-        hw_accel: hw_accel_mode,
+        // hw_accel field removed from CoreConfig
     };
 
     // --- Execute Core Logic ---
