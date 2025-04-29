@@ -4,6 +4,7 @@
 
 use crate::error::{CoreError, CoreResult};
 use crate::processing::audio; // To access calculate_audio_bitrate
+use crate::external::{FfmpegSpawner, FfmpegProcess}; // Imports are correct
 use ffmpeg_sidecar::command::FfmpegCommand;
 use ffmpeg_sidecar::event::{FfmpegEvent, LogLevel as FfmpegLogLevel}; // Renamed LogLevel to avoid conflict
 use std::time::Instant;
@@ -25,9 +26,10 @@ pub struct EncodeParams {
 
 /// Executes an FFmpeg encode operation using ffmpeg-sidecar based on the provided parameters.
 /// Uses the provided callback for logging user-facing messages and progress.
-pub fn run_ffmpeg_encode<F>(params: &EncodeParams, mut log_callback: F) -> CoreResult<()>
+/// Accepts a generic `FfmpegSpawner` to allow for mocking.
+pub fn run_ffmpeg_encode<S: FfmpegSpawner, F>(spawner: &S, params: &EncodeParams, mut log_callback: F) -> CoreResult<()>
 where
-    F: FnMut(&str),
+    F: FnMut(&str), // Remove Send + 'static
 {
     // Use log::info for internal/debug logging
     log::info!(
@@ -116,15 +118,13 @@ where
     log_callback("🚀 Starting encode process..."); // Use callback
     let start_time = Instant::now(); // Record start time
 
-    let mut child = cmd.spawn().map_err(|e| {
-        log::error!("Failed to spawn ffmpeg (sidecar): {}", e);
-        CoreError::CommandStart("ffmpeg (sidecar)".to_string(), e)
-    })?;
+    // Use the injected spawner
+    let mut child = spawner.spawn(cmd)?;
 
     // Initialize duration from params
     let duration_secs: Option<f64> = if params.duration > 0.0 { Some(params.duration) } else { None };
     if duration_secs.is_some() {
-        log::info!("Using provided duration for progress: {}", format_duration(params.duration));
+        log::info!("Using provided duration for progress: {}", format_duration_seconds(params.duration)); // Use correct format
     } else {
         log::warn!("Video duration not provided or zero; progress percentage will not be accurate.");
     }
@@ -132,12 +132,11 @@ where
     let mut last_reported_percent = -3.0; // Initialize to ensure the first report (near 0%) happens
 
     // Event loop using try_for_each, handling errors from iter() and the closure
-    child.iter()
-        .map_err(|e| CoreError::CommandFailed("ffmpeg (sidecar - iter)".to_string(), std::process::ExitStatus::default(), e.to_string()))?
-        .try_for_each(|event| -> CoreResult<()> { // Specify return type for try_for_each closure
-            match event {
-                // FfmpegEvent::Output does not exist
-                FfmpegEvent::Progress(progress) => {
+    // Use the handle_events method from the FfmpegProcess trait
+    // Pass mutable references to the closure instead of moving
+    child.handle_events(|event| {
+    		match event {
+    			FfmpegEvent::Progress(progress) => {
                     // Duration is now initialized from params
 
                     // progress.time is a String "HH:MM:SS.ms" - parse it
@@ -149,7 +148,8 @@ where
                         .unwrap_or(0.0); // Default to 0% if duration is unknown or zero
 
                     // Only report progress every 3% or at 100%
-                    if percent >= last_reported_percent + 3.0 || (percent >= 100.0 && last_reported_percent < 100.0) {
+                    // Need mutable access to last_reported_percent and log_callback
+                    if percent >= last_reported_percent + 3.0 || (percent >= 100.0 && last_reported_percent < 100.0) { // Remove deref (*)
                         // Calculate ETA
                         let eta_str = if let Some(total_duration) = duration_secs {
                             if progress.speed > 0.01 && total_duration > current_secs { // Avoid division by zero/small numbers and negative ETA
@@ -175,6 +175,7 @@ where
                         };
 
                         // Use callback for progress updates
+                        // Call the FnMut closure
                         log_callback(&format!(
                             "⏳ Encoding progress: {:.2}% ({} / {}), Speed: {:.2}x, Avg FPS: {:.2}, ETA: {}",
                             percent,
@@ -195,12 +196,13 @@ where
                             percent,
                             eta_str // Also add ETA to debug log
                         );
-                        last_reported_percent = percent; // Update last reported percentage
+                        last_reported_percent = percent; // Update last reported percentage (remove deref *)
                     }
                 }
             FfmpegEvent::Error(err_str) => {
                 // Error log line from ffmpeg stderr
                 log::error!("ffmpeg stderr error: {}", err_str); // Log via macro
+                // Need mutable access to stderr_buffer
                 stderr_buffer.push_str(&err_str); // Also capture to buffer
                 stderr_buffer.push('\n');
             }
@@ -213,11 +215,13 @@ where
 
                 // Use callback for SVT-AV1 info lines
                 if log_str.starts_with("Svt[info]:") {
-                    log_callback(&log_str); // Borrow log_str as &str
+                    // Call the FnMut closure
+                    log_callback(&log_str);
                 }
 
                 // Capture ALL log messages to buffer to ensure we don't miss the error
                 // Use Debug format for LogLevel as it doesn't implement Display
+                // Need mutable access to stderr_buffer
                 stderr_buffer.push_str(&format!("[{:?}] {}", level, log_str)); // Add level prefix
                 stderr_buffer.push('\n');
             }
@@ -231,14 +235,11 @@ where
             _ => {} // Ignore other event types for now
         }
         Ok(()) // Continue iteration
-    })?; // Propagate errors from try_for_each
+       })?; // Propagate errors from handle_events
 
     // After iterating through events, explicitly wait for the process to exit
     // and check its status code.
-    let status = child.wait().map_err(|e| {
-        log::error!("Failed to wait for ffmpeg child process: {}", e);
-        CoreError::CommandWait("ffmpeg (sidecar)".to_string(), e)
-    })?;
+    let status = child.wait()?; // Use the wait method from the FfmpegProcess trait
 
     // Check if the iteration itself encountered an error (handled by `?` above)
     // Now check the final exit status

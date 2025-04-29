@@ -11,9 +11,17 @@ path = "src/main.rs"
 clap = { version = "4", features = ["derive", "cargo", "env"] } # Add "env" feature for env var support
 chrono = "0.4"
 daemonize = "0.5" # For daemonizing the process
-drapto-core = { path = "../drapto-core" }
+drapto-core = { path = "../drapto-core", features = ["test-mocks"], optional = true } # Removed test-mock-ffprobe feature
 termcolor = "1.4" # For colored terminal output
+
+[features]
+default = ["drapto-core"] # Default feature enables the core dependency
+# Enables mocking of ffmpeg execution via drapto-core mocks
+test-mock-ffmpeg = ["drapto-core/test-mocks"] # Removed test-mock-ffprobe feature
 
 [dev-dependencies]
 tempfile = "3" # For creating temporary directories/files in tests
 assert_cmd = "2" # For CLI integration testing
+predicates = "3" # For asserting on command output/stderr
+# Add self as dev-dependency to enable test-mock-ffmpeg feature during test compilation
+drapto-cli = { path = ".", features = ["test-mock-ffmpeg"] }

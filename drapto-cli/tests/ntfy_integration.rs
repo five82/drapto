@@ -3,6 +3,11 @@
 // Use the crate itself for accessing its public items
 use drapto_cli::cli::EncodeArgs;
 use drapto_cli::commands;
+// Import mock spawner and core error for test setup
+#[cfg(feature = "test-mock-ffmpeg")]
+use drapto_core::external::mocks::{MockFfmpegSpawner, MockFfprobeExecutor}; // Import MockFfprobeExecutor
+use drapto_core::notifications::mocks::MockNotifier; // Imports are correct
+use drapto_core::error::CoreError; // Keep CoreError for potential mock errors
 use std::fs::{self, File};
 use std::io::Read;
 use std::path::PathBuf; // Keep only one import
@@ -24,7 +29,7 @@ fn test_ntfy_warnings_logged_on_failure() {
 
     let _dummy_mkv = create_dummy_mkv(&input_dir.path().to_path_buf(), "test_video.mkv");
 
-    let invalid_ntfy_url = "http://localhost:1"; // Guaranteed to fail connection
+    // Removed unused invalid_ntfy_url variable
 
     // --- Construct Args ---
     let args = EncodeArgs {
@@ -34,16 +39,42 @@ fn test_ntfy_warnings_logged_on_failure() {
         quality_sd: None,
         quality_hd: None,
         quality_uhd: None,
-        ntfy: Some(invalid_ntfy_url.to_string()), // Provide the invalid URL
+        ntfy: Some("http://mock.ntfy.topic/valid-topic".to_string()), // Use a valid-looking URL now
         disable_autocrop: false, // Add the missing field
         preset: None, // Add the missing preset field
     };
 
     // --- Execute ---
-    // run_encode handles creating the log dir and file
-    let result = commands::encode::run_encode(args, false, vec![_dummy_mkv.clone()], input_dir.path().to_path_buf()); // Pass dummy file list and input dir
+    // --- Setup Mock Spawner Expectations (Required because test-mock-ffmpeg is enabled) ---
+    // We don't care about the ffmpeg results here, just need to satisfy the mock.
+    // Use #[cfg] to avoid compile errors if test-mock-ffmpeg isn't active (though it should be for tests)
+    #[cfg(feature = "test-mock-ffmpeg")]
+    let mock_spawner = MockFfmpegSpawner::new();
+    #[cfg(feature = "test-mock-ffmpeg")]
+    mock_spawner.add_success_expectation("cropdetect=limit=16", vec![], false); // Assume default cropdetect runs
+    #[cfg(feature = "test-mock-ffmpeg")]
+    // Simulate ffmpeg failing early, as the dummy file is invalid
+    mock_spawner.add_exit_error_expectation("libsvtav1", vec![], 1);
 
-    // We expect run_encode to succeed even if ntfy fails (it just logs warnings)
+
+    // --- Mock Notifier (Configured to Fail) ---
+    let mock_notifier = MockNotifier::new();
+    let ntfy_error = CoreError::NotificationError("Simulated ntfy send failure for test".to_string());
+    // Configure mock to fail on the first send (start notification)
+    mock_notifier.set_error_on_next_send(ntfy_error);
+
+    // --- Mock Ffprobe ---
+    let mock_ffprobe = MockFfprobeExecutor::new();
+    // Set default expectation, although it might not be strictly needed if ffmpeg mock fails early
+    mock_ffprobe.expect_audio_channels(&_dummy_mkv, Ok(vec![2]));
+
+    // --- Execute ---
+    // run_encode handles creating the log dir and file
+    // Pass the configured mock spawner, ffprobe executor, and notifier
+    let result = commands::encode::run_encode(&mock_spawner, &mock_ffprobe, &mock_notifier, args, false, vec![_dummy_mkv.clone()], input_dir.path().to_path_buf());
+
+    // We expect run_encode to succeed overall even if ntfy fails (it just logs warnings)
+    // and even if the mocked ffmpeg fails (it logs errors but doesn't panic run_encode)
     // However, the underlying Handbrake call might fail if HandbrakeCLI isn't installed
     // or if the dummy file isn't processable. We primarily care about the log content here.
     // Let's proceed assuming run_encode itself doesn't panic.

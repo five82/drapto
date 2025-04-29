@@ -64,7 +64,7 @@ pub struct EncodeArgs {
     pub ntfy: Option<String>,
 
     /// Optional: Override the ffmpeg libsvtav1 encoder preset (0-13, lower is slower/better quality)
-    #[arg(long, value_name = "PRESET_INT")]
+    #[arg(long, value_name = "PRESET_INT", value_parser = clap::value_parser!(u8).range(0..=13))]
     pub preset: Option<u8>,
 
     /// Disable automatic crop detection (uses ffmpeg's cropdetect)
