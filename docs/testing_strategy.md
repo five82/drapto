@@ -29,7 +29,3 @@ Testing code that interacts with external processes (`ffmpeg`, `ffprobe`) or net
     *   **Processes (`ffmpeg`, `ffprobe`):** This might involve mocking `std::process::Command` execution or creating wrapper functions/traits around process calls that can be replaced with test doubles.
     *   **Network (`ntfy`):** Mock HTTP clients or use mock HTTP servers (e.g., `mockito`, `wiremock-rs`) to simulate `ntfy` server responses and verify requests.
 *   **Real Binaries (Limited Use):** Some end-to-end CLI tests *might* eventually use real binaries with carefully crafted small/dummy media files, but the primary strategy relies on mocking for deterministic and faster tests.
-
-## Code Coverage
-
-Code coverage will be tracked using `cargo-tarpaulin` or `grcov`. The goal is to maintain a high level of coverage and identify untested code paths. Coverage reports will be generated as part of the CI process.
