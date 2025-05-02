@@ -456,6 +456,7 @@ dependencies = [
  "daemonize",
  "drapto-cli",
  "drapto-core",
+ "ffmpeg-sidecar",
  "predicates",
  "tempfile",
  "termcolor",

@@ -7,6 +7,8 @@ use drapto_cli::commands;
 #[cfg(feature = "test-mock-ffmpeg")]
 use drapto_core::external::mocks::{MockFfmpegSpawner, MockFfprobeExecutor}; // Import MockFfprobeExecutor
 use drapto_core::notifications::mocks::MockNotifier; // Imports are correct
+use ffmpeg_sidecar::event::FfmpegEvent; // Import the event type
+use drapto_core::processing::VideoProperties; // Import VideoProperties struct
 use drapto_core::error::CoreError; // Keep CoreError for potential mock errors
 use std::fs::{self, File};
 use std::io::Read;
@@ -125,4 +127,170 @@ fn test_ntfy_warnings_logged_on_failure() {
     // Optional: Check that the main processing didn't completely fail *because* of ntfy
     // (This depends on HandbrakeCLI's behavior with the dummy file)
     // assert!(result.is_ok(), "run_encode should ideally finish, even with ntfy errors");
+}
+#[test]
+fn test_ntfy_success_notifications_sent() {
+    // --- Setup ---
+    let input_dir = tempdir().expect("Failed to create temp input dir");
+    let output_dir = tempdir().expect("Failed to create temp output dir");
+    let log_dir_path = output_dir.path().join("logs"); // Define where logs *should* go
+
+    let dummy_mkv_path = create_dummy_mkv(&input_dir.path().to_path_buf(), "success_test.mkv");
+    let ntfy_topic = "http://mock.ntfy.topic/success-test";
+
+    // --- Construct Args ---
+    let args = EncodeArgs {
+        input_path: input_dir.path().to_path_buf(),
+        output_dir: output_dir.path().to_path_buf(),
+        log_dir: Some(log_dir_path.clone()), // Explicitly set log dir
+        quality_sd: None,
+        quality_hd: None,
+        quality_uhd: None,
+        ntfy: Some(ntfy_topic.to_string()),
+        disable_autocrop: false,
+        preset: None,
+    };
+
+    // --- Setup Mocks ---
+    #[cfg(feature = "test-mock-ffmpeg")]
+    let mock_spawner = MockFfmpegSpawner::new();
+    #[cfg(feature = "test-mock-ffmpeg")]
+    {
+        // Expect crop detect and simulate success
+        mock_spawner.add_success_expectation("cropdetect=limit=16", vec![FfmpegEvent::ParsedStreamMapping("crop=1920:800:0:140".to_string())], false);
+        // Expect main encode and simulate success, CREATE dummy output file
+        mock_spawner.add_success_expectation("libsvtav1", vec![], true); // Set create_dummy_output to true
+    }
+
+    let mock_ffprobe = MockFfprobeExecutor::new();
+    // Simulate successful video properties detection (needed to proceed)
+    mock_ffprobe.expect_video_properties(&dummy_mkv_path, Ok(VideoProperties { width: 1920, height: 1080, duration: 10.0, color_space: None, color_transfer: None, color_primaries: None })); // Default HD props
+    // Simulate successful audio channel detection
+    mock_ffprobe.expect_audio_channels(&dummy_mkv_path, Ok(vec![2])); // Stereo
+
+    let mock_notifier = MockNotifier::new(); // Default behavior is success
+
+    // --- Execute ---
+    let result = commands::encode::run_encode(
+        &mock_spawner,
+        &mock_ffprobe,
+        &mock_notifier,
+        args,
+        false, // Not interactive
+        vec![dummy_mkv_path.clone()],
+        input_dir.path().to_path_buf(),
+    );
+
+    // --- Verification ---
+    assert!(result.is_ok(), "run_encode should succeed. Result: {:?}", result);
+
+    // Verify notifications sent
+    let sent_notifications = mock_notifier.get_sent_notifications(); // Use correct method
+
+    println!("Sent ntfy notifications: {:?}", sent_notifications); // For debugging
+
+    assert_eq!(sent_notifications.len(), 2, "Expected 2 notifications (start, success)");
+
+    // Check start notification
+    assert!(
+        sent_notifications[0].message.contains("Starting encode for:"), // Check for actual content
+        "First message should indicate starting encode"
+    );
+    // Removed assertion checking for input dir in start message, as it's not included.
+
+    // Check success notification for the specific file
+    assert!(
+        sent_notifications[1].message.contains("Successfully encoded"), // Check for actual content
+        "Second message should indicate successful encoding"
+    );
+    assert!(
+        sent_notifications[1].message.contains("success_test.mkv"), // Access .message field
+        "Success message should contain the filename"
+    );
+    // Removed assertion checking for "Output:" as it's not in the message format.
+
+    // Optional: Check log file content if needed, but focus is on ntfy here
+}
+
+#[test]
+fn test_ntfy_error_notification_sent() {
+    // --- Setup ---
+    let input_dir = tempdir().expect("Failed to create temp input dir");
+    let output_dir = tempdir().expect("Failed to create temp output dir");
+    let log_dir_path = output_dir.path().join("logs");
+
+    let dummy_mkv_path = create_dummy_mkv(&input_dir.path().to_path_buf(), "error_test.mkv");
+    let ntfy_topic = "http://mock.ntfy.topic/error-test";
+
+    // --- Construct Args ---
+    let args = EncodeArgs {
+        input_path: input_dir.path().to_path_buf(),
+        output_dir: output_dir.path().to_path_buf(),
+        log_dir: Some(log_dir_path.clone()),
+        quality_sd: None,
+        quality_hd: None,
+        quality_uhd: None,
+        ntfy: Some(ntfy_topic.to_string()),
+        disable_autocrop: false,
+        preset: None,
+    };
+
+    // --- Setup Mocks ---
+    #[cfg(feature = "test-mock-ffmpeg")]
+    let mock_spawner = MockFfmpegSpawner::new();
+    #[cfg(feature = "test-mock-ffmpeg")]
+    {
+        // Expect crop detect and simulate success (needed to proceed to encode)
+        mock_spawner.add_success_expectation("cropdetect=limit=16", vec![FfmpegEvent::ParsedStreamMapping("crop=1920:800:0:140".to_string())], false);
+        // Expect main encode and simulate FAILURE
+        mock_spawner.add_exit_error_expectation("libsvtav1", vec![FfmpegEvent::Error("Simulated ffmpeg error".to_string())], 1);
+    }
+
+    let mock_ffprobe = MockFfprobeExecutor::new();
+    // Simulate successful video properties detection (needed to proceed)
+    mock_ffprobe.expect_video_properties(&dummy_mkv_path, Ok(VideoProperties { width: 1920, height: 1080, duration: 10.0, color_space: None, color_transfer: None, color_primaries: None })); // Default HD props
+    // Simulate successful audio channel detection
+    mock_ffprobe.expect_audio_channels(&dummy_mkv_path, Ok(vec![2]));
+
+    let mock_notifier = MockNotifier::new(); // Default behavior is success
+
+    // --- Execute ---
+    let result = commands::encode::run_encode(
+        &mock_spawner,
+        &mock_ffprobe,
+        &mock_notifier,
+        args,
+        false, // Not interactive
+        vec![dummy_mkv_path.clone()],
+        input_dir.path().to_path_buf(),
+    );
+
+    // --- Verification ---
+    // run_encode itself should succeed even if ffmpeg fails internally, as it logs the error.
+    assert!(result.is_ok(), "run_encode should succeed even with internal errors. Result: {:?}", result);
+
+    // Verify notifications sent
+    let sent_notifications = mock_notifier.get_sent_notifications(); // Use correct method
+
+    println!("Sent ntfy notifications (error case): {:?}", sent_notifications); // For debugging
+
+    assert_eq!(sent_notifications.len(), 2, "Expected 2 notifications (start, error)");
+
+    // Check start notification (same as success case)
+    assert!(
+        sent_notifications[0].message.contains("Starting encode for:"), // Check for actual content
+        "First message should indicate starting encode"
+    );
+    // Removed assertion checking for input dir in start message, as it's not included.
+
+    // Check error notification for the specific file
+    assert!(
+        sent_notifications[1].message.contains("Error encoding"), // Check for actual content
+        "Second message should indicate an encoding error"
+    );
+    assert!(
+        sent_notifications[1].message.contains("error_test.mkv"), // Access .message field
+        "Error message should contain the filename"
+    );
+    // Removed assertion checking for specific error type as it's not in the message format.
 }

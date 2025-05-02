@@ -21,7 +21,7 @@ This document outlines the plan to improve test coverage for the Drapto project.
         *   Handling representative invalid arguments (e.g., incorrect quality values). [✅ Partially Completed - Preset & Quality tested]
         *   Verifying that representative `ffmpeg` command arguments are generated based on the CLI inputs. [✅ Partially Completed - Verified in core success test]
 *   **`ntfy_integration.rs`:**
-    *   **Test Success Cases:** Add tests to verify that `ntfy` notifications are sent correctly for *successful* operations (start, completion, errors during processing). [TODO - Requires core tests first]
+    *   **Test Success Cases:** Add tests to verify that `ntfy` notifications are sent correctly for *successful* operations (start, completion, errors during processing). [✅ COMPLETED]
     *   **Mock `ntfy`:** This will likely require mocking the HTTP client used to send notifications or setting up a mock HTTP server (like `mockito` or `wiremock-rs`) to capture and verify outgoing requests to the `ntfy` URL. [✅ COMPLETED - via core mocks]
 
 ## 3. Enhance `drapto-core` Tests
@@ -32,7 +32,6 @@ This document outlines the plan to improve test coverage for the Drapto project.
         *   Audio processing logic (`audio.rs`). [✅ COMPLETED - Unit test for calc, Mock test for log]
         *   Detection logic (`detection.rs`). [✅ COMPLETED - SDR and HDR paths tested w/ mock]
     *   **Test External Wrappers:** Add specific tests for the `ffmpeg` wrapper (`external/ffmpeg.rs`) to ensure it generates correct command-line arguments based on different parameters. Mock the actual command execution (`std::process::Command`). [✅ Partially Completed - Added tests verifying args in `ffmpeg_wrapper_tests.rs`]
-    *   **Test Configuration:** Add basic tests for loading a valid configuration file and handling file-not-found errors (`config.rs` in `drapto-core`). [TODO]
     *   **Test Error Handling:** Review `error.rs` and ensure different `CoreError` variants are triggered and handled correctly in relevant test cases (beyond the file discovery tests). [✅ Partially Completed - Tested IoError, CommandFailed, CommandStart]
     *   **Test Private Utilities (Unit Tests):** Review existing unit tests for utility functions within their respective modules (`src/lib.rs`, `src/utils.rs`, etc.) using inline `#[cfg(test)] mod tests { ... }` blocks. [✅ Partially Completed - Existing unit tests seem okay]
 *   **Test Organization:** Integration tests in `tests/` directory reorganized into logical files (`utils_tests.rs`, `discovery_tests.rs`, `detect_crop_tests.rs`, `process_videos_success_tests.rs`, `process_videos_ffmpeg_fail_tests.rs`, `process_videos_ntfy_fail_tests.rs`, `ffmpeg_wrapper_tests.rs`). [✅ COMPLETED]
@@ -56,6 +55,5 @@ gantt
     section drapto-core Tests
     Add Processing Logic Tests (Video, Audio, Detect) :core_proc, after cli_mock, 4d
     Add FFmpeg Wrapper Tests :core_ffmpeg, after core_proc, 2d
-    Add Core Config Tests (Basic) :core_config, after cli_mock, 1d
     Review/Add Error Handling Tests :core_error, after core_proc, 1d
     Review Unit Tests for Private Funcs :core_unit, after core_proc, 1d

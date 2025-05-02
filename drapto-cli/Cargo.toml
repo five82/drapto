@@ -23,5 +23,6 @@ test-mock-ffmpeg = ["drapto-core/test-mocks"] # Removed test-mock-ffprobe featur
 tempfile = "3" # For creating temporary directories/files in tests
 assert_cmd = "2" # For CLI integration testing
 predicates = "3" # For asserting on command output/stderr
+ffmpeg-sidecar = "2.0.5" # Needed for FfmpegEvent in tests
 # Add self as dev-dependency to enable test-mock-ffmpeg feature during test compilation
 drapto-cli = { path = ".", features = ["test-mock-ffmpeg"] }
