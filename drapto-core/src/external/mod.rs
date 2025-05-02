@@ -3,10 +3,14 @@
 // Encapsulates interactions with external CLI tools like ffmpeg and ffprobe.
 // Provides functions for dependency checking and abstracting tool execution.
 
-use crate::error::{CoreError, CoreResult};
-use std::io;
-use std::path::Path;
-use std::process::{Command, Stdio};
+#[cfg(not(feature = "test-mocks"))]
+use crate::error::CoreError; // Conditionally import CoreError
+use crate::error::CoreResult; // Keep CoreResult unconditionally
+#[cfg(not(feature = "test-mocks"))]
+use std::io; // Conditionally import io
+use std::path::Path; // Keep Path unconditionally
+#[cfg(not(feature = "test-mocks"))]
+use std::process::{Command, Stdio}; // Conditionally import Command and Stdio
 
 // Declare submodules
 pub mod ffmpeg; // Contains ffmpeg argument building logic (run_ffmpeg_encode)
@@ -24,6 +28,7 @@ pub use ffprobe_executor::{CommandFfprobeExecutor, FfprobeExecutor};
 /// Checks if a required external command is available and executable.
 /// Returns the command parts (e.g., `["ffmpeg"]`) if found,
 /// otherwise returns an error.
+#[cfg(not(feature = "test-mocks"))]
 pub(crate) fn check_dependency(cmd_name: &str) -> CoreResult<Vec<String>> {
     let version_arg = "-version";
     let direct_cmd_parts = vec![cmd_name.to_string()];

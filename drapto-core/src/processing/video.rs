@@ -37,6 +37,7 @@
 use crate::config::{CoreConfig, DEFAULT_CORE_QUALITY_HD, DEFAULT_CORE_QUALITY_SD, DEFAULT_CORE_QUALITY_UHD};
 // Removed unused send_ntfy import
 use crate::error::{CoreError, CoreResult};
+#[cfg(not(feature = "test-mocks"))]
 use crate::external::check_dependency;
 use crate::external::{FfmpegSpawner, FfprobeExecutor}; // Import FfprobeExecutor trait
 use crate::external::ffmpeg::{run_ffmpeg_encode, EncodeParams}; // Import function and params struct
@@ -75,12 +76,20 @@ where
     // --- Check Dependencies ---
     // No need to clone here, use the mutable reference directly
     log_callback("Checking for required external commands...");
-    // Check for ffmpeg
-    let _ffmpeg_cmd_parts = check_dependency("ffmpeg")?;
-    log_callback("  [OK] ffmpeg found."); // Update log message
-    // Check for ffprobe
-    let _ffprobe_cmd_parts = check_dependency("ffprobe")?;
-    log_callback("  [OK] ffprobe found.");
+    // Check for ffmpeg and ffprobe only if not using mock feature
+    #[cfg(not(feature = "test-mocks"))]
+    {
+        log_callback("Checking for required external commands...");
+        let _ffmpeg_cmd_parts = check_dependency("ffmpeg")?;
+        log_callback("  [OK] ffmpeg found.");
+        let _ffprobe_cmd_parts = check_dependency("ffprobe")?;
+        log_callback("  [OK] ffprobe found.");
+        log_callback("External dependency check passed.");
+    }
+    #[cfg(feature = "test-mocks")]
+    {
+        log_callback("Skipping external command check (test-mocks enabled).");
+    }
     log_callback("External dependency check passed.");
 
     // --- Get Hostname ---
