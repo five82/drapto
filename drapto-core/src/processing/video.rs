@@ -235,7 +235,7 @@ where
             preset: preset_value,
             crop_filter: crop_filter_opt, // Use crop filter determined earlier
             audio_channels, // Use fetched channels
-            duration: video_props.duration, // Pass the duration
+            duration: video_props.duration_secs, // Use renamed field duration_secs
         };
 
         log_callback(&format!("Starting ffmpeg (via sidecar) for {}...", filename));

@@ -62,7 +62,7 @@ fn test_process_videos_mock_ffmpeg_fail_exit_code() -> Result<(), Box<dyn std::e
     // --- Mock Ffprobe ---
     let mock_ffprobe = MockFfprobeExecutor::new();
     let default_props = drapto_core::processing::detection::VideoProperties {
-        width: 1920, height: 1080, duration: 120.0, ..Default::default()
+        width: 1920, height: 1080, duration_secs: 120.0, ..Default::default() // Use renamed field
     };
     mock_ffprobe.expect_audio_channels(&dummy_video, Ok(vec![2]));
     mock_ffprobe.expect_video_properties(&dummy_video, Ok(default_props.clone())); // Add expectation
@@ -142,7 +142,7 @@ fn test_process_videos_mock_ffmpeg_spawn_error() -> Result<(), Box<dyn std::erro
     let mock_ffprobe = MockFfprobeExecutor::new();
     // Use the same default_props as above or redefine if needed
     let default_props = drapto_core::processing::detection::VideoProperties {
-        width: 1920, height: 1080, duration: 120.0, ..Default::default()
+        width: 1920, height: 1080, duration_secs: 120.0, ..Default::default() // Use renamed field
     };
     mock_ffprobe.expect_audio_channels(&dummy_video, Ok(vec![2]));
     mock_ffprobe.expect_video_properties(&dummy_video, Ok(default_props)); // Add expectation

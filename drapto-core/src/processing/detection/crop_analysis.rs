@@ -11,17 +11,16 @@ use std::path::Path;
 /// Determines the initial crop detection threshold based on color properties.
 /// Returns a tuple (crop_threshold, is_hdr).
 fn determine_crop_threshold(props: &VideoProperties) -> (u32, bool) {
-    let ct = props.color_transfer.as_deref().unwrap_or("");
-    let cp = props.color_primaries.as_deref().unwrap_or("");
+    // Simplified HDR detection based only on color_space, as color_transfer and color_primaries
+    // are not available via ffprobe crate v0.3.3
     let cs = props.color_space.as_deref().unwrap_or("");
 
-    let is_hdr_ct = Regex::new(r"^(smpte2084|arib-std-b67|smpte428|bt2020-10|bt2020-12)$").unwrap().is_match(ct);
-    let is_hdr_cp = cp == "bt2020";
+    // Regex for common HDR color spaces
     let is_hdr_cs = Regex::new(r"^(bt2020nc|bt2020c)$").unwrap().is_match(cs);
 
-    if is_hdr_ct || is_hdr_cp || is_hdr_cs {
-        log::info!("HDR content detected via color properties, adjusting detection sensitivity.");
-        (128, true) // Initial threshold for HDR
+    if is_hdr_cs {
+        log::info!("HDR content potentially detected via color space ({}), adjusting detection sensitivity.", cs);
+        (128, true) // Initial threshold for potential HDR
     } else {
         (16, false) // Default threshold for SDR
     }
@@ -207,15 +206,15 @@ pub fn detect_crop<S: FfmpegSpawner>( // Keep public as it's re-exported
 
     log::info!("Video properties for {}: {}x{}, {:.2}s, HDR: {}, Crop Threshold: {}",
         input_file.display(),
-        video_props.width, video_props.height, video_props.duration,
+        video_props.width, video_props.height, video_props.duration_secs, // Use renamed field
         is_hdr,
         crop_threshold);
 
-    let credits_skip = calculate_credits_skip(video_props.duration);
-    let analysis_duration = if video_props.duration > credits_skip {
-        video_props.duration - credits_skip
+    let credits_skip = calculate_credits_skip(video_props.duration_secs); // Use renamed field
+    let analysis_duration = if video_props.duration_secs > credits_skip { // Use renamed field
+        video_props.duration_secs - credits_skip // Use renamed field
     } else {
-        video_props.duration
+        video_props.duration_secs // Use renamed field
     };
     if credits_skip > 0.0 {
         log::debug!("Skipping last {:.2}s for crop analysis (credits). Effective duration: {:.2}s", credits_skip, analysis_duration);

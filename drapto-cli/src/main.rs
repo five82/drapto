@@ -6,7 +6,7 @@
 use drapto_cli::{Cli, Commands, run_encode};
 use drapto_cli::commands::encode::discover_encode_files;
 use drapto_cli::logging::get_timestamp;
-use drapto_core::external::{SidecarSpawner, CommandFfprobeExecutor}; // Imports are correct
+use drapto_core::external::{SidecarSpawner, CrateFfprobeExecutor}; // Updated ffprobe executor import
 use drapto_core::notifications::NtfyNotifier; // Import is correct
 use clap::Parser;
 use daemonize::Daemonize;
@@ -106,7 +106,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // --- Run the encode command ---
             // Instantiate real dependencies
             let spawner = SidecarSpawner;
-            let ffprobe_executor = CommandFfprobeExecutor; // Instantiate ffprobe executor
+            let ffprobe_executor = CrateFfprobeExecutor::new(); // Instantiate new crate-based ffprobe executor
             let notifier = NtfyNotifier::new()?; // Handle potential error from notifier creation
 
             // This runs in the original process (interactive) or the daemon process

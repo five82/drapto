@@ -17,6 +17,7 @@ reqwest = { version = "0.12", features = ["blocking", "json", "rustls-tls"], def
 hostname = "0.3" # To get the system hostname for notifications
 regex = "1.11.1"
 ffmpeg-sidecar = "2.0.5" # For executing ffmpeg/ffprobe
+ffprobe = "0.3.0" # Wrapper for ffprobe CLI execution and JSON parsing
 [features]
 # Enables test-only mocking infrastructure (includes ffprobe mock via MockFfprobeExecutor)
 test-mocks = []
