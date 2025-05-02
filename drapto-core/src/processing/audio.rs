@@ -1,8 +1,8 @@
 // drapto-core/src/processing/audio.rs
 
-use crate::error::CoreResult; // Removed CoreError
-use crate::external::get_audio_channels; // Assuming this stays in external
-use std::path::Path; // Removed PathBuf
+use crate::error::CoreResult;
+use crate::external::FfprobeExecutor; // Import trait
+use std::path::Path;
 
 // Calculates audio bitrate based on channel count (private helper)
 pub(crate) fn calculate_audio_bitrate(channels: u32) -> u32 {
@@ -25,9 +25,10 @@ pub(crate) fn calculate_audio_bitrate(channels: u32) -> u32 {
 /// # Returns
 ///
 /// A `CoreResult<()>` indicating success or failure in getting channel info.
-pub fn log_audio_info<F>(
+pub fn log_audio_info<P: FfprobeExecutor, F>( // Add generic
+    ffprobe_executor: &P, // Add executor argument
     input_path: &Path,
-    mut log_callback: F, // Accept by mutable reference
+    mut log_callback: F,
 ) -> CoreResult<()>
 where
     F: FnMut(&str),
@@ -38,7 +39,7 @@ where
         .unwrap_or_else(|| "unknown_file".to_string()); // Fallback filename for logging
 
     // --- Get Audio Info ---
-    let audio_channels = match get_audio_channels(input_path) {
+    let audio_channels = match ffprobe_executor.get_audio_channels(input_path) { // Use executor
         Ok(channels) => {
             log_callback(&format!("Detected audio channels: {:?}", channels));
             channels
@@ -78,24 +79,21 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::CoreError; // Import CoreError
+    use crate::external::mocks::MockFfprobeExecutor; // Import mock
     use std::fs;
-    use tempfile::tempdir;
-    // PathBuf is needed for tests, but not the main code. Import it locally.
-    use std::path::PathBuf;
+    use std::sync::{Arc, Mutex}; // For capturing logs
+    use tempfile::{tempdir, TempDir}; // Import tempdir function and TempDir struct
+    use std::path::PathBuf; // Only import PathBuf
 
     // Helper to create a dummy file
-    fn create_dummy_file(dir: &tempfile::TempDir, name: &str) -> PathBuf {
-        let file_path = dir.path().join(name);
+    fn create_dummy_file(dir: &TempDir, name: &str) -> PathBuf { // Accept TempDir
+        let file_path = dir.path().join(name); // Call path() on TempDir
         fs::write(&file_path, "dummy content").unwrap();
         file_path
     }
 
-    // Mock log callback
-    fn mock_log_callback(msg: &str) {
-        // In a real test, you might collect messages in a Vec<&str>
-        // For this example, we just print.
-        println!("LOG: {}", msg);
-    }
+    // Note: Removed old mock_log_callback, using Arc<Mutex<Vec>> instead
 
     #[test]
     fn test_calculate_audio_bitrate() {
@@ -107,23 +105,66 @@ mod tests {
         assert_eq!(calculate_audio_bitrate(0), 0);   // 0 * 48
     }
 
-    // Note: Testing log_audio_info fully requires mocking `get_audio_channels`.
-    // This is a basic test structure demonstrating the function signature and basic logic.
-    // A more robust test suite would use a mocking library or dependency injection
-    // to control the behavior of `get_audio_channels`.
     #[test]
-    fn test_log_audio_info_structure_example() { // Renamed test
-        // This test primarily checks if the function compiles and runs without panicking.
-        // It doesn't verify the output correctness without mocking get_audio_channels.
+    fn test_log_audio_info_with_mock() { // Renamed test
         let tmp_dir = tempdir().unwrap();
-        let dummy_file = create_dummy_file(&tmp_dir, "test.mkv");
+        let dummy_file = create_dummy_file(&tmp_dir, "test.mkv"); // Pass &tmp_dir
 
-        // We expect this to likely hit the error path in `get_audio_channels`
-        // if ffprobe isn't available or the dummy file isn't a valid video.
-        let result = log_audio_info(&dummy_file, mock_log_callback); // Call renamed function
+        // --- Mock Ffprobe Setup ---
+        let mock_ffprobe = MockFfprobeExecutor::new();
+        // Simulate stereo and 5.1 tracks
+        mock_ffprobe.expect_audio_channels(&dummy_file, Ok(vec![2, 6]));
 
-        // Check that it returns Ok, even if it logged a warning due to channel detection error
-        assert!(result.is_ok());
-        // No args vector to check anymore
+        // --- Log Capture Setup ---
+        let log_messages = Arc::new(Mutex::new(Vec::new()));
+        let log_messages_clone = log_messages.clone();
+        let log_callback = move |msg: &str| {
+            log_messages_clone.lock().unwrap().push(msg.to_string());
+        };
+
+        // --- Execute ---
+        let result = log_audio_info(&mock_ffprobe, &dummy_file, log_callback);
+
+        // --- Assertions ---
+        assert!(result.is_ok(), "log_audio_info should succeed");
+
+        let logs = log_messages.lock().unwrap();
+        // Check for specific log messages based on mock data
+        assert!(logs.iter().any(|m| m == "Detected audio channels: [2, 6]"));
+        assert!(logs.iter().any(|m| m == "Calculated bitrate for audio stream 0 (2 channels): 128kbps"));
+        assert!(logs.iter().any(|m| m == "Calculated bitrate for audio stream 1 (6 channels): 256kbps"));
+        assert!(logs.iter().any(|m| m == "  Bitrate Breakdown: Stream 0: 128kbps, Stream 1: 256kbps"));
+    }
+
+    #[test]
+    fn test_log_audio_info_ffprobe_error() {
+        let tmp_dir = tempdir().unwrap();
+        let dummy_file = create_dummy_file(&tmp_dir, "test_err.mkv"); // Pass &tmp_dir
+
+        // --- Mock Ffprobe Setup (Error) ---
+        let mock_ffprobe = MockFfprobeExecutor::new();
+        let ffprobe_error = CoreError::FfprobeParse("Simulated ffprobe error".to_string());
+        mock_ffprobe.expect_audio_channels(&dummy_file, Err(ffprobe_error));
+
+        // --- Log Capture Setup ---
+        let log_messages = Arc::new(Mutex::new(Vec::new()));
+        let log_messages_clone = log_messages.clone();
+        let log_callback = move |msg: &str| {
+            log_messages_clone.lock().unwrap().push(msg.to_string());
+        };
+
+        // --- Execute ---
+        let result = log_audio_info(&mock_ffprobe, &dummy_file, log_callback);
+
+        // --- Assertions ---
+        // Should still return Ok, but log a warning
+        assert!(result.is_ok(), "log_audio_info should return Ok even on ffprobe error");
+
+        let logs = log_messages.lock().unwrap();
+        assert!(logs.iter().any(|m| m.contains("Warning: Error getting audio channels for test_err.mkv")));
+        assert!(logs.iter().any(|m| m.contains("Simulated ffprobe error")));
+        // Ensure no bitrate logs were generated
+        assert!(!logs.iter().any(|m| m.contains("Calculated bitrate")));
+        assert!(!logs.iter().any(|m| m.contains("Bitrate Breakdown")));
     }
 }

@@ -20,11 +20,13 @@
 
 // Declare submodules
 pub mod video;
-pub mod audio; // Add the new audio module
-pub mod detection; // Add the new detection module
+pub mod audio;
+pub mod detection; // Keep module declaration
 
-// Re-export public API functions
+// Re-export public API functions/structs
 pub use video::process_videos;
+pub use detection::VideoProperties; // Re-export struct
+pub use detection::detect_crop; // Re-export function
 
 // Note: Functions related to video processing are kept internal or passed via
 // dependency injection where needed, so they are not re-exported here.

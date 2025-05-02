@@ -6,6 +6,8 @@ use crate::cli::EncodeArgs;
 use crate::config;
 use crate::logging::{create_log_callback, get_timestamp};
 use drapto_core::{CoreConfig, CoreError, EncodeResult};
+use drapto_core::external::{FfmpegSpawner, FfprobeExecutor}; // Import traits
+use drapto_core::notifications::Notifier; // Import trait
 use std::fs::{self, File};
 use std::time::Instant;
 use std::path::PathBuf;
@@ -41,7 +43,10 @@ pub fn discover_encode_files(args: &EncodeArgs) -> Result<(Vec<PathBuf>, PathBuf
 
 
 // --- Modified run_encode function ---
-pub fn run_encode(
+pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor, N: Notifier>( // Add FfprobeExecutor generic
+    spawner: &S,
+    ffprobe_executor: &P, // Add ffprobe_executor parameter
+    notifier: &N,
     args: EncodeArgs,
     interactive: bool,
     files_to_process: Vec<PathBuf>,
@@ -141,8 +146,14 @@ pub fn run_encode(
          processing_result = Ok(Vec::new());
     } else {
          // Pass the Option<PathBuf> target_filename_override
+         // Spawner is now passed in as an argument
+         // Notifier is now passed in as an argument
+
          processing_result = drapto_core::process_videos(
-             &config,
+             spawner, // Pass the injected spawner instance (S)
+             ffprobe_executor, // Pass the injected ffprobe executor instance (P)
+             notifier, // Pass the injected notifier instance (N)
+             &config, // Pass config (&CoreConfig)
              &files_to_process,
              target_filename_override,
              &mut *log_callback

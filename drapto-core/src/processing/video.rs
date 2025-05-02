@@ -35,10 +35,13 @@
 //   that were processed successfully.
 
 use crate::config::{CoreConfig, DEFAULT_CORE_QUALITY_HD, DEFAULT_CORE_QUALITY_SD, DEFAULT_CORE_QUALITY_UHD};
-use crate::notifications::send_ntfy; // Added for ntfy support
+// Removed unused send_ntfy import
 use crate::error::{CoreError, CoreResult};
-use crate::external::check_dependency; // Removed ffmpeg import
+#[cfg(not(feature = "test-mocks"))]
+use crate::external::check_dependency;
+use crate::external::{FfmpegSpawner, FfprobeExecutor}; // Import FfprobeExecutor trait
 use crate::external::ffmpeg::{run_ffmpeg_encode, EncodeParams}; // Import function and params struct
+use crate::notifications::Notifier; // Import the Notifier trait
 use crate::processing::audio; // To access audio submodule
 use crate::processing::detection; // Import the new detection module
 use crate::utils::{format_bytes, format_duration, get_file_size}; // Added format_bytes, format_duration
@@ -57,24 +60,36 @@ use std::time::Instant;
 /// Processes a list of video files based on the configuration.
 /// Calls the `log_callback` for logging messages.
 /// Returns a list of results for successfully processed files.
-pub fn process_videos<F>(
+
+pub fn process_videos<S: FfmpegSpawner, P: FfprobeExecutor, N: Notifier, F>( // Add FfprobeExecutor generic
+    spawner: &S,
+    ffprobe_executor: &P, // Add ffprobe_executor argument
+    notifier: &N,
     config: &CoreConfig,
     files_to_process: &[PathBuf],
-    target_filename_override: Option<PathBuf>, // <-- Add new parameter
-    mut log_callback: F, // Accept by mutable reference (via Box deref)
-) -> CoreResult<Vec<EncodeResult>> // <-- Keep return type
+    target_filename_override: Option<PathBuf>,
+    mut log_callback: F,
+) -> CoreResult<Vec<EncodeResult>>
 where
     F: FnMut(&str), // Remove Send + 'static bounds
 {
     // --- Check Dependencies ---
     // No need to clone here, use the mutable reference directly
     log_callback("Checking for required external commands...");
-    // Check for ffmpeg
-    let _ffmpeg_cmd_parts = check_dependency("ffmpeg")?;
-    log_callback("  [OK] ffmpeg found."); // Update log message
-    // Check for ffprobe
-    let _ffprobe_cmd_parts = check_dependency("ffprobe")?;
-    log_callback("  [OK] ffprobe found.");
+    // Check for ffmpeg and ffprobe only if not using mock feature
+    #[cfg(not(feature = "test-mocks"))]
+    {
+        log_callback("Checking for required external commands...");
+        let _ffmpeg_cmd_parts = check_dependency("ffmpeg")?;
+        log_callback("  [OK] ffmpeg found.");
+        let _ffprobe_cmd_parts = check_dependency("ffprobe")?;
+        log_callback("  [OK] ffprobe found.");
+        log_callback("External dependency check passed.");
+    }
+    #[cfg(feature = "test-mocks")]
+    {
+        log_callback("Skipping external command check (test-mocks enabled).");
+    }
     log_callback("External dependency check passed.");
 
     // --- Get Hostname ---
@@ -126,7 +141,8 @@ where
                     filename = filename,
                     output_display = output_path.display()
                 );
-                 if let Err(e) = send_ntfy(topic, &ntfy_message, Some("Drapto Encode Skipped"), Some(3), Some("warning")) {
+                // Use notifier trait
+                if let Err(e) = notifier.send(topic, &ntfy_message, Some("Drapto Encode Skipped"), Some(3), Some("warning")) {
                     log_callback(&format!("Warning: Failed to send ntfy skip notification for {}: {}", filename, e));
                 }
             }
@@ -140,13 +156,14 @@ where
         // --- Send Start Notification ---
         if let Some(topic) = &config.ntfy_topic {
             let start_message = format!("[{}]: Starting encode for: {}", hostname, filename); // Add hostname
-            if let Err(e) = send_ntfy(topic, &start_message, Some("Drapto Encode Start"), Some(3), Some("arrow_forward")) {
+            // Use notifier trait
+            if let Err(e) = notifier.send(topic, &start_message, Some("Drapto Encode Start"), Some(3), Some("arrow_forward")) {
                 log_callback(&format!("Warning: Failed to send ntfy start notification for {}: {}", filename, e));
             }
         }
 
         // --- Get Video Properties (including width) ---
-        let video_props = match detection::get_video_properties(input_path) {
+        let video_props = match ffprobe_executor.get_video_properties(input_path) { // Use executor
             Ok(props) => props,
             Err(e) => {
                 log_callback(&format!("ERROR: Failed to get video properties for {}: {}. Skipping file.", filename, e));
@@ -182,8 +199,8 @@ where
         // Determine if crop should be disabled (using config default_crop_mode for now)
         // TODO: Add a specific config option like `disable_crop_detection`?
         let disable_crop = config.default_crop_mode.as_deref() == Some("off"); // Treat "off" as disable
-        // Pass video_props to detect_crop (requires modifying detect_crop signature)
-        let (crop_filter_opt, _is_hdr) = match detection::detect_crop(input_path, &video_props, disable_crop) {
+        // Pass video_props and spawner to detect_crop
+        let (crop_filter_opt, _is_hdr) = match detection::detect_crop(spawner, input_path, &video_props, disable_crop) { // Pass spawner
             Ok(result) => result,
             Err(e) => {
                 log_callback(&format!("Warning: Crop detection failed for {}: {}. Proceeding without cropping.", filename, e));
@@ -194,15 +211,14 @@ where
         // --- Prepare Audio Options ---
         // Log audio info (channels, calculated bitrates)
         // We ignore the result as errors are logged internally by log_audio_info
-        let _ = audio::log_audio_info(input_path, &mut log_callback);
+        let _ = audio::log_audio_info(ffprobe_executor, input_path, &mut log_callback); // Pass executor
 
         // --- Build ffmpeg Command ---
         // Get preset value (same logic as before HandBrakeCLI removal)
         let preset_value = config.preset.or(config.default_encoder_preset).unwrap_or(6);
 
-        // Get audio channels (re-fetch for now, ideally refactor later)
-        // Note: This might log channel detection warnings twice if prepare_audio_options also failed.
-        let audio_channels = match crate::external::get_audio_channels(input_path) {
+        // Get audio channels using the injected executor
+        let audio_channels = match ffprobe_executor.get_audio_channels(input_path) {
              Ok(channels) => channels,
              Err(e) => {
                  log_callback(&format!("Warning: Error getting audio channels for ffmpeg command build: {}. Using empty list.", e));
@@ -227,7 +243,7 @@ where
 
         // --- Execute ffmpeg via sidecar ---
         // Pass the log_callback to the encode function
-        let encode_result = run_ffmpeg_encode(&encode_params, &mut log_callback);
+        let encode_result = run_ffmpeg_encode(spawner, &encode_params, &mut log_callback); // Pass the injected spawner
 
 
         // --- Handle Result ---
@@ -265,7 +281,8 @@ where
                     out_size = format_bytes(output_size),
                     reduct = reduction
                 );
-                 if let Err(e) = send_ntfy(topic, &success_message, Some("Drapto Encode Success"), Some(4), Some("white_check_mark")) {
+                // Use notifier trait
+                if let Err(e) = notifier.send(topic, &success_message, Some("Drapto Encode Success"), Some(4), Some("white_check_mark")) {
                     // Use the clone for logging within the iteration
                     log_callback(&format!("Warning: Failed to send ntfy success notification for {}: {}", filename, e));
                 }
@@ -289,7 +306,8 @@ where
                     hostname = hostname,
                     filename = filename
                 );
-                 if let Err(e) = send_ntfy(topic, &error_message, Some("Drapto Encode Error"), Some(5), Some("x,rotating_light")) {
+                // Use notifier trait
+                if let Err(e) = notifier.send(topic, &error_message, Some("Drapto Encode Error"), Some(5), Some("x,rotating_light")) {
                     // Use the clone for logging within the iteration
                     log_callback(&format!("Warning: Failed to send ntfy error notification for {}: {}", filename, e));
                 }
