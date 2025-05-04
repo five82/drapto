@@ -26,10 +26,9 @@ fn test_detect_crop_mocked() -> Result<(), Box<dyn std::error::Error>> {
     let video_props = detection::VideoProperties {
         width: 1920,
         height: 1080,
-        duration: 600.0, // 10 minutes
+        duration_secs: 600.0, // 10 minutes - Use renamed field
         color_space: Some("bt709".to_string()),
-        color_transfer: Some("bt709".to_string()),
-        color_primaries: Some("bt709".to_string()),
+        // color_transfer and color_primaries removed
     };
 
     // --- Mock Spawner Setup ---
@@ -71,10 +70,9 @@ fn test_detect_crop_mocked_hdr() -> Result<(), Box<dyn std::error::Error>> {
     let video_props = detection::VideoProperties {
         width: 3840,
         height: 2160,
-        duration: 600.0, // 10 minutes
+        duration_secs: 600.0, // 10 minutes - Use renamed field
         color_space: Some("bt2020nc".to_string()), // HDR indicator
-        color_transfer: Some("smpte2084".to_string()), // HDR indicator
-        color_primaries: Some("bt2020".to_string()), // HDR indicator
+        // color_transfer and color_primaries removed
     };
 
     // --- Mock Spawner Setup ---

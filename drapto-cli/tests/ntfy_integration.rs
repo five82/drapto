@@ -164,7 +164,7 @@ fn test_ntfy_success_notifications_sent() {
 
     let mock_ffprobe = MockFfprobeExecutor::new();
     // Simulate successful video properties detection (needed to proceed)
-    mock_ffprobe.expect_video_properties(&dummy_mkv_path, Ok(VideoProperties { width: 1920, height: 1080, duration: 10.0, color_space: None, color_transfer: None, color_primaries: None })); // Default HD props
+    mock_ffprobe.expect_video_properties(&dummy_mkv_path, Ok(VideoProperties { width: 1920, height: 1080, duration_secs: 10.0, color_space: None })); // Use duration_secs, remove removed fields
     // Simulate successful audio channel detection
     mock_ffprobe.expect_audio_channels(&dummy_mkv_path, Ok(vec![2])); // Stereo
 
@@ -248,7 +248,7 @@ fn test_ntfy_error_notification_sent() {
 
     let mock_ffprobe = MockFfprobeExecutor::new();
     // Simulate successful video properties detection (needed to proceed)
-    mock_ffprobe.expect_video_properties(&dummy_mkv_path, Ok(VideoProperties { width: 1920, height: 1080, duration: 10.0, color_space: None, color_transfer: None, color_primaries: None })); // Default HD props
+    mock_ffprobe.expect_video_properties(&dummy_mkv_path, Ok(VideoProperties { width: 1920, height: 1080, duration_secs: 10.0, color_space: None })); // Use duration_secs, remove removed fields
     // Simulate successful audio channel detection
     mock_ffprobe.expect_audio_channels(&dummy_mkv_path, Ok(vec![2]));
 

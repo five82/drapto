@@ -13,10 +13,12 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 log = "0.4" # Added for logging within the core library
 rand = "0.8" # Added for randomized film grain sampling
-reqwest = { version = "0.12", features = ["blocking", "json", "rustls-tls"], default-features = false } # For ntfy notifications
+ntfy = { version = "0.7.0", default-features = false, features = ["blocking"] } # For ntfy notifications (blocking)
+url = "2" # For parsing URLs, needed by ntfy integration
 hostname = "0.3" # To get the system hostname for notifications
 regex = "1.11.1"
 ffmpeg-sidecar = "2.0.5" # For executing ffmpeg/ffprobe
+ffprobe = "0.3.0" # Wrapper for ffprobe CLI execution and JSON parsing
 [features]
 # Enables test-only mocking infrastructure (includes ffprobe mock via MockFfprobeExecutor)
 test-mocks = []

@@ -49,7 +49,7 @@ pub use processing::process_videos;
 pub use utils::{format_bytes, format_duration};
 
 // From notifications module
-pub use notifications::send_ntfy;
+// Removed: pub use notifications::send_ntfy; // Deprecated function removed
 
 // --- Public Structs (defined directly in lib.rs) ---
 // EncodeResult remains here as it's a simple data structure returned by the public API.

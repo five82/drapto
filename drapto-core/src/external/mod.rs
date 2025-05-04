@@ -20,7 +20,7 @@ pub mod mocks; // Contains mock implementations for testing
 
 // Re-export traits and real executors for convenience
 pub use ffmpeg_executor::{FfmpegProcess, FfmpegSpawner, SidecarProcess, SidecarSpawner};
-pub use ffprobe_executor::{CommandFfprobeExecutor, FfprobeExecutor};
+pub use ffprobe_executor::{CrateFfprobeExecutor, FfprobeExecutor}; // Updated to use crate-based executor
 
 // TODO: Move get_video_duration_secs here (if needed).
 // Consider creating external/ffprobe.rs for ffprobe-specific logic beyond execution.
@@ -67,7 +67,7 @@ pub(crate) fn check_dependency(cmd_name: &str) -> CoreResult<Vec<String>> {
 /// This is the main public-facing function when mocks are not enabled.
 pub(crate) fn get_audio_channels(input_path: &Path) -> CoreResult<Vec<u32>> {
     // Instantiate the real executor here for the public-facing function
-    CommandFfprobeExecutor.get_audio_channels(input_path)
+    CrateFfprobeExecutor::new().get_audio_channels(input_path) // Use the new crate-based executor
 } // Add missing closing brace
 // Removed unused #[cfg(feature = "test-mock-ffprobe")] version of get_audio_channels
 
