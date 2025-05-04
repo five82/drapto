@@ -19,6 +19,7 @@ fn test_run_ffmpeg_encode_args_basic() -> Result<(), Box<dyn std::error::Error>>
         crop_filter: None,
         audio_channels: vec![2], // Stereo
         duration: 60.0,
+        enable_denoise: true, // Added field
     };
 
     let mock_spawner = MockFfmpegSpawner::new();
@@ -65,6 +66,7 @@ fn test_run_ffmpeg_encode_args_with_crop() -> Result<(), Box<dyn std::error::Err
         crop_filter: Some(crop_filter.clone()),
         audio_channels: vec![6], // 5.1
         duration: 120.0,
+        enable_denoise: true, // Added field
     };
 
     let mock_spawner = MockFfmpegSpawner::new();
@@ -80,7 +82,8 @@ fn test_run_ffmpeg_encode_args_with_crop() -> Result<(), Box<dyn std::error::Err
     let args = &calls[0];
 
     // Check that crop filter IS present and correct
-    let expected_filter_arg = format!("[0:v:0]{}[vout]", crop_filter);
+    // Expect crop AND denoise filter since enable_denoise is true by default
+    let expected_filter_arg = format!("[0:v:0]{},hqdn3d[vout]", crop_filter);
     assert!(args.iter().position(|a| a == "-filter_complex").map_or(false, |i| args.get(i+1) == Some(&expected_filter_arg)), "Should contain correct -filter_complex arg");
     assert!(args.iter().any(|a| a == "-map"), "Should contain -map");
     assert!(args.iter().any(|a| a == "[vout]"), "Should map [vout]");

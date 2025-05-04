@@ -41,6 +41,7 @@ fn test_process_videos_mock_ntfy_fail() -> Result<(), Box<dyn std::error::Error>
          quality_uhd: None,
          default_crop_mode: None,
          ntfy_topic: Some("http://localhost:1234/mock-topic-ntfy-fail".to_string()), // Need topic for ntfy attempt
+         enable_denoise: true, // Added field
      };
 
     // --- Mock Spawner Setup (Success) ---

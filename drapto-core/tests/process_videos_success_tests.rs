@@ -40,6 +40,7 @@ fn test_process_videos_mock_ffmpeg_success() -> Result<(), Box<dyn std::error::E
          quality_uhd: None,
          default_crop_mode: None, // No crop override
          ntfy_topic: Some("http://localhost:1234/mock-topic".to_string()), // Add a mock topic
+         enable_denoise: true, // Added field
      };
 
     // --- Mock Spawner Setup ---

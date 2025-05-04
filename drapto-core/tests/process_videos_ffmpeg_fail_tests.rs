@@ -43,6 +43,7 @@ fn test_process_videos_mock_ffmpeg_fail_exit_code() -> Result<(), Box<dyn std::e
          quality_uhd: None,
          default_crop_mode: None,
          ntfy_topic: Some("http://localhost:1234/mock-topic-fail".to_string()), // Add topic
+         enable_denoise: true, // Added field
      };
 
     // --- Mock Spawner Setup ---
@@ -127,6 +128,7 @@ fn test_process_videos_mock_ffmpeg_spawn_error() -> Result<(), Box<dyn std::erro
          quality_uhd: None,
          default_crop_mode: Some("off".to_string()), // Disable crop detection for this test
          ntfy_topic: Some("http://localhost:1234/mock-topic-spawn-fail".to_string()), // Add topic
+         enable_denoise: true, // Added field
      };
 
      // --- Mock Spawner Setup ---

@@ -236,6 +236,7 @@ where
             crop_filter: crop_filter_opt, // Use crop filter determined earlier
             audio_channels, // Use fetched channels
             duration: video_props.duration_secs, // Use renamed field duration_secs
+enable_denoise: config.enable_denoise, // Pass the config value
         };
 
         log_callback(&format!("Starting ffmpeg (via sidecar) for {}...", filename));

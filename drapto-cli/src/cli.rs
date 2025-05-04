@@ -71,6 +71,9 @@ pub struct EncodeArgs {
     #[arg(long)]
     pub disable_autocrop: bool,
 
+/// Disable light video denoising (hqdn3d)
+    #[arg(long, action = clap::ArgAction::SetFalse)]
+    pub no_denoise: bool, // Defaults to true, flag sets it to false
 }
 
 
@@ -111,6 +114,7 @@ mod tests {
                 assert!(encode_args.ntfy.is_none());
                 assert!(encode_args.preset.is_none());
                 assert!(!encode_args.disable_autocrop);
+                assert!(encode_args.no_denoise); // Check default
             },
             // Add other command checks if necessary
         }
@@ -150,6 +154,7 @@ mod tests {
                 assert!(encode_args.ntfy.is_none());
                 assert!(encode_args.preset.is_none());
                 assert!(!encode_args.disable_autocrop);
+                assert!(encode_args.no_denoise); // Check default
             },
             // Add other command checks if necessary
         }
@@ -187,6 +192,7 @@ mod tests {
                 assert!(encode_args.ntfy.is_none());
                 assert!(encode_args.preset.is_none());
                 assert!(!encode_args.disable_autocrop);
+                assert!(encode_args.no_denoise); // Check default
             },
             // Add other command checks if necessary
         }
@@ -218,6 +224,7 @@ mod tests {
                 assert!(encode_args.quality_sd.is_none());
                 assert!(encode_args.preset.is_none());
                 assert!(!encode_args.disable_autocrop);
+                assert!(encode_args.no_denoise); // Check default
             },
             // Add other command checks if necessary
         }
@@ -285,9 +292,36 @@ mod tests {
                 assert!(encode_args.quality_sd.is_none());
                 assert!(encode_args.ntfy.is_none());
                 assert!(encode_args.preset.is_none());
+                assert!(encode_args.no_denoise); // Check default
             },
             // Add other command checks if necessary
         }
+    }
+}
+
+#[test]
+fn test_parse_encode_no_denoise_flag() {
+    let args = vec![
+        "drapto-cli",
+        "encode",
+        "-i", "input",
+        "-o", "output",
+        "--no-denoise", // Explicitly disable denoising
+    ];
+    let cli = Cli::parse_from(args);
+
+    assert!(!cli.interactive);
+
+    match cli.command {
+        Commands::Encode(encode_args) => {
+            assert!(!encode_args.no_denoise); // Check flag sets it to false
+            assert!(encode_args.log_dir.is_none());
+            assert!(encode_args.quality_sd.is_none());
+            assert!(encode_args.ntfy.is_none());
+            assert!(encode_args.preset.is_none());
+            assert!(!encode_args.disable_autocrop);
+        },
+        // Add other command checks if necessary
     }
 }
 
@@ -311,6 +345,7 @@ mod tests {
                 assert!(encode_args.quality_sd.is_none());
                 assert!(!encode_args.disable_autocrop);
                 assert!(encode_args.ntfy.is_none());
+                assert!(encode_args.no_denoise); // Check default
             },
             // Add other command checks if necessary
         }

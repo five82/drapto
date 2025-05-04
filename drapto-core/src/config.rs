@@ -49,5 +49,7 @@ pub struct CoreConfig {
     // --- Notifications ---
     /// Optional ntfy.sh topic URL for notifications
     pub ntfy_topic: Option<String>,
+/// Enable light video denoising (hqdn3d) by default.
+    pub enable_denoise: bool,
     // Hardware acceleration field removed as it's no longer supported.
 }

@@ -44,6 +44,7 @@ fn test_ntfy_warnings_logged_on_failure() {
         ntfy: Some("http://mock.ntfy.topic/valid-topic".to_string()), // Use a valid-looking URL now
         disable_autocrop: false, // Add the missing field
         preset: None, // Add the missing preset field
+        no_denoise: true, // Added field (default value)
     };
 
     // --- Execute ---
@@ -149,6 +150,7 @@ fn test_ntfy_success_notifications_sent() {
         ntfy: Some(ntfy_topic.to_string()),
         disable_autocrop: false,
         preset: None,
+        no_denoise: true, // Added field (default value)
     };
 
     // --- Setup Mocks ---
@@ -233,6 +235,7 @@ fn test_ntfy_error_notification_sent() {
         ntfy: Some(ntfy_topic.to_string()),
         disable_autocrop: false,
         preset: None,
+        no_denoise: true, // Added field (default value)
     };
 
     // --- Setup Mocks ---

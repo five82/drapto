@@ -21,6 +21,7 @@ pub struct EncodeParams {
     pub crop_filter: Option<String>, // Optional crop filter string "crop=W:H:X:Y"
     pub audio_channels: Vec<u32>, // Detected audio channels for bitrate mapping
     pub duration: f64, // Total video duration in seconds for progress calculation
+pub enable_denoise: bool, // Whether to apply the hqdn3d filter
     // Add other parameters as needed (e.g., specific audio/subtitle stream selection)
 }
 
@@ -58,18 +59,41 @@ where
     let af_filters = vec!["aformat=channel_layouts=7.1|5.1|stereo|mono"];
     cmd.arg("-af").arg(af_filters.join(","));
 
-    // Video filter and mapping
-    if let Some(crop_filter_string) = &params.crop_filter {
-        // If crop filter exists, use filter_complex with labeled pads
-        let filtergraph = format!("[0:v:0]{}[vout]", crop_filter_string);
-        cmd.filter_complex(&filtergraph);
-        cmd.arg("-map").arg("[vout]"); // Map the output of the filtergraph
-    } else {
-        // If no crop filter, map the video stream directly
-        cmd.arg("-map").arg("0:v:0?"); // Map first video stream (optional)
+    // Video filter logic
+    let use_denoise = params.enable_denoise;
+    let crop_filter_opt = params.crop_filter.as_deref(); // Get Option<&str>
+
+    match (use_denoise, crop_filter_opt) {
+        (true, Some(crop_filter)) => {
+            // Both denoise and crop: Use filter_complex
+            log::info!("Applying video filters: crop, hqdn3d");
+            // Chain filters: crop first, then hqdn3d
+            let filtergraph = format!("[0:v:0]{},hqdn3d[vout]", crop_filter);
+            cmd.filter_complex(&filtergraph);
+            cmd.arg("-map").arg("[vout]"); // Map the output of the filtergraph
+        }
+        (true, None) => {
+            // Only denoise: Use -vf
+            log::info!("Applying video filter: hqdn3d");
+            // Use raw args as ffmpeg-sidecar might not have a dedicated method for -vf
+            cmd.arg("-vf").arg("hqdn3d");
+            cmd.arg("-map").arg("0:v:0?"); // Map the filtered video stream (optional)
+        }
+        (false, Some(crop_filter)) => {
+            // Only crop: Use filter_complex (existing logic)
+            log::info!("Applying video filter: crop");
+            let filtergraph = format!("[0:v:0]{}[vout]", crop_filter);
+            cmd.filter_complex(&filtergraph);
+            cmd.arg("-map").arg("[vout]");
+        }
+        (false, None) => {
+            // No video filters: Map directly (existing logic)
+            log::info!("No video filters applied.");
+            cmd.arg("-map").arg("0:v:0?"); // Map first video stream (optional)
+        }
     }
 
-    // Map other streams directly
+    // Map other streams (audio, subs, metadata, chapters - remains the same)
     cmd.arg("-map").arg("0:a?");   // Map all audio streams (optional)
     cmd.arg("-map").arg("0:s?");   // Map all subtitle streams (optional)
     cmd.arg("-map_metadata").arg("0"); // Copy global metadata

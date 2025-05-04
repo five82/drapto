@@ -136,6 +136,7 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor, N: Notifier>( // Add Ffp
         ntfy_topic: args.ntfy,
         preset: args.preset.clone(),
         // hw_accel field removed from CoreConfig
+enable_denoise: args.no_denoise, // Map the CLI flag directly
     };
 
     // --- Execute Core Logic ---
