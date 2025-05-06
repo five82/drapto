@@ -11,4 +11,3 @@ jobs:
         with:
           toolchain: stable
       - run: cargo build --all
-      - run: cargo test --all

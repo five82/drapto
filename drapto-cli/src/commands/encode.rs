@@ -4,13 +4,16 @@
 
 use crate::cli::EncodeArgs;
 use crate::config;
-use crate::logging::{create_log_callback, get_timestamp};
+// Removed create_log_callback import
 use drapto_core::{CoreConfig, CoreError, EncodeResult};
 use drapto_core::external::{FfmpegSpawner, FfprobeExecutor}; // Import traits
+use drapto_core::external::StdFsMetadataProvider; // Import the concrete provider
 use drapto_core::notifications::Notifier; // Import trait
-use std::fs::{self, File};
+use std::fs; // Removed unused File import
 use std::time::Instant;
 use std::path::PathBuf;
+use log::{info, warn, error}; // Import log macros
+use colored::*; // Import colored crate for formatting
 
 // --- New function to discover files ---
 pub fn discover_encode_files(args: &EncodeArgs) -> Result<(Vec<PathBuf>, PathBuf), Box<dyn std::error::Error>> {
@@ -27,7 +30,7 @@ pub fn discover_encode_files(args: &EncodeArgs) -> Result<(Vec<PathBuf>, PathBuf
              Err(e) => Err(e.into()), // Propagate other core errors
         }
     } else if metadata.is_file() {
-        if input_path.extension().map_or(false, |ext| ext.eq_ignore_ascii_case("mkv")) {
+        if input_path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("mkv")) {
             let parent_dir = input_path.parent().ok_or_else(|| {
                 CoreError::PathError(format!("Could not determine parent directory for file '{}'", input_path.display()))
             })?.to_path_buf();
@@ -83,28 +86,25 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor, N: Notifier>( // Add Ffp
     fs::create_dir_all(&actual_output_dir)?;
     fs::create_dir_all(&log_dir)?;
 
-    // --- Setup Logging ---
-    let main_log_filename = format!("drapto_encode_run_{}.log", get_timestamp());
-    let main_log_path = log_dir.join(main_log_filename);
-    let log_file = File::create(&main_log_path)?;
-    let mut log_callback = create_log_callback(log_file, interactive)?;
+    // --- Logging Setup (Handled by env_logger via RUST_LOG) ---
+    // We still need the log path for potential PID file and user info.
+    let main_log_filename = format!("drapto_encode_run_{}.log", crate::logging::get_timestamp()); // Keep get_timestamp usage
+    let main_log_path = log_dir.join(&main_log_filename); // Use reference
 
-    // --- Log Initial Info ---
-    log_callback("========================================");
-    log_callback(&format!("Drapto Encode Run Started: {}", chrono::Local::now()));
-    log_callback(&format!("Original Input arg: {}", args.input_path.display()));
-    log_callback(&format!("Original Output arg: {}", args.output_dir.display()));
-    log_callback(&format!("Effective Output directory: {}", actual_output_dir.display()));
+    // --- Log Initial Info using standard log macros with color ---
+    info!("{}", "========================================".cyan().bold());
+    info!("{} {}", "Drapto Encode Run Started:".green().bold(), chrono::Local::now().to_string().green());
+    info!("  {:<25} {}", "Original Input arg:".cyan(), args.input_path.display().to_string().yellow());
+    info!("  {:<25} {}", "Original Output arg:".cyan(), args.output_dir.display().to_string().yellow());
+    info!("  {:<25} {}", "Effective Output directory:".cyan(), actual_output_dir.display().to_string().green());
     if let Some(fname) = &target_filename_override {
-        log_callback(&format!("Effective Output filename: {}", fname.display()));
+        info!("  {:<25} {}", "Effective Output filename:".cyan(), fname.display().to_string().green());
     }
-    log_callback(&format!("Log directory: {}", log_dir.display()));
-    log_callback(&format!("Main log file: {}", main_log_path.display()));
-    log_callback(&format!("Interactive mode: {}", interactive));
-
+    info!("  {:<25} {}", "Log directory:".cyan(), log_dir.display().to_string().green());
+    info!("  {:<25} {}", "Main log file (info):".cyan(), main_log_path.display().to_string().green());
+    info!("  {:<25} {}", "Interactive mode:".cyan(), interactive.to_string().green());
     // Hardware acceleration has been removed. Software decoding is always used.
-
-    log_callback("========================================");
+    info!("{}", "========================================".cyan().bold());
 
     // --- PID File Handling (Daemon Mode Only) ---
     if !interactive {
@@ -112,8 +112,8 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor, N: Notifier>( // Add Ffp
         // Use std::fs::write to create/overwrite the PID file with the current process ID.
         // Note: This happens *after* daemonization and log setup.
         match std::fs::write(&pid_path, std::process::id().to_string()) {
-            Ok(_) => log_callback(&format!("[INFO] PID file created at: {}", pid_path.display())),
-            Err(e) => log_callback(&format!("[WARN] Failed to create PID file at {}: {}", pid_path.display(), e)),
+            Ok(_) => info!("{} {}", "PID file created at:".green(), pid_path.display().to_string().yellow()),
+            Err(e) => warn!("{} Failed to create PID file at {}: {}", "Warning:".yellow().bold(), pid_path.display(), e),
             // Consider adding cleanup for the PID file on exit (e.g., using signal handling or atexit crate),
             // but that adds complexity. For now, manual cleanup is assumed.
         }
@@ -134,46 +134,49 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor, N: Notifier>( // Add Ffp
             config::DEFAULT_CROP_MODE.to_string() // Use default otherwise
         }),
         ntfy_topic: args.ntfy,
-        preset: args.preset.clone(),
+        preset: args.preset,
         // hw_accel field removed from CoreConfig
-enable_denoise: args.no_denoise, // Map the CLI flag directly
+        enable_denoise: !args.no_denoise, // Invert the flag: no_denoise=true means enable_denoise=false
     };
 
     // --- Execute Core Logic ---
-    let processing_result: Result<Vec<EncodeResult>, CoreError>;
-    log_callback(&format!("Processing {} file(s).", files_to_process.len()));
-    if files_to_process.is_empty() {
-         log_callback("No processable .mkv files found in the specified input path.");
-         processing_result = Ok(Vec::new());
+    info!("{} {} file(s).", "Processing".green(), files_to_process.len().to_string().green().bold());
+    let processing_result = if files_to_process.is_empty() {
+         warn!("{} No processable .mkv files found in the specified input path.", "Warning:".yellow().bold()); // Use warn level
+         Ok(Vec::new())
     } else {
          // Pass the Option<PathBuf> target_filename_override
          // Spawner is now passed in as an argument
          // Notifier is now passed in as an argument
 
-         processing_result = drapto_core::process_videos(
+         // Call drapto_core::process_videos WITHOUT the log_callback
+         drapto_core::process_videos(
              spawner, // Pass the injected spawner instance (S)
              ffprobe_executor, // Pass the injected ffprobe executor instance (P)
              notifier, // Pass the injected notifier instance (N)
+             &StdFsMetadataProvider, // Pass the standard metadata provider
              &config, // Pass config (&CoreConfig)
              &files_to_process,
-             target_filename_override,
-             &mut *log_callback
-         );
-    }
+             target_filename_override
+             // Removed log_callback argument
+         )
+    };
 
     // --- Handle Core Results ---
     let successfully_encoded: Vec<EncodeResult>;
     match processing_result {
         Ok(ref results) => {
             successfully_encoded = results.to_vec();
+            // Use warn level if no files encoded (unless it was expected due to no files found)
             if successfully_encoded.is_empty() && !matches!(processing_result, Err(CoreError::NoFilesFound)) {
-                 log_callback("No files were successfully encoded.");
+                 warn!("{} No files were successfully encoded.", "Warning:".yellow().bold());
             } else if !successfully_encoded.is_empty() {
-                 log_callback(&format!("Successfully encoded {} file(s).", successfully_encoded.len()));
+                 info!("{} {} file(s).", "Successfully encoded".green(), successfully_encoded.len().to_string().green().bold());
             }
         }
         Err(e) => {
-            log_callback(&format!("FATAL CORE ERROR during processing: {}", e));
+            // Use error level for fatal errors
+            error!("{} {}", "FATAL CORE ERROR during processing:".red().bold(), e);
             return Err(e.into());
         }
     }
@@ -181,44 +184,42 @@ enable_denoise: args.no_denoise, // Map the CLI flag directly
     // --- Clean up temporary directory ---
     let grain_tmp_dir = actual_output_dir.join("grain_samples_tmp");
     if grain_tmp_dir.exists() { // Check if it exists before trying to remove
-        log_callback(&format!("[INFO] Cleaning up temporary directory: {}", grain_tmp_dir.display()));
+        info!("{} {}", "Cleaning up temporary directory:".cyan(), grain_tmp_dir.display().to_string().yellow());
         match fs::remove_dir_all(&grain_tmp_dir) {
-            Ok(_) => log_callback(&format!("[INFO] Successfully removed temporary directory: {}", grain_tmp_dir.display())),
-            Err(e) => log_callback(&format!("[WARN] Failed to remove temporary directory {}: {}", grain_tmp_dir.display(), e)),
+            Ok(_) => info!("{} {}", "Successfully removed temporary directory:".green(), grain_tmp_dir.display().to_string().yellow()),
+            Err(e) => warn!("{} Failed to remove temporary directory {}: {}", "Warning:".yellow().bold(), grain_tmp_dir.display(), e),
         }
     }
  
  
     // --- Print Summary ---
     if !successfully_encoded.is_empty() {
-        log_callback("========================================");
-        log_callback("Encoding Summary:");
-        log_callback("========================================");
+        info!("{}", "========================================".cyan().bold());
+        info!("{}", "Encoding Summary:".green().bold());
+        info!("{}", "========================================".cyan().bold());
         for result in &successfully_encoded {
             let reduction = if result.input_size > 0 {
                 100u64.saturating_sub(result.output_size.saturating_mul(100) / result.input_size)
             } else {
                 0
             };
-            log_callback(&format!("{}", result.filename));
-            log_callback(&format!("  Encode time: {}", drapto_core::format_duration(result.duration)));
-            log_callback(&format!("  Input size:  {}", drapto_core::format_bytes(result.input_size)));
-            log_callback(&format!("  Output size: {}", drapto_core::format_bytes(result.output_size)));
-            log_callback(&format!("  Reduced by:  {}%", reduction));
-            log_callback("----------------------------------------");
+            info!("{}", result.filename.to_string().yellow().bold()); // Log filename directly, bold yellow
+            info!("  {:<13} {}", "Encode time:".cyan(), drapto_core::format_duration(result.duration).green());
+            info!("  {:<13} {}", "Input size:".cyan(), drapto_core::format_bytes(result.input_size).green());
+            info!("  {:<13} {}", "Output size:".cyan(), drapto_core::format_bytes(result.output_size).green());
+            info!("  {:<13} {}", "Reduced by:".cyan(), format!("{}%", reduction).green());
+            info!("{}", "----------------------------------------".cyan());
         }
     }
 
     // --- Final Timing ---
     let total_elapsed_time = total_start_time.elapsed();
-    log_callback("========================================");
-    log_callback(&format!("Total encode execution time: {}", drapto_core::format_duration(total_elapsed_time)));
-    log_callback(&format!("Drapto Encode Run Finished: {}", chrono::Local::now()));
-    log_callback("========================================");
+    info!("{}", "========================================".cyan().bold());
+    info!("{} {}", "Total encode execution time:".green().bold(), drapto_core::format_duration(total_elapsed_time).green());
+    info!("{} {}", "Drapto Encode Run Finished:".green().bold(), chrono::Local::now().to_string().green());
+    info!("{}", "========================================".cyan().bold());
 
-    // Flushing the logger is handled implicitly when log_callback goes out of scope
-    // or potentially needs explicit handling if create_log_callback changes.
-    // For now, assume drop handles it.
+    // env_logger handles flushing automatically.
 
     Ok(())
 }

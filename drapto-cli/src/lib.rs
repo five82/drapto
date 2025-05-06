@@ -6,7 +6,7 @@
 pub mod cli;
 pub mod commands;
 pub mod config;
-pub mod logging;
+pub mod logging; // Re-added logging module declaration
 
 // Re-export items needed by the binary or integration tests
 pub use cli::{Cli, Commands, EncodeArgs};

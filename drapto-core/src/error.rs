@@ -59,18 +59,26 @@ pub enum CoreError {
     #[error("No suitable video files found in input directory")]
     NoFilesFound,
 
-    #[error("Required external command '{0}' not found or failed to execute. Please ensure it's installed and in your PATH.")]
-    DependencyNotFound(String),
+   #[error("Required external command '{0}' not found or failed to execute. Please ensure it's installed and in your PATH.")]
+   DependencyNotFound(String),
 
-    // --- Film Grain Errors ---
-    #[error("Film grain sample extraction/encoding failed: {0}")]
+   #[error("Operation failed: {0}")]
+   OperationFailed(String), // General failure during an operation
+
+   // --- Film Grain Errors ---
+   #[error("Film grain sample extraction/encoding failed: {0}")]
     FilmGrainEncodingFailed(String),
     #[error("Film grain analysis failed: {0}")]
     FilmGrainAnalysisFailed(String),
+    #[error("Grain analysis using ffprobe returned no data for file: {0}")]
+    GrainAnalysisNoData(String), // file path
 
     // --- Notification Errors ---
     #[error("Notification error: {0}")]
     NotificationError(String),
+
+    #[error("FFmpeg reported 'No streams found' for input file: {0}")]
+    NoStreamsFound(String), // Contains the input file path
 }
 
 // Type alias for Result using our custom error
