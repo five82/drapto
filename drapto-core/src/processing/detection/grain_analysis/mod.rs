@@ -188,7 +188,7 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider>(
             };
 
             let size_mb = encoded_size as f64 / (1024.0 * 1024.0);
-            log::info!("      -> Initial level {:<10} size: {}", level_desc.green(), format!("{:.2} MB", size_mb).yellow());
+            log::info!("      -> {:<10} size: {}", level_desc.green(), format!("{:.2} MB", size_mb).yellow());
             results_for_this_sample.insert(*level_opt, encoded_size);
         }
         phase1_results.push(results_for_this_sample);

@@ -57,6 +57,13 @@ pub fn build_ffmpeg_args(
     let hqdn3d_to_use = hqdn3d_override.or(params.hqdn3d_params.as_deref());
     let crop_filter_opt = params.crop_filter.as_deref();
 
+    // --- Film Grain Synthesis Logic ---
+    let film_grain_value = if let Some(denoise_params) = hqdn3d_to_use {
+        map_hqdn3d_to_film_grain(denoise_params)
+    } else {
+        0 // No denoise = no synthetic grain
+    };
+
     match (hqdn3d_to_use, crop_filter_opt) {
         (Some(hqdn3d_str), Some(crop_str)) => {
             // Both denoise and crop: Use filter_complex
@@ -139,7 +146,19 @@ pub fn build_ffmpeg_args(
     args.push("-preset".to_string());
     args.push(params.preset.to_string());
     args.push("-svtav1-params".to_string());
-    args.push("tune=3".to_string());
+    if film_grain_value > 0 {
+        args.push(format!("tune=3:film-grain={}:film-grain-denoise=0", film_grain_value));
+        if !is_grain_analysis_sample { // Log only for main encode
+            info!("Applying film grain synthesis: level={}", film_grain_value);
+        } else {
+            debug!("Applying film grain synthesis (grain sample): level={}", film_grain_value);
+        }
+    } else {
+        args.push("tune=3".to_string()); // Keep original if no film grain
+        if !is_grain_analysis_sample { // Log only for main encode
+             info!("No film grain synthesis applied (denoise level is None or 0).");
+        }
+    }
 
     // Audio Codec and Params (conditional)
     if !is_grain_analysis_sample && !disable_audio {
@@ -172,7 +191,7 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner>(
     params: &EncodeParams,
     disable_audio: bool, // Added flag
     is_grain_analysis_sample: bool, // Flag to control logging verbosity
-    grain_level_being_tested: Option<GrainLevel>, // Added parameter for grain level context
+    _grain_level_being_tested: Option<GrainLevel>, // Added parameter for grain level context (now unused)
 ) -> CoreResult<()> {
     // Log start differently based on context
     if is_grain_analysis_sample {
@@ -207,8 +226,6 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner>(
             params.output_path.display()
         );
     } else if is_grain_analysis_sample {
-        let level_desc = grain_level_being_tested.map_or("None".to_string(), |l| format!("{:?}", l));
-        info!("  Testing grain level: {}", level_desc);
     }
 
     debug!("Encode parameters: {:?}", params);
@@ -444,6 +461,63 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner>(
         let seconds = rounded_seconds % 60;
         format!("{:02}:{:02}:{:02}", hours, minutes, seconds)
     }
+
+/// Maps a hqdn3d parameter set to the corresponding SVT-AV1 film_grain value.
+/// Handles both standard and refined/interpolated parameter sets.
+fn map_hqdn3d_to_film_grain(hqdn3d_params: &str) -> u8 {
+    // Fixed mapping for standard levels (using GrainLevel enum for clarity if available)
+    // Note: GrainLevel enum itself isn't strictly needed here, but the param strings are key.
+    for (params, film_grain) in &[
+        ("hqdn3d=0.5:0.3:3:3", 4),  // VeryLight
+        ("hqdn3d=1:0.7:4:4", 8),    // Light
+        ("hqdn3d=1.5:1.0:6:6", 12), // Visible
+        ("hqdn3d=2:1.3:8:8", 16),   // Heavy
+    ] {
+        // Exact match for standard levels
+        if hqdn3d_params == *params {
+            return *film_grain;
+        }
+    }
+
+    // Must be a refined/interpolated parameter set
+    // Parse the parameters to extract luma spatial strength (first value in hqdn3d)
+    let luma_spatial = parse_hqdn3d_first_param(hqdn3d_params);
+
+    // Determine where this falls on our scale and interpolate
+    if luma_spatial <= 0.0 { // Handle 0 explicitly
+        return 0;
+    } else if luma_spatial <= 0.5 {
+        // Between None (0) and VeryLight (4)
+        let factor = luma_spatial / 0.5;
+        return (factor * 4.0).round() as u8;
+    } else if luma_spatial <= 1.0 {
+        // Between VeryLight (4) and Light (8)
+        let factor = (luma_spatial - 0.5) / 0.5;
+        return (4.0 + factor * 4.0).round() as u8;
+    } else if luma_spatial <= 1.5 {
+        // Between Light (8) and Visible (12)
+        let factor = (luma_spatial - 1.0) / 0.5;
+        return (8.0 + factor * 4.0).round() as u8;
+    } else if luma_spatial <= 2.0 {
+        // Between Visible (12) and Heavy (16)
+        let factor = (luma_spatial - 1.5) / 0.5;
+        return (12.0 + factor * 4.0).round() as u8;
+    } else {
+        // Beyond Heavy - cap at maximum
+        return 16;
+    }
+}
+
+/// Helper function to extract the first parameter (luma_spatial) from hqdn3d string
+fn parse_hqdn3d_first_param(params: &str) -> f32 {
+    if let Some(suffix) = params.strip_prefix("hqdn3d=") {
+        if let Some(index) = suffix.find(':') {
+            let first_param = &suffix[0..index];
+            return first_param.parse::<f32>().unwrap_or(0.0);
+        }
+    }
+    0.0 // Default fallback value if parsing fails or format is unexpected
+}
 
 /// Helper function to parse ffmpeg time string "HH:MM:SS.ms" into seconds (f64)
 fn parse_ffmpeg_time(time_str: &str) -> Result<f64, &'static str> {
