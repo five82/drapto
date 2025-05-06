@@ -3,24 +3,21 @@
 // Encapsulates interactions with external CLI tools like ffmpeg and ffprobe.
 // Provides functions for dependency checking and abstracting tool execution.
 
-#[cfg(not(feature = "test-mocks"))]
 use crate::error::CoreError; // Conditionally import CoreError
 use crate::error::CoreResult; // Keep CoreResult unconditionally
-#[cfg(not(feature = "test-mocks"))]
 use std::io; // Conditionally import io
 use std::path::Path; // Keep Path unconditionally
-#[cfg(not(feature = "test-mocks"))]
 use std::process::{Command, Stdio}; // Conditionally import Command and Stdio
 
 // Declare submodules
 pub mod ffmpeg; // Contains ffmpeg argument building logic (run_ffmpeg_encode)
 pub mod ffmpeg_executor; // Contains traits/impls for executing ffmpeg
 pub mod ffprobe_executor; // Contains traits/impls for executing ffprobe
-pub mod mocks; // Contains mock implementations for testing
 
 // Re-export traits and real executors for convenience
 pub use ffmpeg_executor::{FfmpegProcess, FfmpegSpawner, SidecarProcess, SidecarSpawner};
 pub use ffprobe_executor::{CrateFfprobeExecutor, FfprobeExecutor}; // Updated to use crate-based executor
+// Removed incorrect pub use self:: for FileMetadataProvider and StdFsMetadataProvider
 
 // TODO: Move get_video_duration_secs here (if needed).
 // Consider creating external/ffprobe.rs for ffprobe-specific logic beyond execution.
@@ -28,7 +25,6 @@ pub use ffprobe_executor::{CrateFfprobeExecutor, FfprobeExecutor}; // Updated to
 /// Checks if a required external command is available and executable.
 /// Returns the command parts (e.g., `["ffmpeg"]`) if found,
 /// otherwise returns an error.
-#[cfg(not(feature = "test-mocks"))]
 pub(crate) fn check_dependency(cmd_name: &str) -> CoreResult<Vec<String>> {
     let version_arg = "-version";
     let direct_cmd_parts = vec![cmd_name.to_string()];
@@ -73,3 +69,24 @@ pub(crate) fn get_audio_channels(input_path: &Path) -> CoreResult<Vec<u32>> {
 
 // Removed get_video_width function and related structs (FfprobeOutput, StreamInfo)
 // as width is now obtained via detection::get_video_properties.
+// Removed duplicate imports below
+// use crate::error::CoreResult;
+// use std::path::Path;
+
+/// Trait for abstracting file metadata access (primarily file size).
+pub trait FileMetadataProvider {
+    /// Gets the size of the file at the given path.
+    fn get_size(&self, path: &Path) -> CoreResult<u64>; // Fixed escaping
+}
+
+/// Standard implementation of FileMetadataProvider using std::fs.
+#[derive(Debug, Clone, Default)]
+pub struct StdFsMetadataProvider;
+
+impl FileMetadataProvider for StdFsMetadataProvider {
+    fn get_size(&self, path: &Path) -> CoreResult<u64> { // Fixed escaping
+        Ok(std::fs::metadata(path)?.len())
+    }
+}
+
+// Add a blank line after the new content

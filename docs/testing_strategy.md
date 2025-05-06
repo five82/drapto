@@ -1,5 +1,7 @@
 # Drapto Testing Strategy
 
+OUT OF DATE - DO NOT USE
+
 This document outlines the testing strategy for the Drapto project.
 
 ## Test Types

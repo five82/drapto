@@ -13,9 +13,31 @@ use daemonize::Daemonize;
 use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process;
-use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
+use colored::*; // Use colored crate for terminal output formatting
+
+use env_logger::Env;
+use log::Level; // Import Level for checking
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Initialize env_logger with custom format
+    env_logger::Builder::from_env(Env::default().default_filter_or("drapto=info"))
+        .format(|buf, record| {
+            // Only print level for non-INFO messages
+            if record.level() != Level::Info {
+                writeln!(buf, "[{}] {}", record.level(), record.args())
+            } else {
+                writeln!(buf, "{}", record.args())
+            }
+        })
+        .init();
+
+    // Log if debug or trace logging is enabled
+    if log::log_enabled!(log::Level::Trace) {
+        log::info!("{}", "Trace level logging enabled.".yellow().bold());
+    } else if log::log_enabled!(log::Level::Debug) {
+        log::info!("{}", "Debug level logging enabled.".yellow().bold());
+    }
+
     let cli_args = Cli::parse();
 
     let interactive_mode = cli_args.interactive;
@@ -28,11 +50,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let (discovered_files, effective_input_dir) = match discover_encode_files(&args) {
                  Ok(result) => result,
                  Err(e) => {
-                     // Use existing error reporting logic (copied from below)
-                     let mut stderr = StandardStream::stderr(ColorChoice::Auto);
-                     stderr.set_color(ColorSpec::new().set_fg(Some(Color::Red)).set_bold(true))?;
-                     writeln!(&mut stderr, "Error during file discovery: {}", e)?;
-                     stderr.reset()?;
+                     // Use colored for error reporting
+                     eprintln!("{} {}", "Error during file discovery:".red().bold(), e);
                      process::exit(1);
                  }
             };
@@ -60,30 +79,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // --- Daemonize if needed ---
             if !interactive_mode {
-                // Print discovered files *before* daemon message
+                // Print discovered files *before* daemon message using colored
                 if !discovered_files.is_empty() {
-                    eprintln!("Will encode the following files:");
+                    eprintln!("{}", "Will encode the following files:".cyan().bold());
                     for file in &discovered_files {
-                        eprintln!("  - {}", file.display());
+                        eprintln!("  - {}", file.display().to_string().green());
                     }
                 } else {
-                     eprintln!("No .mkv files found to encode in the specified input.");
+                     eprintln!("{}", "No .mkv files found to encode in the specified input.".yellow());
                 }
                  io::stderr().flush().unwrap_or_else(|e| {
-                     eprintln!("Warning: Failed to flush stderr before daemonizing: {}", e);
+                     // Use colored for the warning within the closure
+                     eprintln!("{} Failed to flush stderr before daemonizing: {}", "Warning:".yellow().bold(), e);
                  });
 
-                // Print log file path *before* daemon message
-                eprintln!("Log file: {}", main_log_path.display());
+                // Print log file path *before* daemon message using colored
+                eprintln!("{} {}", "Log file:".cyan(), main_log_path.display().to_string().green());
                 io::stderr().flush().unwrap_or_else(|e| {
-                    eprintln!("Warning: Failed to flush stderr before daemonizing: {}", e);
+                    // Use colored for the warning within the closure
+                    eprintln!("{} Failed to flush stderr before daemonizing: {}", "Warning:".yellow().bold(), e);
                 });
 
 
-                // Print daemon start message *before* attempting to daemonize
-                eprintln!("Starting Drapto daemon in the background...");
+                // Print daemon start message *before* attempting to daemonize using colored
+                eprintln!("{}", "Starting Drapto daemon in the background...".green().bold());
                 io::stderr().flush().unwrap_or_else(|e| {
-                     eprintln!("Warning: Failed to flush stderr before daemonizing: {}", e);
+                     // Use colored for the warning within the closure
+                     eprintln!("{} Failed to flush stderr before daemonizing: {}", "Warning:".yellow().bold(), e);
                 });
 
                 // We don't configure PID file here; it will be handled in run_encode after log setup.
@@ -95,8 +117,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         // The daemon child process continues execution *after* the match statement.
                     }
                     Err(e) => {
-                        // Failed to daemonize, report error to original stderr
-                        eprintln!("Error starting daemon: {}", e);
+                        // Failed to daemonize, report error to original stderr (using colored)
+                        eprintln!("{} {}", "Error starting daemon:".red().bold(), e);
                         process::exit(1);
                     }
                 }
@@ -121,14 +143,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Critical errors *after* daemonization should be logged to the file by run_encode.
         // This block primarily catches errors *before* logging is fully set up or if run_encode itself fails early.
         if interactive_mode {
-            let mut stderr = StandardStream::stderr(ColorChoice::Auto);
-            stderr.set_color(ColorSpec::new().set_fg(Some(Color::Red)).set_bold(true))?;
-            writeln!(&mut stderr, "Error: {}", e)?;
-            stderr.reset()?;
+            // Use colored for interactive error message
+            eprintln!("{} {}", "Error:".red().bold(), e);
         } else {
             // In daemon mode, just print to stderr; it might go nowhere, but worth trying.
             // The primary error reporting mechanism is the log file handled within run_encode.
-            eprintln!("Daemon Error: {}", e);
+            // Use colored for daemon error message
+            eprintln!("{} {}", "Daemon Error:".red().bold(), e);
         }
         process::exit(1);
     }
