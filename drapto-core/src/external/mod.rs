@@ -80,12 +80,12 @@ pub use ffprobe_executor::{CrateFfprobeExecutor, FfprobeExecutor};
 /// # Examples
 ///
 /// ```rust,no_run
-/// use drapto_core::external::check_dependency;
-///
-/// match check_dependency("ffmpeg") {
-///     Ok(_) => println!("ffmpeg is available"),
-///     Err(e) => eprintln!("ffmpeg check failed: {}", e),
-/// }
+/// // This function is internal to the crate, so we can't call it directly in doctests
+/// // Example usage within the crate:
+/// // match check_dependency("ffmpeg") {
+/// //     Ok(_) => println!("ffmpeg is available"),
+/// //     Err(e) => eprintln!("ffmpeg check failed: {}", e),
+/// // }
 /// ```
 pub(crate) fn check_dependency(cmd_name: &str) -> CoreResult<Vec<String>> {
     // Define the argument to use for version checking

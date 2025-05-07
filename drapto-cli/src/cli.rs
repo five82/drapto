@@ -36,8 +36,13 @@ use std::path::PathBuf;
 /// - The subcommand enum that contains command-specific arguments
 ///
 /// # Example
-/// ```
-/// drapto --interactive encode -i input_dir -o output_dir
+/// ```no_run
+/// // Command-line usage: drapto --interactive encode -i input_dir -o output_dir
+/// use drapto_cli::cli::Cli;
+/// use clap::Parser;
+///
+/// // This would parse command-line arguments in a real application
+/// // let cli = Cli::parse();
 /// ```
 #[derive(Parser, Debug)]
 #[command(
@@ -87,13 +92,51 @@ pub enum Commands {
 /// # Examples
 ///
 /// Basic usage:
-/// ```
-/// drapto encode -i /path/to/videos -o /path/to/output
+/// ```no_run
+/// // Command-line: drapto encode -i /path/to/videos -o /path/to/output
+/// use drapto_cli::cli::{EncodeArgs, Commands};
+/// use std::path::PathBuf;
+///
+/// let encode_args = EncodeArgs {
+///     input_path: PathBuf::from("/path/to/videos"),
+///     output_dir: PathBuf::from("/path/to/output"),
+///     log_dir: None,
+///     quality_sd: None,
+///     quality_hd: None,
+///     quality_uhd: None,
+///     preset: None,
+///     disable_autocrop: false,
+///     no_denoise: false,
+///     grain_sample_duration: None,
+///     grain_knee_threshold: None,
+///     grain_max_level: None,
+///     grain_fallback_level: None,
+///     ntfy: None,
+/// };
 /// ```
 ///
 /// Advanced usage with quality overrides:
-/// ```
-/// drapto encode -i input.mkv -o output.av1.mkv --quality-hd 24 --preset 6 --no-denoise
+/// ```no_run
+/// // Command-line: drapto encode -i input.mkv -o output.av1.mkv --quality-hd 24 --preset 6 --no-denoise
+/// use drapto_cli::cli::EncodeArgs;
+/// use std::path::PathBuf;
+///
+/// let encode_args = EncodeArgs {
+///     input_path: PathBuf::from("input.mkv"),
+///     output_dir: PathBuf::from("output.av1.mkv"),
+///     log_dir: None,
+///     quality_sd: None,
+///     quality_hd: Some(24),
+///     quality_uhd: None,
+///     preset: Some(6),
+///     disable_autocrop: false,
+///     no_denoise: true,
+///     grain_sample_duration: None,
+///     grain_knee_threshold: None,
+///     grain_max_level: None,
+///     grain_fallback_level: None,
+///     ntfy: None,
+/// };
 /// ```
 #[derive(Parser, Debug)]
 pub struct EncodeArgs {
@@ -153,6 +196,32 @@ pub struct EncodeArgs {
     /// By default, light denoising is applied to improve compression.
     #[arg(long, default_value_t = false)]
     pub no_denoise: bool,
+
+    // ---- Grain Analysis Options ----
+
+    /// Sample duration for grain analysis in seconds.
+    /// Shorter samples process faster but may be less representative.
+    #[arg(long, value_name = "SECONDS")]
+    pub grain_sample_duration: Option<u32>,
+
+    /// Knee point threshold for grain analysis (0.0-1.0).
+    /// This represents the point of diminishing returns in denoising strength.
+    /// A value of 0.8 means we look for the point where we achieve 80% of the
+    /// maximum possible file size reduction.
+    #[arg(long, value_name = "THRESHOLD")]
+    pub grain_knee_threshold: Option<f64>,
+
+    /// Maximum allowed grain level for any analysis result.
+    /// This prevents excessive denoising even if analysis suggests it.
+    /// Options: VeryClean, VeryLight, Light, Visible, Medium
+    #[arg(long, value_name = "LEVEL")]
+    pub grain_max_level: Option<String>,
+
+    /// Fallback grain level if analysis fails.
+    /// This is used when grain analysis cannot be performed or fails.
+    /// Options: VeryClean, VeryLight, Light, Visible, Medium
+    #[arg(long, value_name = "LEVEL")]
+    pub grain_fallback_level: Option<String>,
 
     // ---- Notification Options ----
 

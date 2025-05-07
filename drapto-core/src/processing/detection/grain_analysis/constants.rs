@@ -35,11 +35,11 @@ pub(super) const HQDN3D_PARAMS: [(GrainLevel, &str); 4] = [
     // Light denoising for light grain
     (GrainLevel::Light, "hqdn3d=1:0.7:4:4"),
 
-    // Medium denoising for noticeable grain
+    // Spatially-focused denoising for noticeable grain (higher spatial values)
     (GrainLevel::Visible, "hqdn3d=1.5:1.0:6:6"),
 
-    // Strong denoising for heavy grain
-    (GrainLevel::Heavy, "hqdn3d=2:1.3:8:8"),
+    // Temporally-focused denoising for medium grain (higher temporal values)
+    (GrainLevel::Medium, "hqdn3d=2:1.3:8:8"),
 ];
 
 // ============================================================================

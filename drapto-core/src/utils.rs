@@ -49,14 +49,15 @@ use std::time::Duration;
 /// # Examples
 ///
 /// ```rust,no_run
-/// use drapto_core::utils::get_file_size;
-/// use std::path::Path;
-///
-/// let path = Path::new("/path/to/file.mkv");
-/// match get_file_size(path) {
-///     Ok(size) => println!("File size: {} bytes", size),
-///     Err(e) => eprintln!("Error getting file size: {}", e),
-/// }
+/// // This function is internal to the crate, so we can't call it directly in doctests
+/// // Example usage within the crate:
+/// // use std::path::Path;
+/// //
+/// // let path = Path::new("/path/to/file.mkv");
+/// // match get_file_size(path) {
+/// //     Ok(size) => println!("File size: {} bytes", size),
+/// //     Err(e) => eprintln!("Error getting file size: {}", e),
+/// // }
 /// ```
 pub(crate) fn get_file_size(path: &Path) -> CoreResult<u64> {
     // Get the file metadata and extract the size

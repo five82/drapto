@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 /// which is determined through comparative encoding tests. Each level corresponds
 /// to a different recommended denoising strength.
 ///
-/// The levels are ordered from least grain (VeryClean) to most grain (Heavy),
+/// The levels are ordered from least grain (VeryClean) to most grain (Medium),
 /// and this ordering is reflected in the derived PartialOrd and Ord traits.
 ///
 /// # Examples
@@ -28,7 +28,7 @@ use serde::{Deserialize, Serialize};
 /// use drapto_core::processing::detection::grain_analysis::GrainLevel;
 ///
 /// // Compare grain levels
-/// assert!(GrainLevel::Heavy > GrainLevel::Light);
+/// assert!(GrainLevel::Medium > GrainLevel::Light);
 /// assert!(GrainLevel::VeryClean < GrainLevel::VeryLight);
 ///
 /// // Use in match statements
@@ -37,8 +37,8 @@ use serde::{Deserialize, Serialize};
 ///     GrainLevel::VeryClean => "No visible grain",
 ///     GrainLevel::VeryLight => "Barely noticeable grain",
 ///     GrainLevel::Light => "Light grain",
-///     GrainLevel::Visible => "Noticeable grain",
-///     GrainLevel::Heavy => "Heavy grain",
+///     GrainLevel::Visible => "Noticeable grain with spatial patterns",
+///     GrainLevel::Medium => "Medium grain with temporal fluctuations",
 /// };
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -52,11 +52,11 @@ pub enum GrainLevel {
     /// Light grain - benefits from light denoising
     Light,
 
-    /// Noticeable grain - benefits from medium denoising
+    /// Noticeable grain - benefits from spatially-focused denoising (higher luma/chroma spatial strength)
     Visible,
 
-    /// Heavy grain - benefits from strong denoising
-    Heavy,
+    /// Medium grain - benefits from temporally-focused denoising (higher temporal strength values)
+    Medium,
 }
 
 /// Holds the final result of the grain analysis process.
@@ -80,8 +80,8 @@ pub enum GrainLevel {
 ///     GrainLevel::VeryClean => "0:0:0:0", // No denoising
 ///     GrainLevel::VeryLight => "1.5:1.5:1.0:1.0", // Very light denoising
 ///     GrainLevel::Light => "3.0:2.5:2.0:1.5", // Light denoising
-///     GrainLevel::Visible => "6.0:4.5:3.0:2.5", // Medium denoising
-///     GrainLevel::Heavy => "10.0:8.0:6.0:4.0", // Strong denoising
+///     GrainLevel::Visible => "6.0:4.5:3.0:2.5", // Spatially-focused denoising (higher spatial values)
+///     GrainLevel::Medium => "2.0:1.3:8:8", // Temporally-focused denoising (higher temporal values)
 /// };
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
