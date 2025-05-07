@@ -28,6 +28,9 @@
 // ---- Standard library imports ----
 use std::path::PathBuf;
 
+// ---- Internal module imports ----
+use crate::processing::detection::grain_analysis::GrainLevel;
+
 // ============================================================================
 // FILM GRAIN ANALYSIS TYPES
 // ============================================================================
@@ -93,6 +96,7 @@ pub const DEFAULT_CORE_QUALITY_UHD: u8 = 27;
 ///
 /// ```rust,no_run
 /// use drapto_core::CoreConfig;
+/// use drapto_core::processing::detection::GrainLevel;
 /// use std::path::PathBuf;
 ///
 /// let config = CoreConfig {
@@ -107,6 +111,11 @@ pub const DEFAULT_CORE_QUALITY_UHD: u8 = 27;
 ///     default_crop_mode: Some("auto".to_string()),
 ///     ntfy_topic: Some("https://ntfy.sh/my-topic".to_string()),
 ///     enable_denoise: true,
+///     film_grain_sample_duration: Some(5),
+///     film_grain_knee_threshold: Some(0.8),
+///     film_grain_fallback_level: Some(GrainLevel::VeryClean),
+///     film_grain_max_level: Some(GrainLevel::Visible),
+///     film_grain_refinement_points_count: Some(5),
 /// };
 /// ```
 #[derive(Debug, Clone)]
@@ -157,6 +166,27 @@ pub struct CoreConfig {
 
     // Note: Hardware acceleration field was removed as it's no longer supported
 
-    // Future fields for grain analysis configuration could be added here
-    // The current implementation uses constants defined in grain_analysis.rs
+    // ---- Grain Analysis Configuration ----
+
+    /// Sample duration for grain analysis in seconds
+    /// Shorter samples process faster but may be less representative
+    pub film_grain_sample_duration: Option<u32>,
+
+    /// Knee point threshold for grain analysis (0.0-1.0)
+    /// This represents the point of diminishing returns in denoising strength
+    /// A value of 0.8 means we look for the point where we achieve 80% of the
+    /// maximum possible file size reduction
+    pub film_grain_knee_threshold: Option<f64>,
+
+    /// Fallback grain level if analysis fails
+    /// This is used when grain analysis cannot be performed or fails
+    pub film_grain_fallback_level: Option<GrainLevel>,
+
+    /// Maximum allowed grain level for any analysis result
+    /// This prevents excessive denoising even if analysis suggests it
+    pub film_grain_max_level: Option<GrainLevel>,
+
+    /// Number of refinement points to test during adaptive refinement
+    /// More points provide more accurate results but increase processing time
+    pub film_grain_refinement_points_count: Option<usize>,
 }

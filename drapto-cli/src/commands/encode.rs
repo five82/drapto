@@ -193,6 +193,47 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor, N: Notifier>(
     }
 
     // --- Prepare Core Configuration ---
+
+    // Parse grain level strings to GrainLevel enum values
+    let grain_max_level = args.grain_max_level.as_deref().map(|level_str| {
+        match level_str.to_lowercase().as_str() {
+            "veryclean" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::VeryClean),
+            "verylight" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::VeryLight),
+            "light" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::Light),
+            "visible" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::Visible),
+            "medium" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::Medium),
+            _ => {
+                warn!("{} Invalid grain_max_level '{}'. Using default.", "Warning:".yellow().bold(), level_str);
+                Err(())
+            }
+        }
+    }).and_then(|res| res.ok());
+
+    let grain_fallback_level = args.grain_fallback_level.as_deref().map(|level_str| {
+        match level_str.to_lowercase().as_str() {
+            "veryclean" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::VeryClean),
+            "verylight" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::VeryLight),
+            "light" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::Light),
+            "visible" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::Visible),
+            "medium" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::Medium),
+            _ => {
+                warn!("{} Invalid grain_fallback_level '{}'. Using default.", "Warning:".yellow().bold(), level_str);
+                Err(())
+            }
+        }
+    }).and_then(|res| res.ok());
+
+    // Validate knee threshold is within valid range (0.1 to 1.0)
+    let grain_knee_threshold = args.grain_knee_threshold.map(|threshold| {
+        if threshold < 0.1 || threshold > 1.0 {
+            warn!("{} Knee threshold {} is outside valid range (0.1-1.0). Using default.",
+                "Warning:".yellow().bold(), threshold);
+            None
+        } else {
+            Some(threshold)
+        }
+    }).flatten();
+
     let config = CoreConfig {
         input_dir: effective_input_dir,
         output_dir: actual_output_dir.clone(),
@@ -210,6 +251,13 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor, N: Notifier>(
         preset: args.preset,
         // hw_accel field removed from CoreConfig
         enable_denoise: !args.no_denoise, // Invert the flag: no_denoise=true means enable_denoise=false
+
+        // Grain analysis configuration
+        film_grain_sample_duration: args.grain_sample_duration,
+        film_grain_knee_threshold: grain_knee_threshold,
+        film_grain_max_level: grain_max_level,
+        film_grain_fallback_level: grain_fallback_level,
+        film_grain_refinement_points_count: None, // Use default
     };
 
     // --- Execute Core Logic ---

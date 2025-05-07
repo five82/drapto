@@ -90,6 +90,7 @@ use std::time::Instant;
 /// use drapto_core::{CoreConfig, process_videos, EncodeResult};
 /// use drapto_core::external::{SidecarSpawner, CrateFfprobeExecutor, StdFsMetadataProvider};
 /// use drapto_core::notifications::NtfyNotifier;
+/// use drapto_core::processing::detection::GrainLevel;
 /// use std::path::PathBuf;
 ///
 /// // Create dependencies
@@ -103,9 +104,19 @@ use std::time::Instant;
 ///     input_dir: PathBuf::from("/path/to/input"),
 ///     output_dir: PathBuf::from("/path/to/output"),
 ///     log_dir: PathBuf::from("/path/to/logs"),
-///     // ... other configuration options
 ///     enable_denoise: true,
-///     // ... more options
+///     default_encoder_preset: Some(6),
+///     preset: None,
+///     quality_sd: Some(24),
+///     quality_hd: Some(26),
+///     quality_uhd: Some(28),
+///     default_crop_mode: Some("auto".to_string()),
+///     ntfy_topic: Some("https://ntfy.sh/my-topic".to_string()),
+///     film_grain_sample_duration: Some(5),
+///     film_grain_knee_threshold: Some(0.8),
+///     film_grain_fallback_level: Some(GrainLevel::VeryClean),
+///     film_grain_max_level: Some(GrainLevel::Visible),
+///     film_grain_refinement_points_count: Some(5),
 /// };
 ///
 /// // Find files to process
@@ -419,7 +430,7 @@ pub fn process_videos<S: FfmpegSpawner, P: FfprobeExecutor, N: Notifier, M: File
                  info!(
                      "Grain analysis result: {:?}, applying filter: {}",
                      result.detected_level,
-                     params_opt.as_deref().unwrap_or("None") // "None" means no denoising needed
+                     params_opt.as_deref().unwrap_or("No parameters") // No parameters means no denoising needed (VeryClean)
                  );
 
                  // Return the parameters (or None for VeryClean videos)

@@ -471,7 +471,7 @@ fn map_hqdn3d_to_film_grain(hqdn3d_params: &str) -> u8 {
         ("hqdn3d=0.5:0.3:3:3", 4),  // VeryLight
         ("hqdn3d=1:0.7:4:4", 8),    // Light
         ("hqdn3d=1.5:1.0:6:6", 12), // Visible
-        ("hqdn3d=2:1.3:8:8", 16),   // Heavy
+        ("hqdn3d=2:1.3:8:8", 16),   // Medium
     ] {
         // Exact match for standard levels
         if hqdn3d_params == *params {
@@ -499,11 +499,11 @@ fn map_hqdn3d_to_film_grain(hqdn3d_params: &str) -> u8 {
         let factor = (luma_spatial - 1.0) / 0.5;
         return (8.0 + factor * 4.0).round() as u8;
     } else if luma_spatial <= 2.0 {
-        // Between Visible (12) and Heavy (16)
+        // Between Visible (12) and Medium (16)
         let factor = (luma_spatial - 1.5) / 0.5;
         return (12.0 + factor * 4.0).round() as u8;
     } else {
-        // Beyond Heavy - cap at maximum
+        // Beyond Medium - cap at maximum
         return 16;
     }
 }

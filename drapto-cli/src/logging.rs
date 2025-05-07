@@ -30,6 +30,8 @@
 ///
 /// # Example
 /// ```
+/// use drapto_cli::logging::get_timestamp;
+///
 /// let log_filename = format!("drapto_log_{}.txt", get_timestamp());
 /// // Result: "drapto_log_20240601_123045.txt"
 /// ```

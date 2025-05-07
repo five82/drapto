@@ -49,11 +49,11 @@ use std::path::Path;
 /// # Examples
 ///
 /// ```
-/// use drapto_core::processing::audio::calculate_audio_bitrate;
-///
-/// assert_eq!(calculate_audio_bitrate(1), 64);  // Mono
-/// assert_eq!(calculate_audio_bitrate(2), 128); // Stereo
-/// assert_eq!(calculate_audio_bitrate(6), 256); // 5.1 surround
+/// // This function is internal to the crate, so we can't call it directly in doctests
+/// // Example usage within the crate:
+/// // assert_eq!(calculate_audio_bitrate(1), 64);  // Mono
+/// // assert_eq!(calculate_audio_bitrate(2), 128); // Stereo
+/// // assert_eq!(calculate_audio_bitrate(6), 256); // 5.1 surround
 /// ```
 pub(crate) fn calculate_audio_bitrate(channels: u32) -> u32 {
     match channels {

@@ -75,6 +75,9 @@ drapto encode -i input.mkv -o output/ --quality-hd 24 --preset 6
 # Encode without denoising
 drapto encode -i input.mkv -o output/ --no-denoise
 
+# Encode with custom grain analysis settings
+drapto encode -i input.mkv -o output/ --grain-knee-threshold 0.7 --grain-max-level Visible
+
 # Encode and send notifications to an ntfy.sh topic
 drapto encode -i video.mkv -o output/ --ntfy https://ntfy.sh/your_topic
 ```
@@ -114,26 +117,40 @@ Drapto can send notifications about encoding progress (start, success, error) to
 * `--quality-uhd <CRF>`: Override CRF quality for UHD videos (default: 27, ≥3840 width).
 * `--ntfy <TOPIC_URL>`: ntfy.sh topic URL for sending notifications.
 
+#### Grain Analysis Options
+
+* `--grain-sample-duration <SECONDS>`: Sample duration for grain analysis in seconds (default: 10).
+* `--grain-knee-threshold <THRESHOLD>`: Knee point threshold (0.1-1.0) for determining optimal grain level (default: 0.8).
+* `--grain-max-level <LEVEL>`: Maximum allowed grain level (VeryClean, VeryLight, Light, Visible, Medium) (default: Medium).
+* `--grain-fallback-level <LEVEL>`: Fallback grain level if analysis fails (default: VeryClean).
+
 ## Advanced Features
 
 ### Intelligent Grain Detection and Denoising
 
-Drapto includes a sophisticated film grain analysis system that optimizes denoising parameters for each video using the high-quality hqdn3d filter:
+Drapto includes a sophisticated film grain analysis system that optimizes denoising parameters for each video using the high-quality hqdn3d filter. The primary goal is to achieve significant bitrate reduction while maintaining visual quality, not to remove all grain or create an artificially smooth appearance.
+
+Film grain and noise can consume a substantial portion of the bitrate in video encoding. By selectively reducing grain before encoding and then adding back controlled synthetic grain, Drapto achieves much better compression efficiency without sacrificing perceptual quality.
+
+The system includes:
 
 1. **Multi-Sample Analysis**: Extracts multiple short samples from different parts of the video to ensure consistent results.
-2. **Knee Point Detection**: Uses an advanced algorithm to find the optimal denoising strength that balances file size reduction and visual quality.
-3. **Adaptive Refinement**: Dynamically adjusts and tests additional denoise parameters based on initial results.
-4. **Categorical Classification**: Classifies videos into grain levels (VeryClean, VeryLight, Light, Visible, Heavy) and applies appropriate hqdn3d parameters.
-5. **High-Quality Denoising**: Uses FFmpeg's hqdn3d (high-quality 3D denoiser) filter with optimized parameters for each grain level.
+2. **Baseline Comparison**: Always uses "VeryClean" (no grain) as the baseline for accurate comparison and analysis.
+3. **Knee Point Detection**: Uses an advanced algorithm to find the optimal denoising strength that balances file size reduction and visual quality.
+4. **Adaptive Refinement**: Dynamically adjusts and tests additional denoise parameters based on initial results.
+5. **Categorical Classification**: Classifies videos into grain levels (VeryClean, VeryLight, Light, Visible, Medium) and applies appropriate hqdn3d parameters.
+6. **Configurable Constraints**: Allows setting maximum grain levels and fallback options for fine-tuned control.
+7. **High-Quality Denoising**: Uses FFmpeg's hqdn3d (high-quality 3D denoiser) filter with optimized parameters for each grain level. Conservative denoising settings are used to avoid excessive blurring while still improving compression.
 
 This system ensures that videos with different grain characteristics are processed optimally:
 - Videos with minimal grain receive minimal or no denoising to preserve detail
-- Videos with heavy grain receive stronger denoising to improve compression efficiency
+- Videos with medium grain receive moderate denoising to improve compression efficiency
 - The process automatically finds the "sweet spot" where additional denoising provides diminishing returns
+- Configuration options allow fine-tuning the analysis for different content types
 
 ### Film Grain Synthesis
 
-Drapto not only detects and removes film grain when appropriate, but also intelligently applies film grain synthesis during encoding:
+Drapto not only detects and removes film grain when appropriate, but also intelligently applies film grain synthesis during encoding. This two-step approach is key to achieving significant bitrate savings:
 
 1. **Adaptive Film Grain**: The detected grain level is mapped to appropriate SVT-AV1 film grain synthesis parameters
 2. **Perceptual Quality**: Synthetic grain is added to maintain the visual character of the content while improving compression
@@ -141,12 +158,13 @@ Drapto not only detects and removes film grain when appropriate, but also intell
    - No synthetic grain for very clean content
    - Light synthetic grain (level 4-8) for content with light natural grain
    - Medium synthetic grain (level 8-12) for content with moderate natural grain
-   - Stronger synthetic grain (level 12-16) for content with heavy natural grain
+   - Stronger synthetic grain (level 12-16) for content with medium natural grain
 
 This approach provides the best of both worlds:
-- Removes problematic natural grain that hurts compression efficiency
-- Adds back controlled synthetic grain that preserves the intended visual aesthetic
-- Results in smaller files with better perceptual quality
+- Removes random, high-entropy natural grain that consumes excessive bitrate during encoding
+- Adds back controlled synthetic grain that preserves the intended visual aesthetic but requires far fewer bits
+- Results in significantly smaller files (often 20-40% smaller) while maintaining perceptual quality
+- Preserves the original artistic intent of the content without creating an artificially smooth appearance
 
 To disable both grain detection/denoising and film grain synthesis entirely, use the `--no-denoise` flag.
 

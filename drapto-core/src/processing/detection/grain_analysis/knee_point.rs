@@ -31,13 +31,15 @@ use std::collections::HashMap;
 ///
 /// # Algorithm Overview
 ///
-/// 1. Calculate efficiency for each grain level: (size_reduction / sqrt(grain_level_value))
-/// 2. Find the maximum efficiency point
-/// 3. Set a threshold at knee_threshold * max_efficiency (e.g., 80% of max)
-/// 4. Select the lowest grain level that meets or exceeds this threshold
+/// 1. Establish a baseline using "VeryClean" (no grain) or fallback to VeryClean if necessary
+/// 2. Calculate efficiency for each grain level: (size_reduction / sqrt(grain_level_value))
+/// 3. Find the maximum efficiency point
+/// 4. Set a threshold at knee_threshold * max_efficiency (e.g., 80% of max)
+/// 5. Select the lowest grain level that meets or exceeds this threshold
 ///
 /// The square root scaling in the efficiency calculation reduces bias against higher
-/// denoising levels, providing a more balanced assessment.
+/// denoising levels, providing a more balanced assessment. The algorithm always uses
+/// "VeryClean" as the baseline for comparison to ensure accurate results.
 ///
 /// # Arguments
 ///
@@ -60,12 +62,25 @@ pub(super) fn analyze_sample_with_knee_point(
 
     // Get the baseline file size (with no denoising applied)
     // This is used as the reference point for calculating size reductions
+    // First try None (no denoising), then fall back to VeryClean if None is missing
     let baseline_size = match results.get(&None) {
-        Some(&size) => size,
-        None => {
-            // If baseline size is missing, we can't perform the analysis
-            log_callback("Baseline encode size missing from results. Cannot analyze with knee point.");
-            return GrainLevel::VeryClean; // Return default value
+        Some(&size) if size > 0 => {
+            log_callback("Using 'VeryClean' (no denoising) as baseline for knee point analysis.");
+            size
+        },
+        _ => {
+            // If None is missing or zero, try VeryClean as fallback
+            match results.get(&Some(GrainLevel::VeryClean)) {
+                Some(&size) if size > 0 => {
+                    log_callback("Baseline 'VeryClean' missing or zero. Using 'VeryClean' as baseline instead.");
+                    size
+                },
+                _ => {
+                    // If both None and VeryClean are missing or zero, we can't perform the analysis
+                    log_callback("ERROR: 'VeryClean' baseline is missing or zero. Cannot analyze with knee point.");
+                    return GrainLevel::VeryClean; // Return default value
+                }
+            }
         }
     };
 
@@ -82,7 +97,7 @@ pub(super) fn analyze_sample_with_knee_point(
             Some(GrainLevel::VeryLight) => 1.0,  // Very light denoising
             Some(GrainLevel::Light) => 2.0,      // Light denoising
             Some(GrainLevel::Visible) => 3.0,    // Medium denoising
-            Some(GrainLevel::Heavy) => 4.0,      // Strong denoising
+            Some(GrainLevel::Medium) => 4.0,      // Moderate denoising
         }
     };
 
@@ -95,11 +110,14 @@ pub(super) fn analyze_sample_with_knee_point(
 
     // Process each grain level and calculate its efficiency
     // Filter to only include valid grain levels with non-zero file sizes
-    for (&level, &size) in results.iter().filter(|&(&k, &v)| v > 0 && k.is_some()) {
+    // Note: We include all levels (including None and VeryClean) in the iteration
+    // but will filter appropriately below
+    for (&level, &size) in results.iter().filter(|&(_, &v)| v > 0) {
         // Convert grain level to numeric value
         let grain_numeric = to_numeric(level);
 
-        // Skip baseline (None) or VeryClean levels as they represent no denoising
+        // Skip VeryClean level as it represents no denoising
+        // These are our reference points, not candidates for selection
         if grain_numeric <= 0.0 {
             continue;
         }
