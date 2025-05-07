@@ -1,32 +1,60 @@
+// ============================================================================
 // drapto-core/src/processing/mod.rs
+// ============================================================================
+//
+// VIDEO PROCESSING: Core Video Processing Logic
 //
 // This module serves as the central hub for the core video processing logic
-// within the `drapto-core` library. It organizes different processing steps
+// within the drapto-core library. It organizes different processing steps
 // into submodules and exposes the primary functions for initiating these tasks.
 //
-// Submodules:
-// - `video`: Contains the main video encoding orchestration logic, handling the
-//   processing of multiple video files based on the provided configuration.
+// KEY COMPONENTS:
+// - Video encoding orchestration (video submodule)
+// - Audio stream handling (audio submodule)
+// - Video property detection (detection submodule)
+// - Crop detection and analysis
 //
-// Public API Re-exports:
-// This `mod.rs` file re-exports the main entry points from its submodules
-// to simplify the public API of the `processing` module:
-// - `process_videos`: From the `video` submodule, the main function to process
-//   a list of video files according to the core configuration.
+// WORKFLOW:
+// 1. Video properties are detected (resolution, frame rate, etc.)
+// 2. Crop parameters are determined if auto-crop is enabled
+// 3. Audio streams are analyzed and processed
+// 4. Video encoding is performed with optimized parameters
+// 5. Results are collected and returned
 //
-// Internal implementation details within the submodules (like specific sampling
-// or analysis functions) are kept private to those submodules and are not
-// re-exported here.
+// PUBLIC API:
+// - process_videos: Main function to process a list of video files
+// - VideoProperties: Structure containing detected video properties
+// - detect_crop: Function to detect optimal crop parameters
+//
+// DESIGN PHILOSOPHY:
+// The processing module follows a modular design with clear separation of
+// concerns between different aspects of video processing. It uses dependency
+// injection for external tools and file system operations to facilitate testing.
+//
+// AI-ASSISTANT-INFO: Core video processing logic and orchestration
 
-// Declare submodules
+// ============================================================================
+// SUBMODULES
+// ============================================================================
+
+/// Main video encoding orchestration logic
 pub mod video;
+
+/// Audio stream handling and processing
 pub mod audio;
-pub mod detection; // Keep module declaration
 
-// Re-export public API functions/structs
+/// Video property detection and analysis
+pub mod detection;
+
+// ============================================================================
+// PUBLIC API RE-EXPORTS
+// ============================================================================
+
+/// Main function to process a list of video files
 pub use video::process_videos;
-pub use detection::VideoProperties; // Re-export struct
-pub use detection::detect_crop; // Re-export function
 
-// Note: Functions related to video processing are kept internal or passed via
-// dependency injection where needed, so they are not re-exported here.
+/// Structure containing detected video properties
+pub use detection::VideoProperties;
+
+/// Function to detect optimal crop parameters
+pub use detection::detect_crop;

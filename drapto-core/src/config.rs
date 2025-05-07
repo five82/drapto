@@ -1,59 +1,162 @@
+// ============================================================================
 // drapto-core/src/config.rs
+// ============================================================================
 //
-// This module defines the core configuration structures and related types
-// used throughout the `drapto-core` library.
+// CONFIGURATION: Core Configuration Structures and Constants
 //
-// It includes:
-// - `FilmGrainMetricType`: An enum defining the different strategies available
-//   for determining the optimal film grain value during optimization.
-// - `CoreConfig`: The main configuration struct holding all parameters required
-//   for the core processing logic. This includes input/output paths, logging paths,
-//   optional overrides for Handbrake defaults (like preset, quality, crop), and
-//   detailed settings for the film grain optimization process (e.g., enabling
-//   optimization, sample duration/count, initial values, fallback value, metric type,
-//   thresholds, refinement parameters).
+// This module defines the configuration structures and constants used throughout
+// the drapto-core library. It provides a flexible way to configure the video
+// processing behavior, including encoding parameters, quality settings, and
+// analysis options.
 //
-// Instances of `CoreConfig` are typically created by consumers of the library
-// (like `drapto-cli`) and passed into the main processing functions.
+// KEY COMPONENTS:
+// - CoreConfig: Main configuration structure for the library
+// - FilmGrainMetricType: Enum for different grain analysis strategies
+// - Default constants: Predefined values for common settings
+//
+// USAGE:
+// Instances of CoreConfig are created by consumers of the library (like drapto-cli)
+// and passed to the process_videos function to control encoding behavior.
+//
+// DESIGN PHILOSOPHY:
+// The configuration is designed to be flexible and extensible, with sensible
+// defaults for most parameters. Optional fields allow for fine-tuning specific
+// aspects of the encoding process when needed.
+//
+// AI-ASSISTANT-INFO: Configuration structures and constants for the drapto-core library
 
+// ---- Standard library imports ----
 use std::path::PathBuf;
-// Removed unused import: use crate::external::ffmpeg::HardwareAccel;
 
-#[derive(Debug, Clone, PartialEq, Eq)] // Added PartialEq, Eq for comparison
+// ============================================================================
+// FILM GRAIN ANALYSIS TYPES
+// ============================================================================
+
+/// Strategy for determining the optimal film grain value during analysis.
+///
+/// This enum defines different algorithms that can be used to analyze
+/// film grain in a video and determine the optimal denoising parameters.
+///
+/// # Variants
+///
+/// * `KneePoint` - Uses knee point detection to find the optimal balance
+///   between file size reduction and visual quality preservation.
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use drapto_core::config::FilmGrainMetricType;
+///
+/// // Configure grain analysis to use knee point detection
+/// let metric_type = FilmGrainMetricType::KneePoint;
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FilmGrainMetricType {
+    /// Knee point detection algorithm that finds the point of diminishing returns
+    /// in the denoising curve, balancing file size reduction and quality preservation.
     KneePoint,
-    // PercentMaxReduction, // Keep commented out for now as we focus on KneePoint
-    // OriginalEfficiency, // Keep commented out for now
+
+    // Future strategies (currently disabled):
+    // PercentMaxReduction - Uses a percentage of maximum reduction
+    // OriginalEfficiency - Uses the original efficiency algorithm
 }
 
-// --- Core Default Values ---
-// These are used by the core logic if specific values are not provided in CoreConfig.
+// ============================================================================
+// DEFAULT CONSTANTS
+// ============================================================================
+
+/// Default CRF (Constant Rate Factor) quality value for Standard Definition videos (<1920 width).
+/// Lower values produce higher quality but larger files.
+/// Range: 0-63, with 0 being lossless.
 pub const DEFAULT_CORE_QUALITY_SD: u8 = 25;
+
+/// Default CRF quality value for High Definition videos (>=1920 width, <3840 width).
+/// Higher than SD to maintain reasonable file sizes for HD content.
 pub const DEFAULT_CORE_QUALITY_HD: u8 = 27;
+
+/// Default CRF quality value for Ultra High Definition videos (>=3840 width).
+/// Same as HD by default, but can be overridden separately.
 pub const DEFAULT_CORE_QUALITY_UHD: u8 = 27;
-// Add other core defaults here if needed (e.g., default preset)
 
-#[derive(Debug, Clone)] // Configuration for the core processing
+// ============================================================================
+// CORE CONFIGURATION
+// ============================================================================
+
+/// Main configuration structure for the drapto-core library.
+///
+/// This structure holds all the parameters required for video processing,
+/// including paths, encoding settings, and analysis options. It is typically
+/// created by the consumer of the library (e.g., drapto-cli) and passed to
+/// the process_videos function.
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use drapto_core::CoreConfig;
+/// use std::path::PathBuf;
+///
+/// let config = CoreConfig {
+///     input_dir: PathBuf::from("/path/to/input"),
+///     output_dir: PathBuf::from("/path/to/output"),
+///     log_dir: PathBuf::from("/path/to/logs"),
+///     default_encoder_preset: Some(6),
+///     preset: None,
+///     quality_sd: Some(24),
+///     quality_hd: Some(26),
+///     quality_uhd: Some(28),
+///     default_crop_mode: Some("auto".to_string()),
+///     ntfy_topic: Some("https://ntfy.sh/my-topic".to_string()),
+///     enable_denoise: true,
+/// };
+/// ```
+#[derive(Debug, Clone)]
 pub struct CoreConfig {
-    pub input_dir: PathBuf,
-    pub output_dir: PathBuf,
-    pub log_dir: PathBuf,
-    // --- Optional Handbrake Defaults ---
-    pub default_encoder_preset: Option<u8>, // Keep this as the primary way to set default
-    pub preset: Option<u8>, // New field for CLI override (numeric)
-    // pub default_quality: Option<u8>, // Replaced by resolution-specific qualities
-    pub quality_sd: Option<u8>, // Quality for Standard Definition (e.g., < 1920 width)
-    pub quality_hd: Option<u8>, // Quality for High Definition (e.g., >= 1920 width)
-    pub quality_uhd: Option<u8>, // Quality for Ultra High Definition (e.g., >= 3840 width)
-    pub default_crop_mode: Option<String>, // Crop mode for the main encode
-    // --- Notifications ---
-    /// Optional ntfy.sh topic URL for notifications
-    pub ntfy_topic: Option<String>,
-/// Enable light video denoising (hqdn3d) by default.
-    pub enable_denoise: bool,
-    // Hardware acceleration field removed as it's no longer supported.
+    // ---- Path Configuration ----
 
-    // --- Grain Detection Configuration (Currently unused with relative comparison method) ---
-    // The relative comparison method uses constants defined in grain_analysis.rs
-    // pub grain_analysis_config: Option<SomeGrainAnalysisConfigStruct>, // Placeholder if config needed later
+    /// Directory containing input video files to process
+    pub input_dir: PathBuf,
+
+    /// Directory where encoded output files will be saved
+    pub output_dir: PathBuf,
+
+    /// Directory for log files and temporary files
+    pub log_dir: PathBuf,
+
+    // ---- Encoder Settings ----
+
+    /// Default encoder preset (0-13, lower is slower/better quality)
+    /// This is the primary way to set the default preset
+    pub default_encoder_preset: Option<u8>,
+
+    /// Override for encoder preset (takes precedence over default_encoder_preset)
+    pub preset: Option<u8>,
+
+    /// CRF quality for Standard Definition videos (<1920 width)
+    /// Lower values produce higher quality but larger files
+    pub quality_sd: Option<u8>,
+
+    /// CRF quality for High Definition videos (>=1920 width, <3840 width)
+    pub quality_hd: Option<u8>,
+
+    /// CRF quality for Ultra High Definition videos (>=3840 width)
+    pub quality_uhd: Option<u8>,
+
+    /// Crop mode for the main encode ("auto", "none", etc.)
+    pub default_crop_mode: Option<String>,
+
+    // ---- Notification Settings ----
+
+    /// Optional ntfy.sh topic URL for sending notifications
+    pub ntfy_topic: Option<String>,
+
+    // ---- Processing Options ----
+
+    /// Whether to enable light video denoising (hqdn3d)
+    /// When true, grain analysis will be performed to determine optimal parameters
+    pub enable_denoise: bool,
+
+    // Note: Hardware acceleration field was removed as it's no longer supported
+
+    // Future fields for grain analysis configuration could be added here
+    // The current implementation uses constants defined in grain_analysis.rs
 }

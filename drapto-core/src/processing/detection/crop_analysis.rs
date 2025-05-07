@@ -1,28 +1,78 @@
+// ============================================================================
 // drapto-core/src/processing/detection/crop_analysis.rs
-use colored::*;
+// ============================================================================
+//
+// CROP DETECTION: Black Bar Detection and Removal
+//
+// This module handles the detection of black bars in video files and generates
+// appropriate crop parameters to remove them. It uses ffmpeg's cropdetect filter
+// to analyze video frames and determine the optimal crop values.
+//
+// KEY COMPONENTS:
+// - detect_crop: Main entry point for crop detection
+// - HDR-aware black level detection
+// - Adaptive sampling based on video duration
+//
+// WORKFLOW:
+// 1. Determine initial crop threshold based on video properties
+// 2. For HDR content, refine the threshold using black level analysis
+// 3. Run ffmpeg cropdetect on sample frames
+// 4. Analyze the results to determine the most common crop values
+// 5. Return the crop filter string if black bars are detected
+//
+// AI-ASSISTANT-INFO: Black bar detection and crop parameter generation
 
-use crate::error::CoreResult; // Remove unused CoreError
-use crate::external::{FfmpegProcess, FfmpegSpawner};
-use crate::processing::detection::VideoProperties; // Import VideoProperties from parent's re-export
+// ---- External crate imports ----
+use colored::*;
 use ffmpeg_sidecar::command::FfmpegCommand;
 use ffmpeg_sidecar::event::FfmpegEvent;
 use regex::Regex;
+
+// ---- Internal crate imports ----
+use crate::error::CoreResult;
+use crate::external::{FfmpegProcess, FfmpegSpawner};
+use crate::processing::detection::VideoProperties;
+
+// ---- Standard library imports ----
 use std::path::Path;
 
+// ============================================================================
+// THRESHOLD DETERMINATION
+// ============================================================================
+
 /// Determines the initial crop detection threshold based on color properties.
-/// Returns a tuple (crop_threshold, is_hdr).
+///
+/// This function analyzes the video's color space to determine if it's HDR content
+/// and returns an appropriate threshold for black level detection. HDR content
+/// typically requires a higher threshold due to its expanded luminance range.
+///
+/// # Arguments
+///
+/// * `props` - Video properties containing color space information
+///
+/// # Returns
+///
+/// * A tuple containing:
+///   - The initial crop threshold value (u32)
+///   - A boolean indicating whether the content is HDR
+///
+/// # Note
+///
+/// HDR detection is simplified to only use color_space since color_transfer and
+/// color_primaries are not available in the current ffprobe crate version.
 fn determine_crop_threshold(props: &VideoProperties) -> (u32, bool) {
-    // Simplified HDR detection based only on color_space, as color_transfer and color_primaries
-    // are not available via ffprobe crate v0.3.3
+    // Get the color space, defaulting to empty string if not available
     let cs = props.color_space.as_deref().unwrap_or("");
 
-    // Regex for common HDR color spaces
+    // Check if the color space matches common HDR color spaces (bt2020)
     let is_hdr_cs = Regex::new(r"^(bt2020nc|bt2020c)$").unwrap().is_match(cs);
 
     if is_hdr_cs {
+        // For HDR content, use a higher initial threshold
         log::info!("HDR content potentially detected via color space ({}), adjusting detection sensitivity.", cs);
         (128, true) // Initial threshold for potential HDR
     } else {
+        // For SDR content, use the standard threshold
         (16, false) // Default threshold for SDR
     }
 }
@@ -184,37 +234,92 @@ fn run_cropdetect<S: FfmpegSpawner>(
     }
 }
 
-/// Main crop detection function (entry point).
-/// Returns a tuple: (Option<crop_filter_string>, is_hdr)
-pub fn detect_crop<S: FfmpegSpawner>( // Keep public as it's re-exported
+// ============================================================================
+// PUBLIC API
+// ============================================================================
+
+/// Main entry point for crop detection.
+///
+/// This function analyzes a video file to detect black bars and determine the
+/// appropriate crop parameters. It handles both SDR and HDR content, with special
+/// processing for HDR to ensure accurate black level detection.
+///
+/// # Arguments
+///
+/// * `spawner` - Implementation of FfmpegSpawner for executing ffmpeg
+/// * `input_file` - Path to the video file to analyze
+/// * `video_props` - Properties of the video (resolution, duration, color space)
+/// * `disable_crop` - Whether to skip crop detection (e.g., user preference)
+///
+/// # Returns
+///
+/// * `Ok((Option<String>, bool))` - A tuple containing:
+///   - An optional crop filter string (e.g., "crop=1920:800:0:140")
+///   - A boolean indicating whether the content is HDR
+/// * `Err(CoreError)` - If an error occurs during analysis
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use drapto_core::processing::detection::{detect_crop, VideoProperties};
+/// use drapto_core::external::SidecarSpawner;
+/// use std::path::Path;
+///
+/// let spawner = SidecarSpawner;
+/// let input_file = Path::new("/path/to/video.mkv");
+/// let video_props = VideoProperties {
+///     width: 1920,
+///     height: 1080,
+///     duration_secs: 3600.0,
+///     color_space: Some("bt709".to_string()),
+/// };
+///
+/// match detect_crop(&spawner, input_file, &video_props, false) {
+///     Ok((Some(crop_filter), is_hdr)) => {
+///         println!("Crop filter: {}, HDR: {}", crop_filter, is_hdr);
+///     },
+///     Ok((None, is_hdr)) => {
+///         println!("No cropping needed, HDR: {}", is_hdr);
+///     },
+///     Err(e) => {
+///         eprintln!("Error during crop detection: {}", e);
+///     }
+/// }
+/// ```
+pub fn detect_crop<S: FfmpegSpawner>(
     spawner: &S,
     input_file: &Path,
     video_props: &VideoProperties,
     disable_crop: bool,
 ) -> CoreResult<(Option<String>, bool)> {
+    // Check if crop detection is disabled by user preference
     if disable_crop {
         log::info!("Crop detection disabled via parameter for {}", input_file.display());
         return Ok((None, false));
     }
 
-    let (mut crop_threshold, is_hdr) = determine_crop_threshold(video_props); // Remove needless borrow
+    // STEP 1: Determine initial crop threshold based on video properties
+    let (mut crop_threshold, is_hdr) = determine_crop_threshold(video_props);
 
+    // STEP 2: For HDR content, refine the threshold using black level analysis
     if is_hdr {
         println!("🔬 Performing HDR black level analysis...");
         log::info!("Running HDR black level analysis for {}...", input_file.display());
         crop_threshold = run_hdr_blackdetect(spawner, input_file, crop_threshold)?;
     }
 
+    // STEP 3: Log video properties for debugging
     // Extract filename for logging
     let filename_cow = input_file
         .file_name()
         .map(|name| name.to_string_lossy())
         .unwrap_or_else(|| input_file.to_string_lossy());
+
     // Log video properties with colors and multiple lines
     log::info!(
         "{} {}",
         "Video Properties for:".cyan(),
-        filename_cow.yellow() // Use filename
+        filename_cow.yellow()
     );
     log::info!(
         "  {:<18} {}", // Left-align label with padding
@@ -224,7 +329,7 @@ pub fn detect_crop<S: FfmpegSpawner>( // Keep public as it's re-exported
     log::info!(
         "  {:<18} {}", // Left-align label with padding
         "Duration:".cyan(),
-        format!("{:.2}s", video_props.duration_secs).green() // Use renamed field
+        format!("{:.2}s", video_props.duration_secs).green()
     );
     log::info!(
         "  {:<18} {}", // Left-align label with padding
@@ -237,23 +342,25 @@ pub fn detect_crop<S: FfmpegSpawner>( // Keep public as it's re-exported
         format!("{}", crop_threshold).green()
     );
 
-    let credits_skip = calculate_credits_skip(video_props.duration_secs); // Use renamed field
-    let analysis_duration = if video_props.duration_secs > credits_skip { // Use renamed field
-        video_props.duration_secs - credits_skip // Use renamed field
+    // STEP 4: Calculate effective analysis duration (skipping credits)
+    let credits_skip = calculate_credits_skip(video_props.duration_secs);
+    let analysis_duration = if video_props.duration_secs > credits_skip {
+        video_props.duration_secs - credits_skip
     } else {
-        video_props.duration_secs // Use renamed field
+        video_props.duration_secs
     };
+
     if credits_skip > 0.0 {
-        log::debug!("Skipping last {:.2}s for crop analysis (credits). Effective duration: {:.2}s", credits_skip, analysis_duration);
+        log::debug!(
+            "Skipping last {:.2}s for crop analysis (credits). Effective duration: {:.2}s",
+            credits_skip, analysis_duration
+        );
     }
 
+    // STEP 5: Run crop detection analysis
     println!("✂️ {}", "Running crop detection analysis...".cyan().bold());
-    // Extract filename for logging
-    let filename_cow = input_file
-        .file_name()
-        .map(|name| name.to_string_lossy())
-        .unwrap_or_else(|| input_file.to_string_lossy());
-    log::info!("Running crop detection analysis for {}...", filename_cow.yellow()); // Use filename
+    log::info!("Running crop detection analysis for {}...", filename_cow.yellow());
+
     let crop_filter = run_cropdetect(
         spawner,
         input_file,
@@ -262,12 +369,18 @@ pub fn detect_crop<S: FfmpegSpawner>( // Keep public as it's re-exported
         analysis_duration,
     )?;
 
+    // STEP 6: Report results
     if crop_filter.is_none() {
         println!("✅ {}", "Crop detection complete: No cropping needed.".green());
         log::info!("No cropping filter determined for {}.", input_file.display().to_string().yellow());
     } else {
-        println!("✅ {} {}", "Crop detection complete:".green(), crop_filter.as_deref().unwrap_or("").green().bold());
+        println!(
+            "✅ {} {}",
+            "Crop detection complete:".green(),
+            crop_filter.as_deref().unwrap_or("").green().bold()
+        );
     }
 
+    // Return the crop filter and HDR status
     Ok((crop_filter, is_hdr))
 }
