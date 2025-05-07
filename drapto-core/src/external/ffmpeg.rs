@@ -464,9 +464,16 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner>(
 
 /// Maps a hqdn3d parameter set to the corresponding SVT-AV1 film_grain value.
 /// Handles both standard and refined/interpolated parameter sets.
+///
+/// This function uses a more direct mapping between denoising strength and film grain
+/// synthesis values, with a continuous scale that provides better granularity.
 fn map_hqdn3d_to_film_grain(hqdn3d_params: &str) -> u8 {
-    // Fixed mapping for standard levels (using GrainLevel enum for clarity if available)
-    // Note: GrainLevel enum itself isn't strictly needed here, but the param strings are key.
+    // No denoising = no film grain synthesis
+    if hqdn3d_params.is_empty() {
+        return 0;
+    }
+
+    // Fixed mapping for standard levels (for backward compatibility and optimization)
     for (params, film_grain) in &[
         ("hqdn3d=0.5:0.3:3:3", 4),  // VeryLight
         ("hqdn3d=1:0.7:4:4", 8),    // Light
@@ -479,33 +486,26 @@ fn map_hqdn3d_to_film_grain(hqdn3d_params: &str) -> u8 {
         }
     }
 
-    // Must be a refined/interpolated parameter set
-    // Parse the parameters to extract luma spatial strength (first value in hqdn3d)
+    // For interpolated/custom parameter sets, extract the luma spatial strength
+    // which is the most indicative parameter for denoising intensity
     let luma_spatial = parse_hqdn3d_first_param(hqdn3d_params);
 
-    // Determine where this falls on our scale and interpolate
-    if luma_spatial <= 0.0 { // Handle 0 explicitly
+    // Map the luma spatial value (0.0-2.0+) to film grain value (0-16)
+    // using a more direct and granular mapping
+
+    // No denoising = no grain synthesis
+    if luma_spatial <= 0.1 {
         return 0;
-    } else if luma_spatial <= 0.5 {
-        // Between None (0) and VeryLight (4)
-        let factor = luma_spatial / 0.5;
-        return (factor * 4.0).round() as u8;
-    } else if luma_spatial <= 1.0 {
-        // Between VeryLight (4) and Light (8)
-        let factor = (luma_spatial - 0.5) / 0.5;
-        return (4.0 + factor * 4.0).round() as u8;
-    } else if luma_spatial <= 1.5 {
-        // Between Light (8) and Visible (12)
-        let factor = (luma_spatial - 1.0) / 0.5;
-        return (8.0 + factor * 4.0).round() as u8;
-    } else if luma_spatial <= 2.0 {
-        // Between Visible (12) and Medium (16)
-        let factor = (luma_spatial - 1.5) / 0.5;
-        return (12.0 + factor * 4.0).round() as u8;
-    } else {
-        // Beyond Medium - cap at maximum
-        return 16;
     }
+
+    // Use a square-root scale to reduce bias against higher grain values
+    // This helps prevent the function from selecting overly low grain values
+    // when the source video benefits from preserving more texture
+    let adjusted_value = (luma_spatial * 8.0).sqrt() * 8.0;
+
+    // Round to nearest integer and cap at 16
+    let film_grain_value = adjusted_value.round() as u8;
+    return film_grain_value.min(16);
 }
 
 /// Helper function to extract the first parameter (luma_spatial) from hqdn3d string

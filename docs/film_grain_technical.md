@@ -6,6 +6,8 @@ Drapto implements a sophisticated film grain management system that optimizes vi
 
 The core principle behind Drapto's approach is that film grain and noise consume a disproportionate amount of bitrate during video encoding due to their high-entropy, random nature. By selectively reducing natural grain before encoding and then adding back controlled synthetic grain, Drapto achieves significantly better compression efficiency without sacrificing perceptual quality.
 
+The system now features continuous parameter interpolation for fine-grained control over denoising strength, allowing for more precise optimization of the compression vs. quality tradeoff. This enhancement leverages the multidimensional parameter space of the hqdn3d denoiser to achieve more precise denoising than discrete levels alone would allow.
+
 ## System Architecture
 
 The film grain management system consists of three main components:
@@ -94,7 +96,22 @@ To improve accuracy, the system performs adaptive refinement around the initial 
 1. Statistical analysis of initial estimates (median, standard deviation)
 2. Testing of intermediate grain levels not covered in the initial phase
 3. Adaptive range width based on the variance of initial estimates
-4. Type-safe parameter selection using predefined values for each level
+4. Continuous parameter interpolation for fine-grained control
+
+The refinement process now uses continuous parameter interpolation to test more intermediate points between the standard grain levels. This allows for more precise optimization of denoising parameters:
+
+```rust
+// Generate 3-5 intermediate points based on range size
+let num_points = ((upper_f - lower_f) * 2.0).round().max(3.0).min(5.0) as usize;
+let step = (upper_f - lower_f) / (num_points as f32 + 1.0);
+
+// Generate interpolated parameters for each test point
+for i in 1..=num_points {
+    let point_f = lower_f + step * (i as f32);
+    let hqdn3d_params = generate_hqdn3d_params(point_f);
+    // Test this interpolated parameter set...
+}
+```
 
 ## 2. Denoising Implementation
 
@@ -122,6 +139,41 @@ Each grain level maps to specific hqdn3d parameters:
 
 These parameters are deliberately conservative to avoid excessive blurring while still improving compression efficiency. The goal is bitrate reduction while maintaining video quality, not creating an artificially smooth appearance.
 
+### Continuous Parameter Interpolation
+
+In addition to the discrete grain levels above, the system now supports continuous parameter interpolation for more fine-grained control. This allows for testing and applying denoising parameters at any point along the continuous strength scale (0.0-4.0):
+
+```rust
+// Map a continuous strength value (0.0-4.0) to interpolated hqdn3d parameters
+pub fn generate_hqdn3d_params(strength_value: f32) -> String {
+    // No denoising for strength <= 0
+    if strength_value <= 0.0 {
+        return "".to_string();
+    }
+
+    // Define anchor points for interpolation (strength, y, cb, cr, strength)
+    let anchor_points = [
+        (0.0, 0.0, 0.0, 0.0, 0.0),       // VeryClean (no denoising)
+        (1.0, 0.5, 0.3, 3.0, 3.0),       // VeryLight
+        (2.0, 1.0, 0.7, 4.0, 4.0),       // Light
+        (3.0, 1.5, 1.0, 6.0, 6.0),       // Visible
+        (4.0, 2.0, 1.3, 8.0, 8.0),       // Medium
+    ];
+
+    // Find anchor points to interpolate between and calculate parameters
+    // ...interpolation logic...
+
+    // Format the parameters string
+    format!("hqdn3d={:.2}:{:.2}:{:.2}:{:.2}", luma, chroma, temp_luma, temp_chroma)
+}
+```
+
+This approach provides several benefits:
+1. More precise optimization of denoising parameters
+2. Better adaptation to different types of grain and noise
+3. Smoother transitions between denoising levels
+4. More granular control over the compression vs. quality tradeoff
+
 ## 3. Film Grain Synthesis
 
 ### SVT-AV1 Film Grain Synthesis
@@ -144,15 +196,18 @@ Denoising levels are mapped to corresponding SVT-AV1 film grain synthesis values
 | Visible     | `1.5:1.0:6:6` | 12 (moderate synthetic grain) |
 | Medium      | `2:1.3:8:8` | 16 (medium synthetic grain) |
 
+For interpolated parameter sets, the system uses a more sophisticated mapping function that provides continuous granularity:
+
 ```rust
-// Film grain mapping function
+/// Maps a hqdn3d parameter set to the corresponding SVT-AV1 film_grain value.
+/// Handles both standard and refined/interpolated parameter sets.
 fn map_hqdn3d_to_film_grain(hqdn3d_params: &str) -> u8 {
-    // For VeryClean videos, no film grain is needed
-    if hqdn3d_params == None || hqdn3d_params.is_empty() {
-        return 0; // No synthetic grain for VeryClean
+    // No denoising = no film grain synthesis
+    if hqdn3d_params.is_empty() {
+        return 0;
     }
 
-    // Map other grain levels to corresponding film grain values
+    // Fixed mapping for standard levels (for backward compatibility)
     for (params, film_grain) in &[
         ("hqdn3d=0.5:0.3:3:3", 4),  // VeryLight
         ("hqdn3d=1:0.7:4:4", 8),    // Light
@@ -163,9 +218,32 @@ fn map_hqdn3d_to_film_grain(hqdn3d_params: &str) -> u8 {
             return *film_grain;
         }
     }
-    // Fallback logic for non-standard parameters...
+
+    // For interpolated parameter sets, extract the luma spatial strength
+    let luma_spatial = parse_hqdn3d_first_param(hqdn3d_params);
+
+    // No denoising = no grain synthesis
+    if luma_spatial <= 0.1 {
+        return 0;
+    }
+
+    // Use a square-root scale to reduce bias against higher grain values
+    // This helps prevent the function from selecting overly low grain values
+    // when the source video benefits from preserving more texture
+    let adjusted_value = (luma_spatial * 8.0).sqrt() * 8.0;
+
+    // Round to nearest integer and cap at 16
+    let film_grain_value = adjusted_value.round() as u8;
+    return film_grain_value.min(16);
 }
 ```
+
+The enhanced mapping function uses a square-root scale to provide a more perceptually balanced distribution of film grain values. This approach:
+
+1. Reduces bias against higher grain values
+2. Provides more granular control over the film grain synthesis
+3. Better preserves the visual character of the source content
+4. Maintains compatibility with the standard grain levels
 
 ### SVT-AV1 Encoder Configuration
 
@@ -191,11 +269,37 @@ Drapto provides several configuration options to fine-tune the grain analysis an
 | `film_grain_knee_threshold` | Threshold for knee point detection (0.0-1.0) | `0.8` |
 | `film_grain_fallback_level` | Fallback level if analysis fails | `VeryClean` |
 | `film_grain_max_level` | Maximum allowed grain level | `Medium` |
+| `film_grain_refinement_points_count` | Number of refinement points to test (0 = auto) | `5` |
 
 These options can be set via command-line arguments or configuration files.
+
+### Enhanced Granularity Control
+
+The new `film_grain_refinement_points_count` option allows for controlling the granularity of the refinement phase. When set to 0 (auto), the system dynamically determines the optimal number of refinement points based on the range size:
+
+```rust
+// Larger ranges get more test points for better coverage
+let num_points = ((upper_f - lower_f) * 2.0).round().max(3.0).min(5.0) as usize;
+```
+
+This ensures that wider ranges (indicating more uncertainty) receive more test points, while narrower ranges (indicating more confidence) receive fewer test points for efficiency.
 
 ## Conclusion
 
 Drapto's film grain management system represents a sophisticated approach to optimizing video compression efficiency while maintaining perceptual quality. By analyzing grain characteristics, applying optimal denoising, and synthesizing controlled film grain during encoding, the system achieves significant bitrate savings (often 20-40%) without sacrificing visual quality.
 
 The multi-phase analysis approach with knee point detection ensures that each video receives optimal processing based on its unique characteristics, while the configurable parameters allow fine-tuning for different content types and quality requirements.
+
+### Recent Enhancements
+
+The recent enhancements to the grain analysis system provide several key improvements:
+
+1. **Continuous Parameter Interpolation**: By implementing continuous parameter interpolation, the system can now test and apply denoising parameters at any point along the strength scale, not just at the five discrete grain levels. This allows for more precise optimization of the denoising parameters.
+
+2. **Enhanced Refinement Process**: The refinement phase now generates multiple intermediate test points based on the range size, providing better coverage of the parameter space and more accurate results.
+
+3. **Improved Film Grain Mapping**: The enhanced mapping function uses a square-root scale to provide a more perceptually balanced distribution of film grain values, reducing bias against higher grain values and better preserving the visual character of the source content.
+
+4. **Configurable Refinement Granularity**: The new `film_grain_refinement_points_count` option allows for controlling the granularity of the refinement phase, with automatic adjustment based on the range size.
+
+These improvements make the grain analysis system more precise, more adaptable, and better able to optimize the compression vs. quality tradeoff for a wide range of content types.

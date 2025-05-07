@@ -68,8 +68,13 @@ mod utils;
 /// Result types for grain analysis
 pub use types::{GrainAnalysisResult, GrainLevel};
 
-/// Function to determine hqdn3d parameters from grain level
-pub use utils::determine_hqdn3d_params;
+/// Functions to determine and generate hqdn3d parameters
+pub use utils::{
+    determine_hqdn3d_params,
+    generate_hqdn3d_params,
+    grain_level_to_strength,
+    strength_to_grain_level,
+};
 
 // ============================================================================
 // INTERNAL IMPORTS

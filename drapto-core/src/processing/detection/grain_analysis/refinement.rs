@@ -27,9 +27,9 @@ use super::types::GrainLevel;
 
 /// Calculates the standard deviation of grain level estimates.
 ///
-/// This function converts grain levels to numeric values and calculates
-/// the standard deviation, which is used to determine the width of the
-/// refinement range. A higher standard deviation indicates more variability
+/// This function converts grain levels to numeric values using the grain_level_to_strength
+/// utility function and calculates the standard deviation, which is used to determine
+/// the width of the refinement range. A higher standard deviation indicates more variability
 /// in the initial estimates and suggests a wider refinement range is needed.
 ///
 /// # Arguments
@@ -52,14 +52,13 @@ fn calculate_std_dev(levels: &[GrainLevel]) -> Option<f64> {
         return None;
     }
 
-    // Step 1: Convert GrainLevel enum values to numeric values
-    let numeric_values: Vec<f64> = levels.iter().map(|level| match level {
-        GrainLevel::VeryClean => 0.0,
-        GrainLevel::VeryLight => 1.0,
-        GrainLevel::Light => 2.0,
-        GrainLevel::Visible => 3.0,
-        GrainLevel::Medium => 4.0,
-    }).collect();
+    // Import the utility function
+    use super::utils::grain_level_to_strength;
+
+    // Step 1: Convert GrainLevel enum values to numeric values using the utility function
+    let numeric_values: Vec<f64> = levels.iter()
+        .map(|&level| grain_level_to_strength(level) as f64)
+        .collect();
 
     // Step 2: Calculate the mean of the numeric values
     let mean: f64 = numeric_values.iter().sum::<f64>() / numeric_values.len() as f64;
@@ -188,18 +187,19 @@ pub(super) fn calculate_refinement_range(initial_estimates: &[GrainLevel]) -> (G
 
 /// Generates refined denoising parameters between lower and upper bound levels.
 ///
-/// This function identifies intermediate grain levels between the lower and upper
-/// bounds that weren't tested in the initial phase. Instead of interpolating parameters,
-/// it uses the predefined parameters for each grain level, ensuring type-safe and
-/// consistent parameter selection.
+/// This function creates intermediate test points between the lower and upper
+/// bounds using continuous parameter interpolation. This allows for more precise
+/// grain analysis by testing a wider range of denoising strengths than just the
+/// predefined GrainLevel enum values.
 ///
 /// # Algorithm
 ///
-/// 1. Define all grain levels in sequence
-/// 2. Convert the lower and upper bounds to indices
-/// 3. For each intermediate grain level:
-///    a. Skip if already tested in initial phase
-///    b. Get the predefined parameters for this level
+/// 1. Convert GrainLevels to continuous strength values
+/// 2. Calculate the range size and determine number of test points
+/// 3. Generate evenly spaced test points within the range
+/// 4. For each test point:
+///    a. Generate interpolated hqdn3d parameters
+///    b. Skip if parameters match any already tested in initial phase
 ///    c. Add to the list of refined parameters
 ///
 /// # Arguments
@@ -220,50 +220,69 @@ pub(super) fn generate_refinement_params(
     // Initialize vector to store refined parameters
     let mut refined_params = Vec::new();
 
-    // Define all GrainLevels in sequence for indexing
-    const ALL_LEVELS: [GrainLevel; 5] = [
-        GrainLevel::VeryClean,
-        GrainLevel::VeryLight,
-        GrainLevel::Light,
-        GrainLevel::Visible,
-        GrainLevel::Medium,
-    ];
+    // Import utility functions
+    use super::utils::{grain_level_to_strength, generate_hqdn3d_params};
 
-    // Convert GrainLevels to indices
-    let lower_idx = ALL_LEVELS.iter().position(|&l| l == lower_level).unwrap_or(0);
-    let upper_idx = ALL_LEVELS.iter().position(|&l| l == upper_level).unwrap_or(4);
+    // Convert GrainLevels to continuous strength values
+    let lower_f = grain_level_to_strength(lower_level);
+    let upper_f = grain_level_to_strength(upper_level);
 
-    // If levels are adjacent or identical, no refinement needed
-    if upper_idx <= lower_idx + 1 {
+    // Skip if range is too small
+    if upper_f <= lower_f + 0.1 {
         log::debug!(
-            "Refinement bounds are adjacent or identical ({:?}, {:?}). No refinement needed.",
-            lower_level, upper_level
+            "Refinement bounds are too close ({:.2}, {:.2}). No refinement needed.",
+            lower_f, upper_f
         );
         return refined_params;
     }
 
-    // Test all intermediate grain levels
-    for idx in (lower_idx + 1)..upper_idx {
-        let level = ALL_LEVELS[idx];
+    // Generate 3-5 intermediate points based on range size
+    // Larger ranges get more test points for better coverage
+    let num_points = ((upper_f - lower_f) * 2.0).round().max(3.0).min(5.0) as usize;
+    let step = (upper_f - lower_f) / (num_points as f32 + 1.0);
 
-        // Skip if already tested in initial phase
-        if initial_params.iter().any(|(level_opt, _)| *level_opt == Some(level)) {
+    log::debug!(
+        "Generating {} intermediate test points between {:.2} and {:.2} with step {:.2}",
+        num_points, lower_f, upper_f, step
+    );
+
+    // Extract all existing parameter strings from initial tests for comparison
+    let existing_params: Vec<String> = initial_params.iter()
+        .filter_map(|(_, params_opt)| params_opt.map(|p| p.to_string()))
+        .collect();
+
+    // Generate and add intermediate test points
+    for i in 1..=num_points {
+        let point_f = lower_f + step * (i as f32);
+
+        // Generate the hqdn3d parameters for this interpolated point
+        let hqdn3d_params = generate_hqdn3d_params(point_f);
+
+        // Skip if empty (shouldn't happen in this range) or if this exact parameter string already exists
+        if hqdn3d_params.is_empty() || existing_params.contains(&hqdn3d_params) {
             log::debug!(
-                "Skipping refinement for level {:?} as it was in initial tests.",
-                level
+                "Skipping refinement point {:.2} as it produced empty params or duplicates existing test.",
+                point_f
             );
             continue;
         }
 
-        // Get hqdn3d parameters for this level from our utility function
-        // Import the function here to avoid unused import warning
-        use super::utils::determine_hqdn3d_params;
-        if let Some(params) = determine_hqdn3d_params(level) {
-            refined_params.push((Some(level), params));
-        } else {
-            log::warn!("Could not determine hqdn3d parameters for level {:?}", level);
-        }
+        // Log before we move the string
+        log::debug!(
+            "Added refinement point at strength {:.2} with params: {}",
+            point_f, &hqdn3d_params
+        );
+
+        // Add the interpolated test point to refined parameters
+        // Use None for GrainLevel since this is an interpolated point that doesn't directly
+        // correspond to a GrainLevel enum variant
+        refined_params.push((None, hqdn3d_params));
     }
+
+    log::info!(
+        "Generated {} refined parameter sets for testing",
+        refined_params.len()
+    );
 
     refined_params
 }

@@ -76,7 +76,7 @@ drapto encode -i input.mkv -o output/ --quality-hd 24 --preset 6
 drapto encode -i input.mkv -o output/ --no-denoise
 
 # Encode with custom grain analysis settings
-drapto encode -i input.mkv -o output/ --grain-knee-threshold 0.7 --grain-max-level Visible
+drapto encode -i input.mkv -o output/ --grain-knee-threshold 0.7 --grain-max-level Visible --grain-refinement-points 7
 
 # Encode and send notifications to an ntfy.sh topic
 drapto encode -i video.mkv -o output/ --ntfy https://ntfy.sh/your_topic
@@ -123,6 +123,7 @@ Drapto can send notifications about encoding progress (start, success, error) to
 * `--grain-knee-threshold <THRESHOLD>`: Knee point threshold (0.1-1.0) for determining optimal grain level (default: 0.8).
 * `--grain-max-level <LEVEL>`: Maximum allowed grain level (VeryClean, VeryLight, Light, Visible, Medium) (default: Medium).
 * `--grain-fallback-level <LEVEL>`: Fallback grain level if analysis fails (default: VeryClean).
+* `--grain-refinement-points <COUNT>`: Number of refinement points to test (0 = auto, default: 5).
 
 ## Advanced Features
 
@@ -137,10 +138,11 @@ The system includes:
 1. **Multi-Sample Analysis**: Extracts multiple short samples from different parts of the video to ensure consistent results.
 2. **Baseline Comparison**: Always uses "VeryClean" (no grain) as the baseline for accurate comparison and analysis.
 3. **Knee Point Detection**: Uses an advanced algorithm to find the optimal denoising strength that balances file size reduction and visual quality.
-4. **Adaptive Refinement**: Dynamically adjusts and tests additional denoise parameters based on initial results.
-5. **Categorical Classification**: Classifies videos into grain levels (VeryClean, VeryLight, Light, Visible, Medium) and applies appropriate hqdn3d parameters.
-6. **Configurable Constraints**: Allows setting maximum grain levels and fallback options for fine-tuned control.
-7. **High-Quality Denoising**: Uses FFmpeg's hqdn3d (high-quality 3D denoiser) filter with optimized parameters for each grain level. Conservative denoising settings are used to avoid excessive blurring while still improving compression.
+4. **Continuous Parameter Interpolation**: Provides fine-grained control over denoising strength beyond the discrete grain levels.
+5. **Adaptive Refinement**: Dynamically adjusts and tests additional denoise parameters based on initial results, with configurable refinement granularity.
+6. **Categorical Classification**: Classifies videos into grain levels (VeryClean, VeryLight, Light, Visible, Medium) and applies appropriate hqdn3d parameters.
+7. **Configurable Constraints**: Allows setting maximum grain levels and fallback options for fine-tuned control.
+8. **High-Quality Denoising**: Uses FFmpeg's hqdn3d (high-quality 3D denoiser) filter with optimized parameters for each grain level. Conservative denoising settings are used to avoid excessive blurring while still improving compression.
 
 This system ensures that videos with different grain characteristics are processed optimally:
 - Videos with minimal grain receive minimal or no denoising to preserve detail
@@ -152,9 +154,10 @@ This system ensures that videos with different grain characteristics are process
 
 Drapto not only detects and removes film grain when appropriate, but also intelligently applies film grain synthesis during encoding. This two-step approach is key to achieving significant bitrate savings:
 
-1. **Adaptive Film Grain**: The detected grain level is mapped to appropriate SVT-AV1 film grain synthesis parameters
-2. **Perceptual Quality**: Synthetic grain is added to maintain the visual character of the content while improving compression
-3. **Balanced Approach**: The system applies:
+1. **Adaptive Film Grain**: The detected grain level is mapped to appropriate SVT-AV1 film grain synthesis parameters using a sophisticated mapping function
+2. **Continuous Granularity**: The system supports continuous mapping between denoising strength and film grain synthesis values for more precise control
+3. **Perceptual Quality**: Synthetic grain is added to maintain the visual character of the content while improving compression
+4. **Balanced Approach**: The system applies:
    - No synthetic grain for very clean content
    - Light synthetic grain (level 4-8) for content with light natural grain
    - Medium synthetic grain (level 8-12) for content with moderate natural grain
