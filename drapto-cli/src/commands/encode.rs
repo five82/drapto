@@ -1,36 +1,84 @@
+// ============================================================================
 // drapto-cli/src/commands/encode.rs
+// ============================================================================
 //
-// Contains the logic for the 'encode' subcommand.
+// ENCODE COMMAND: Implementation of the 'encode' Subcommand
+//
+// This file contains the implementation of the 'encode' subcommand, which is
+// responsible for converting video files to AV1 format. It handles file discovery,
+// configuration setup, logging, and delegation to the drapto-core library.
+//
+// KEY COMPONENTS:
+// - discover_encode_files: Finds .mkv files to process
+// - run_encode: Main function that handles the encoding process
+//
+// WORKFLOW:
+// 1. Discover files to encode
+// 2. Set up output directories and logging
+// 3. Configure encoding parameters
+// 4. Process videos using drapto-core
+// 5. Report results and clean up
+//
+// AI-ASSISTANT-INFO: Encode command implementation, handles video conversion to AV1
 
+// ---- Internal crate imports ----
 use crate::cli::EncodeArgs;
 use crate::config;
-// Removed create_log_callback import
+
+// ---- External crate imports ----
 use drapto_core::{CoreConfig, CoreError, EncodeResult};
-use drapto_core::external::{FfmpegSpawner, FfprobeExecutor}; // Import traits
-use drapto_core::external::StdFsMetadataProvider; // Import the concrete provider
-use drapto_core::notifications::Notifier; // Import trait
-use std::fs; // Removed unused File import
+use drapto_core::external::{FfmpegSpawner, FfprobeExecutor};
+use drapto_core::external::StdFsMetadataProvider;
+use drapto_core::notifications::Notifier;
+use colored::*;
+
+// ---- Standard library imports ----
+use std::fs;
 use std::time::Instant;
 use std::path::PathBuf;
-use log::{info, warn, error}; // Import log macros
-use colored::*; // Import colored crate for formatting
 
-// --- New function to discover files ---
+// ---- Logging imports ----
+use log::{info, warn, error};
+
+/// Discovers .mkv files to encode based on the provided arguments.
+///
+/// This function handles both file and directory inputs:
+/// - If the input is a directory, it finds all .mkv files in that directory
+/// - If the input is a file, it verifies that it's a .mkv file
+///
+/// # Arguments
+/// * `args` - The encode command arguments containing the input path
+///
+/// # Returns
+/// * `Ok((files, input_dir))` - A tuple containing:
+///   - A vector of paths to the discovered .mkv files
+///   - The effective input directory (parent directory if input is a file)
+/// * `Err(...)` - An error if the input path is invalid or contains no valid files
+///
+/// # Errors
+/// - If the input path doesn't exist or is inaccessible
+/// - If the input is a file but not a .mkv file
+/// - If the input is neither a file nor a directory
 pub fn discover_encode_files(args: &EncodeArgs) -> Result<(Vec<PathBuf>, PathBuf), Box<dyn std::error::Error>> {
+    // Resolve the input path to its canonical form (absolute path with symlinks resolved)
     let input_path = args.input_path.canonicalize()
         .map_err(|e| format!("Invalid input path '{}': {}", args.input_path.display(), e))?;
 
+    // Get metadata to determine if the input is a file or directory
     let metadata = fs::metadata(&input_path)
         .map_err(|e| format!("Failed to access input path '{}': {}", input_path.display(), e))?;
 
     if metadata.is_dir() {
+        // Directory input: Find all .mkv files in the directory
         match drapto_core::find_processable_files(&input_path) {
              Ok(files) => Ok((files, input_path.clone())),
-             Err(CoreError::NoFilesFound) => Ok((Vec::new(), input_path.clone())), // Return empty vec if no files found
+             Err(CoreError::NoFilesFound) => Ok((Vec::new(), input_path.clone())), // Empty vector if no files found
              Err(e) => Err(e.into()), // Propagate other core errors
         }
     } else if metadata.is_file() {
+        // File input: Verify it's a .mkv file
         if input_path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("mkv")) {
+            // Get the parent directory to use as the effective input directory
             let parent_dir = input_path.parent().ok_or_else(|| {
                 CoreError::PathError(format!("Could not determine parent directory for file '{}'", input_path.display()))
             })?.to_path_buf();
@@ -39,16 +87,41 @@ pub fn discover_encode_files(args: &EncodeArgs) -> Result<(Vec<PathBuf>, PathBuf
             Err(format!("Input file '{}' is not a .mkv file.", input_path.display()).into())
         }
     } else {
+        // Neither file nor directory
         Err(format!("Input path '{}' is neither a file nor a directory.", input_path.display()).into())
     }
 }
 
-
-
-// --- Modified run_encode function ---
-pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor, N: Notifier>( // Add FfprobeExecutor generic
+/// Main function that handles the encoding process.
+///
+/// This function:
+/// 1. Sets up output directories and logging
+/// 2. Configures encoding parameters
+/// 3. Processes videos using drapto-core
+/// 4. Reports results and cleans up
+///
+/// The function is generic over the types that implement the required traits:
+/// - `S`: FfmpegSpawner - For spawning ffmpeg processes
+/// - `P`: FfprobeExecutor - For executing ffprobe commands
+/// - `N`: Notifier - For sending notifications
+///
+/// This design allows for dependency injection and easier testing.
+///
+/// # Arguments
+/// * `spawner` - Implementation of FfmpegSpawner for executing ffmpeg
+/// * `ffprobe_executor` - Implementation of FfprobeExecutor for executing ffprobe
+/// * `notifier` - Implementation of Notifier for sending notifications
+/// * `args` - The encode command arguments
+/// * `interactive` - Whether the application is running in interactive mode
+/// * `files_to_process` - Vector of paths to the files to encode
+/// * `effective_input_dir` - The effective input directory
+///
+/// # Returns
+/// * `Ok(())` - If the encoding process completes successfully
+/// * `Err(...)` - If an error occurs during the encoding process
+pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor, N: Notifier>(
     spawner: &S,
-    ffprobe_executor: &P, // Add ffprobe_executor parameter
+    ffprobe_executor: &P,
     notifier: &N,
     args: EncodeArgs,
     interactive: bool,
@@ -180,7 +253,7 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor, N: Notifier>( // Add Ffp
             return Err(e.into());
         }
     }
- 
+
     // --- Clean up temporary directory ---
     let grain_tmp_dir = actual_output_dir.join("grain_samples_tmp");
     if grain_tmp_dir.exists() { // Check if it exists before trying to remove
@@ -190,8 +263,8 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor, N: Notifier>( // Add Ffp
             Err(e) => warn!("{} Failed to remove temporary directory {}: {}", "Warning:".yellow().bold(), grain_tmp_dir.display(), e),
         }
     }
- 
- 
+
+
     // --- Print Summary ---
     if !successfully_encoded.is_empty() {
         info!("{}", "========================================".cyan().bold());

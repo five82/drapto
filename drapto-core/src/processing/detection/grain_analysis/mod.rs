@@ -1,42 +1,159 @@
+// ============================================================================
 // drapto-core/src/processing/detection/grain_analysis/mod.rs
+// ============================================================================
+//
+// GRAIN ANALYSIS: Film Grain Detection and Denoising Parameter Optimization
+//
+// This module handles the detection and analysis of film grain/noise in video
+// files to determine optimal denoising parameters. It uses a multi-phase approach
+// with sample extraction, encoding tests, and knee point analysis to find the
+// best balance between file size reduction and visual quality preservation.
+//
+// KEY COMPONENTS:
+// - Sample extraction and encoding with different denoising levels
+// - Knee point analysis to find optimal denoising parameters
+// - Adaptive refinement to improve accuracy
+// - Result aggregation and final parameter determination
+//
+// WORKFLOW:
+// 1. Extract multiple short samples from different parts of the video
+// 2. Encode each sample with various denoising levels
+// 3. Analyze file size reductions to find the knee point
+// 4. Perform adaptive refinement around the initial estimates
+// 5. Determine the final optimal denoising level
+//
+// AI-ASSISTANT-INFO: Film grain analysis for optimal denoising parameter selection
+
+// ---- External crate imports ----
 use colored::*;
+use rand::{thread_rng, Rng};
+use tempfile::Builder as TempFileBuilder;
+
+// ---- Standard library imports ----
 use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
-use std::path::PathBuf;
-use tempfile::Builder as TempFileBuilder;
-use rand::{thread_rng, Rng};
+use std::path::{Path, PathBuf};
 
+// ---- Internal crate imports ----
 use crate::config::CoreConfig;
 use crate::error::{CoreError, CoreResult};
-use crate::external::ffmpeg::{EncodeParams};
+use crate::external::ffmpeg::EncodeParams;
 use crate::external::ffmpeg_executor::extract_sample;
 use crate::external::{FileMetadataProvider, FfmpegSpawner};
 
-// Declare submodules
+// ============================================================================
+// SUBMODULES
+// ============================================================================
+
+/// Constants used throughout the grain analysis process
 mod constants;
+
+/// Knee point detection algorithm for finding optimal denoising level
 mod knee_point;
+
+/// Adaptive refinement for improving accuracy of grain analysis
 mod refinement;
+
+/// Type definitions for grain analysis results
 mod types;
+
+/// Utility functions for grain analysis
 mod utils;
 
-// Publicly export types and the main utility function
+// ============================================================================
+// PUBLIC EXPORTS
+// ============================================================================
+
+/// Result types for grain analysis
 pub use types::{GrainAnalysisResult, GrainLevel};
+
+/// Function to determine hqdn3d parameters from grain level
 pub use utils::determine_hqdn3d_params;
 
-// Import necessary items from submodules for use in analyze_grain
+// ============================================================================
+// INTERNAL IMPORTS
+// ============================================================================
+
+/// Constants for grain analysis
 use constants::*;
+
+/// Knee point analysis function
 use knee_point::analyze_sample_with_knee_point;
+
+/// Refinement functions
 use refinement::{calculate_refinement_range, generate_refinement_params};
+
+/// Utility function for calculating median grain level
 use utils::calculate_median_level;
 
 
-/// Analyzes the grain in a video file by encoding samples with different denoise levels
-/// and comparing the relative file size reductions using knee point analysis and adaptive refinement.
+// ============================================================================
+// MAIN ANALYSIS FUNCTION
+// ============================================================================
+
+/// Analyzes the grain/noise in a video file to determine optimal denoising parameters.
 ///
-/// Returns `Ok(Some(GrainAnalysisResult))` if analysis is successful,
-/// `Ok(None)` if analysis is skipped (e.g., short video),
-/// or `Err(CoreError)` if a critical error occurs.
+/// This function implements a multi-phase approach to grain analysis:
+/// 1. Extract multiple short samples from different parts of the video
+/// 2. Encode each sample with various denoising levels (Phase 1)
+/// 3. Analyze file size reductions to find the knee point (Phase 2)
+/// 4. Perform adaptive refinement around the initial estimates (Phase 3)
+/// 5. Determine the final optimal denoising level (Phase 4)
+///
+/// The analysis is based on the principle that there's a point of diminishing returns
+/// in denoising, where additional strength provides minimal file size reduction but
+/// may degrade visual quality. This function finds that optimal balance point.
+///
+/// # Arguments
+///
+/// * `file_path` - Path to the video file to analyze
+/// * `config` - Core configuration
+/// * `base_encode_params` - Base encoding parameters
+/// * `duration_secs` - Duration of the video in seconds
+/// * `spawner` - Implementation of FfmpegSpawner for executing ffmpeg
+/// * `metadata_provider` - Implementation of FileMetadataProvider for file operations
+///
+/// # Returns
+///
+/// * `Ok(Some(GrainAnalysisResult))` - If analysis is successful
+/// * `Ok(None)` - If analysis is skipped (e.g., video too short)
+/// * `Err(CoreError)` - If a critical error occurs during analysis
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use drapto_core::processing::detection::grain_analysis::analyze_grain;
+/// use drapto_core::external::{SidecarSpawner, StdFsMetadataProvider};
+/// use drapto_core::external::ffmpeg::EncodeParams;
+/// use drapto_core::CoreConfig;
+/// use std::path::Path;
+///
+/// let file_path = Path::new("/path/to/video.mkv");
+/// let config = CoreConfig { /* ... */ };
+/// let base_encode_params = EncodeParams { /* ... */ };
+/// let duration_secs = 3600.0; // 1 hour
+/// let spawner = SidecarSpawner;
+/// let metadata_provider = StdFsMetadataProvider;
+///
+/// match analyze_grain(
+///     file_path,
+///     &config,
+///     &base_encode_params,
+///     duration_secs,
+///     &spawner,
+///     &metadata_provider,
+/// ) {
+///     Ok(Some(result)) => {
+///         println!("Detected grain level: {:?}", result.detected_level);
+///     },
+///     Ok(None) => {
+///         println!("Grain analysis skipped");
+///     },
+///     Err(e) => {
+///         eprintln!("Error during grain analysis: {}", e);
+///     }
+/// }
+/// ```
 pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider>(
     file_path: &Path,
     config: &CoreConfig,

@@ -1,11 +1,28 @@
+# ============================================================================
+# Cargo.toml (Workspace Root)
+# ============================================================================
+#
+# DRAPTO: Video Processing and Optimization System
+#
+# This is the workspace configuration for the Drapto project, which includes
+# both the core library (drapto-core) and the command-line interface (drapto-cli).
+#
+# AI-ASSISTANT-INFO: Workspace configuration for Drapto video processing system
+
 [workspace]
+# Define the packages that are part of this workspace
 members = [
-    "drapto-core",
-    "drapto-cli",
+    "drapto-core",  # Core library with video processing functionality
+    "drapto-cli",   # Command-line interface
 ]
-default-members = ["drapto-cli"] # Tells 'cargo run' to run the drapto-cli package by default
+
+# Set the default package for 'cargo run' to be the CLI
+default-members = ["drapto-cli"]
+
+# Use the new dependency resolver
 resolver = "2"
 
+# ---- Release Build Configuration ----
 [profile.release]
-lto = true
-codegen-units = 1
+lto = true          # Enable Link Time Optimization for smaller, faster binaries
+codegen-units = 1   # Optimize for size at the expense of compile time

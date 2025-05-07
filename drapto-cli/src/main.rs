@@ -1,28 +1,66 @@
+// ============================================================================
 // drapto-cli/src/main.rs
+// ============================================================================
 //
-// Main entry point for the Drapto CLI application.
-// Parses arguments and dispatches to command handlers.
+// MAIN ENTRY POINT: Drapto CLI Application
+//
+// This file contains the main entry point for the Drapto CLI application, which
+// is a video encoding tool that uses ffmpeg to convert video files to AV1 format.
+// It handles command-line argument parsing, logging setup, daemonization, and
+// dispatching to the appropriate command handlers.
+//
+// KEY COMPONENTS:
+// - Command-line argument parsing (via clap)
+// - Logging configuration (via env_logger)
+// - Daemonization support (via daemonize)
+// - Error handling and reporting
+//
+// ARCHITECTURE:
+// The application follows a modular design where:
+// 1. Main parses arguments and sets up the environment
+// 2. Command handlers (like run_encode) implement specific functionality
+// 3. Core logic is delegated to the drapto-core library
+//
+// AI-ASSISTANT-INFO: Entry point for CLI application, handles arg parsing and command dispatch
 
+// ---- Internal crate imports ----
 use drapto_cli::{Cli, Commands, run_encode};
 use drapto_cli::commands::encode::discover_encode_files;
 use drapto_cli::logging::get_timestamp;
-use drapto_core::external::{SidecarSpawner, CrateFfprobeExecutor}; // Updated ffprobe executor import
-use drapto_core::notifications::NtfyNotifier; // Import is correct
+
+// ---- External crate imports ----
+use drapto_core::external::{SidecarSpawner, CrateFfprobeExecutor};
+use drapto_core::notifications::NtfyNotifier;
 use clap::Parser;
 use daemonize::Daemonize;
+use colored::*;
+
+// ---- Standard library imports ----
 use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process;
-use colored::*; // Use colored crate for terminal output formatting
 
+// ---- Logging imports ----
 use env_logger::Env;
-use log::Level; // Import Level for checking
+use log::Level;
 
+/// Main entry point for the Drapto CLI application.
+///
+/// This function:
+/// 1. Sets up logging with env_logger
+/// 2. Parses command-line arguments
+/// 3. Handles daemonization if requested
+/// 4. Dispatches to the appropriate command handler
+/// 5. Handles errors and returns appropriate exit codes
+///
+/// # Returns
+/// - `Ok(())` if the application completes successfully
+/// - `Err(...)` if an error occurs during execution
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize env_logger with custom format
+    // SECTION: Logging Setup
+    // Configure env_logger with custom format that only shows log level for non-INFO messages
     env_logger::Builder::from_env(Env::default().default_filter_or("drapto=info"))
         .format(|buf, record| {
-            // Only print level for non-INFO messages
             if record.level() != Level::Info {
                 writeln!(buf, "[{}] {}", record.level(), record.args())
             } else {
@@ -31,35 +69,43 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .init();
 
-    // Log if debug or trace logging is enabled
+    // Provide feedback about logging level to help with debugging
     if log::log_enabled!(log::Level::Trace) {
         log::info!("{}", "Trace level logging enabled.".yellow().bold());
     } else if log::log_enabled!(log::Level::Debug) {
         log::info!("{}", "Debug level logging enabled.".yellow().bold());
     }
 
+    // SECTION: Command-line Argument Parsing
+    // Parse command-line arguments using clap
     let cli_args = Cli::parse();
 
+    // Extract interactive mode flag (affects daemonization)
     let interactive_mode = cli_args.interactive;
 
 
-    // Match on the command provided - runs in original process (interactive) or daemon process
+    // SECTION: Command Dispatch
+    // Process the selected command - execution happens either in the original process
+    // (interactive mode) or in a daemon process (non-interactive mode)
     let result = match cli_args.command {
         Commands::Encode(args) => {
-            // --- Discover files ---
+            // STEP 1: Discover files to encode
+            // Find all .mkv files in the input directory or validate the input file
             let (discovered_files, effective_input_dir) = match discover_encode_files(&args) {
                  Ok(result) => result,
                  Err(e) => {
-                     // Use colored for error reporting
+                     // Format error message with color for better visibility
                      eprintln!("{} {}", "Error during file discovery:".red().bold(), e);
                      process::exit(1);
                  }
             };
 
-            // --- Calculate potential log path (needed before daemonization for printing) ---
-            // This logic mirrors the start of run_encode to predict the log path.
+            // STEP 2: Calculate log path (needed before daemonization for user feedback)
+            // This logic mirrors the start of run_encode to predict the log path
+            // and provide consistent information to the user
             let (actual_output_dir, _target_filename_override_os) =
                 if discovered_files.len() == 1 && args.output_dir.extension().is_some() {
+                    // Single file mode: output_dir is treated as a target filename
                     let target_file = args.output_dir.clone();
                     let parent_dir = target_file.parent()
                         .map(|p| p.to_path_buf())
@@ -68,18 +114,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let filename_os = target_file.file_name().map(|name| name.to_os_string());
                     (parent_dir, filename_os)
                 } else {
+                    // Directory mode: output_dir is treated as a directory
                     (args.output_dir.clone(), None)
                 };
+
+            // Determine log directory (either specified by user or default to output_dir/logs)
             let log_dir = args.log_dir.clone().unwrap_or_else(|| actual_output_dir.join("logs"));
-            // Note: We don't create the log dir here, run_encode will do it.
-            // We also don't need the full log_callback setup here, just the path.
+
+            // Generate log filename with timestamp for uniqueness
             let main_log_filename = format!("drapto_encode_run_{}.log", get_timestamp());
             let main_log_path = log_dir.join(&main_log_filename);
 
 
-            // --- Daemonize if needed ---
+            // STEP 3: Daemonize if running in non-interactive mode
             if !interactive_mode {
-                // Print discovered files *before* daemon message using colored
+                // Display discovered files to user before daemonizing
+                // This provides immediate feedback about what will be processed
                 if !discovered_files.is_empty() {
                     eprintln!("{}", "Will encode the following files:".cyan().bold());
                     for file in &discovered_files {
@@ -88,71 +138,86 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 } else {
                      eprintln!("{}", "No .mkv files found to encode in the specified input.".yellow());
                 }
-                 io::stderr().flush().unwrap_or_else(|e| {
-                     // Use colored for the warning within the closure
+                // Ensure output is flushed before daemonizing
+                io::stderr().flush().unwrap_or_else(|e| {
                      eprintln!("{} Failed to flush stderr before daemonizing: {}", "Warning:".yellow().bold(), e);
-                 });
+                });
 
-                // Print log file path *before* daemon message using colored
+                // Show log file path so user knows where to find output
                 eprintln!("{} {}", "Log file:".cyan(), main_log_path.display().to_string().green());
                 io::stderr().flush().unwrap_or_else(|e| {
-                    // Use colored for the warning within the closure
                     eprintln!("{} Failed to flush stderr before daemonizing: {}", "Warning:".yellow().bold(), e);
                 });
 
-
-                // Print daemon start message *before* attempting to daemonize using colored
+                // Inform user that process is going to background
                 eprintln!("{}", "Starting Drapto daemon in the background...".green().bold());
                 io::stderr().flush().unwrap_or_else(|e| {
-                     // Use colored for the warning within the closure
                      eprintln!("{} Failed to flush stderr before daemonizing: {}", "Warning:".yellow().bold(), e);
                 });
 
-                // We don't configure PID file here; it will be handled in run_encode after log setup.
+                // Create daemonize configuration
+                // Note: PID file is handled in run_encode after log setup
                 let daemonize = Daemonize::new()
-                    .working_directory(".");
+                    .working_directory("."); // Keep working directory
+
+                // Attempt to daemonize the process
                 match daemonize.start() {
                     Ok(_) => {
-                        // Parent process exits successfully after fork.
-                        // The daemon child process continues execution *after* the match statement.
+                        // Parent process exits here after successful fork
+                        // The daemon child process continues execution below
                     }
                     Err(e) => {
-                        // Failed to daemonize, report error to original stderr (using colored)
+                        // Failed to daemonize, report error and exit
                         eprintln!("{} {}", "Error starting daemon:".red().bold(), e);
                         process::exit(1);
                     }
                 }
-                // Child process continues here...
+                // Child process continues execution from this point
             }
 
-            // --- Run the encode command ---
-            // Instantiate real dependencies
-            let spawner = SidecarSpawner;
-            let ffprobe_executor = CrateFfprobeExecutor::new(); // Instantiate new crate-based ffprobe executor
-            let notifier = NtfyNotifier::new()?; // Handle potential error from notifier creation
+            // STEP 4: Run the encode command
+            // Initialize required dependencies with concrete implementations
+            let spawner = SidecarSpawner;                      // For spawning ffmpeg processes
+            let ffprobe_executor = CrateFfprobeExecutor::new(); // For executing ffprobe commands
+            let notifier = NtfyNotifier::new()?;               // For sending notifications
 
-            // This runs in the original process (interactive) or the daemon process
-            run_encode(&spawner, &ffprobe_executor, &notifier, args, interactive_mode, discovered_files, effective_input_dir) // Call is correct
-        } // Add other command arms here
+            // Execute the encode command with all necessary parameters
+            // This runs in either the original process (interactive mode)
+            // or the daemon child process (non-interactive mode)
+            run_encode(
+                &spawner,
+                &ffprobe_executor,
+                &notifier,
+                args,
+                interactive_mode,
+                discovered_files,
+                effective_input_dir
+            )
+        }
+        // Future commands would be added here as additional match arms
     };
 
+    // SECTION: Error Handling
     if let Err(e) = result {
-        // Error handling:
-        // In interactive mode, this prints to the original terminal's stderr.
-        // In daemon mode, stderr might be redirected (e.g., to /dev/null or a file by systemd/launchd).
-        // Critical errors *after* daemonization should be logged to the file by run_encode.
-        // This block primarily catches errors *before* logging is fully set up or if run_encode itself fails early.
+        // Handle errors differently based on mode:
+        // - Interactive mode: Display error to user's terminal
+        // - Daemon mode: Log error (primary mechanism) and attempt to write to stderr (backup)
+        //
+        // Note: This primarily catches errors that occur:
+        // 1. Before logging is fully set up
+        // 2. If run_encode itself fails early
+        // 3. In the parent process before daemonization
         if interactive_mode {
-            // Use colored for interactive error message
+            // Interactive mode: Display error directly to user
             eprintln!("{} {}", "Error:".red().bold(), e);
         } else {
-            // In daemon mode, just print to stderr; it might go nowhere, but worth trying.
-            // The primary error reporting mechanism is the log file handled within run_encode.
-            // Use colored for daemon error message
+            // Daemon mode: Attempt to log to stderr (may be redirected)
+            // The primary error reporting is via the log file in run_encode
             eprintln!("{} {}", "Daemon Error:".red().bold(), e);
         }
-        process::exit(1);
+        process::exit(1); // Exit with error code
     }
 
+    // Success
     Ok(())
 }

@@ -1,17 +1,40 @@
+# ============================================================================
+# drapto-cli/Cargo.toml
+# ============================================================================
+#
+# DRAPTO CLI: Command-Line Interface for Drapto Video Processing
+#
+# This package provides the command-line interface for the Drapto video
+# processing system, allowing users to interact with the core functionality
+# through a convenient CLI.
+#
+# AI-ASSISTANT-INFO: Command-line interface for Drapto video processing system
+
 [package]
 name = "drapto-cli"
 version = "0.1.0"
 edition = "2024"
+description = "Command-line interface for the Drapto video processing system"
+authors = ["Drapto Contributors"]
 
 [[bin]]
 name = "drapto"
 path = "src/main.rs"
 
 [dependencies]
-clap = { version = "4", features = ["derive", "cargo", "env"] } # Add "env" feature for env var support
-chrono = "0.4"
-daemonize = "0.5" # For daemonizing the process
-drapto-core = { path = "../drapto-core" } # Non-optional, no features here
-env_logger = "0.11" # Added for standard logging
-log = "0.4" # Added as env_logger uses the log facade
-colored = "2" # For adding color to log output via macros and direct prints
+# ---- Command Line Interface ----
+clap = { version = "4", features = ["derive", "cargo", "env"] }  # Command-line argument parsing
+
+# ---- Date and Time ----
+chrono = "0.4"                   # Date and time utilities
+
+# ---- Process Management ----
+daemonize = "0.5"                # Background process (daemon) support
+
+# ---- Drapto Core ----
+drapto-core = { path = "../drapto-core" }  # Core library for video processing
+
+# ---- Logging ----
+env_logger = "0.11"              # Environment-based logging configuration
+log = "0.4"                      # Logging facade
+colored = "2"                    # Terminal color output for logs
