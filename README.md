@@ -108,22 +108,23 @@ Drapto can send notifications about encoding progress (start, success, error) to
 * `-l, --log-dir <LOG_DIR>`: Directory for log files (defaults to OUTPUT_DIR/logs).
 * `--disable-autocrop`: Disable automatic black bar detection and cropping.
 * `--no-denoise`: Disable video denoising (hqdn3d filter).
-* `--preset <0-13>`: Override the SVT-AV1 encoder preset (lower is slower but better quality).
-* `--quality-sd <CRF>`: Override CRF quality for SD videos (<1920 width).
-* `--quality-hd <CRF>`: Override CRF quality for HD videos (≥1920 width).
-* `--quality-uhd <CRF>`: Override CRF quality for UHD videos (≥3840 width).
+* `--preset <0-13>`: Override the SVT-AV1 encoder preset (default: 6, lower is slower but better quality).
+* `--quality-sd <CRF>`: Override CRF quality for SD videos (default: 25, <1920 width).
+* `--quality-hd <CRF>`: Override CRF quality for HD videos (default: 27, ≥1920 width).
+* `--quality-uhd <CRF>`: Override CRF quality for UHD videos (default: 27, ≥3840 width).
 * `--ntfy <TOPIC_URL>`: ntfy.sh topic URL for sending notifications.
 
 ## Advanced Features
 
-### Intelligent Grain Detection
+### Intelligent Grain Detection and Denoising
 
-Drapto includes a sophisticated film grain analysis system that optimizes denoising parameters for each video:
+Drapto includes a sophisticated film grain analysis system that optimizes denoising parameters for each video using the high-quality hqdn3d filter:
 
 1. **Multi-Sample Analysis**: Extracts multiple short samples from different parts of the video to ensure consistent results.
 2. **Knee Point Detection**: Uses an advanced algorithm to find the optimal denoising strength that balances file size reduction and visual quality.
 3. **Adaptive Refinement**: Dynamically adjusts and tests additional denoise parameters based on initial results.
-4. **Categorical Classification**: Classifies videos into grain levels (VeryClean, VeryLight, Light, Visible, Heavy) and applies appropriate denoising parameters.
+4. **Categorical Classification**: Classifies videos into grain levels (VeryClean, VeryLight, Light, Visible, Heavy) and applies appropriate hqdn3d parameters.
+5. **High-Quality Denoising**: Uses FFmpeg's hqdn3d (high-quality 3D denoiser) filter with optimized parameters for each grain level.
 
 This system ensures that videos with different grain characteristics are processed optimally:
 - Videos with minimal grain receive minimal or no denoising to preserve detail
