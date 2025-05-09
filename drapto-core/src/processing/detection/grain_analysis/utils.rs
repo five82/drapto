@@ -25,7 +25,7 @@ use colored::*;
 /// Determines the appropriate hqdn3d filter parameter string based on the detected grain level.
 ///
 /// This function maps a GrainLevel to the corresponding ffmpeg hqdn3d filter parameters.
-/// For VeryClean videos, it returns None to indicate that no denoising should be applied.
+/// For Baseline videos, it returns None to indicate that no denoising should be applied.
 /// For all other levels, it returns a string with the appropriate parameters.
 ///
 /// The hqdn3d filter parameters are in the format "y:cb:cr:strength" where:
@@ -41,7 +41,7 @@ use colored::*;
 /// # Returns
 ///
 /// * `Some(String)` - The hqdn3d filter parameters as a string
-/// * `None` - If the level is VeryClean (no denoising needed)
+/// * `None` - If the level is Baseline (no denoising needed)
 ///
 /// # Examples
 ///
@@ -49,14 +49,14 @@ use colored::*;
 /// use drapto_core::processing::detection::grain_analysis::{GrainLevel, determine_hqdn3d_params};
 ///
 /// // No denoising for very clean videos
-/// assert_eq!(determine_hqdn3d_params(GrainLevel::VeryClean), None);
+/// assert_eq!(determine_hqdn3d_params(GrainLevel::Baseline), None);
 ///
 /// // Light denoising for light grain
 /// assert!(determine_hqdn3d_params(GrainLevel::Light).is_some());
 /// ```
 pub fn determine_hqdn3d_params(level: GrainLevel) -> Option<String> {
-    // For VeryClean videos, no denoising is needed
-    if level == GrainLevel::VeryClean {
+    // For Baseline videos, no denoising is needed
+    if level == GrainLevel::Baseline {
         return None;
     }
 
@@ -80,11 +80,11 @@ pub fn determine_hqdn3d_params(level: GrainLevel) -> Option<String> {
 ///
 /// This function converts a GrainLevel enum variant to a numeric value on a
 /// continuous scale from 0.0 to 4.0, where:
-/// - 0.0 = VeryClean (no denoising)
+/// - 0.0 = Baseline (no denoising)
 /// - 1.0 = VeryLight
 /// - 2.0 = Light
-/// - 3.0 = Visible
-/// - 4.0 = Medium
+/// - 3.0 = Moderate
+/// - 4.0 = Elevated
 ///
 /// This mapping is used for interpolation and calculations in the grain analysis process.
 ///
@@ -97,11 +97,11 @@ pub fn determine_hqdn3d_params(level: GrainLevel) -> Option<String> {
 /// * A float value representing the strength on a continuous scale
 pub fn grain_level_to_strength(level: GrainLevel) -> f32 {
     match level {
-        GrainLevel::VeryClean => 0.0,
+        GrainLevel::Baseline => 0.0,
         GrainLevel::VeryLight => 1.0,
         GrainLevel::Light => 2.0,
-        GrainLevel::Visible => 3.0,
-        GrainLevel::Medium => 4.0,
+        GrainLevel::Moderate => 3.0,
+        GrainLevel::Elevated => 4.0,
     }
 }
 
@@ -119,11 +119,11 @@ pub fn grain_level_to_strength(level: GrainLevel) -> f32 {
 /// * The closest GrainLevel enum variant
 pub fn strength_to_grain_level(strength: f32) -> GrainLevel {
     match strength {
-        s if s <= 0.5 => GrainLevel::VeryClean,
+        s if s <= 0.5 => GrainLevel::Baseline,
         s if s <= 1.5 => GrainLevel::VeryLight,
         s if s <= 2.5 => GrainLevel::Light,
-        s if s <= 3.5 => GrainLevel::Visible,
-        _ => GrainLevel::Medium,
+        s if s <= 3.5 => GrainLevel::Moderate,
+        _ => GrainLevel::Elevated,
     }
 }
 
@@ -158,7 +158,7 @@ pub fn strength_to_grain_level(strength: f32) -> GrainLevel {
 /// // // No denoising
 /// // assert_eq!(generate_hqdn3d_params(0.0), "".to_string());
 /// //
-/// // // Halfway between VeryClean (0.0) and VeryLight (1.0)
+/// // // Halfway between Baseline (0.0) and VeryLight (1.0)
 /// // assert_eq!(generate_hqdn3d_params(0.5), "hqdn3d=0.25:0.15:1.5:1.5");
 /// //
 /// // // Exactly at Light (2.0)
@@ -166,7 +166,7 @@ pub fn strength_to_grain_level(strength: f32) -> GrainLevel {
 /// ```
 pub fn generate_hqdn3d_params(strength_value: f32) -> String {
     // Map strength_value (0.0-4.0 continuous scale) to appropriate hqdn3d parameters
-    // 0.0 = VeryClean, 1.0 = VeryLight, 2.0 = Light, 3.0 = Visible, 4.0 = Medium
+    // 0.0 = Baseline, 1.0 = VeryLight, 2.0 = Light, 3.0 = Moderate, 4.0 = Elevated
 
     // No denoising for strength <= 0
     if strength_value <= 0.0 {
@@ -176,11 +176,11 @@ pub fn generate_hqdn3d_params(strength_value: f32) -> String {
     // Define the anchor points for interpolation
     // Format: (strength, luma_spatial, chroma_spatial, temp_luma, temp_chroma)
     let anchor_points = [
-        (0.0, 0.0, 0.0, 0.0, 0.0),       // VeryClean (no denoising)
+        (0.0, 0.0, 0.0, 0.0, 0.0),       // Baseline (no denoising)
         (1.0, 0.5, 0.3, 3.0, 3.0),       // VeryLight
         (2.0, 1.0, 0.7, 4.0, 4.0),       // Light
-        (3.0, 1.5, 1.0, 6.0, 6.0),       // Visible
-        (4.0, 2.0, 1.3, 8.0, 8.0),       // Medium
+        (3.0, 1.5, 1.0, 6.0, 6.0),       // Moderate
+        (4.0, 2.0, 1.3, 8.0, 8.0),       // Elevated
     ];
 
     // Find the two anchor points to interpolate between
@@ -223,7 +223,7 @@ pub fn generate_hqdn3d_params(strength_value: f32) -> String {
 ///
 /// This function sorts the input array and returns the median element.
 /// For even-length arrays, it returns the lower median (at index (len-1)/2).
-/// If the input array is empty, it returns GrainLevel::VeryClean as a safe default.
+/// If the input array is empty, it returns GrainLevel::Baseline as a safe default.
 ///
 /// This function is used to determine the consensus grain level across multiple
 /// video samples, providing a robust estimate that is less affected by outliers
@@ -236,7 +236,7 @@ pub fn generate_hqdn3d_params(strength_value: f32) -> String {
 /// # Returns
 ///
 /// * The median GrainLevel value
-/// * GrainLevel::VeryClean if the input slice is empty
+/// * GrainLevel::Baseline if the input slice is empty
 ///
 /// # Note
 ///
@@ -245,8 +245,8 @@ pub(super) fn calculate_median_level(levels: &mut [GrainLevel]) -> GrainLevel {
     // Handle empty input case
     if levels.is_empty() {
         // This case should ideally not be reached if called after successful analysis phases
-        log::warn!("calculate_median_level called with empty list. Defaulting to VeryClean.");
-        return GrainLevel::VeryClean;
+        log::warn!("calculate_median_level called with empty list. Defaulting to Baseline.");
+        return GrainLevel::Baseline;
     }
 
     // Sort the levels to find the median

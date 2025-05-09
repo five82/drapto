@@ -27,7 +27,7 @@ use super::types::GrainLevel;
 /// - strength: Temporal chroma strength
 ///
 /// The array is ordered by increasing strength for iteration in analysis logic.
-/// Note: GrainLevel::VeryClean is not included as it corresponds to no denoising.
+/// Note: GrainLevel::Baseline is not included as it corresponds to no denoising.
 pub(super) const HQDN3D_PARAMS: [(GrainLevel, &str); 4] = [
     // Very light denoising for barely noticeable grain
     (GrainLevel::VeryLight, "hqdn3d=0.5:0.3:3:3"),
@@ -36,10 +36,10 @@ pub(super) const HQDN3D_PARAMS: [(GrainLevel, &str); 4] = [
     (GrainLevel::Light, "hqdn3d=1:0.7:4:4"),
 
     // Spatially-focused denoising for noticeable grain (higher spatial values)
-    (GrainLevel::Visible, "hqdn3d=1.5:1.0:6:6"),
+    (GrainLevel::Moderate, "hqdn3d=1.5:1.0:6:6"),
 
     // Temporally-focused denoising for medium grain (higher temporal values)
-    (GrainLevel::Medium, "hqdn3d=2:1.3:8:8"),
+    (GrainLevel::Elevated, "hqdn3d=2:1.3:8:8"),
 ];
 
 // ============================================================================

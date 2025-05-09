@@ -105,13 +105,13 @@ fn calculate_std_dev(levels: &[GrainLevel]) -> Option<f64> {
 /// # Returns
 ///
 /// * A tuple containing (lower_bound, upper_bound) as GrainLevel values
-/// * Returns (VeryClean, VeryLight) if the input is empty
+/// * Returns (Baseline, VeryLight) if the input is empty
 pub(super) fn calculate_refinement_range(initial_estimates: &[GrainLevel]) -> (GrainLevel, GrainLevel) {
     // Handle empty input case
     if initial_estimates.is_empty() {
         // This shouldn't happen if the function is called correctly
         log::warn!("calculate_refinement_range called with empty estimates. Defaulting range.");
-        return (GrainLevel::VeryClean, GrainLevel::VeryLight);
+        return (GrainLevel::Baseline, GrainLevel::VeryLight);
     }
 
     // Step 1: Find the median of the initial estimates
@@ -150,20 +150,20 @@ pub(super) fn calculate_refinement_range(initial_estimates: &[GrainLevel]) -> (G
 
     // Step 4: Convert the median GrainLevel to a numeric index
     let median_index: usize = match median {
-        GrainLevel::VeryClean => 0,
+        GrainLevel::Baseline => 0,
         GrainLevel::VeryLight => 1,
         GrainLevel::Light => 2,
-        GrainLevel::Visible => 3,
-        GrainLevel::Medium => 4,
+        GrainLevel::Moderate => 3,
+        GrainLevel::Elevated => 4,
     };
 
     // Define all grain levels in order for easy indexing
     const ALL_LEVELS: [GrainLevel; 5] = [
-        GrainLevel::VeryClean,
+        GrainLevel::Baseline,
         GrainLevel::VeryLight,
         GrainLevel::Light,
-        GrainLevel::Visible,
-        GrainLevel::Medium,
+        GrainLevel::Moderate,
+        GrainLevel::Elevated,
     ];
     const MAX_INDEX: usize = ALL_LEVELS.len() - 1;
 

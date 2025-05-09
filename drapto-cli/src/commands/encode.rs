@@ -197,11 +197,23 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor, N: Notifier>(
     // Parse grain level strings to GrainLevel enum values
     let grain_max_level = args.grain_max_level.as_deref().map(|level_str| {
         match level_str.to_lowercase().as_str() {
-            "veryclean" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::VeryClean),
+            "baseline" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::Baseline),
+            "veryclean" => {
+                warn!("{} 'veryclean' is deprecated, use 'baseline' instead. Converting to Baseline.", "Warning:".yellow().bold());
+                Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::Baseline)
+            },
             "verylight" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::VeryLight),
             "light" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::Light),
-            "visible" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::Visible),
-            "medium" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::Medium),
+            "moderate" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::Moderate),
+            "visible" => {
+                warn!("{} 'visible' is deprecated, use 'moderate' instead. Converting to Moderate.", "Warning:".yellow().bold());
+                Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::Moderate)
+            },
+            "elevated" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::Elevated),
+            "medium" => {
+                warn!("{} 'medium' is deprecated, use 'elevated' instead. Converting to Elevated.", "Warning:".yellow().bold());
+                Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::Elevated)
+            },
             _ => {
                 warn!("{} Invalid grain_max_level '{}'. Using default.", "Warning:".yellow().bold(), level_str);
                 Err(())
@@ -211,11 +223,23 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor, N: Notifier>(
 
     let grain_fallback_level = args.grain_fallback_level.as_deref().map(|level_str| {
         match level_str.to_lowercase().as_str() {
-            "veryclean" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::VeryClean),
+            "baseline" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::Baseline),
+            "veryclean" => {
+                warn!("{} 'veryclean' is deprecated, use 'baseline' instead. Converting to Baseline.", "Warning:".yellow().bold());
+                Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::Baseline)
+            },
             "verylight" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::VeryLight),
             "light" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::Light),
-            "visible" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::Visible),
-            "medium" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::Medium),
+            "moderate" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::Moderate),
+            "visible" => {
+                warn!("{} 'visible' is deprecated, use 'moderate' instead. Converting to Moderate.", "Warning:".yellow().bold());
+                Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::Moderate)
+            },
+            "elevated" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::Elevated),
+            "medium" => {
+                warn!("{} 'medium' is deprecated, use 'elevated' instead. Converting to Elevated.", "Warning:".yellow().bold());
+                Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::Elevated)
+            },
             _ => {
                 warn!("{} Invalid grain_fallback_level '{}'. Using default.", "Warning:".yellow().bold(), level_str);
                 Err(())

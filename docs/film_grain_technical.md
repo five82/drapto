@@ -60,7 +60,7 @@ Phase 1: Testing initial grain levels...
       -> Medium     size: 12.40 MB
 ```
 
-Note: The output logs have been updated to consistently use "VeryClean" instead of "None" when referring to videos with no grain or when no denoising is applied.
+Note: The output logs have been updated to consistently use "Baseline" instead of "None" when referring to videos with no grain or when no denoising is applied.
 
 ### Grain Level Classification
 
@@ -68,17 +68,17 @@ The system classifies grain into five distinct levels:
 
 | Grain Level | Description | Denoising Approach |
 |-------------|-------------|-------------------|
-| VeryClean   | Very little to no grain | No denoising applied |
+| Baseline    | Very little to no grain | No denoising applied |
 | VeryLight   | Barely noticeable grain | Very light denoising |
 | Light       | Light grain | Light denoising |
-| Visible     | Noticeable grain with spatial patterns | Spatially-focused denoising |
-| Medium      | Medium grain with temporal fluctuations | Temporally-focused denoising |
+| Moderate    | Noticeable grain with spatial patterns | Spatially-focused denoising |
+| Elevated    | Medium grain with temporal fluctuations | Temporally-focused denoising |
 
 ### Knee Point Detection Algorithm
 
 The knee point detection algorithm is a key innovation that finds the optimal balance between compression efficiency and visual quality preservation:
 
-1. Each sample is encoded with different denoising levels (always including "VeryClean" as baseline)
+1. Each sample is encoded with different denoising levels (always including "Baseline" as reference)
 2. File sizes are compared to calculate size reduction percentages
 3. An efficiency metric is calculated for each level: `(size_reduction / sqrt(grain_level_value))`
 4. The knee point is identified as the level where additional denoising provides diminishing returns
@@ -131,11 +131,11 @@ Each grain level maps to specific hqdn3d parameters:
 
 | Grain Level | HQDN3D Parameters | Description |
 |-------------|-------------------|-------------|
-| VeryClean   | No parameters | No denoising applied |
+| Baseline    | No parameters | No denoising applied |
 | VeryLight   | `0.5:0.3:3:3` | Very light denoising with focus on temporal noise |
 | Light       | `1:0.7:4:4` | Light denoising with balanced spatial/temporal approach |
-| Visible     | `1.5:1.0:6:6` | Moderate denoising with higher temporal values |
-| Medium      | `2:1.3:8:8` | Stronger denoising with emphasis on temporal filtering |
+| Moderate    | `1.5:1.0:6:6` | Moderate denoising with higher temporal values |
+| Elevated    | `2:1.3:8:8` | Stronger denoising with emphasis on temporal filtering |
 
 These parameters are deliberately conservative to avoid excessive blurring while still improving compression efficiency. The goal is bitrate reduction while maintaining video quality, not creating an artificially smooth appearance.
 
@@ -153,11 +153,11 @@ pub fn generate_hqdn3d_params(strength_value: f32) -> String {
 
     // Define anchor points for interpolation (strength, y, cb, cr, strength)
     let anchor_points = [
-        (0.0, 0.0, 0.0, 0.0, 0.0),       // VeryClean (no denoising)
+        (0.0, 0.0, 0.0, 0.0, 0.0),       // Baseline (no denoising)
         (1.0, 0.5, 0.3, 3.0, 3.0),       // VeryLight
         (2.0, 1.0, 0.7, 4.0, 4.0),       // Light
-        (3.0, 1.5, 1.0, 6.0, 6.0),       // Visible
-        (4.0, 2.0, 1.3, 8.0, 8.0),       // Medium
+        (3.0, 1.5, 1.0, 6.0, 6.0),       // Moderate
+        (4.0, 2.0, 1.3, 8.0, 8.0),       // Elevated
     ];
 
     // Find anchor points to interpolate between and calculate parameters
@@ -190,11 +190,11 @@ Denoising levels are mapped to corresponding SVT-AV1 film grain synthesis values
 
 | Grain Level | HQDN3D Parameters | Film Grain Value |
 |-------------|-------------------|------------------|
-| VeryClean   | No parameters | 0 (no synthetic grain) |
+| Baseline    | No parameters | 0 (no synthetic grain) |
 | VeryLight   | `0.5:0.3:3:3` | 4 (very light synthetic grain) |
 | Light       | `1:0.7:4:4` | 8 (light synthetic grain) |
-| Visible     | `1.5:1.0:6:6` | 12 (moderate synthetic grain) |
-| Medium      | `2:1.3:8:8` | 16 (medium synthetic grain) |
+| Moderate    | `1.5:1.0:6:6` | 12 (moderate synthetic grain) |
+| Elevated    | `2:1.3:8:8` | 16 (medium synthetic grain) |
 
 For interpolated parameter sets, the system uses a more sophisticated mapping function that provides continuous granularity:
 
@@ -211,8 +211,8 @@ fn map_hqdn3d_to_film_grain(hqdn3d_params: &str) -> u8 {
     for (params, film_grain) in &[
         ("hqdn3d=0.5:0.3:3:3", 4),  // VeryLight
         ("hqdn3d=1:0.7:4:4", 8),    // Light
-        ("hqdn3d=1.5:1.0:6:6", 12), // Visible
-        ("hqdn3d=2:1.3:8:8", 16),   // Medium
+        ("hqdn3d=1.5:1.0:6:6", 12), // Moderate
+        ("hqdn3d=2:1.3:8:8", 16),   // Elevated
     ] {
         if hqdn3d_params == *params {
             return *film_grain;
@@ -267,8 +267,8 @@ Drapto provides several configuration options to fine-tune the grain analysis an
 | `enable_denoise` | Enable/disable the entire grain management system | `true` |
 | `film_grain_sample_duration` | Duration in seconds for each sample | `10` |
 | `film_grain_knee_threshold` | Threshold for knee point detection (0.0-1.0) | `0.8` |
-| `film_grain_fallback_level` | Fallback level if analysis fails | `VeryClean` |
-| `film_grain_max_level` | Maximum allowed grain level | `Medium` |
+| `film_grain_fallback_level` | Fallback level if analysis fails | `Baseline` |
+| `film_grain_max_level` | Maximum allowed grain level | `Elevated` |
 | `film_grain_refinement_points_count` | Number of refinement points to test (0 = auto) | `5` |
 
 These options can be set via command-line arguments or configuration files.

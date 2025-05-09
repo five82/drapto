@@ -213,13 +213,13 @@ pub struct EncodeArgs {
 
     /// Maximum allowed grain level for any analysis result.
     /// This prevents excessive denoising even if analysis suggests it.
-    /// Options: VeryClean, VeryLight, Light, Visible, Medium
+    /// Options: Baseline, VeryLight, Light, Moderate, Elevated
     #[arg(long, value_name = "LEVEL")]
     pub grain_max_level: Option<String>,
 
     /// Fallback grain level if analysis fails.
     /// This is used when grain analysis cannot be performed or fails.
-    /// Options: VeryClean, VeryLight, Light, Visible, Medium
+    /// Options: Baseline, VeryLight, Light, Moderate, Elevated
     #[arg(long, value_name = "LEVEL")]
     pub grain_fallback_level: Option<String>,
 

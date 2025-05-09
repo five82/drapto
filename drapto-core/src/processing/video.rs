@@ -114,8 +114,8 @@ use std::time::Instant;
 ///     ntfy_topic: Some("https://ntfy.sh/my-topic".to_string()),
 ///     film_grain_sample_duration: Some(5),
 ///     film_grain_knee_threshold: Some(0.8),
-///     film_grain_fallback_level: Some(GrainLevel::VeryClean),
-///     film_grain_max_level: Some(GrainLevel::Visible),
+///     film_grain_fallback_level: Some(GrainLevel::Baseline),
+///     film_grain_max_level: Some(GrainLevel::Moderate),
 ///     film_grain_refinement_points_count: Some(5),
 /// };
 ///
@@ -438,10 +438,10 @@ pub fn process_videos<S: FfmpegSpawner, P: FfprobeExecutor, N: Notifier, M: File
                  info!(
                      "Grain analysis result: {:?}, applying filter: {}",
                      result.detected_level,
-                     params_opt.as_deref().unwrap_or("No parameters") // No parameters means no denoising needed (VeryClean)
+                     params_opt.as_deref().unwrap_or("No parameters") // No parameters means no denoising needed (Baseline)
                  );
 
-                 // Return the parameters (or None for VeryClean videos)
+                 // Return the parameters (or None for Baseline videos)
                  params_opt
              }
              // Case 2: Grain analysis was skipped or produced no result

@@ -146,8 +146,8 @@ use utils::calculate_median_level;
 ///     // Grain analysis configuration
 ///     film_grain_sample_duration: Some(5),
 ///     film_grain_knee_threshold: Some(0.8),
-///     film_grain_fallback_level: Some(GrainLevel::VeryClean),
-///     film_grain_max_level: Some(GrainLevel::Visible),
+///     film_grain_fallback_level: Some(GrainLevel::Baseline),
+///     film_grain_max_level: Some(GrainLevel::Moderate),
 ///     film_grain_refinement_points_count: Some(5),
 ///
 ///     // Other fields...
@@ -231,8 +231,8 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider>(
     // Use configuration values if provided, otherwise use defaults
     let sample_duration = config.film_grain_sample_duration.unwrap_or(DEFAULT_SAMPLE_DURATION_SECS);
     let knee_threshold = config.film_grain_knee_threshold.unwrap_or(KNEE_THRESHOLD);
-    let fallback_level = config.film_grain_fallback_level.unwrap_or(GrainLevel::VeryClean);
-    let max_level = config.film_grain_max_level.unwrap_or(GrainLevel::Medium);
+    let fallback_level = config.film_grain_fallback_level.unwrap_or(GrainLevel::Baseline);
+    let max_level = config.film_grain_max_level.unwrap_or(GrainLevel::Elevated);
 
     // --- Determine Sample Count ---
     let base_samples = (duration_secs / SECS_PER_SAMPLE_TARGET).ceil() as usize;
@@ -253,18 +253,18 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider>(
     }
 
     // --- Ensure we have a baseline test level (None) ---
-    // Always include VeryClean (no denoising) as the baseline for comparison
+    // Always include Baseline (no denoising) as the reference for comparison
     // This is critical for grain analysis to work correctly
-    log::debug!("Ensuring baseline 'VeryClean' (no denoising) is included for grain analysis");
+    log::debug!("Ensuring 'Baseline' (no denoising) is included for grain analysis");
 
-    // Create the initial test levels with VeryClean (no denoising) as the first test
+    // Create the initial test levels with Baseline (no denoising) as the first test
     let initial_test_levels: Vec<(Option<GrainLevel>, Option<&str>)> = std::iter::once((None, None))
         .chain(HQDN3D_PARAMS.iter().map(|(level, params)| (Some(*level), Some(*params))))
         .collect();
 
     // Log the test levels for debugging
     log::debug!("Initial test levels: {:?}", initial_test_levels.iter()
-        .map(|(level, _)| level.map_or("VeryClean".to_string(), |l| format!("{:?}", l)))
+        .map(|(level, _)| level.map_or("Baseline".to_string(), |l| format!("{:?}", l)))
         .collect::<Vec<_>>());
 
     // --- Calculate Randomized Sample Positions ---
@@ -361,7 +361,7 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider>(
         let mut results_for_this_sample = HashMap::new();
 
         for (level_opt, hqdn3d_override) in &initial_test_levels {
-            let level_desc = level_opt.map_or("VeryClean".to_string(), |l| format!("{:?}", l));
+            let level_desc = level_opt.map_or("Baseline".to_string(), |l| format!("{:?}", l));
             log::debug!("    Encoding sample {} with initial level: {}...", i + 1, level_desc);
 
             let output_filename = format!(

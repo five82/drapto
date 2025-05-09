@@ -58,8 +58,8 @@
 //!     ntfy_topic: Some("https://ntfy.sh/my-topic".to_string()),
 //!     film_grain_sample_duration: Some(5),
 //!     film_grain_knee_threshold: Some(0.8),
-//!     film_grain_fallback_level: Some(GrainLevel::VeryClean),
-//!     film_grain_max_level: Some(GrainLevel::Visible),
+//!     film_grain_fallback_level: Some(GrainLevel::Baseline),
+//!     film_grain_max_level: Some(GrainLevel::Moderate),
 //!     film_grain_refinement_points_count: Some(5),
 //! };
 //!
