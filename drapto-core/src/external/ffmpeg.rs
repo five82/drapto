@@ -528,7 +528,7 @@ fn map_hqdn3d_to_film_grain(hqdn3d_params: &str) -> u8 {
 
     // Round to nearest integer and cap at 16
     let film_grain_value = adjusted_value.round() as u8;
-    return film_grain_value.min(16);
+    film_grain_value.min(16)
 }
 
 /// Helper function to extract the first parameter (luma_spatial) from hqdn3d string

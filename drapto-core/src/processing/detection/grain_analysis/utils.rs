@@ -187,8 +187,8 @@ pub fn generate_hqdn3d_params(strength_value: f32) -> String {
     let mut lower_idx = 0;
     let mut upper_idx = 1;
 
-    for i in 1..anchor_points.len() {
-        if strength_value <= anchor_points[i].0 {
+    for (i, point) in anchor_points.iter().enumerate().skip(1) {
+        if strength_value <= point.0 {
             lower_idx = i - 1;
             upper_idx = i;
             break;

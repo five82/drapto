@@ -136,7 +136,7 @@ pub(super) fn calculate_refinement_range(initial_estimates: &[GrainLevel]) -> (G
             let scaled_delta = (std_dev * ADAPTIVE_FACTOR).round() as usize;
             scaled_delta.max(MIN_DELTA) // Ensure at least MIN_DELTA
         },
-        Some(std_dev) if std_dev == 0.0 => {
+        Some(0.0) => {
             // All estimates identical - use minimal delta
             log::debug!("Standard deviation is zero (all estimates identical). Using minimal delta.");
             MIN_DELTA
@@ -238,7 +238,7 @@ pub(super) fn generate_refinement_params(
 
     // Generate 3-5 intermediate points based on range size
     // Larger ranges get more test points for better coverage
-    let num_points = ((upper_f - lower_f) * 2.0).round().max(3.0).min(5.0) as usize;
+    let num_points = ((upper_f - lower_f) * 2.0).round().clamp(3.0, 5.0) as usize;
     let step = (upper_f - lower_f) / (num_points as f32 + 1.0);
 
     log::debug!(

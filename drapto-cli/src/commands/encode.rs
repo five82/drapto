@@ -224,15 +224,15 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor, N: Notifier>(
     }).and_then(|res| res.ok());
 
     // Validate knee threshold is within valid range (0.1 to 1.0)
-    let grain_knee_threshold = args.grain_knee_threshold.map(|threshold| {
-        if threshold < 0.1 || threshold > 1.0 {
+    let grain_knee_threshold = args.grain_knee_threshold.and_then(|threshold| {
+        if !(0.1..=1.0).contains(&threshold) {
             warn!("{} Knee threshold {} is outside valid range (0.1-1.0). Using default.",
                 "Warning:".yellow().bold(), threshold);
             None
         } else {
             Some(threshold)
         }
-    }).flatten();
+    });
 
     let config = CoreConfig {
         input_dir: effective_input_dir,

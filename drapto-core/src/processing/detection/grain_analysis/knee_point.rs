@@ -215,9 +215,7 @@ pub(super) fn analyze_sample_with_knee_point(
         level
     } else {
         // No suitable candidates found
-        log_callback(&format!(
-            "No suitable candidates found in knee point analysis. Using VeryClean."
-        ));
+        log_callback("No suitable candidates found in knee point analysis. Using VeryClean.");
 
         // Default to no denoising
         GrainLevel::VeryClean
