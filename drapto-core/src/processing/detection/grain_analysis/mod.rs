@@ -417,7 +417,14 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider>(
         );
         initial_estimates.push(estimate);
     }
-    log::info!("  Initial estimates per sample: {:?}", initial_estimates.iter().map(|l| format!("{:?}", l).green()).collect::<Vec<_>>());
+    let formatted_initial_estimates = initial_estimates.iter()
+        .map(|l| format!("{:?}", l).green())
+        .collect::<Vec<_>>()
+        .iter()
+        .map(|colored_str| colored_str.to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
+    log::info!("  Initial estimates per sample: [{}]", formatted_initial_estimates);
 
 
     // --- Phase 3: Adaptive Refinement ---
@@ -440,15 +447,41 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider>(
         if refined_params.is_empty() {
             log::info!("  No refinement parameters generated within the range. Skipping Phase 3 testing.");
         } else {
+            // Extract the strength values from the parameters for better labeling
+            let param_descriptions: Vec<String> = refined_params.iter().enumerate().map(|(idx, (_l, p))| {
+                // Extract the first parameter value as a strength indicator
+                let strength_indicator = p.split('=').nth(1)
+                    .and_then(|s| s.split(':').next())
+                    .unwrap_or("?");
+
+                // Format with index and strength for clear progression
+                format!("Interpolated-{} (strength={}): '{}'",
+                    idx + 1,
+                    strength_indicator,
+                    p)
+            }).collect();
+
             log::info!(
                 "  Testing {} refined parameter sets: {:?}",
                 refined_params.len(),
-                refined_params.iter().map(|(l, p)| format!("{:?}: '{}'", l.unwrap_or(GrainLevel::VeryClean), p)).collect::<Vec<_>>()
+                param_descriptions
             );
             log::debug!("  (Note: Parameter validation, like ensuring non-negative values, occurs during generation/parsing)");
 
-            for (level_opt, params_str) in &refined_params {
-                let level_desc = level_opt.map_or("Unknown".to_string(), |l| format!("{:?}", l));
+            for (idx, (level_opt, params_str)) in refined_params.iter().enumerate() {
+                // For interpolated levels (None), create a descriptive name with index and strength
+                let level_desc = level_opt.map_or_else(
+                    || {
+                        // Extract the first parameter value as a strength indicator
+                        let strength_indicator = params_str.split('=').nth(1)
+                            .and_then(|s| s.split(':').next())
+                            .unwrap_or("?");
+
+                        // Create a unique, descriptive name with position in the refinement range
+                        format!("Interpolated-{} (strength={})", idx + 1, strength_indicator)
+                    },
+                    |l| format!("{:?}", l)
+                );
                 log::info!("    Testing refined level {}...", level_desc.green());
 
                 // Iterate through the *indices* and use stored raw paths
@@ -456,11 +489,24 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider>(
                     let raw_sample_path = &raw_sample_paths[i]; // Get stored raw path
                     let mut sample_params = base_encode_params.clone();
                     sample_params.input_path = raw_sample_path.clone(); // Use raw sample as input
-                    let output_filename = format!(
-                        "sample_{}_refined_{}.mkv",
-                        i + 1,
-                        level_desc.replace([':', '='], "_")
-                    );
+                    // Create a more descriptive filename for the refined sample
+                    let output_filename = if level_opt.is_none() {
+                        // For interpolated levels, include the index and strength indicator
+                        let param_short = params_str.split('=').nth(1).unwrap_or("params")
+                            .split(':').next().unwrap_or("params");
+                        format!(
+                            "sample_{}_refined_interpolated_{}_strength_{}.mkv",
+                            i + 1,
+                            idx + 1, // Add the index to make each filename unique
+                            param_short.replace([':', '=', ','], "_")
+                        )
+                    } else {
+                        format!(
+                            "sample_{}_refined_{}.mkv",
+                            i + 1,
+                            level_desc.replace([':', '='], "_")
+                        )
+                    };
                     sample_params.output_path = temp_dir_path.join(output_filename);
                     sample_params.hqdn3d_params = Some(params_str.clone());
                     // sample_params.start_time = Some(start_time); // REMOVED - Not needed/valid
@@ -479,7 +525,7 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider>(
                     match metadata_provider.get_size(&sample_params.output_path) {
                         Ok(size) => {
                             let size_mb = size as f64 / (1024.0 * 1024.0);
-                            log::info!("      -> Refined level {:<10} (Sample {}) size: {}", level_desc.green(), i + 1, format!("{:.2} MB", size_mb).yellow());
+                            log::info!("      -> {:<35} (Sample {}) size: {}", level_desc.green(), i + 1, format!("{:.2} MB", size_mb).yellow());
                             phase3_results[i].insert(*level_opt, size);
                         },
                         Err(e) => {
@@ -507,7 +553,14 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider>(
         final_estimates.push(final_estimate);
     }
 
-    log::info!("  Final estimates per sample (after refinement): {:?}", final_estimates.iter().map(|l| format!("{:?}", l).green()).collect::<Vec<_>>());
+    let formatted_estimates = final_estimates.iter()
+        .map(|l| format!("{:?}", l).green())
+        .collect::<Vec<_>>()
+        .iter()
+        .map(|colored_str| colored_str.to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
+    log::info!("  Final estimates per sample (after refinement): [{}]", formatted_estimates);
 
     // --- Determine Final Result ---
     if final_estimates.is_empty() {
