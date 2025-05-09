@@ -228,20 +228,6 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner, C: ProgressCallback>(
 
     debug!("Encode parameters: {:?}", params);
 
-    // Extract hardware acceleration options first
-    let mut hwaccel_args = Vec::new();
-    let hw_accel_available = is_hardware_acceleration_available();
-
-    if params.use_hw_decode && hw_accel_available && !is_grain_analysis_sample {
-        hwaccel_args.push("-hwaccel");
-        hwaccel_args.push("videotoolbox");
-
-        progress_callback.on_progress(ProgressEvent::LogMessage {
-            message: "Using VideoToolbox hardware decoding".to_string(),
-            level: LogLevel::Info,
-        });
-    }
-
     // Build other arguments using the helper function, passing flags down
     let ffmpeg_args = build_ffmpeg_args(params, None, disable_audio, is_grain_analysis_sample)?;
 
@@ -250,8 +236,14 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner, C: ProgressCallback>(
     let mut cmd = FfmpegCommand::new();
 
     // Add hardware acceleration options BEFORE the input
-    if !hwaccel_args.is_empty() {
-        cmd.args(hwaccel_args.iter());
+    let hw_accel_added = add_hardware_acceleration_to_command(&mut cmd, params.use_hw_decode, is_grain_analysis_sample);
+
+    // Log hardware acceleration status if it was added
+    if hw_accel_added {
+        progress_callback.on_progress(ProgressEvent::LogMessage {
+            message: "Using VideoToolbox hardware decoding".to_string(),
+            level: LogLevel::Info,
+        });
     }
 
     cmd.input(params.input_path.to_string_lossy());
@@ -569,6 +561,35 @@ fn calculate_eta(duration_secs: Option<f64>, current_secs: f64, speed: f32) -> f
 // Helper function to check if hardware acceleration is available
 fn is_hardware_acceleration_available() -> bool {
     std::env::consts::OS == "macos"
+}
+
+/// Adds hardware acceleration options to an FFmpeg command.
+///
+/// IMPORTANT: This must be called BEFORE adding the input file to the command.
+///
+/// # Arguments
+///
+/// * `cmd` - The FFmpeg command to add hardware acceleration options to
+/// * `use_hw_decode` - Whether to use hardware acceleration
+/// * `is_grain_analysis_sample` - Whether this is a grain analysis sample (hardware acceleration is disabled for grain analysis)
+///
+/// # Returns
+///
+/// * `bool` - Whether hardware acceleration was added
+pub fn add_hardware_acceleration_to_command(
+    cmd: &mut FfmpegCommand,
+    use_hw_decode: bool,
+    is_grain_analysis_sample: bool,
+) -> bool {
+    let hw_accel_available = is_hardware_acceleration_available();
+
+    if use_hw_decode && hw_accel_available && !is_grain_analysis_sample {
+        cmd.arg("-hwaccel");
+        cmd.arg("videotoolbox");
+        return true;
+    }
+
+    false
 }
 
 // Helper function to log hardware acceleration status

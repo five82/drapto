@@ -2,27 +2,22 @@
 // drapto-core/src/notifications/abstraction.rs
 // ============================================================================
 //
-// NOTIFICATION ABSTRACTION: Notification System Abstractions
+// NOTIFICATION TYPES: Notification System Type Definitions
 //
-// This module provides abstractions for the notification system, allowing
-// for different notification backends to be used without changing the core
-// library. It defines a set of notification types and a trait for sending
-// notifications.
+// This module defines the notification types used throughout the application.
+// It provides a simple enum for different notification scenarios without
+// unnecessary abstraction layers.
 //
 // KEY COMPONENTS:
 // - NotificationType: Enum of different notification types
-// - NotificationSender: Trait for sending notifications
-// - NullNotificationSender: No-op implementation for when notifications aren't needed
 //
 // DESIGN PHILOSOPHY:
-// This module follows a similar pattern to the progress reporting system,
-// providing a clean abstraction for sending notifications from the core library
-// to different backends.
+// This module follows a minimalist approach, focusing on the data structures
+// needed for notifications without adding unnecessary abstraction layers.
 //
-// AI-ASSISTANT-INFO: Notification system abstractions
+// AI-ASSISTANT-INFO: Notification system type definitions
 
 // ---- Standard library imports ----
-
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -156,49 +151,5 @@ impl NotificationType {
             NotificationType::EncodeError { .. } => 5,
             NotificationType::Custom { priority, .. } => *priority,
         }
-    }
-}
-
-// ============================================================================
-// NOTIFICATION SENDER
-// ============================================================================
-
-/// Trait for sending notifications.
-///
-/// This trait defines the interface for sending notifications from the
-/// encoding process. Implementations can send notifications to different
-/// backends, such as ntfy.sh, email, or a custom notification system.
-pub trait NotificationSender: Send + Sync {
-    /// Sends a notification.
-    ///
-    /// # Arguments
-    ///
-    /// * `notification` - The notification to send
-    ///
-    /// # Returns
-    ///
-    /// * `Ok(())` - If the notification was sent successfully
-    /// * `Err(String)` - If an error occurred while sending the notification
-    fn send_notification(&self, notification: NotificationType) -> Result<(), String>;
-}
-
-impl dyn NotificationSender {
-    /// Helper method to send a notification through a trait object.
-    pub fn send(&self, notification: NotificationType) -> Result<(), String> {
-        self.send_notification(notification)
-    }
-}
-
-/// No-op implementation of NotificationSender that does nothing.
-///
-/// This implementation is useful when notifications are not needed,
-/// such as in tests or when running in a non-interactive environment.
-#[derive(Debug, Clone, Default)]
-pub struct NullNotificationSender;
-
-impl NotificationSender for NullNotificationSender {
-    fn send_notification(&self, _notification: NotificationType) -> Result<(), String> {
-        // Do nothing
-        Ok(())
     }
 }

@@ -9,15 +9,13 @@
 // to users about encoding start, completion, and errors.
 //
 // KEY COMPONENTS:
-// - NotificationSender: Trait defining the notification interface
-// - NullNotificationSender: No-op implementation for when notifications aren't needed
+// - NotificationType: Enum defining different types of notifications
 // - NtfyNotificationSender: Implementation using the ntfy.sh service
 //
 // DESIGN PHILOSOPHY:
-// The notification system follows the dependency injection pattern through the
-// NotificationSender trait, allowing for different notification backends or mock
-// implementations for testing. The default implementation uses the ntfy crate to
-// send notifications to the ntfy.sh service.
+// The notification system follows a minimalist approach, focusing on the core
+// functionality of sending notifications without unnecessary abstraction layers.
+// The implementation uses the ntfy crate to send notifications to the ntfy.sh service.
 //
 // AI-ASSISTANT-INFO: Notification system for sending encoding status updates
 
@@ -26,5 +24,5 @@ mod abstraction;
 mod ntfy;
 
 // ---- Re-exports ----
-pub use abstraction::{NotificationSender, NotificationType, NullNotificationSender};
+pub use abstraction::NotificationType;
 pub use ntfy::NtfyNotificationSender;

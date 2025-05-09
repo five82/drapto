@@ -77,7 +77,7 @@
 //! let results = process_videos(
 //!     &spawner,
 //!     &ffprobe_executor,
-//!     &notification_sender,
+//!     Some(&notification_sender),
 //!     &metadata_provider,
 //!     &config,
 //!     &files,
@@ -156,8 +156,8 @@ pub use external::{
 pub use progress::{ProgressCallback, ProgressEvent, LogLevel, NullProgressCallback};
 
 // ----- Notification Services -----
-/// Notification system abstractions and implementations
-pub use notifications::{NotificationSender, NotificationType, NullNotificationSender, NtfyNotificationSender};
+/// Notification system types and implementations
+pub use notifications::{NotificationType, NtfyNotificationSender};
 
 // ============================================================================
 // PUBLIC STRUCTS

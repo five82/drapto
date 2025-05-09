@@ -4,6 +4,7 @@ use crate::error::{CoreError, CoreResult};
 use ffmpeg_sidecar::command::FfmpegCommand;
 use ffmpeg_sidecar::event::FfmpegEvent;
 use ffmpeg_sidecar::child::FfmpegChild as SidecarChild;
+use crate::external::ffmpeg::add_hardware_acceleration_to_command;
 use std::process::ExitStatus;
 use std::path::{Path, PathBuf};
 use rand::{thread_rng, Rng};
@@ -104,6 +105,15 @@ pub fn extract_sample<S: FfmpegSpawner>( // Added generic parameter S
 
    // Use mutable command object and sequential calls
     let mut cmd = FfmpegCommand::new();
+
+    // Add hardware acceleration options BEFORE the input
+    // Note: We use hardware acceleration for sample extraction but not for grain analysis
+    let hw_accel_added = add_hardware_acceleration_to_command(&mut cmd, true, false);
+
+    if hw_accel_added {
+        log::debug!("Using VideoToolbox hardware decoding for sample extraction");
+    }
+
     cmd.input(input_path.to_string_lossy().as_ref());
     cmd.arg("-ss");
     cmd.arg(start_time_secs.to_string());

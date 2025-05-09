@@ -31,7 +31,7 @@ use crate::progress::CliProgressCallback;
 use drapto_core::{CoreError, EncodeResult};
 use drapto_core::external::{FfmpegSpawner, FfprobeExecutor};
 use drapto_core::external::StdFsMetadataProvider;
-use drapto_core::notifications::NotificationSender;
+use drapto_core::notifications::NtfyNotificationSender;
 use colored::*;
 
 // ---- Standard library imports ----
@@ -122,10 +122,10 @@ pub fn discover_encode_files(args: &EncodeArgs) -> Result<(Vec<PathBuf>, PathBuf
 /// # Returns
 /// * `Ok(())` - If the encoding process completes successfully
 /// * `Err(...)` - If an error occurs during the encoding process
-pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor, N: NotificationSender + ?Sized>(
+pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor>(
     spawner: &S,
     ffprobe_executor: &P,
-    notification_sender: &N,
+    notification_sender: Option<&NtfyNotificationSender>,
     args: EncodeArgs,
     interactive: bool,
     files_to_process: Vec<PathBuf>,

@@ -110,13 +110,13 @@ pub(super) fn analyze_sample_with_knee_point(
 
     // Process each grain level and calculate its efficiency
     // Filter to only include valid grain levels with non-zero file sizes
-    // Note: We include all levels (including None and VeryClean) in the iteration
+    // Note: We include all levels (including None and Baseline) in the iteration
     // but will filter appropriately below
     for (&level, &size) in results.iter().filter(|&(_, &v)| v > 0) {
         // Convert grain level to numeric value
         let grain_numeric = to_numeric(level);
 
-        // Skip VeryClean level as it represents no denoising
+        // Skip Baseline level as it represents no denoising
         // These are our reference points, not candidates for selection
         if grain_numeric <= 0.0 {
             continue;

@@ -4,22 +4,22 @@
 //
 // NTFY IMPLEMENTATION: Notification Implementation Using ntfy.sh
 //
-// This module provides an implementation of the NotificationSender trait
-// using the ntfy.sh service. It allows for sending notifications to ntfy.sh
-// topics, which can be received on various devices.
+// This module provides functionality for sending notifications using the ntfy.sh
+// service. It allows for sending notifications to ntfy.sh topics, which can be
+// received on various devices.
 //
 // KEY COMPONENTS:
-// - NtfyNotificationSender: Implementation of NotificationSender using ntfy.sh
+// - NtfyNotificationSender: Sends notifications to ntfy.sh
 //
 // DESIGN PHILOSOPHY:
-// This module follows the adapter pattern, adapting the ntfy.sh service to
-// the NotificationSender interface.
+// This module follows a minimalist approach, providing a direct implementation
+// for sending notifications to ntfy.sh without unnecessary abstraction layers.
 //
-// AI-ASSISTANT-INFO: ntfy.sh implementation of the notification system
+// AI-ASSISTANT-INFO: ntfy.sh implementation for sending notifications
 
 // ---- Internal crate imports ----
 use crate::error::{CoreError, CoreResult};
-use crate::notifications::abstraction::{NotificationSender, NotificationType};
+use crate::notifications::abstraction::NotificationType;
 
 // ---- External crate imports ----
 use ntfy::DispatcherBuilder;
@@ -34,16 +34,16 @@ use log;
 // NTFY NOTIFICATION SENDER
 // ============================================================================
 
-/// Implementation of `NotificationSender` using the ntfy.sh service.
+/// Sends notifications to the ntfy.sh service.
 ///
-/// This struct provides a concrete implementation of the NotificationSender trait
-/// that sends notifications to the ntfy.sh service. It uses the blocking version
-/// of the ntfy crate to send notifications synchronously.
+/// This struct provides functionality for sending notifications to the ntfy.sh
+/// service. It uses the blocking version of the ntfy crate to send notifications
+/// synchronously.
 ///
 /// # Examples
 ///
 /// ```rust,no_run
-/// use drapto_core::notifications::{NotificationSender, NotificationType, NtfyNotificationSender};
+/// use drapto_core::notifications::{NotificationType, NtfyNotificationSender};
 /// use std::path::PathBuf;
 /// use std::time::Duration;
 ///
@@ -60,7 +60,7 @@ use log;
 ///     hostname: "my-computer".to_string(),
 /// };
 ///
-/// sender.send_notification(notification).unwrap();
+/// sender.send_notification(&notification).unwrap();
 /// ```
 #[derive(Debug, Clone)]
 pub struct NtfyNotificationSender {
@@ -111,10 +111,18 @@ impl NtfyNotificationSender {
             topic_url: topic_url.to_string(),
         })
     }
-}
 
-impl NotificationSender for NtfyNotificationSender {
-    fn send_notification(&self, notification: NotificationType) -> Result<(), String> {
+    /// Sends a notification to the ntfy.sh service.
+    ///
+    /// # Arguments
+    ///
+    /// * `notification` - The notification to send
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` - If the notification was sent successfully
+    /// * `Err(String)` - If an error occurred while sending the notification
+    pub fn send_notification(&self, notification: &NotificationType) -> Result<(), String> {
         // Parse the URL (already validated in new())
         let parsed_url = Url::parse(&self.topic_url)
             .map_err(|e| format!("Invalid ntfy topic URL '{}': {}", self.topic_url, e))?;
@@ -130,7 +138,7 @@ impl NotificationSender for NtfyNotificationSender {
             Err(e) => return Err(format!("Failed to build ntfy dispatcher for {}: {}", base_url, e)),
         };
 
-        // STEP 4: Build the notification payload
+        // Build the notification payload
         // Start with the required fields (topic and message)
         let mut payload_builder = Payload::new(topic)
             .message(&notification.get_message())
@@ -148,7 +156,7 @@ impl NotificationSender for NtfyNotificationSender {
 
         // Add tags
         let mut tags = vec!["drapto".to_string()];
-        match &notification {
+        match notification {
             NotificationType::EncodeStart { .. } => tags.push("start".to_string()),
             NotificationType::EncodeComplete { .. } => tags.push("complete".to_string()),
             NotificationType::EncodeError { .. } => tags.push("error".to_string()),
@@ -159,7 +167,7 @@ impl NotificationSender for NtfyNotificationSender {
         // Finalize the payload
         let final_payload = payload_builder;
 
-        // STEP 5: Send the notification
+        // Send the notification
         match dispatcher.send(&final_payload) {
             Ok(_) => Ok(()),
             Err(e) => Err(format!("Failed to send ntfy notification to {}: {}", self.topic_url, e)),
@@ -203,5 +211,4 @@ fn map_priority(p: u8) -> Option<NtfyPriority> {
         _ => None,                        // Invalid priority value
     }
 }
-
 

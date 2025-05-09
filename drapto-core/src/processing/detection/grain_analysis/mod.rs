@@ -12,13 +12,13 @@
 // KEY COMPONENTS:
 // - Configurable grain analysis parameters (sample duration, knee threshold, etc.)
 // - Sample extraction and encoding with different denoising levels
-// - Knee point analysis using "VeryClean" as the baseline
+// - Knee point analysis using "Baseline" as the reference point
 // - Adaptive refinement with direct parameter testing
 // - Result aggregation with maximum level constraints
 //
 // WORKFLOW:
 // 1. Extract multiple short samples from different parts of the video
-// 2. Encode each sample with various denoising levels (always including "VeryClean")
+// 2. Encode each sample with various denoising levels (always including "Baseline")
 // 3. Analyze file size reductions to find the knee point
 // 4. Perform adaptive refinement around the initial estimates
 // 5. Determine the final optimal denoising level with constraints

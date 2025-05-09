@@ -183,31 +183,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Execute the encode command with all necessary parameters based on notification type
             // This runs in either the original process (interactive mode)
             // or the daemon child process (non-interactive mode)
-            if let Some(ref topic) = args.ntfy {
-                // Use NtfyNotificationSender if a topic is provided
-                let notification_sender = NtfyNotificationSender::new(topic)?;
-                run_encode(
-                    &spawner,
-                    &ffprobe_executor,
-                    &notification_sender,
-                    args,
-                    interactive_mode,
-                    discovered_files,
-                    effective_input_dir
-                )
+            // Create notification sender if a topic is provided
+            let notification_sender = if let Some(ref topic) = args.ntfy {
+                match NtfyNotificationSender::new(topic) {
+                    Ok(sender) => Some(sender),
+                    Err(e) => {
+                        eprintln!("{} Failed to create notification sender: {}", "Warning:".yellow().bold(), e);
+                        None
+                    }
+                }
             } else {
-                // Use NullNotificationSender if no topic is provided
-                let notification_sender = drapto_core::notifications::NullNotificationSender;
-                run_encode(
-                    &spawner,
-                    &ffprobe_executor,
-                    &notification_sender,
-                    args,
-                    interactive_mode,
-                    discovered_files,
-                    effective_input_dir
-                )
-            }
+                None
+            };
+
+            // Run the encode command with the notification sender (or None)
+            run_encode(
+                &spawner,
+                &ffprobe_executor,
+                notification_sender.as_ref(),
+                args,
+                interactive_mode,
+                discovered_files,
+                effective_input_dir
+            )
         }
         // Future commands would be added here as additional match arms
     };

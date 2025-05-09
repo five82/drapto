@@ -36,7 +36,7 @@ use crate::error::{CoreError, CoreResult};
 use crate::external::check_dependency;
 use crate::external::{FileMetadataProvider, FfmpegSpawner, FfprobeExecutor};
 use crate::external::ffmpeg::{run_ffmpeg_encode, EncodeParams};
-use crate::notifications::{NotificationSender, NotificationType};
+use crate::notifications::{NotificationType, NtfyNotificationSender};
 use crate::processing::audio;
 use crate::processing::detection::{self, grain_analysis};
 use crate::progress::{ProgressCallback, ProgressEvent, LogLevel};
@@ -92,7 +92,7 @@ use std::time::Instant;
 /// ```rust,no_run
 /// use drapto_core::{CoreConfig, process_videos, EncodeResult};
 /// use drapto_core::external::{SidecarSpawner, CrateFfprobeExecutor, StdFsMetadataProvider};
-/// use drapto_core::notifications::{NtfyNotificationSender, NullNotificationSender};
+/// use drapto_core::notifications::NtfyNotificationSender;
 /// use drapto_core::progress::NullProgressCallback;
 /// use drapto_core::processing::detection::GrainLevel;
 /// use std::path::PathBuf;
@@ -130,7 +130,7 @@ use std::time::Instant;
 /// match process_videos(
 ///     &spawner,
 ///     &ffprobe_executor,
-///     &notification_sender,
+///     Some(&notification_sender),
 ///     &metadata_provider,
 ///     &config,
 ///     &files,
@@ -151,13 +151,12 @@ use std::time::Instant;
 pub fn process_videos<
     S: FfmpegSpawner,
     P: FfprobeExecutor,
-    N: NotificationSender + ?Sized,
     M: FileMetadataProvider,
     C: ProgressCallback
 >(
     spawner: &S,
     ffprobe_executor: &P,
-    notification_sender: &N,
+    notification_sender: Option<&NtfyNotificationSender>,
     metadata_provider: &M,
     config: &CoreConfig,
     files_to_process: &[PathBuf],
@@ -273,9 +272,9 @@ pub fn process_videos<
             );
             error!("{}", error_msg);
 
-            // Send a notification if ntfy topic is configured
-            if let Some(_topic) = &config.ntfy_topic {
-                // Create a notification using the new abstraction
+            // Send a notification if notification_sender is provided
+            if let Some(sender) = notification_sender {
+                // Create a notification
                 let notification = NotificationType::Custom {
                     title: "Drapto Encode Skipped".to_string(),
                     message: format!(
@@ -287,8 +286,8 @@ pub fn process_videos<
                     priority: 3,
                 };
 
-                // Send using the NotificationSender trait
-                if let Err(e) = notification_sender.send_notification(notification) {
+                // Send the notification
+                if let Err(e) = sender.send_notification(&notification) {
                     warn!("Failed to send notification for {}: {}", filename, e);
                 }
             }
@@ -306,16 +305,16 @@ pub fn process_videos<
         // ========================================================================
 
         // Send a notification that encoding is starting for this file
-        if let Some(_topic) = &config.ntfy_topic {
-            // Create a notification using the new abstraction
+        if let Some(sender) = notification_sender {
+            // Create a notification
             let notification = NotificationType::EncodeStart {
                 input_path: input_path.to_path_buf(),
                 output_path: output_path.clone(),
                 hostname: hostname.clone(),
             };
 
-            // Send using the NotificationSender trait
-            if let Err(e) = notification_sender.send_notification(notification) {
+            // Send the notification
+            if let Err(e) = sender.send_notification(&notification) {
                 warn!("Failed to send start notification for {}: {}", filename, e);
             }
         }
@@ -331,17 +330,17 @@ pub fn process_videos<
                 // Log the error and skip this file
                 error!("Failed to get video properties for {}: {}. Skipping file.", filename, e);
 
-                // Send an error notification if ntfy topic is configured
-                if let Some(_topic) = &config.ntfy_topic {
-                    // Create a notification using the new abstraction
+                // Send an error notification if notification_sender is provided
+                if let Some(sender) = notification_sender {
+                    // Create a notification
                     let notification = NotificationType::EncodeError {
                         input_path: input_path.to_path_buf(),
                         message: "Failed to get video properties".to_string(),
                         hostname: hostname.clone(),
                     };
 
-                    // Send using the NotificationSender trait
-                    if let Err(e) = notification_sender.send_notification(notification) {
+                    // Send the notification
+                    if let Err(e) = sender.send_notification(&notification) {
                         warn!("Failed to send error notification for {}: {}", filename, e);
                     }
                 }
@@ -507,17 +506,17 @@ pub fn process_videos<
                  // Log the error and skip this file
                  error!("Grain analysis failed critically: {}. Skipping file.", e);
 
-                 // Send an error notification if ntfy topic is configured
-                 if let Some(_topic) = &config.ntfy_topic {
-                     // Create a notification using the new abstraction
+                 // Send an error notification if notification_sender is provided
+                 if let Some(sender) = notification_sender {
+                     // Create a notification
                      let notification = NotificationType::EncodeError {
                          input_path: input_path.to_path_buf(),
                          message: "Grain analysis failed".to_string(),
                          hostname: hostname.clone(),
                      };
 
-                     // Send using the NotificationSender trait
-                     if let Err(e) = notification_sender.send_notification(notification) {
+                     // Send the notification
+                     if let Err(e) = sender.send_notification(&notification) {
                          warn!("Failed to send error notification for {}: {}", filename, e);
                      }
                  }
@@ -586,9 +585,9 @@ pub fn process_videos<
                 // STEP 3.14: SEND SUCCESS NOTIFICATION
                 // ========================================================================
 
-                // Send a success notification if ntfy topic is configured
-                if let Some(_topic) = &config.ntfy_topic {
-                    // Create a notification using the new abstraction
+                // Send a success notification if notification_sender is provided
+                if let Some(sender) = notification_sender {
+                    // Create a notification
                     let notification = NotificationType::EncodeComplete {
                         input_path: input_path.to_path_buf(),
                         output_path: output_path.clone(),
@@ -598,8 +597,8 @@ pub fn process_videos<
                         hostname: hostname.clone(),
                     };
 
-                    // Send using the NotificationSender trait
-                    if let Err(e) = notification_sender.send_notification(notification) {
+                    // Send the notification
+                    if let Err(e) = sender.send_notification(&notification) {
                         warn!("Failed to send success notification for {}: {}", filename, e);
                     }
                 }
@@ -613,9 +612,9 @@ pub fn process_videos<
                     filename, path
                 );
 
-                // Send a notification if ntfy topic is configured
-                if let Some(_topic) = &config.ntfy_topic {
-                    // Create a notification using the new abstraction
+                // Send a notification if notification_sender is provided
+                if let Some(sender) = notification_sender {
+                    // Create a notification
                     let notification = NotificationType::Custom {
                         title: "Drapto Encode Skipped".to_string(),
                         message: format!(
@@ -626,8 +625,8 @@ pub fn process_videos<
                         priority: 3,
                     };
 
-                    // Send using the NotificationSender trait
-                    if let Err(e) = notification_sender.send_notification(notification) {
+                    // Send the notification
+                    if let Err(e) = sender.send_notification(&notification) {
                         warn!("Failed to send skip notification for {}: {}", filename, e);
                     }
                 }
@@ -642,17 +641,17 @@ pub fn process_videos<
                     filename, e
                 );
 
-                // Send an error notification if ntfy topic is configured
-                if let Some(_topic) = &config.ntfy_topic {
-                    // Create a notification using the new abstraction
+                // Send an error notification if notification_sender is provided
+                if let Some(sender) = notification_sender {
+                    // Create a notification
                     let notification = NotificationType::EncodeError {
                         input_path: input_path.to_path_buf(),
                         message: format!("ffmpeg failed: {}", e),
                         hostname: hostname.clone(),
                     };
 
-                    // Send using the NotificationSender trait
-                    if let Err(err) = notification_sender.send_notification(notification) {
+                    // Send the notification
+                    if let Err(err) = sender.send_notification(&notification) {
                         warn!("Failed to send error notification for {}: {}", filename, err);
                     }
                 }
