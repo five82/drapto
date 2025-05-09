@@ -45,7 +45,7 @@ use crate::EncodeResult;
 use colored::Colorize;
 
 // ---- External crate imports ----
-use log::{info, warn, error, debug};
+use log::{info, warn, error};
 
 // ---- Standard library imports ----
 use std::path::PathBuf;
@@ -174,8 +174,6 @@ pub fn process_videos<
         message: "Checking for required external commands...".to_string(),
         level: LogLevel::Info,
     });
-    // Log to file only, not to console (to avoid duplication)
-    debug!("Checking for required external commands...");
 
     // Check for ffmpeg
     let _ffmpeg_cmd_parts = check_dependency("ffmpeg")?;
@@ -183,7 +181,6 @@ pub fn process_videos<
         message: "ffmpeg found.".to_string(),
         level: LogLevel::Info,
     });
-    debug!("ffmpeg found.");
 
     // Check for ffprobe
     let _ffprobe_cmd_parts = check_dependency("ffprobe")?;
@@ -191,13 +188,11 @@ pub fn process_videos<
         message: "ffprobe found.".to_string(),
         level: LogLevel::Info,
     });
-    debug!("ffprobe found.");
 
     progress_callback.on_progress(ProgressEvent::LogMessage {
         message: "External dependency check passed.".to_string(),
         level: LogLevel::Info,
     });
-    debug!("External dependency check passed.");
 
     // ========================================================================
     // STEP 2: GET SYSTEM INFORMATION
@@ -213,7 +208,6 @@ pub fn process_videos<
         message: format!("Running on host: {}", hostname),
         level: LogLevel::Info,
     });
-    debug!("Running on host: {}", hostname);
 
     // Report hardware acceleration capabilities
     // We don't use is_macos() directly anymore - this should be handled by the CLI
@@ -467,7 +461,6 @@ pub fn process_videos<
                 message: "Grain detection enabled, analyzing video using relative sample comparison...".to_string(),
                 level: LogLevel::Info,
             });
-            debug!("Grain detection enabled, analyzing video using relative sample comparison...");
             grain_analysis::analyze_grain(
                 input_path,
                 config,

@@ -16,9 +16,6 @@
 //
 // AI-ASSISTANT-INFO: Audio stream analysis and bitrate calculation
 
-// ---- External crate imports ----
-use log::{info, warn, debug};
-
 // ---- Internal crate imports ----
 use crate::error::CoreResult;
 use crate::external::FfprobeExecutor;
@@ -122,7 +119,6 @@ pub fn log_audio_info<P: FfprobeExecutor, C: ProgressCallback>(
                 message: format!("Detected audio channels: {:?}", channels),
                 level: LogLevel::Info,
             });
-            debug!("Detected audio channels: {:?}", channels);
             channels
         }
         Err(e) => {
@@ -132,10 +128,6 @@ pub fn log_audio_info<P: FfprobeExecutor, C: ProgressCallback>(
                 message: format!("Error getting audio channels for {}: {}. Cannot log bitrate info.", filename, e),
                 level: LogLevel::Warning,
             });
-            warn!(
-                "Error getting audio channels for {}: {}. Cannot log bitrate info.",
-                filename, e
-            );
             return Ok(());
         }
     };
@@ -146,7 +138,6 @@ pub fn log_audio_info<P: FfprobeExecutor, C: ProgressCallback>(
             message: "No audio channels detected; cannot calculate specific bitrates.".to_string(),
             level: LogLevel::Info,
         });
-        info!("No audio channels detected; cannot calculate specific bitrates.");
         return Ok(());
     }
 
@@ -165,10 +156,9 @@ pub fn log_audio_info<P: FfprobeExecutor, C: ProgressCallback>(
         );
 
         progress_callback.on_progress(ProgressEvent::LogMessage {
-            message: log_msg.clone(),
+            message: log_msg,
             level: LogLevel::Info,
         });
-        debug!("{}", log_msg);
 
         // Add to summary for combined log message
         audio_bitrate_log_parts.push(format!(
@@ -181,10 +171,9 @@ pub fn log_audio_info<P: FfprobeExecutor, C: ProgressCallback>(
     // Log summary of all streams
     let summary = format!("Bitrate Breakdown: {}", audio_bitrate_log_parts.join(", "));
     progress_callback.on_progress(ProgressEvent::LogMessage {
-        message: summary.clone(),
+        message: summary,
         level: LogLevel::Info,
     });
-    debug!("  {}", summary);
 
     Ok(())
 }

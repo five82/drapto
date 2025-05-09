@@ -279,10 +279,7 @@ pub(super) fn generate_refinement_params(
         refined_params.push((None, hqdn3d_params));
     }
 
-    log::info!(
-        "Generated {} refined parameter sets for testing",
-        refined_params.len()
-    );
+
 
     refined_params
 }

@@ -217,28 +217,26 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider, C: ProgressCallb
         message: format!("Starting grain analysis (knee point + refinement) for: {}", filename_cow),
         level: LogLevel::Info,
     });
-    log::debug!("Starting grain analysis (knee point + refinement) for: {}", filename_cow);
 
     progress_callback.on_progress(ProgressEvent::LogMessage {
         message: format!("Duration: {:.2}s", duration_secs),
         level: LogLevel::Info,
     });
-    log::debug!("Duration: {:.2}s", duration_secs);
 
     // Inform user about hardware acceleration status for the main encode
-    let hw_accel_available = std::env::consts::OS == "macos";
-    if base_encode_params.use_hw_decode && hw_accel_available {
-        progress_callback.on_progress(ProgressEvent::LogMessage {
-            message: "VideoToolbox hardware decoding will be used for main encode (disabled during analysis)".to_string(),
-            level: LogLevel::Info,
-        });
-        log::debug!("VideoToolbox hardware decoding will be used for main encode (disabled during analysis)");
-    } else if base_encode_params.use_hw_decode {
-        progress_callback.on_progress(ProgressEvent::LogMessage {
-            message: "Software decoding will be used (hardware acceleration not available on this platform)".to_string(),
-            level: LogLevel::Info,
-        });
-        log::debug!("Software decoding will be used (hardware acceleration not available on this platform)");
+    if base_encode_params.use_hw_decode {
+        let hw_accel_available = std::env::consts::OS == "macos";
+        if hw_accel_available {
+            progress_callback.on_progress(ProgressEvent::LogMessage {
+                message: "VideoToolbox hardware decoding will be used for main encode (disabled during analysis)".to_string(),
+                level: LogLevel::Info,
+            });
+        } else {
+            progress_callback.on_progress(ProgressEvent::LogMessage {
+                message: "Software decoding will be used (hardware acceleration not available on this platform)".to_string(),
+                level: LogLevel::Info,
+            });
+        }
     }
 
     // --- Get Configuration Parameters ---
@@ -319,7 +317,6 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider, C: ProgressCallb
         message: "Phase 1: Testing initial grain levels...".to_string(),
         level: LogLevel::Info,
     });
-    log::debug!("Phase 1: Testing initial grain levels...");
     let mut phase1_results: Vec<HashMap<Option<GrainLevel>, u64>> = Vec::with_capacity(num_samples);
     let mut raw_sample_paths: Vec<PathBuf> = Vec::with_capacity(num_samples); // Store raw sample paths
 
@@ -328,7 +325,6 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider, C: ProgressCallb
             message: format!("Processing sample {}/{} (Start: {:.2}s, Duration: {}s)...", i + 1, num_samples, start_time, sample_duration),
             level: LogLevel::Info,
         });
-        log::debug!("Processing sample {}/{} (Start: {:.2}s, Duration: {}s)...", i + 1, num_samples, start_time, sample_duration);
 
         let raw_sample_path = match extract_sample(
             spawner,
@@ -338,37 +334,25 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider, C: ProgressCallb
             temp_dir_path,
         ) {
             Ok(path) => path,
-            Err(CoreError::NoStreamsFound(_)) => {
-                log::warn!("Sample {} extraction found no streams. Skipping grain analysis.", i + 1);
-                return Ok(Some(GrainAnalysisResult {
-                    detected_level: fallback_level,
-                }));
-            },
             Err(e) => {
+                // Log the error
                 log::error!("Failed to extract sample {}: {}", i + 1, e);
 
-                // If this is the first sample, return an error
-                if i == 0 {
-                    return Err(CoreError::FilmGrainAnalysisFailed(format!(
-                        "Failed to extract first sample: {}", e
-                    )));
+                // If this is the first sample or we have no samples yet, use fallback level
+                if i == 0 || raw_sample_paths.is_empty() {
+                    log::warn!("No samples could be extracted. Using fallback grain level.");
+                    return Ok(Some(GrainAnalysisResult {
+                        detected_level: fallback_level,
+                    }));
                 }
 
-                // If we already have at least one sample, we can continue with what we have
-                if !raw_sample_paths.is_empty() {
-                    progress_callback.on_progress(ProgressEvent::LogMessage {
-                        message: format!("Failed to extract sample {}, but continuing with {} existing samples.", i + 1, raw_sample_paths.len()),
-                        level: LogLevel::Warning,
-                    });
-                    log::warn!("Failed to extract sample {}, but continuing with {} existing samples.", i + 1, raw_sample_paths.len());
-                    break;
-                }
-
-                // Otherwise, return the fallback level
-                log::warn!("No samples could be extracted. Using fallback grain level.");
-                return Ok(Some(GrainAnalysisResult {
-                    detected_level: fallback_level,
-                }));
+                // If we already have at least one sample, continue with what we have
+                progress_callback.on_progress(ProgressEvent::LogMessage {
+                    message: format!("Failed to extract sample {}, but continuing with {} existing samples.",
+                                    i + 1, raw_sample_paths.len()),
+                    level: LogLevel::Warning,
+                });
+                break;
             }
         };
         raw_sample_paths.push(raw_sample_path.clone()); // Store the path
@@ -419,7 +403,6 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider, C: ProgressCallb
                 message: format!("      -> {:<10} size: {:.2} MB", level_desc, size_mb),
                 level: LogLevel::Info,
             });
-            log::debug!("      -> {:<10} size: {:.2} MB", level_desc, size_mb);
             results_for_this_sample.insert(*level_opt, encoded_size);
         }
         phase1_results.push(results_for_this_sample);
@@ -430,7 +413,6 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider, C: ProgressCallb
         message: "Phase 2: Estimating optimal grain per sample using Knee Point...".to_string(),
         level: LogLevel::Info,
     });
-    log::debug!("Phase 2: Estimating optimal grain per sample using Knee Point...");
     let mut initial_estimates: Vec<GrainLevel> = Vec::with_capacity(num_samples);
 
     for (i, sample_results) in phase1_results.iter().enumerate() {
@@ -443,7 +425,6 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider, C: ProgressCallb
                     message: format!("  Sample {}: {}", sample_index, msg),
                     level: LogLevel::Info,
                 });
-                log::debug!("  Sample {}: {}", sample_index, msg);
             }
         );
         initial_estimates.push(estimate);
@@ -458,7 +439,6 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider, C: ProgressCallb
         message: format!("  Initial estimates per sample: [{}]", formatted_initial_estimates),
         level: LogLevel::Info,
     });
-    log::debug!("  Initial estimates per sample: [{}]", formatted_initial_estimates);
 
 
     // --- Phase 3: Adaptive Refinement ---
@@ -466,31 +446,31 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider, C: ProgressCallb
         message: "Phase 3: Adaptive Refinement...".to_string(),
         level: LogLevel::Info,
     });
-    log::debug!("Phase 3: Adaptive Refinement...");
     let mut phase3_results: Vec<HashMap<Option<GrainLevel>, u64>> = vec![HashMap::new(); num_samples];
 
     if initial_estimates.len() < 3 {
         let message = format!("  Too few samples ({}) for reliable refinement. Skipping Phase 3.", initial_estimates.len());
         progress_callback.on_progress(ProgressEvent::LogMessage {
-            message: message.clone(),
+            message,
             level: LogLevel::Info,
         });
-        log::info!("{}", message);
     } else {
         let (lower_bound, upper_bound) = calculate_refinement_range(&initial_estimates);
         let message = format!("  Calculated refinement range based on initial estimates: {:?} to {:?}", lower_bound, upper_bound);
         progress_callback.on_progress(ProgressEvent::LogMessage {
-            message: message.clone(),
+            message,
             level: LogLevel::Info,
         });
-        log::info!("{}", message);
 
         let refined_params = generate_refinement_params(
             lower_bound, upper_bound, &initial_test_levels
         );
 
         if refined_params.is_empty() {
-            log::info!("  No refinement parameters generated within the range. Skipping Phase 3 testing.");
+            progress_callback.on_progress(ProgressEvent::LogMessage {
+                message: "  No refinement parameters generated within the range. Skipping Phase 3 testing.".to_string(),
+                level: LogLevel::Info,
+            });
         } else {
             // Extract the strength values from the parameters for better labeling
             let param_descriptions: Vec<String> = refined_params.iter().enumerate().map(|(idx, (_l, p))| {
@@ -506,11 +486,10 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider, C: ProgressCallb
                     p)
             }).collect();
 
-            log::info!(
-                "  Testing {} refined parameter sets: {:?}",
-                refined_params.len(),
-                param_descriptions
-            );
+            progress_callback.on_progress(ProgressEvent::LogMessage {
+                message: format!("  Testing {} refined parameter sets: {:?}", refined_params.len(), param_descriptions),
+                level: LogLevel::Info,
+            });
             log::debug!("  (Note: Parameter validation, like ensuring non-negative values, occurs during generation/parsing)");
 
             for (idx, (level_opt, params_str)) in refined_params.iter().enumerate() {
@@ -531,7 +510,6 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider, C: ProgressCallb
                     message: format!("    Testing refined level {}...", level_desc),
                     level: LogLevel::Info,
                 });
-                log::debug!("    Testing refined level {}...", level_desc);
 
                 // Iterate through the *indices* and use stored raw paths
                 for i in 0..num_samples {
@@ -579,7 +557,6 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider, C: ProgressCallb
                                 message: format!("      -> {:<35} (Sample {}) size: {:.2} MB", level_desc, i + 1, size_mb),
                                 level: LogLevel::Info,
                             });
-                            log::debug!("      -> {:<35} (Sample {}) size: {:.2} MB", level_desc, i + 1, size_mb);
                             phase3_results[i].insert(*level_opt, size);
                         },
                         Err(e) => {
@@ -596,7 +573,6 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider, C: ProgressCallb
         message: "Phase 4: Final analysis with knee point on combined results...".to_string(),
         level: LogLevel::Info,
     });
-    log::debug!("Phase 4: Final analysis with knee point on combined results...");
     let mut final_estimates: Vec<GrainLevel> = Vec::with_capacity(num_samples);
 
     for i in 0..num_samples {
@@ -612,7 +588,6 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider, C: ProgressCallb
                     message: format!("  Sample {}: {}", sample_index, msg),
                     level: LogLevel::Info,
                 });
-                log::debug!("  Sample {}: {}", sample_index, msg);
             }
         );
         final_estimates.push(final_estimate);
@@ -627,7 +602,6 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider, C: ProgressCallb
         message: format!("  Final estimates per sample (after refinement): [{}]", formatted_estimates),
         level: LogLevel::Info,
     });
-    log::debug!("  Final estimates per sample (after refinement): [{}]", formatted_estimates);
 
     // --- Determine Final Result ---
     if final_estimates.is_empty() {
@@ -643,19 +617,17 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider, C: ProgressCallb
     if final_level > max_level {
         let message = format!("Detected level {:?} exceeds maximum allowed level {:?}. Using maximum level.", final_level, max_level);
         progress_callback.on_progress(ProgressEvent::LogMessage {
-            message: message.clone(),
+            message,
             level: LogLevel::Info,
         });
-        log::debug!("{}", message);
         final_level = max_level;
     }
 
     let final_message = format!("Final detected grain level for {}: {:?}", filename_cow, final_level);
     progress_callback.on_progress(ProgressEvent::LogMessage {
-        message: final_message.clone(),
+        message: final_message,
         level: LogLevel::Info,
     });
-    log::debug!("{}", final_message);
 
     // temp_dir cleanup happens automatically on drop
 

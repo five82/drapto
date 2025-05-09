@@ -115,29 +115,16 @@ impl NtfyNotificationSender {
 
 impl NotificationSender for NtfyNotificationSender {
     fn send_notification(&self, notification: NotificationType) -> Result<(), String> {
-        // STEP 1: Parse the full topic URL
+        // Parse the URL (already validated in new())
         let parsed_url = Url::parse(&self.topic_url)
             .map_err(|e| format!("Invalid ntfy topic URL '{}': {}", self.topic_url, e))?;
 
-        // STEP 2: Extract and validate base URL and topic path
-        // Ensure the host is present and non-empty
-        let host = match parsed_url.host_str() {
-            Some(h) if !h.is_empty() => h,
-            _ => return Err(format!("URL '{}' must have a non-empty host", self.topic_url)),
-        };
-
-        // Construct the base URL (scheme + host)
+        // Extract the base URL and topic
+        let host = parsed_url.host_str().unwrap_or("");
         let base_url = format!("{}://{}", parsed_url.scheme(), host);
-
-        // Extract the topic from the path (removing leading slash)
         let topic = parsed_url.path().trim_start_matches('/');
 
-        // Ensure the topic is not empty
-        if topic.is_empty() {
-             return Err(format!("URL '{}' is missing topic path", self.topic_url));
-        }
-
-        // STEP 3: Build the ntfy dispatcher
+        // Build the ntfy dispatcher
         let dispatcher = match DispatcherBuilder::new(&base_url).build_blocking() {
             Ok(d) => d,
             Err(e) => return Err(format!("Failed to build ntfy dispatcher for {}: {}", base_url, e)),

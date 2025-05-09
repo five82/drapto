@@ -66,61 +66,53 @@ pub fn build_ffmpeg_args(
         0 // No denoise = no synthetic grain
     };
 
-    match (hqdn3d_to_use, crop_filter_opt) {
-        (Some(hqdn3d_str), Some(crop_str)) => {
-            // Both denoise and crop: Use filter_complex
-            // Log based on whether it's an override or the final param
-            // Log filter application at info level only for main encode
-            if !is_grain_analysis_sample {
-                 info!("Applying video filters: crop, {}", hqdn3d_str);
-            } else {
-                 debug!("Applying video filters (grain sample): crop, {}", hqdn3d_str);
-            }
-            let filtergraph = format!("[0:v:0]{},{}[vout]", crop_str, hqdn3d_str);
+    // Build filter string and determine if we need filter_complex
+    let mut filters = Vec::new();
+    let mut use_filter_complex = false;
+
+    // Add crop filter if present
+    if let Some(crop_str) = crop_filter_opt {
+        filters.push(crop_str.to_string());
+        use_filter_complex = true; // Crop requires filter_complex
+    }
+
+    // Add denoise filter if present
+    if let Some(hqdn3d_str) = hqdn3d_to_use {
+        filters.push(hqdn3d_str.to_string());
+    }
+
+    // Log filters being applied
+    if !filters.is_empty() {
+        let filters_str = filters.join(", ");
+        if !is_grain_analysis_sample {
+            info!("Applying video filters: {}", filters_str);
+        } else {
+            debug!("Applying video filters (grain sample): {}", filters_str);
+        }
+    } else if !is_grain_analysis_sample {
+        info!("No video filters applied.");
+    }
+
+    // Apply filters
+    if !filters.is_empty() {
+        if use_filter_complex {
+            // Use filter_complex for crop or multiple filters
+            let filtergraph = format!("[0:v:0]{}[vout]", filters.join(","));
             args.push("-filter_complex".to_string());
             args.push(filtergraph);
             args.push("-map".to_string());
             args.push("[vout]".to_string());
-        }
-        (Some(hqdn3d_str), None) => {
-            // Only denoise: Use -vf
-            // Log filter application at info level only for main encode
-            if !is_grain_analysis_sample {
-                 info!("Applying video filter: {}", hqdn3d_str);
-            } else {
-                 debug!("Applying video filter (grain sample): {}", hqdn3d_str);
-            }
+        } else {
+            // Use -vf for simple filters
             args.push("-vf".to_string());
-            args.push(hqdn3d_str.to_string());
+            args.push(filters.join(","));
             args.push("-map".to_string());
-            args.push("0:v:0".to_string()); // Made mapping mandatory
+            args.push("0:v:0".to_string());
         }
-        (None, Some(crop_str)) => {
-            // Only crop: Use filter_complex
-            // Log filter application at info level only for main encode
-            if !is_grain_analysis_sample {
-                info!("Applying video filter: {}", crop_str);
-            } else {
-                debug!("Applying video filter (grain sample): {}", crop_str);
-            }
-            let filtergraph = format!("[0:v:0]{}[vout]", crop_str);
-            args.push("-filter_complex".to_string());
-            args.push(filtergraph);
-            args.push("-map".to_string());
-            args.push("[vout]".to_string());
-        }
-        (None, None) => {
-            // No video filters: Map directly
-            if hqdn3d_override.is_some() {
-                 // This case shouldn't happen if override is Some, but log defensively
-                 debug!("Applying no video filters (hqdn3d override was Some but resulted in None?)");
-            } else if !is_grain_analysis_sample {
-                 // Log only for main encode if no filters are applied
-                 info!("No video filters applied.");
-            }
-            args.push("-map".to_string());
-            args.push("0:v:0".to_string()); // Made mapping mandatory
-        }
+    } else {
+        // No filters, just map video stream
+        args.push("-map".to_string());
+        args.push("0:v:0".to_string());
     }
 
     // Map other streams (conditionally map audio/subtitles)
@@ -222,7 +214,6 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner, C: ProgressCallback>(
     }
 
     // Log output path for main encodes, or for grain samples only if debug is enabled.
-    // Log grain level being tested for grain samples when debug is not enabled.
     if !is_grain_analysis_sample || log::log_enabled!(log::Level::Debug) {
         info!(
             "  Output: {}",
@@ -231,32 +222,15 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner, C: ProgressCallback>(
 
         // Log hardware acceleration status for main encodes
         if params.use_hw_decode {
-            // We don't check is_macos() directly anymore - this is handled by the CLI
-            // Just report the hardware acceleration status based on the params
-            let hw_accel_available = std::env::consts::OS == "macos";
-
-            if hw_accel_available {
-                progress_callback.on_progress(ProgressEvent::LogMessage {
-                    message: "VideoToolbox hardware decoding enabled".to_string(),
-                    level: LogLevel::Info,
-                });
-                debug!("VideoToolbox hardware decoding enabled");
-            } else {
-                progress_callback.on_progress(ProgressEvent::LogMessage {
-                    message: "Software decoding (hardware acceleration not available on this platform)".to_string(),
-                    level: LogLevel::Info,
-                });
-                debug!("Software decoding (hardware acceleration not available on this platform)");
-            }
+            log_hardware_acceleration_status(progress_callback);
         }
-    } else if is_grain_analysis_sample {
     }
 
     debug!("Encode parameters: {:?}", params);
 
     // Extract hardware acceleration options first
     let mut hwaccel_args = Vec::new();
-    let hw_accel_available = std::env::consts::OS == "macos";
+    let hw_accel_available = is_hardware_acceleration_available();
 
     if params.use_hw_decode && hw_accel_available && !is_grain_analysis_sample {
         hwaccel_args.push("-hwaccel");
@@ -266,7 +240,6 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner, C: ProgressCallback>(
             message: "Using VideoToolbox hardware decoding".to_string(),
             level: LogLevel::Info,
         });
-        debug!("Using VideoToolbox hardware decoding");
     }
 
     // Build other arguments using the helper function, passing flags down
@@ -338,20 +311,13 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner, C: ProgressCallback>(
                         .map(|d| (current_secs / d * 100.0).min(100.0))
                         .unwrap_or(0.0);
 
+                    // Only report progress at certain intervals or at 100%
                     if percent >= last_reported_percent + 3.0 || (percent >= 100.0 && last_reported_percent < 100.0) {
-                        let eta_str = if let Some(total_duration) = duration_secs {
-                            if progress.speed > 0.01 && total_duration > current_secs {
-                                let remaining_seconds = (total_duration - current_secs) / (progress.speed as f64);
-                                format_duration_seconds(remaining_seconds)
-                            } else if percent < 100.0 {
-                                "??:??:??".to_string()
-                            } else {
-                                format_duration_seconds(0.0)
-                            }
-                        } else {
-                            "??:??:??".to_string()
-                        };
+                        // Calculate ETA
+                        let eta_seconds = calculate_eta(duration_secs, current_secs, progress.speed);
+                        let eta_str = format_duration_seconds(eta_seconds);
 
+                        // Calculate average encoding FPS
                         let elapsed_wall_clock = start_time.elapsed().as_secs_f64();
                         let avg_encoding_fps = if elapsed_wall_clock > 0.01 {
                             progress.frame as f64 / elapsed_wall_clock
@@ -359,7 +325,7 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner, C: ProgressCallback>(
                             0.0
                         };
 
-                        // Conditionally report detailed progress
+                        // Report progress for main encodes (not grain analysis samples)
                         if !is_grain_analysis_sample {
                             // Use progress callback for user-facing output
                             progress_callback.on_progress(ProgressEvent::EncodeProgress {
@@ -368,22 +334,10 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner, C: ProgressCallback>(
                                 total_secs: duration_secs.unwrap_or(0.0),
                                 speed: progress.speed,
                                 fps: avg_encoding_fps as f32,
-                                eta: std::time::Duration::from_secs(
-                                    if let Some(total_duration) = duration_secs {
-                                        if progress.speed > 0.01 && total_duration > current_secs {
-                                            ((total_duration - current_secs) / (progress.speed as f64)) as u64
-                                        } else if percent < 100.0 {
-                                            0
-                                        } else {
-                                            0
-                                        }
-                                    } else {
-                                        0
-                                    }
-                                ),
+                                eta: std::time::Duration::from_secs(eta_seconds as u64),
                             });
 
-                            // Also log to debug level (not info) to avoid duplication
+                            // Log to debug level to avoid duplication
                             debug!(
                                 "Encoding progress: {:.2}% ({} / {}), Speed: {:.2}x, Avg FPS: {:.2}, ETA: {}",
                                 percent,
@@ -394,9 +348,10 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner, C: ProgressCallback>(
                                 eta_str
                             );
                         }
-                        // Always log debug progress regardless of sample type
+
+                        // Always log detailed debug progress regardless of sample type
                         debug!(
-                            "Progress ({}): frame={}, avg_encoding_fps={:.2}, time={}, bitrate={:.2}kbits/s, speed={:.2}x, size={}kB, percent={:.2}%, ETA={}",
+                            "Progress ({}): frame={}, fps={:.2}, time={}, bitrate={:.2}kbits/s, speed={:.2}x, size={}kB, percent={:.2}%, ETA={}",
                             if is_grain_analysis_sample { "grain sample" } else { "main encode" },
                             progress.frame,
                             avg_encoding_fps,
@@ -407,22 +362,21 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner, C: ProgressCallback>(
                             percent,
                             eta_str
                         );
+
                         last_reported_percent = percent;
                     }
                 }
             FfmpegEvent::Error(err_str) => {
-                // Special handling for "No streams found" during grain analysis, which seems non-fatal.
-                if is_grain_analysis_sample && err_str.contains("No streams found") {
-                    // Log as TRACE - effectively hidden unless RUST_LOG=trace is set
-                    log::trace!("ffmpeg stderr (grain sample - ignored as non-fatal): {}", err_str);
-                } else if err_str.contains("No streams found") {
-                    // Log "No streams found" as DEBUG for main encode (hidden by default)
-                    debug!("ffmpeg stderr (main encode - non-fatal): {}", err_str);
+                // Log errors appropriately based on content and context
+                if err_str.contains("No streams found") {
+                    // "No streams found" is handled specially at the end
+                    debug!("ffmpeg stderr (non-fatal - will be handled): {}", err_str);
                 } else {
-                    // Log other actual errors normally
+                    // Log other errors normally
                     error!("ffmpeg stderr error: {}", err_str);
                 }
-                // Always capture the raw error in the buffer for potential debugging later
+
+                // Always capture errors in the buffer for later processing
                 stderr_buffer.push_str(&err_str);
                 stderr_buffer.push('\n');
             }
@@ -454,18 +408,18 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner, C: ProgressCallback>(
     // Wait for process exit
     let status = child.wait()?;
 
+    // Extract filename for logging
+    let filename_cow = params.input_path
+        .file_name()
+        .map(|name| name.to_string_lossy())
+        .unwrap_or_else(|| params.input_path.to_string_lossy());
+
     if status.success() {
-        // Log success differently based on context
+        // Log success based on context
         if is_grain_analysis_sample {
-            // Log detailed path only if debug is enabled
-            if log::log_enabled!(log::Level::Debug) {
-                debug!("✅ Grain sample encode finished successfully for {}", params.output_path.display());
-           } else {
-               // Use debug for the simpler success message for grain samples too
-               debug!("✅ Grain sample encode finished successfully.");
-           }
-       } else {
-            info!("✅ Encode finished successfully for {}", params.output_path.display());
+            debug!("✅ Grain sample encode finished successfully for {}", filename_cow);
+        } else {
+            info!("✅ Encode finished successfully for {}", filename_cow);
         }
         Ok(())
     } else {
@@ -477,43 +431,22 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner, C: ProgressCallback>(
 
         // Check for specific "No streams found" error
         if stderr_buffer.contains("No streams found") {
-            // Extract filename for logging
-            let filename_cow = params.input_path
-                .file_name()
-                .map(|name| name.to_string_lossy())
-                .unwrap_or_else(|| params.input_path.to_string_lossy());
-            // Log as warning, return specific error
-            warn!(
-                "FFmpeg reported 'No streams found' for input {}. Skipping.",
-                filename_cow // Use filename
-            );
-            Err(CoreError::NoStreamsFound(filename_cow.to_string())) // Use filename in error
-        } else {
-            // Extract filename for logging errors
-            let filename_cow = params.input_path
-                .file_name()
-                .map(|name| name.to_string_lossy())
-                .unwrap_or_else(|| params.input_path.to_string_lossy());
-            // Log error differently based on context for other failures
-            if is_grain_analysis_sample {
-                 error!(
-                    "❌ Grain sample encode failed for {}: {}",
-                    filename_cow, // Use filename
-                    error_message // Still log the full error message
-                );
-            } else {
-                error!(
-                    "FFmpeg encode failed for {}: {}",
-                    filename_cow, // Use filename
-                    error_message
-                );
-            }
-            Err(CoreError::CommandFailed(
-                "ffmpeg (sidecar)".to_string(),
-                status,
-                error_message,
-            ))
+            warn!("FFmpeg reported 'No streams found' for input {}. Skipping.", filename_cow);
+            return Err(CoreError::NoStreamsFound(filename_cow.to_string()));
         }
+
+        // Log error based on context
+        if is_grain_analysis_sample {
+            error!("❌ Grain sample encode failed for {}: {}", filename_cow, error_message);
+        } else {
+            error!("FFmpeg encode failed for {}: {}", filename_cow, error_message);
+        }
+
+        Err(CoreError::CommandFailed(
+            "ffmpeg (sidecar)".to_string(),
+            status,
+            error_message,
+        ))
     }
 }
 
@@ -540,12 +473,12 @@ fn map_hqdn3d_to_film_grain(hqdn3d_params: &str) -> u8 {
         return 0;
     }
 
-    // Fixed mapping for standard levels (for backward compatibility and optimization)
+    // Fixed mapping for standard levels (for optimization)
     for (params, film_grain) in &[
         ("hqdn3d=0.5:0.3:3:3", 4),  // VeryLight
         ("hqdn3d=1:0.7:4:4", 8),    // Light
-        ("hqdn3d=1.5:1.0:6:6", 12), // Visible
-        ("hqdn3d=2:1.3:8:8", 16),   // Medium
+        ("hqdn3d=1.5:1.0:6:6", 12), // Moderate
+        ("hqdn3d=2:1.3:8:8", 16),   // Elevated
     ] {
         // Exact match for standard levels
         if hqdn3d_params == *params {
@@ -617,6 +550,41 @@ fn map_ffmpeg_log_level(level: &FfmpegLogLevel) -> log::Level {
         FfmpegLogLevel::Warning => log::Level::Warn,
         FfmpegLogLevel::Error => log::Level::Error,
         _ => log::Level::Debug,
+    }
+}
+
+// Helper function to calculate ETA in seconds
+fn calculate_eta(duration_secs: Option<f64>, current_secs: f64, speed: f32) -> f64 {
+    if let Some(total_duration) = duration_secs {
+        if speed > 0.01 && total_duration > current_secs {
+            (total_duration - current_secs) / (speed as f64)
+        } else {
+            0.0
+        }
+    } else {
+        0.0
+    }
+}
+
+// Helper function to check if hardware acceleration is available
+fn is_hardware_acceleration_available() -> bool {
+    std::env::consts::OS == "macos"
+}
+
+// Helper function to log hardware acceleration status
+fn log_hardware_acceleration_status<C: ProgressCallback>(progress_callback: &C) {
+    let hw_accel_available = is_hardware_acceleration_available();
+
+    if hw_accel_available {
+        progress_callback.on_progress(ProgressEvent::LogMessage {
+            message: "VideoToolbox hardware decoding enabled".to_string(),
+            level: LogLevel::Info,
+        });
+    } else {
+        progress_callback.on_progress(ProgressEvent::LogMessage {
+            message: "Software decoding (hardware acceleration not available on this platform)".to_string(),
+            level: LogLevel::Info,
+        });
     }
 }
 

@@ -13,7 +13,6 @@
 // ---- External crate imports ----
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
-use log::warn;
 
 /// Represents the detected level of grain/noise in a video.
 ///
@@ -81,9 +80,6 @@ impl FromStr for GrainLevel {
 
     /// Parses a string into a GrainLevel.
     ///
-    /// This function handles both current and deprecated grain level names,
-    /// logging warnings when deprecated names are used.
-    ///
     /// # Arguments
     ///
     /// * `s` - The string to parse
@@ -99,33 +95,17 @@ impl FromStr for GrainLevel {
     /// use drapto_core::processing::detection::grain_analysis::GrainLevel;
     /// use std::str::FromStr;
     ///
-    /// // Parse current names
+    /// // Parse grain level names
     /// assert_eq!(GrainLevel::from_str("baseline").unwrap(), GrainLevel::Baseline);
     /// assert_eq!(GrainLevel::from_str("moderate").unwrap(), GrainLevel::Moderate);
-    ///
-    /// // Parse deprecated names (will log warnings)
-    /// assert_eq!(GrainLevel::from_str("veryclean").unwrap(), GrainLevel::Baseline);
-    /// assert_eq!(GrainLevel::from_str("medium").unwrap(), GrainLevel::Elevated);
     /// ```
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "baseline" => Ok(GrainLevel::Baseline),
-            "veryclean" => {
-                warn!("'veryclean' is deprecated, use 'baseline' instead. Converting to Baseline.");
-                Ok(GrainLevel::Baseline)
-            },
             "verylight" => Ok(GrainLevel::VeryLight),
             "light" => Ok(GrainLevel::Light),
             "moderate" => Ok(GrainLevel::Moderate),
-            "visible" => {
-                warn!("'visible' is deprecated, use 'moderate' instead. Converting to Moderate.");
-                Ok(GrainLevel::Moderate)
-            },
             "elevated" => Ok(GrainLevel::Elevated),
-            "medium" => {
-                warn!("'medium' is deprecated, use 'elevated' instead. Converting to Elevated.");
-                Ok(GrainLevel::Elevated)
-            },
             _ => Err(GrainLevelParseError {
                 invalid_value: s.to_string(),
             }),
