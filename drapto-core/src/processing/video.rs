@@ -34,17 +34,18 @@
 use crate::config::{CoreConfig, DEFAULT_CORE_QUALITY_HD, DEFAULT_CORE_QUALITY_SD, DEFAULT_CORE_QUALITY_UHD};
 use crate::error::{CoreError, CoreResult};
 use crate::external::check_dependency;
-use crate::external::{FileMetadataProvider, FfmpegSpawner, FfprobeExecutor, is_macos};
+use crate::external::{FileMetadataProvider, FfmpegSpawner, FfprobeExecutor};
 use crate::external::ffmpeg::{run_ffmpeg_encode, EncodeParams};
-use crate::notifications::Notifier;
+use crate::notifications::{NotificationSender, NotificationType};
 use crate::processing::audio;
 use crate::processing::detection::{self, grain_analysis};
-use crate::utils::{format_bytes, format_duration, get_file_size};
+use crate::progress::{ProgressCallback, ProgressEvent, LogLevel};
+use crate::utils::{format_duration, get_file_size};
 use crate::EncodeResult;
+use colored::Colorize;
 
 // ---- External crate imports ----
-use colored::*;
-use log::{info, warn, error};
+use log::{info, warn, error, debug};
 
 // ---- Standard library imports ----
 use std::path::PathBuf;
@@ -64,8 +65,9 @@ use std::time::Instant;
 /// The function is generic over the types that implement the required traits:
 /// - `S`: FfmpegSpawner - For spawning ffmpeg processes
 /// - `P`: FfprobeExecutor - For executing ffprobe commands
-/// - `N`: Notifier - For sending notifications
+/// - `N`: NotificationSender - For sending notifications
 /// - `M`: FileMetadataProvider - For file system operations
+/// - `C`: ProgressCallback - For reporting progress (defaults to NullProgressCallback)
 ///
 /// This design allows for dependency injection and easier testing.
 ///
@@ -73,11 +75,12 @@ use std::time::Instant;
 ///
 /// * `spawner` - Implementation of FfmpegSpawner for executing ffmpeg
 /// * `ffprobe_executor` - Implementation of FfprobeExecutor for executing ffprobe
-/// * `notifier` - Implementation of Notifier for sending notifications
+/// * `notification_sender` - Implementation of NotificationSender for sending notifications
 /// * `metadata_provider` - Implementation of FileMetadataProvider for file operations
 /// * `config` - Core configuration containing encoding parameters and paths
 /// * `files_to_process` - List of paths to the video files to process
 /// * `target_filename_override` - Optional override for the output filename
+/// * `progress_callback` - Implementation of ProgressCallback for reporting progress
 ///
 /// # Returns
 ///
@@ -89,35 +92,36 @@ use std::time::Instant;
 /// ```rust,no_run
 /// use drapto_core::{CoreConfig, process_videos, EncodeResult};
 /// use drapto_core::external::{SidecarSpawner, CrateFfprobeExecutor, StdFsMetadataProvider};
-/// use drapto_core::notifications::NtfyNotifier;
+/// use drapto_core::notifications::{NtfyNotificationSender, NullNotificationSender};
+/// use drapto_core::progress::NullProgressCallback;
 /// use drapto_core::processing::detection::GrainLevel;
 /// use std::path::PathBuf;
 ///
 /// // Create dependencies
 /// let spawner = SidecarSpawner;
 /// let ffprobe_executor = CrateFfprobeExecutor::new();
-/// let notifier = NtfyNotifier::new().unwrap();
+/// let notification_sender = NtfyNotificationSender::new("https://ntfy.sh/my-topic").unwrap();
 /// let metadata_provider = StdFsMetadataProvider;
+/// let progress_callback = NullProgressCallback;
 ///
-/// // Create configuration
-/// let config = CoreConfig {
-///     input_dir: PathBuf::from("/path/to/input"),
-///     output_dir: PathBuf::from("/path/to/output"),
-///     log_dir: PathBuf::from("/path/to/logs"),
-///     enable_denoise: true,
-///     default_encoder_preset: Some(6),
-///     preset: None,
-///     quality_sd: Some(24),
-///     quality_hd: Some(26),
-///     quality_uhd: Some(28),
-///     default_crop_mode: Some("auto".to_string()),
-///     ntfy_topic: Some("https://ntfy.sh/my-topic".to_string()),
-///     film_grain_sample_duration: Some(5),
-///     film_grain_knee_threshold: Some(0.8),
-///     film_grain_fallback_level: Some(GrainLevel::Baseline),
-///     film_grain_max_level: Some(GrainLevel::Moderate),
-///     film_grain_refinement_points_count: Some(5),
-/// };
+/// // Create configuration using the builder pattern
+/// let config = drapto_core::config::CoreConfigBuilder::new()
+///     .input_dir(PathBuf::from("/path/to/input"))
+///     .output_dir(PathBuf::from("/path/to/output"))
+///     .log_dir(PathBuf::from("/path/to/logs"))
+///     .enable_denoise(true)
+///     .default_encoder_preset(6)
+///     .quality_sd(24)
+///     .quality_hd(26)
+///     .quality_uhd(28)
+///     .default_crop_mode("auto")
+///     .ntfy_topic("https://ntfy.sh/my-topic")
+///     .film_grain_sample_duration(5)
+///     .film_grain_knee_threshold(0.8)
+///     .film_grain_fallback_level(GrainLevel::Baseline)
+///     .film_grain_max_level(GrainLevel::Moderate)
+///     .film_grain_refinement_points_count(5)
+///     .build();
 ///
 /// // Find files to process
 /// let files = vec![PathBuf::from("/path/to/video.mkv")];
@@ -126,11 +130,12 @@ use std::time::Instant;
 /// match process_videos(
 ///     &spawner,
 ///     &ffprobe_executor,
-///     &notifier,
+///     &notification_sender,
 ///     &metadata_provider,
 ///     &config,
 ///     &files,
 ///     None,
+///     &progress_callback,
 /// ) {
 ///     Ok(results) => {
 ///         println!("Successfully processed {} files", results.len());
@@ -143,14 +148,21 @@ use std::time::Instant;
 ///     }
 /// }
 /// ```
-pub fn process_videos<S: FfmpegSpawner, P: FfprobeExecutor, N: Notifier, M: FileMetadataProvider>(
+pub fn process_videos<
+    S: FfmpegSpawner,
+    P: FfprobeExecutor,
+    N: NotificationSender + ?Sized,
+    M: FileMetadataProvider,
+    C: ProgressCallback
+>(
     spawner: &S,
     ffprobe_executor: &P,
-    notifier: &N,
-    metadata_provider: &M, // Add metadata provider
+    notification_sender: &N,
+    metadata_provider: &M,
     config: &CoreConfig,
     files_to_process: &[PathBuf],
     target_filename_override: Option<PathBuf>,
+    progress_callback: &C,
 ) -> CoreResult<Vec<EncodeResult>>
 {
     // ========================================================================
@@ -158,17 +170,34 @@ pub fn process_videos<S: FfmpegSpawner, P: FfprobeExecutor, N: Notifier, M: File
     // ========================================================================
 
     // Verify that required external tools (ffmpeg and ffprobe) are available
-    info!("{}", "Checking for required external commands...".cyan());
+    progress_callback.on_progress(ProgressEvent::LogMessage {
+        message: "Checking for required external commands...".to_string(),
+        level: LogLevel::Info,
+    });
+    // Log to file only, not to console (to avoid duplication)
+    debug!("Checking for required external commands...");
 
     // Check for ffmpeg
     let _ffmpeg_cmd_parts = check_dependency("ffmpeg")?;
-    info!("  {} {}", "[OK]".green().bold(), "ffmpeg found.");
+    progress_callback.on_progress(ProgressEvent::LogMessage {
+        message: "ffmpeg found.".to_string(),
+        level: LogLevel::Info,
+    });
+    debug!("ffmpeg found.");
 
     // Check for ffprobe
     let _ffprobe_cmd_parts = check_dependency("ffprobe")?;
-    info!("  {} {}", "[OK]".green().bold(), "ffprobe found.");
+    progress_callback.on_progress(ProgressEvent::LogMessage {
+        message: "ffprobe found.".to_string(),
+        level: LogLevel::Info,
+    });
+    debug!("ffprobe found.");
 
-    info!("{}", "External dependency check passed.".green());
+    progress_callback.on_progress(ProgressEvent::LogMessage {
+        message: "External dependency check passed.".to_string(),
+        level: LogLevel::Info,
+    });
+    debug!("External dependency check passed.");
 
     // ========================================================================
     // STEP 2: GET SYSTEM INFORMATION
@@ -179,14 +208,22 @@ pub fn process_videos<S: FfmpegSpawner, P: FfprobeExecutor, N: Notifier, M: File
     let hostname = hostname::get()
         .map(|s| s.into_string().unwrap_or_else(|_| "unknown-host-invalid-utf8".to_string()))
         .unwrap_or_else(|_| "unknown-host-error".to_string());
-    info!("{} {}", "Running on host:".cyan(), hostname.yellow());
 
-    // Check if hardware acceleration is available
-    if is_macos() {
-        info!("{} {}", "Hardware:".cyan(), "VideoToolbox hardware decoding available".green().bold());
-    } else {
-        info!("{} {}", "Hardware:".cyan(), "Using software decoding (hardware acceleration not available on this platform)".yellow());
-    }
+    progress_callback.on_progress(ProgressEvent::LogMessage {
+        message: format!("Running on host: {}", hostname),
+        level: LogLevel::Info,
+    });
+    debug!("Running on host: {}", hostname);
+
+    // Report hardware acceleration capabilities
+    // We don't use is_macos() directly anymore - this should be handled by the CLI
+    let hw_accel_available = std::env::consts::OS == "macos";
+    let hw_accel_type = if hw_accel_available { "VideoToolbox" } else { "None" };
+
+    progress_callback.on_progress(ProgressEvent::HardwareAcceleration {
+        available: hw_accel_available,
+        acceleration_type: hw_accel_type.to_string(),
+    });
 
 
     // Initialize the results vector to store successful encoding results
@@ -243,16 +280,22 @@ pub fn process_videos<S: FfmpegSpawner, P: FfprobeExecutor, N: Notifier, M: File
             error!("{}", error_msg);
 
             // Send a notification if ntfy topic is configured
-            if let Some(topic) = &config.ntfy_topic {
-                let ntfy_message = format!(
-                    "[{hostname}]: Skipped encode for {filename}: Output file already exists at {output_display}",
-                    hostname = hostname,
-                    filename = filename,
-                    output_display = output_path.display()
-                );
-                // Send the notification and log any errors
-                if let Err(e) = notifier.send(topic, &ntfy_message, Some("Drapto Encode Skipped"), Some(3), Some("warning")) {
-                    warn!("Failed to send ntfy skip notification for {}: {}", filename, e);
+            if let Some(_topic) = &config.ntfy_topic {
+                // Create a notification using the new abstraction
+                let notification = NotificationType::Custom {
+                    title: "Drapto Encode Skipped".to_string(),
+                    message: format!(
+                        "[{hostname}]: Skipped encode for {filename}: Output file already exists at {output_display}",
+                        hostname = hostname,
+                        filename = filename,
+                        output_display = output_path.display()
+                    ),
+                    priority: 3,
+                };
+
+                // Send using the NotificationSender trait
+                if let Err(e) = notification_sender.send_notification(notification) {
+                    warn!("Failed to send notification for {}: {}", filename, e);
                 }
             }
 
@@ -269,11 +312,17 @@ pub fn process_videos<S: FfmpegSpawner, P: FfprobeExecutor, N: Notifier, M: File
         // ========================================================================
 
         // Send a notification that encoding is starting for this file
-        if let Some(topic) = &config.ntfy_topic {
-            let start_message = format!("[{}]: Starting encode for: {}", hostname, filename);
-            // Send the notification and log any errors
-            if let Err(e) = notifier.send(topic, &start_message, Some("Drapto Encode Start"), Some(3), Some("arrow_forward")) {
-                warn!("Failed to send ntfy start notification for {}: {}", filename, e);
+        if let Some(_topic) = &config.ntfy_topic {
+            // Create a notification using the new abstraction
+            let notification = NotificationType::EncodeStart {
+                input_path: input_path.to_path_buf(),
+                output_path: output_path.clone(),
+                hostname: hostname.clone(),
+            };
+
+            // Send using the NotificationSender trait
+            if let Err(e) = notification_sender.send_notification(notification) {
+                warn!("Failed to send start notification for {}: {}", filename, e);
             }
         }
 
@@ -289,13 +338,19 @@ pub fn process_videos<S: FfmpegSpawner, P: FfprobeExecutor, N: Notifier, M: File
                 error!("Failed to get video properties for {}: {}. Skipping file.", filename, e);
 
                 // Send an error notification if ntfy topic is configured
-                if let Some(topic) = &config.ntfy_topic {
-                     let error_message = format!("[{hostname}]: Error processing {filename}: Failed to get video properties.");
-                     // Send the notification and log any errors
-                     if let Err(notify_err) = notifier.send(topic, &error_message, Some("Drapto Process Error"), Some(5), Some("x,rotating_light")) {
-                         warn!("Failed to send ntfy error notification for {}: {}", filename, notify_err);
-                     }
-                 }
+                if let Some(_topic) = &config.ntfy_topic {
+                    // Create a notification using the new abstraction
+                    let notification = NotificationType::EncodeError {
+                        input_path: input_path.to_path_buf(),
+                        message: "Failed to get video properties".to_string(),
+                        hostname: hostname.clone(),
+                    };
+
+                    // Send using the NotificationSender trait
+                    if let Err(e) = notification_sender.send_notification(notification) {
+                        warn!("Failed to send error notification for {}: {}", filename, e);
+                    }
+                }
 
                 // Add a separator in the log and skip to the next file
                 info!("----------------------------------------");
@@ -369,7 +424,7 @@ pub fn process_videos<S: FfmpegSpawner, P: FfprobeExecutor, N: Notifier, M: File
         // ========================================================================
 
         // Log information about audio streams (channels, bitrates)
-        let _ = audio::log_audio_info(ffprobe_executor, input_path);
+        let _ = audio::log_audio_info(ffprobe_executor, input_path, progress_callback);
 
         // Get audio channel information for encoding
         let audio_channels = match ffprobe_executor.get_audio_channels(input_path) {
@@ -408,14 +463,19 @@ pub fn process_videos<S: FfmpegSpawner, P: FfprobeExecutor, N: Notifier, M: File
         // Analyze grain/noise in the video to determine optimal denoising parameters
         let final_hqdn3d_params_result = if config.enable_denoise {
             // Perform grain analysis if denoising is enabled
-            info!("{}", "Grain detection enabled, analyzing video using relative sample comparison...".cyan());
+            progress_callback.on_progress(ProgressEvent::LogMessage {
+                message: "Grain detection enabled, analyzing video using relative sample comparison...".to_string(),
+                level: LogLevel::Info,
+            });
+            debug!("Grain detection enabled, analyzing video using relative sample comparison...");
             grain_analysis::analyze_grain(
                 input_path,
                 config,
                 &initial_encode_params,
                 duration_secs,
                 spawner,
-                metadata_provider
+                metadata_provider,
+                progress_callback
             )
         } else {
             // Skip grain analysis if denoising is disabled
@@ -455,11 +515,17 @@ pub fn process_videos<S: FfmpegSpawner, P: FfprobeExecutor, N: Notifier, M: File
                  error!("Grain analysis failed critically: {}. Skipping file.", e);
 
                  // Send an error notification if ntfy topic is configured
-                 if let Some(topic) = &config.ntfy_topic {
-                     let error_message = format!("[{hostname}]: Error processing {filename}: Grain analysis failed.");
-                     // Send the notification and log any errors
-                     if let Err(notify_err) = notifier.send(topic, &error_message, Some("Drapto Process Error"), Some(5), Some("x,rotating_light")) {
-                         warn!("Failed to send ntfy error notification for {}: {}", filename, notify_err);
+                 if let Some(_topic) = &config.ntfy_topic {
+                     // Create a notification using the new abstraction
+                     let notification = NotificationType::EncodeError {
+                         input_path: input_path.to_path_buf(),
+                         message: "Grain analysis failed".to_string(),
+                         hostname: hostname.clone(),
+                     };
+
+                     // Send using the NotificationSender trait
+                     if let Err(e) = notification_sender.send_notification(notification) {
+                         warn!("Failed to send error notification for {}: {}", filename, e);
                      }
                  }
 
@@ -491,6 +557,7 @@ pub fn process_videos<S: FfmpegSpawner, P: FfprobeExecutor, N: Notifier, M: File
             false, // disable_audio: Keep audio in the output
             false, // is_grain_analysis_sample: This is the main encode, not a sample
             None,  // grain_level_being_tested: Not applicable for final encode
+            progress_callback, // Pass the progress callback
         );
 
         // ========================================================================
@@ -527,29 +594,20 @@ pub fn process_videos<S: FfmpegSpawner, P: FfprobeExecutor, N: Notifier, M: File
                 // ========================================================================
 
                 // Send a success notification if ntfy topic is configured
-                if let Some(topic) = &config.ntfy_topic {
-                    // Calculate size reduction percentage
-                    let reduction = if input_size > 0 {
-                        // Avoid overflow with saturating operations
-                        100u64.saturating_sub(output_size.saturating_mul(100) / input_size)
-                    } else {
-                        0
+                if let Some(_topic) = &config.ntfy_topic {
+                    // Create a notification using the new abstraction
+                    let notification = NotificationType::EncodeComplete {
+                        input_path: input_path.to_path_buf(),
+                        output_path: output_path.clone(),
+                        input_size,
+                        output_size,
+                        duration: file_elapsed_time,
+                        hostname: hostname.clone(),
                     };
 
-                    // Format the success message with details
-                    let success_message = format!(
-                        "[{hostname}]: Successfully encoded {filename} in {duration}.\nSize: {in_size} -> {out_size} (Reduced by {reduct}%)",
-                        hostname = hostname,
-                        filename = filename,
-                        duration = format_duration(file_elapsed_time),
-                        in_size = format_bytes(input_size),
-                        out_size = format_bytes(output_size),
-                        reduct = reduction
-                    );
-
-                    // Send the notification and log any errors
-                    if let Err(e) = notifier.send(topic, &success_message, Some("Drapto Encode Success"), Some(4), Some("white_check_mark")) {
-                        warn!("Failed to send ntfy success notification for {}: {}", filename, e);
+                    // Send using the NotificationSender trait
+                    if let Err(e) = notification_sender.send_notification(notification) {
+                        warn!("Failed to send success notification for {}: {}", filename, e);
                     }
                 }
             }
@@ -563,15 +621,21 @@ pub fn process_videos<S: FfmpegSpawner, P: FfprobeExecutor, N: Notifier, M: File
                 );
 
                 // Send a notification if ntfy topic is configured
-                if let Some(topic) = &config.ntfy_topic {
-                    let skip_message = format!(
-                        "[{hostname}]: Skipped encode for {filename}: No streams found.",
-                        hostname = hostname,
-                        filename = filename
-                    );
-                    // Send the notification and log any errors
-                    if let Err(notify_err) = notifier.send(topic, &skip_message, Some("Drapto Encode Skipped"), Some(3), Some("warning")) {
-                        warn!("Failed to send ntfy skip notification for {}: {}", filename, notify_err);
+                if let Some(_topic) = &config.ntfy_topic {
+                    // Create a notification using the new abstraction
+                    let notification = NotificationType::Custom {
+                        title: "Drapto Encode Skipped".to_string(),
+                        message: format!(
+                            "[{hostname}]: Skipped encode for {filename}: No streams found.",
+                            hostname = hostname,
+                            filename = filename
+                        ),
+                        priority: 3,
+                    };
+
+                    // Send using the NotificationSender trait
+                    if let Err(e) = notification_sender.send_notification(notification) {
+                        warn!("Failed to send skip notification for {}: {}", filename, e);
                     }
                 }
                 // No `continue` here, just let the loop proceed after logging/notifying
@@ -586,15 +650,17 @@ pub fn process_videos<S: FfmpegSpawner, P: FfprobeExecutor, N: Notifier, M: File
                 );
 
                 // Send an error notification if ntfy topic is configured
-                if let Some(topic) = &config.ntfy_topic {
-                    let error_message = format!(
-                        "[{hostname}]: Error encoding {filename}: ffmpeg failed.",
-                        hostname = hostname,
-                        filename = filename
-                    );
-                    // Send the notification and log any errors
-                    if let Err(notify_err) = notifier.send(topic, &error_message, Some("Drapto Encode Error"), Some(5), Some("x,rotating_light")) {
-                        warn!("Failed to send ntfy error notification for {}: {}", filename, notify_err);
+                if let Some(_topic) = &config.ntfy_topic {
+                    // Create a notification using the new abstraction
+                    let notification = NotificationType::EncodeError {
+                        input_path: input_path.to_path_buf(),
+                        message: format!("ffmpeg failed: {}", e),
+                        hostname: hostname.clone(),
+                    };
+
+                    // Send using the NotificationSender trait
+                    if let Err(err) = notification_sender.send_notification(notification) {
+                        warn!("Failed to send error notification for {}: {}", filename, err);
                     }
                 }
                 // No `continue` here either for general errors, loop proceeds

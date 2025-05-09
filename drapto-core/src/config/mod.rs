@@ -1,5 +1,5 @@
 // ============================================================================
-// drapto-core/src/config.rs
+// drapto-core/src/config/mod.rs
 // ============================================================================
 //
 // CONFIGURATION: Core Configuration Structures and Constants
@@ -11,6 +11,7 @@
 //
 // KEY COMPONENTS:
 // - CoreConfig: Main configuration structure for the library
+// - CoreConfigBuilder: Builder pattern for creating CoreConfig instances
 // - FilmGrainMetricType: Enum for different grain analysis strategies
 // - Default constants: Predefined values for common settings
 //
@@ -25,11 +26,17 @@
 //
 // AI-ASSISTANT-INFO: Configuration structures and constants for the drapto-core library
 
+// ---- Module declarations ----
+mod builder;
+
 // ---- Standard library imports ----
 use std::path::PathBuf;
 
 // ---- Internal module imports ----
 use crate::processing::detection::grain_analysis::GrainLevel;
+
+// ---- Re-exports ----
+pub use builder::CoreConfigBuilder;
 
 // ============================================================================
 // FILM GRAIN ANALYSIS TYPES
@@ -95,28 +102,22 @@ pub const DEFAULT_CORE_QUALITY_UHD: u8 = 27;
 /// # Examples
 ///
 /// ```rust,no_run
-/// use drapto_core::CoreConfig;
-/// use drapto_core::processing::detection::GrainLevel;
+/// use drapto_core::config::CoreConfigBuilder;
+/// use drapto_core::processing::detection::grain_analysis::GrainLevel;
 /// use std::path::PathBuf;
 ///
-/// let config = CoreConfig {
-///     input_dir: PathBuf::from("/path/to/input"),
-///     output_dir: PathBuf::from("/path/to/output"),
-///     log_dir: PathBuf::from("/path/to/logs"),
-///     default_encoder_preset: Some(6),
-///     preset: None,
-///     quality_sd: Some(24),
-///     quality_hd: Some(26),
-///     quality_uhd: Some(28),
-///     default_crop_mode: Some("auto".to_string()),
-///     ntfy_topic: Some("https://ntfy.sh/my-topic".to_string()),
-///     enable_denoise: true,
-///     film_grain_sample_duration: Some(5),
-///     film_grain_knee_threshold: Some(0.8),
-///     film_grain_fallback_level: Some(GrainLevel::Baseline),
-///     film_grain_max_level: Some(GrainLevel::Moderate),
-///     film_grain_refinement_points_count: Some(5),
-/// };
+/// let config = CoreConfigBuilder::new()
+///     .input_dir(PathBuf::from("/path/to/input"))
+///     .output_dir(PathBuf::from("/path/to/output"))
+///     .log_dir(PathBuf::from("/path/to/logs"))
+///     .enable_denoise(true)
+///     .quality_sd(24)
+///     .quality_hd(26)
+///     .quality_uhd(28)
+///     .default_crop_mode("auto")
+///     .ntfy_topic("https://ntfy.sh/my-topic")
+///     .film_grain_max_level(GrainLevel::Moderate)
+///     .build();
 /// ```
 #[derive(Debug, Clone)]
 pub struct CoreConfig {

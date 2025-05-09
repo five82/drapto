@@ -5,10 +5,11 @@
 use crate::error::{CoreError, CoreResult};
 use crate::processing::audio; // To access calculate_audio_bitrate
 use crate::processing::detection::grain_analysis::GrainLevel; // Import GrainLevel
-use colored::Colorize; // Import the trait for color methods
-use crate::external::{FfmpegSpawner, FfmpegProcess, is_macos}; // Import platform detection
+use crate::external::{FfmpegSpawner, FfmpegProcess}; // Remove is_macos import
+use crate::progress::{ProgressCallback, ProgressEvent, LogLevel};
 use ffmpeg_sidecar::command::FfmpegCommand;
 use ffmpeg_sidecar::event::{FfmpegEvent, LogLevel as FfmpegLogLevel}; // Renamed LogLevel to avoid conflict
+use colored::Colorize;
 use std::time::Instant;
 use std::path::PathBuf; // Keep PathBuf, remove unused Path
 use log::{info, warn, error, debug, log}; // Import log macros
@@ -185,14 +186,15 @@ pub fn build_ffmpeg_args(
 
 
 /// Executes an FFmpeg encode operation using ffmpeg-sidecar based on the provided parameters.
-/// Uses the standard `log` facade for logging.
+/// Uses the standard `log` facade for logging and the progress callback for user-facing output.
 /// Accepts a generic `FfmpegSpawner` to allow for mocking.
-pub fn run_ffmpeg_encode<S: FfmpegSpawner>(
+pub fn run_ffmpeg_encode<S: FfmpegSpawner, C: ProgressCallback>(
     spawner: &S,
     params: &EncodeParams,
-    disable_audio: bool, // Added flag
+    disable_audio: bool,
     is_grain_analysis_sample: bool, // Flag to control logging verbosity
-    _grain_level_being_tested: Option<GrainLevel>, // Added parameter for grain level context (now unused)
+    _grain_level_being_tested: Option<GrainLevel>,
+    progress_callback: &C,
 ) -> CoreResult<()> {
     // Log start differently based on context
     if is_grain_analysis_sample {
@@ -228,11 +230,24 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner>(
         );
 
         // Log hardware acceleration status for main encodes
-        if params.use_hw_decode && is_macos() {
-            info!("  {} {}", "Hardware:".cyan(), "VideoToolbox hardware decoding enabled".green().bold());
-        } else if params.use_hw_decode {
-            // Hardware acceleration is enabled in settings but not available on this platform
-            info!("  {} {}", "Hardware:".cyan(), "Software decoding (hardware acceleration not available on this platform)".yellow());
+        if params.use_hw_decode {
+            // We don't check is_macos() directly anymore - this is handled by the CLI
+            // Just report the hardware acceleration status based on the params
+            let hw_accel_available = std::env::consts::OS == "macos";
+
+            if hw_accel_available {
+                progress_callback.on_progress(ProgressEvent::LogMessage {
+                    message: "VideoToolbox hardware decoding enabled".to_string(),
+                    level: LogLevel::Info,
+                });
+                debug!("VideoToolbox hardware decoding enabled");
+            } else {
+                progress_callback.on_progress(ProgressEvent::LogMessage {
+                    message: "Software decoding (hardware acceleration not available on this platform)".to_string(),
+                    level: LogLevel::Info,
+                });
+                debug!("Software decoding (hardware acceleration not available on this platform)");
+            }
         }
     } else if is_grain_analysis_sample {
     }
@@ -241,10 +256,17 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner>(
 
     // Extract hardware acceleration options first
     let mut hwaccel_args = Vec::new();
-    if params.use_hw_decode && is_macos() && !is_grain_analysis_sample {
+    let hw_accel_available = std::env::consts::OS == "macos";
+
+    if params.use_hw_decode && hw_accel_available && !is_grain_analysis_sample {
         hwaccel_args.push("-hwaccel");
         hwaccel_args.push("videotoolbox");
-        info!("{}", "Using VideoToolbox hardware decoding".green().bold());
+
+        progress_callback.on_progress(ProgressEvent::LogMessage {
+            message: "Using VideoToolbox hardware decoding".to_string(),
+            level: LogLevel::Info,
+        });
+        debug!("Using VideoToolbox hardware decoding");
     }
 
     // Build other arguments using the helper function, passing flags down
@@ -337,17 +359,39 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner>(
                             0.0
                         };
 
-                        // Conditionally log detailed progress
+                        // Conditionally report detailed progress
                         if !is_grain_analysis_sample {
-                            info!(
-                                "⏳ {} {:.2}% ({} / {}), Speed: {}, Avg FPS: {:.2}, ETA: {}",
-                                "Encoding progress:".cyan(),
-                                percent.to_string().green().bold(), // Bold percentage
-                                format_duration_seconds(current_secs).yellow(), // Color times
-                                duration_secs.map_or("??:??:??".to_string(), format_duration_seconds).yellow(), // Color times
-                                format!("{:.2}x", progress.speed).green().bold(), // Bold speed
+                            // Use progress callback for user-facing output
+                            progress_callback.on_progress(ProgressEvent::EncodeProgress {
+                                percent: percent as f32,
+                                current_secs,
+                                total_secs: duration_secs.unwrap_or(0.0),
+                                speed: progress.speed,
+                                fps: avg_encoding_fps as f32,
+                                eta: std::time::Duration::from_secs(
+                                    if let Some(total_duration) = duration_secs {
+                                        if progress.speed > 0.01 && total_duration > current_secs {
+                                            ((total_duration - current_secs) / (progress.speed as f64)) as u64
+                                        } else if percent < 100.0 {
+                                            0
+                                        } else {
+                                            0
+                                        }
+                                    } else {
+                                        0
+                                    }
+                                ),
+                            });
+
+                            // Also log to debug level (not info) to avoid duplication
+                            debug!(
+                                "Encoding progress: {:.2}% ({} / {}), Speed: {:.2}x, Avg FPS: {:.2}, ETA: {}",
+                                percent,
+                                format_duration_seconds(current_secs),
+                                duration_secs.map_or("??:??:??".to_string(), format_duration_seconds),
+                                progress.speed,
                                 avg_encoding_fps,
-                                eta_str.green().bold() // Bold ETA
+                                eta_str
                             );
                         }
                         // Always log debug progress regardless of sample type

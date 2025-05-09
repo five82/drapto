@@ -12,6 +12,8 @@
 
 // ---- External crate imports ----
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
+use log::warn;
 
 /// Represents the detected level of grain/noise in a video.
 ///
@@ -57,6 +59,78 @@ pub enum GrainLevel {
 
     /// Medium grain - benefits from temporally-focused denoising (higher temporal strength values)
     Elevated,
+}
+
+/// Error type for GrainLevel parsing failures.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GrainLevelParseError {
+    /// The invalid string that couldn't be parsed
+    pub invalid_value: String,
+}
+
+impl std::fmt::Display for GrainLevelParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Invalid grain level: {}", self.invalid_value)
+    }
+}
+
+impl std::error::Error for GrainLevelParseError {}
+
+impl FromStr for GrainLevel {
+    type Err = GrainLevelParseError;
+
+    /// Parses a string into a GrainLevel.
+    ///
+    /// This function handles both current and deprecated grain level names,
+    /// logging warnings when deprecated names are used.
+    ///
+    /// # Arguments
+    ///
+    /// * `s` - The string to parse
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(GrainLevel)` - If the string was successfully parsed
+    /// * `Err(GrainLevelParseError)` - If the string couldn't be parsed
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use drapto_core::processing::detection::grain_analysis::GrainLevel;
+    /// use std::str::FromStr;
+    ///
+    /// // Parse current names
+    /// assert_eq!(GrainLevel::from_str("baseline").unwrap(), GrainLevel::Baseline);
+    /// assert_eq!(GrainLevel::from_str("moderate").unwrap(), GrainLevel::Moderate);
+    ///
+    /// // Parse deprecated names (will log warnings)
+    /// assert_eq!(GrainLevel::from_str("veryclean").unwrap(), GrainLevel::Baseline);
+    /// assert_eq!(GrainLevel::from_str("medium").unwrap(), GrainLevel::Elevated);
+    /// ```
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "baseline" => Ok(GrainLevel::Baseline),
+            "veryclean" => {
+                warn!("'veryclean' is deprecated, use 'baseline' instead. Converting to Baseline.");
+                Ok(GrainLevel::Baseline)
+            },
+            "verylight" => Ok(GrainLevel::VeryLight),
+            "light" => Ok(GrainLevel::Light),
+            "moderate" => Ok(GrainLevel::Moderate),
+            "visible" => {
+                warn!("'visible' is deprecated, use 'moderate' instead. Converting to Moderate.");
+                Ok(GrainLevel::Moderate)
+            },
+            "elevated" => Ok(GrainLevel::Elevated),
+            "medium" => {
+                warn!("'medium' is deprecated, use 'elevated' instead. Converting to Elevated.");
+                Ok(GrainLevel::Elevated)
+            },
+            _ => Err(GrainLevelParseError {
+                invalid_value: s.to_string(),
+            }),
+        }
+    }
 }
 
 /// Holds the final result of the grain analysis process.

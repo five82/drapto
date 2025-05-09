@@ -39,47 +39,50 @@
 //! ```rust,no_run
 //! use drapto_core::{CoreConfig, process_videos};
 //! use drapto_core::external::{SidecarSpawner, CrateFfprobeExecutor, StdFsMetadataProvider};
-//! use drapto_core::notifications::NtfyNotifier;
+//! use drapto_core::notifications::NtfyNotificationSender;
+//! use drapto_core::progress::NullProgressCallback;
 //! use drapto_core::processing::detection::GrainLevel;
 //! use std::path::PathBuf;
 //!
-//! // Create configuration
-//! let config = CoreConfig {
-//!     input_dir: PathBuf::from("/path/to/input"),
-//!     output_dir: PathBuf::from("/path/to/output"),
-//!     log_dir: PathBuf::from("/path/to/logs"),
-//!     enable_denoise: true,
-//!     default_encoder_preset: Some(6),
-//!     preset: None,
-//!     quality_sd: Some(24),
-//!     quality_hd: Some(26),
-//!     quality_uhd: Some(28),
-//!     default_crop_mode: Some("auto".to_string()),
-//!     ntfy_topic: Some("https://ntfy.sh/my-topic".to_string()),
-//!     film_grain_sample_duration: Some(5),
-//!     film_grain_knee_threshold: Some(0.8),
-//!     film_grain_fallback_level: Some(GrainLevel::Baseline),
-//!     film_grain_max_level: Some(GrainLevel::Moderate),
-//!     film_grain_refinement_points_count: Some(5),
-//! };
+//! // Create configuration using the builder pattern
+//! let config = drapto_core::config::CoreConfigBuilder::new()
+//!     .input_dir(PathBuf::from("/path/to/input"))
+//!     .output_dir(PathBuf::from("/path/to/output"))
+//!     .log_dir(PathBuf::from("/path/to/logs"))
+//!     .enable_denoise(true)
+//!     .default_encoder_preset(6)
+//!     .quality_sd(24)
+//!     .quality_hd(26)
+//!     .quality_uhd(28)
+//!     .default_crop_mode("auto")
+//!     .ntfy_topic("https://ntfy.sh/my-topic")
+//!     .film_grain_sample_duration(5)
+//!     .film_grain_knee_threshold(0.8)
+//!     .film_grain_fallback_level(GrainLevel::Baseline)
+//!     .film_grain_max_level(GrainLevel::Moderate)
+//!     .film_grain_refinement_points_count(5)
+//!     .build();
 //!
 //! // Find files to process
 //! let files = drapto_core::find_processable_files(&config.input_dir).unwrap();
 //!
-//! // Process videos
+//! // Create dependencies
 //! let spawner = SidecarSpawner;
 //! let ffprobe_executor = CrateFfprobeExecutor::new();
-//! let notifier = NtfyNotifier::new().unwrap();
+//! let notification_sender = NtfyNotificationSender::new("https://ntfy.sh/my-topic").unwrap();
 //! let metadata_provider = StdFsMetadataProvider;
+//! let progress_callback = NullProgressCallback;
 //!
+//! // Process videos
 //! let results = process_videos(
 //!     &spawner,
 //!     &ffprobe_executor,
-//!     &notifier,
+//!     &notification_sender,
 //!     &metadata_provider,
 //!     &config,
 //!     &files,
 //!     None,
+//!     &progress_callback,
 //! ).unwrap();
 //! ```
 //!
@@ -112,6 +115,9 @@ pub mod utils;
 /// Notification services for encoding progress updates
 pub mod notifications;
 
+/// Progress reporting abstractions and callback system
+pub mod progress;
+
 // ============================================================================
 // PUBLIC API RE-EXPORTS
 // ============================================================================
@@ -143,8 +149,15 @@ pub use utils::{format_bytes, format_duration};
 pub use external::{
     CrateFfprobeExecutor, FfmpegProcess, FfmpegSpawner, FfprobeExecutor,
     FileMetadataProvider, SidecarProcess, SidecarSpawner, StdFsMetadataProvider,
-    is_macos,
 };
+
+// ----- Progress Reporting -----
+/// Progress reporting abstractions and callback system
+pub use progress::{ProgressCallback, ProgressEvent, LogLevel, NullProgressCallback};
+
+// ----- Notification Services -----
+/// Notification system abstractions and implementations
+pub use notifications::{NotificationSender, NotificationType, NullNotificationSender, NtfyNotificationSender};
 
 // ============================================================================
 // PUBLIC STRUCTS

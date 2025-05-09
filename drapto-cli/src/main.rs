@@ -30,7 +30,7 @@ use drapto_cli::logging::get_timestamp;
 
 // ---- External crate imports ----
 use drapto_core::external::{SidecarSpawner, CrateFfprobeExecutor};
-use drapto_core::notifications::NtfyNotifier;
+use drapto_core::notifications::NtfyNotificationSender;
 use clap::Parser;
 use daemonize::Daemonize;
 use colored::*;
@@ -179,20 +179,35 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Initialize required dependencies with concrete implementations
             let spawner = SidecarSpawner;                      // For spawning ffmpeg processes
             let ffprobe_executor = CrateFfprobeExecutor::new(); // For executing ffprobe commands
-            let notifier = NtfyNotifier::new()?;               // For sending notifications
 
-            // Execute the encode command with all necessary parameters
+            // Execute the encode command with all necessary parameters based on notification type
             // This runs in either the original process (interactive mode)
             // or the daemon child process (non-interactive mode)
-            run_encode(
-                &spawner,
-                &ffprobe_executor,
-                &notifier,
-                args,
-                interactive_mode,
-                discovered_files,
-                effective_input_dir
-            )
+            if let Some(ref topic) = args.ntfy {
+                // Use NtfyNotificationSender if a topic is provided
+                let notification_sender = NtfyNotificationSender::new(topic)?;
+                run_encode(
+                    &spawner,
+                    &ffprobe_executor,
+                    &notification_sender,
+                    args,
+                    interactive_mode,
+                    discovered_files,
+                    effective_input_dir
+                )
+            } else {
+                // Use NullNotificationSender if no topic is provided
+                let notification_sender = drapto_core::notifications::NullNotificationSender;
+                run_encode(
+                    &spawner,
+                    &ffprobe_executor,
+                    &notification_sender,
+                    args,
+                    interactive_mode,
+                    discovered_files,
+                    effective_input_dir
+                )
+            }
         }
         // Future commands would be added here as additional match arms
     };

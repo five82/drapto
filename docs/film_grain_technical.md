@@ -53,11 +53,11 @@ During analysis, the system outputs the results of each sample test. Here's an e
 ```
 Phase 1: Testing initial grain levels...
   Processing sample 1/3 (Start: 35.26s, Duration: 10s)...
-      -> VeryClean  size: 26.25 MB
+      -> Baseline   size: 26.25 MB
       -> VeryLight  size: 20.05 MB
       -> Light      size: 17.73 MB
-      -> Visible    size: 14.64 MB
-      -> Medium     size: 12.40 MB
+      -> Moderate   size: 14.64 MB
+      -> Elevated   size: 12.40 MB
 ```
 
 Note: The output logs have been updated to consistently use "Baseline" instead of "None" when referring to videos with no grain or when no denoising is applied.

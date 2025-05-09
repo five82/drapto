@@ -36,6 +36,12 @@ pub mod config;
 /// Logging utilities and helper functions
 pub mod logging;
 
+/// Platform-specific functionality and detection
+pub mod platform;
+
+/// CLI-specific progress reporting implementation
+pub mod progress;
+
 // ---- Public re-exports ----
 // These items are re-exported to make them directly accessible to the binary crate
 // and integration tests without requiring explicit imports from submodules
@@ -45,3 +51,9 @@ pub use cli::{Cli, Commands, EncodeArgs};
 
 /// Command implementation functions
 pub use commands::encode::run_encode;
+
+/// Platform-specific functionality
+pub use platform::{is_macos, HardwareAcceleration};
+
+/// Progress reporting implementation
+pub use progress::CliProgressCallback;

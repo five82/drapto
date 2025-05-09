@@ -24,18 +24,21 @@
 // ---- Internal crate imports ----
 use crate::cli::EncodeArgs;
 use crate::config;
+use crate::platform::HardwareAcceleration;
+use crate::progress::CliProgressCallback;
 
 // ---- External crate imports ----
-use drapto_core::{CoreConfig, CoreError, EncodeResult};
+use drapto_core::{CoreError, EncodeResult};
 use drapto_core::external::{FfmpegSpawner, FfprobeExecutor};
 use drapto_core::external::StdFsMetadataProvider;
-use drapto_core::notifications::Notifier;
+use drapto_core::notifications::NotificationSender;
 use colored::*;
 
 // ---- Standard library imports ----
 use std::fs;
 use std::time::Instant;
 use std::path::PathBuf;
+use std::str::FromStr;
 
 // ---- Logging imports ----
 use log::{info, warn, error};
@@ -103,14 +106,14 @@ pub fn discover_encode_files(args: &EncodeArgs) -> Result<(Vec<PathBuf>, PathBuf
 /// The function is generic over the types that implement the required traits:
 /// - `S`: FfmpegSpawner - For spawning ffmpeg processes
 /// - `P`: FfprobeExecutor - For executing ffprobe commands
-/// - `N`: Notifier - For sending notifications
+/// - `N`: NotificationSender - For sending notifications
 ///
 /// This design allows for dependency injection and easier testing.
 ///
 /// # Arguments
 /// * `spawner` - Implementation of FfmpegSpawner for executing ffmpeg
 /// * `ffprobe_executor` - Implementation of FfprobeExecutor for executing ffprobe
-/// * `notifier` - Implementation of Notifier for sending notifications
+/// * `notification_sender` - Implementation of NotificationSender for sending notifications
 /// * `args` - The encode command arguments
 /// * `interactive` - Whether the application is running in interactive mode
 /// * `files_to_process` - Vector of paths to the files to encode
@@ -119,10 +122,10 @@ pub fn discover_encode_files(args: &EncodeArgs) -> Result<(Vec<PathBuf>, PathBuf
 /// # Returns
 /// * `Ok(())` - If the encoding process completes successfully
 /// * `Err(...)` - If an error occurs during the encoding process
-pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor, N: Notifier>(
+pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor, N: NotificationSender + ?Sized>(
     spawner: &S,
     ffprobe_executor: &P,
-    notifier: &N,
+    notification_sender: &N,
     args: EncodeArgs,
     interactive: bool,
     files_to_process: Vec<PathBuf>,
@@ -194,58 +197,26 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor, N: Notifier>(
 
     // --- Prepare Core Configuration ---
 
-    // Parse grain level strings to GrainLevel enum values
-    let grain_max_level = args.grain_max_level.as_deref().map(|level_str| {
-        match level_str.to_lowercase().as_str() {
-            "baseline" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::Baseline),
-            "veryclean" => {
-                warn!("{} 'veryclean' is deprecated, use 'baseline' instead. Converting to Baseline.", "Warning:".yellow().bold());
-                Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::Baseline)
-            },
-            "verylight" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::VeryLight),
-            "light" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::Light),
-            "moderate" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::Moderate),
-            "visible" => {
-                warn!("{} 'visible' is deprecated, use 'moderate' instead. Converting to Moderate.", "Warning:".yellow().bold());
-                Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::Moderate)
-            },
-            "elevated" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::Elevated),
-            "medium" => {
-                warn!("{} 'medium' is deprecated, use 'elevated' instead. Converting to Elevated.", "Warning:".yellow().bold());
-                Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::Elevated)
-            },
-            _ => {
+    // Parse grain level strings to GrainLevel enum values using FromStr implementation
+    let grain_max_level = args.grain_max_level.as_deref().and_then(|level_str| {
+        match drapto_core::processing::detection::grain_analysis::GrainLevel::from_str(level_str) {
+            Ok(level) => Some(level),
+            Err(_) => {
                 warn!("{} Invalid grain_max_level '{}'. Using default.", "Warning:".yellow().bold(), level_str);
-                Err(())
+                None
             }
         }
-    }).and_then(|res| res.ok());
+    });
 
-    let grain_fallback_level = args.grain_fallback_level.as_deref().map(|level_str| {
-        match level_str.to_lowercase().as_str() {
-            "baseline" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::Baseline),
-            "veryclean" => {
-                warn!("{} 'veryclean' is deprecated, use 'baseline' instead. Converting to Baseline.", "Warning:".yellow().bold());
-                Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::Baseline)
-            },
-            "verylight" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::VeryLight),
-            "light" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::Light),
-            "moderate" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::Moderate),
-            "visible" => {
-                warn!("{} 'visible' is deprecated, use 'moderate' instead. Converting to Moderate.", "Warning:".yellow().bold());
-                Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::Moderate)
-            },
-            "elevated" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::Elevated),
-            "medium" => {
-                warn!("{} 'medium' is deprecated, use 'elevated' instead. Converting to Elevated.", "Warning:".yellow().bold());
-                Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::Elevated)
-            },
-            _ => {
+    let grain_fallback_level = args.grain_fallback_level.as_deref().and_then(|level_str| {
+        match drapto_core::processing::detection::grain_analysis::GrainLevel::from_str(level_str) {
+            Ok(level) => Some(level),
+            Err(_) => {
                 warn!("{} Invalid grain_fallback_level '{}'. Using default.", "Warning:".yellow().bold(), level_str);
-                Err(())
+                None
             }
         }
-    }).and_then(|res| res.ok());
+    });
 
     // Validate knee threshold is within valid range (0.1 to 1.0)
     let grain_knee_threshold = args.grain_knee_threshold.and_then(|threshold| {
@@ -258,31 +229,71 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor, N: Notifier>(
         }
     });
 
-    let config = CoreConfig {
-        input_dir: effective_input_dir,
-        output_dir: actual_output_dir.clone(),
-        log_dir: log_dir.clone(),
-        default_encoder_preset: Some(config::DEFAULT_ENCODER_PRESET as u8),
-        quality_sd: args.quality_sd,
-        quality_hd: args.quality_hd,
-        quality_uhd: args.quality_uhd,
-        default_crop_mode: Some(if args.disable_autocrop {
-            "none".to_string() // Use "none" for main encode if flag is set
-        } else {
-            config::DEFAULT_CROP_MODE.to_string() // Use default otherwise
-        }),
-        ntfy_topic: args.ntfy,
-        preset: args.preset,
-        // hw_accel field removed from CoreConfig
-        enable_denoise: !args.no_denoise, // Invert the flag: no_denoise=true means enable_denoise=false
+    // Use the builder pattern to create the CoreConfig
+    let mut builder = drapto_core::config::CoreConfigBuilder::new()
+        .input_dir(effective_input_dir)
+        .output_dir(actual_output_dir.clone())
+        .log_dir(log_dir.clone())
+        .default_encoder_preset(config::DEFAULT_ENCODER_PRESET as u8)
+        .enable_denoise(!args.no_denoise); // Invert the flag: no_denoise=true means enable_denoise=false
 
-        // Grain analysis configuration
-        film_grain_sample_duration: args.grain_sample_duration,
-        film_grain_knee_threshold: grain_knee_threshold,
-        film_grain_max_level: grain_max_level,
-        film_grain_fallback_level: grain_fallback_level,
-        film_grain_refinement_points_count: None, // Use default
+    // Add optional parameters if they are provided
+    if let Some(quality) = args.quality_sd {
+        builder = builder.quality_sd(quality);
+    }
+
+    if let Some(quality) = args.quality_hd {
+        builder = builder.quality_hd(quality);
+    }
+
+    if let Some(quality) = args.quality_uhd {
+        builder = builder.quality_uhd(quality);
+    }
+
+    // Set crop mode based on disable_autocrop flag
+    let crop_mode = if args.disable_autocrop {
+        "none" // Use "none" for main encode if flag is set
+    } else {
+        config::DEFAULT_CROP_MODE // Use default otherwise
     };
+    builder = builder.default_crop_mode(crop_mode);
+
+    // Add ntfy topic if provided
+    if let Some(topic) = args.ntfy {
+        builder = builder.ntfy_topic(&topic);
+    }
+
+    // Add preset if provided
+    if let Some(preset) = args.preset {
+        builder = builder.preset(preset);
+    }
+
+    // Add grain analysis configuration if provided
+    if let Some(duration) = args.grain_sample_duration {
+        builder = builder.film_grain_sample_duration(duration);
+    }
+
+    if let Some(threshold) = grain_knee_threshold {
+        builder = builder.film_grain_knee_threshold(threshold);
+    }
+
+    if let Some(level) = grain_max_level {
+        builder = builder.film_grain_max_level(level);
+    }
+
+    if let Some(level) = grain_fallback_level {
+        builder = builder.film_grain_fallback_level(level);
+    }
+
+    // Build the final config
+    let config = builder.build();
+
+    // --- Create Progress Callback ---
+    let progress_callback = CliProgressCallback::new(interactive);
+
+    // --- Detect Hardware Acceleration ---
+    let hw_accel = HardwareAcceleration::detect();
+    hw_accel.log_capabilities();
 
     // --- Execute Core Logic ---
     info!("{} {} file(s).", "Processing".green(), files_to_process.len().to_string().green().bold());
@@ -294,16 +305,16 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor, N: Notifier>(
          // Spawner is now passed in as an argument
          // Notifier is now passed in as an argument
 
-         // Call drapto_core::process_videos WITHOUT the log_callback
+         // Call drapto_core::process_videos with our progress callback
          drapto_core::process_videos(
              spawner, // Pass the injected spawner instance (S)
              ffprobe_executor, // Pass the injected ffprobe executor instance (P)
-             notifier, // Pass the injected notifier instance (N)
+             notification_sender, // Pass the injected notification sender instance (N)
              &StdFsMetadataProvider, // Pass the standard metadata provider
              &config, // Pass config (&CoreConfig)
              &files_to_process,
-             target_filename_override
-             // Removed log_callback argument
+             target_filename_override,
+             &progress_callback // Pass our progress callback
          )
     };
 

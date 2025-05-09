@@ -17,12 +17,12 @@
 // AI-ASSISTANT-INFO: Audio stream analysis and bitrate calculation
 
 // ---- External crate imports ----
-use colored::*;
-use log::{info, warn};
+use log::{info, warn, debug};
 
 // ---- Internal crate imports ----
 use crate::error::CoreResult;
 use crate::external::FfprobeExecutor;
+use crate::progress::{ProgressCallback, ProgressEvent, LogLevel};
 
 // ---- Standard library imports ----
 use std::path::Path;
@@ -95,16 +95,19 @@ pub(crate) fn calculate_audio_bitrate(channels: u32) -> u32 {
 /// ```rust,no_run
 /// use drapto_core::processing::audio::log_audio_info;
 /// use drapto_core::external::CrateFfprobeExecutor;
+/// use drapto_core::progress::NullProgressCallback;
 /// use std::path::Path;
 ///
 /// let ffprobe_executor = CrateFfprobeExecutor::new();
 /// let input_path = Path::new("/path/to/video.mkv");
+/// let progress_callback = NullProgressCallback;
 ///
-/// log_audio_info(&ffprobe_executor, input_path).unwrap();
+/// log_audio_info(&ffprobe_executor, input_path, &progress_callback).unwrap();
 /// ```
-pub fn log_audio_info<P: FfprobeExecutor>(
+pub fn log_audio_info<P: FfprobeExecutor, C: ProgressCallback>(
     ffprobe_executor: &P,
     input_path: &Path,
+    progress_callback: &C,
 ) -> CoreResult<()> {
     // Extract filename for logging purposes
     let filename = input_path
@@ -115,12 +118,20 @@ pub fn log_audio_info<P: FfprobeExecutor>(
     // STEP 1: Get audio channel information using ffprobe
     let audio_channels = match ffprobe_executor.get_audio_channels(input_path) {
         Ok(channels) => {
-            info!("Detected audio channels: {}", format!("{:?}", channels).green());
+            progress_callback.on_progress(ProgressEvent::LogMessage {
+                message: format!("Detected audio channels: {:?}", channels),
+                level: LogLevel::Info,
+            });
+            debug!("Detected audio channels: {:?}", channels);
             channels
         }
         Err(e) => {
             // Log warning but don't fail the process - audio info is non-critical
             // The ffmpeg builder will handle missing channel info separately
+            progress_callback.on_progress(ProgressEvent::LogMessage {
+                message: format!("Error getting audio channels for {}: {}. Cannot log bitrate info.", filename, e),
+                level: LogLevel::Warning,
+            });
             warn!(
                 "Error getting audio channels for {}: {}. Cannot log bitrate info.",
                 filename, e
@@ -131,6 +142,10 @@ pub fn log_audio_info<P: FfprobeExecutor>(
 
     // STEP 2: Log calculated bitrates for each audio stream
     if audio_channels.is_empty() {
+        progress_callback.on_progress(ProgressEvent::LogMessage {
+            message: "No audio channels detected; cannot calculate specific bitrates.".to_string(),
+            level: LogLevel::Info,
+        });
         info!("No audio channels detected; cannot calculate specific bitrates.");
         return Ok(());
     }
@@ -143,23 +158,33 @@ pub fn log_audio_info<P: FfprobeExecutor>(
 
         // Log detailed information for each stream
         let log_msg = format!(
-            "Calculated bitrate for audio stream {} ({} channels): {}",
+            "Calculated bitrate for audio stream {} ({} channels): {}kbps",
             index,
-            num_channels.to_string().green(),
-            format!("{}kbps", bitrate).green().bold()
+            num_channels,
+            bitrate
         );
-        info!("{}", log_msg);
+
+        progress_callback.on_progress(ProgressEvent::LogMessage {
+            message: log_msg.clone(),
+            level: LogLevel::Info,
+        });
+        debug!("{}", log_msg);
 
         // Add to summary for combined log message
         audio_bitrate_log_parts.push(format!(
-            "Stream {}: {}",
+            "Stream {}: {}kbps",
             index,
-            format!("{}kbps", bitrate).green().bold()
+            bitrate
         ));
     }
 
     // Log summary of all streams
-    info!("  Bitrate Breakdown: {}", audio_bitrate_log_parts.join(", "));
+    let summary = format!("Bitrate Breakdown: {}", audio_bitrate_log_parts.join(", "));
+    progress_callback.on_progress(ProgressEvent::LogMessage {
+        message: summary.clone(),
+        level: LogLevel::Info,
+    });
+    debug!("  {}", summary);
 
     Ok(())
 }
