@@ -128,37 +128,59 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // STEP 3: Daemonize if running in non-interactive mode
             if !interactive_mode {
-                // Display discovered files to user before daemonizing
-                // This provides immediate feedback about what will be processed
+                // Display all pre-daemonization information in a single block
+                // to reduce the number of flush operations needed
+
+                // Show files that will be processed
                 if !discovered_files.is_empty() {
                     eprintln!("{}", "Will encode the following files:".cyan().bold());
                     for file in &discovered_files {
                         eprintln!("  - {}", file.display().to_string().green());
                     }
                 } else {
-                     eprintln!("{}", "No .mkv files found to encode in the specified input.".yellow());
+                    eprintln!("{}", "No .mkv files found to encode in the specified input.".yellow());
                 }
-                // Ensure output is flushed before daemonizing
-                io::stderr().flush().unwrap_or_else(|e| {
-                     eprintln!("{} Failed to flush stderr before daemonizing: {}", "Warning:".yellow().bold(), e);
-                });
 
                 // Show log file path so user knows where to find output
                 eprintln!("{} {}", "Log file:".cyan(), main_log_path.display().to_string().green());
-                io::stderr().flush().unwrap_or_else(|e| {
-                    eprintln!("{} Failed to flush stderr before daemonizing: {}", "Warning:".yellow().bold(), e);
-                });
 
                 // Inform user that process is going to background
                 eprintln!("{}", "Starting Drapto daemon in the background...".green().bold());
-                io::stderr().flush().unwrap_or_else(|e| {
-                     eprintln!("{} Failed to flush stderr before daemonizing: {}", "Warning:".yellow().bold(), e);
-                });
+
+                // Single flush operation after all messages
+                if let Err(e) = io::stderr().flush() {
+                    eprintln!("{} Failed to flush stderr before daemonizing: {}", "Warning:".yellow().bold(), e);
+                }
+
+                // Create log directory if it doesn't exist
+                if let Err(e) = std::fs::create_dir_all(&log_dir) {
+                    eprintln!("{} Failed to create log directory: {}", "Error:".red().bold(), e);
+                    process::exit(1);
+                }
+
+                // Create and open log file for the daemon's stdout/stderr
+                let log_file = match std::fs::File::create(&main_log_path) {
+                    Ok(file) => file,
+                    Err(e) => {
+                        eprintln!("{} Failed to create log file: {}", "Error:".red().bold(), e);
+                        process::exit(1);
+                    }
+                };
+                // Clone the file handle for stderr
+                let log_file_stderr = match log_file.try_clone() {
+                    Ok(file) => file,
+                    Err(e) => {
+                        eprintln!("{} Failed to clone log file handle: {}", "Error:".red().bold(), e);
+                        process::exit(1);
+                    }
+                };
 
                 // Create daemonize configuration
                 // Note: PID file is handled in run_encode after log setup
                 let daemonize = Daemonize::new()
-                    .working_directory("."); // Keep working directory
+                    .working_directory(".")  // Keep working directory
+                    .stdout(log_file)        // Redirect stdout to our log file
+                    .stderr(log_file_stderr); // Redirect stderr to our log file
 
                 // Attempt to daemonize the process
                 match daemonize.start() {
@@ -212,22 +234,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // SECTION: Error Handling
     if let Err(e) = result {
-        // Handle errors differently based on mode:
-        // - Interactive mode: Display error to user's terminal
-        // - Daemon mode: Log error (primary mechanism) and attempt to write to stderr (backup)
-        //
-        // Note: This primarily catches errors that occur:
-        // 1. Before logging is fully set up
-        // 2. If run_encode itself fails early
-        // 3. In the parent process before daemonization
-        if interactive_mode {
-            // Interactive mode: Display error directly to user
-            eprintln!("{} {}", "Error:".red().bold(), e);
-        } else {
-            // Daemon mode: Attempt to log to stderr (may be redirected)
-            // The primary error reporting is via the log file in run_encode
-            eprintln!("{} {}", "Daemon Error:".red().bold(), e);
-        }
+        // Handle errors differently based on mode
+        // This primarily catches errors that occur before logging is fully set up,
+        // if run_encode fails early, or in the parent process before daemonization
+        let prefix = if interactive_mode { "Error" } else { "Daemon Error" };
+        eprintln!("{} {}", format!("{}:", prefix).red().bold(), e);
         process::exit(1); // Exit with error code
     }
 

@@ -158,7 +158,9 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor>(
     let log_dir = args.log_dir.unwrap_or_else(|| actual_output_dir.join("logs"));
 
 
-    // --- Create Output/Log Dirs ---
+    // --- Create Output Dir ---
+    // Note: Log dir is already created in main.rs before daemonization if in daemon mode
+    // We still create it here for interactive mode or in case it was deleted
     fs::create_dir_all(&actual_output_dir)?;
     fs::create_dir_all(&log_dir)?;
 
@@ -185,13 +187,11 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor>(
     // --- PID File Handling (Daemon Mode Only) ---
     if !interactive {
         let pid_path = log_dir.join("drapto.pid");
-        // Use std::fs::write to create/overwrite the PID file with the current process ID.
-        // Note: This happens *after* daemonization and log setup.
-        match std::fs::write(&pid_path, std::process::id().to_string()) {
-            Ok(_) => info!("{} {}", "PID file created at:".green(), pid_path.display().to_string().yellow()),
-            Err(e) => warn!("{} Failed to create PID file at {}: {}", "Warning:".yellow().bold(), pid_path.display(), e),
-            // Consider adding cleanup for the PID file on exit (e.g., using signal handling or atexit crate),
-            // but that adds complexity. For now, manual cleanup is assumed.
+        // Create PID file with current process ID after daemonization
+        if let Err(e) = std::fs::write(&pid_path, std::process::id().to_string()) {
+            warn!("{} Failed to create PID file at {}: {}", "Warning:".yellow().bold(), pid_path.display(), e);
+        } else {
+            info!("{} {}", "PID file created at:".green(), pid_path.display().to_string().yellow());
         }
     }
 

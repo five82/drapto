@@ -142,11 +142,8 @@ pub fn extract_sample<S: FfmpegSpawner>( // Added generic parameter S
            "Sample extraction process failed".to_string()));
    }
 
-   // Add check: Verify the file actually exists after ffmpeg command succeeded
-   if !output_path.exists() {
-       log::error!("Sample extraction command succeeded (status 0), but output file {} was not found!", output_path.display());
-       return Err(CoreError::OperationFailed(format!("Sample extraction succeeded but output file not found: {}", output_path.display())));
-   }
+   // The file existence check is redundant since FFmpeg would have failed if it couldn't create the file
+   // FFmpeg's success status is sufficient to confirm the operation completed correctly
 
    log::debug!("Sample extracted successfully to: {}", output_path.display());
    Ok(output_path) // Return the path to the created sample

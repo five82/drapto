@@ -604,58 +604,59 @@ pub fn process_videos<
                 }
             }
 
-            // Case 2: No streams found in the input file
-            Err(CoreError::NoStreamsFound(path)) => {
-                // Log the specific error
-                warn!(
-                    "Skipping encode for {}: FFmpeg reported no processable streams found in '{}'.",
-                    filename, path
-                );
-
-                // Send a notification if notification_sender is provided
-                if let Some(sender) = notification_sender {
-                    // Create a notification
-                    let notification = NotificationType::Custom {
-                        title: "Drapto Encode Skipped".to_string(),
-                        message: format!(
-                            "[{hostname}]: Skipped encode for {filename}: No streams found.",
-                            hostname = hostname,
-                            filename = filename
-                        ),
-                        priority: 3,
-                    };
-
-                    // Send the notification
-                    if let Err(e) = sender.send_notification(&notification) {
-                        warn!("Failed to send skip notification for {}: {}", filename, e);
-                    }
-                }
-                // No `continue` here, just let the loop proceed after logging/notifying
-            }
-
-            // Case 3: Generic encoding failure
+            // Case 2: Error handling for all error types
             Err(e) => {
-                // Log the error
-                error!(
-                    "ffmpeg encode failed for {}: {}. Check logs for details.",
-                    filename, e
-                );
+                // Handle specific error types differently
+                match &e {
+                    CoreError::NoStreamsFound(path) => {
+                        // Log the specific error
+                        warn!(
+                            "Skipping encode for {}: FFmpeg reported no processable streams found in '{}'.",
+                            filename, path
+                        );
 
-                // Send an error notification if notification_sender is provided
-                if let Some(sender) = notification_sender {
-                    // Create a notification
-                    let notification = NotificationType::EncodeError {
-                        input_path: input_path.to_path_buf(),
-                        message: format!("ffmpeg failed: {}", e),
-                        hostname: hostname.clone(),
-                    };
+                        // Send a notification if notification_sender is provided
+                        if let Some(sender) = notification_sender {
+                            // Create a notification
+                            let notification = NotificationType::Custom {
+                                title: "Drapto Encode Skipped".to_string(),
+                                message: format!(
+                                    "[{hostname}]: Skipped encode for {filename}: No streams found.",
+                                    hostname = hostname,
+                                    filename = filename
+                                ),
+                                priority: 3,
+                            };
 
-                    // Send the notification
-                    if let Err(err) = sender.send_notification(&notification) {
-                        warn!("Failed to send error notification for {}: {}", filename, err);
+                            // Send the notification
+                            if let Err(err) = sender.send_notification(&notification) {
+                                warn!("Failed to send skip notification for {}: {}", filename, err);
+                            }
+                        }
+                    },
+                    _ => {
+                        // Log the error for all other error types
+                        error!(
+                            "ffmpeg encode failed for {}: {}. Check logs for details.",
+                            filename, e
+                        );
+
+                        // Send an error notification if notification_sender is provided
+                        if let Some(sender) = notification_sender {
+                            // Create a notification
+                            let notification = NotificationType::EncodeError {
+                                input_path: input_path.to_path_buf(),
+                                message: format!("ffmpeg failed: {}", e),
+                                hostname: hostname.clone(),
+                            };
+
+                            // Send the notification
+                            if let Err(err) = sender.send_notification(&notification) {
+                                warn!("Failed to send error notification for {}: {}", filename, err);
+                            }
+                        }
                     }
                 }
-                // No `continue` here either for general errors, loop proceeds
             }
         }
 

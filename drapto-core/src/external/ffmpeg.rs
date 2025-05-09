@@ -359,16 +359,20 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner, C: ProgressCallback>(
                     }
                 }
             FfmpegEvent::Error(err_str) => {
-                // Log errors appropriately based on content and context
-                if err_str.contains("No streams found") {
-                    // "No streams found" is handled specially at the end
-                    debug!("ffmpeg stderr (non-fatal - will be handled): {}", err_str);
-                } else {
-                    // Log other errors normally
+                // Filter out "No streams found" errors from logs
+                // This is a non-fatal FFmpeg error that appears frequently during both
+                // grain analysis and main encode, creating noise in the logs.
+                // We filter it here to prevent duplicate error messages while still
+                // maintaining proper error handling.
+                if !err_str.contains("No streams found") {
+                    // Only log errors that aren't "No streams found"
                     error!("ffmpeg stderr error: {}", err_str);
                 }
 
                 // Always capture errors in the buffer for later processing
+                // even if we don't log them, so error handling still works.
+                // This ensures the error is still properly propagated as a
+                // CoreError::NoStreamsFound when needed.
                 stderr_buffer.push_str(&err_str);
                 stderr_buffer.push('\n');
             }
@@ -421,12 +425,6 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner, C: ProgressCallback>(
             stderr_buffer.trim()
         );
 
-        // Check for specific "No streams found" error
-        if stderr_buffer.contains("No streams found") {
-            warn!("FFmpeg reported 'No streams found' for input {}. Skipping.", filename_cow);
-            return Err(CoreError::NoStreamsFound(filename_cow.to_string()));
-        }
-
         // Log error based on context
         if is_grain_analysis_sample {
             error!("❌ Grain sample encode failed for {}: {}", filename_cow, error_message);
@@ -434,11 +432,19 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner, C: ProgressCallback>(
             error!("FFmpeg encode failed for {}: {}", filename_cow, error_message);
         }
 
-        Err(CoreError::CommandFailed(
-            "ffmpeg (sidecar)".to_string(),
-            status,
-            error_message,
-        ))
+        // Create a more specific error type based on stderr content
+        if stderr_buffer.contains("No streams found") {
+            // Handle "No streams found" as a specific error type
+            // Note: We filter the logging of this error above, but still
+            // propagate it properly here for correct error handling
+            Err(CoreError::NoStreamsFound(filename_cow.to_string()))
+        } else {
+            Err(CoreError::CommandFailed(
+                "ffmpeg (sidecar)".to_string(),
+                status,
+                error_message,
+            ))
+        }
     }
 }
 

@@ -243,7 +243,8 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider, C: ProgressCallb
     // Use configuration values if provided, otherwise use defaults
     let sample_duration = config.film_grain_sample_duration.unwrap_or(DEFAULT_SAMPLE_DURATION_SECS);
     let knee_threshold = config.film_grain_knee_threshold.unwrap_or(KNEE_THRESHOLD);
-    let fallback_level = config.film_grain_fallback_level.unwrap_or(GrainLevel::Baseline);
+    // Fallback level no longer used since we propagate errors directly
+    let _fallback_level = config.film_grain_fallback_level.unwrap_or(GrainLevel::Baseline);
     let max_level = config.film_grain_max_level.unwrap_or(GrainLevel::Elevated);
 
     // --- Determine Sample Count ---
@@ -335,24 +336,11 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider, C: ProgressCallb
         ) {
             Ok(path) => path,
             Err(e) => {
-                // Log the error
+                // Log the error and propagate it
                 log::error!("Failed to extract sample {}: {}", i + 1, e);
-
-                // If this is the first sample or we have no samples yet, use fallback level
-                if i == 0 || raw_sample_paths.is_empty() {
-                    log::warn!("No samples could be extracted. Using fallback grain level.");
-                    return Ok(Some(GrainAnalysisResult {
-                        detected_level: fallback_level,
-                    }));
-                }
-
-                // If we already have at least one sample, continue with what we have
-                progress_callback.on_progress(ProgressEvent::LogMessage {
-                    message: format!("Failed to extract sample {}, but continuing with {} existing samples.",
-                                    i + 1, raw_sample_paths.len()),
-                    level: LogLevel::Warning,
-                });
-                break;
+                return Err(CoreError::FilmGrainEncodingFailed(format!(
+                    "Failed to extract sample {}: {}", i + 1, e
+                )));
             }
         };
         raw_sample_paths.push(raw_sample_path.clone()); // Store the path
@@ -547,22 +535,27 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider, C: ProgressCallb
                     ) {
                         log::error!("Failed to encode refined sample {} with level {}: {}",
                                    i + 1, level_desc, e);
-                        continue;
+                        return Err(CoreError::FilmGrainAnalysisFailed(format!(
+                            "Failed to encode refined sample {} with level {}: {}", i + 1, level_desc, e
+                        )));
                     }
 
-                    match metadata_provider.get_size(&sample_params.output_path) {
-                        Ok(size) => {
-                            let size_mb = size as f64 / (1024.0 * 1024.0);
-                            progress_callback.on_progress(ProgressEvent::LogMessage {
-                                message: format!("      -> {:<35} (Sample {}) size: {:.2} MB", level_desc, i + 1, size_mb),
-                                level: LogLevel::Info,
-                            });
-                            phase3_results[i].insert(*level_opt, size);
-                        },
+                    let encoded_size = match metadata_provider.get_size(&sample_params.output_path) {
+                        Ok(size) => size,
                         Err(e) => {
                             log::error!("Failed to get size for refined sample {} level {} (path: {}): {}", i + 1, level_desc, sample_params.output_path.display(), e);
+                            return Err(CoreError::FilmGrainAnalysisFailed(format!(
+                                "Failed to get size for refined sample {} level {} (path: {}): {}", i + 1, level_desc, sample_params.output_path.display(), e
+                            )));
                         }
-                    }
+                    };
+
+                    let size_mb = encoded_size as f64 / (1024.0 * 1024.0);
+                    progress_callback.on_progress(ProgressEvent::LogMessage {
+                        message: format!("      -> {:<35} (Sample {}) size: {:.2} MB", level_desc, i + 1, size_mb),
+                        level: LogLevel::Info,
+                    });
+                    phase3_results[i].insert(*level_opt, encoded_size);
                 }
             }
         }
@@ -606,9 +599,9 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider, C: ProgressCallb
     // --- Determine Final Result ---
     if final_estimates.is_empty() {
         log::error!("No final estimates generated after all phases. Analysis failed.");
-        return Ok(Some(GrainAnalysisResult {
-            detected_level: fallback_level,
-        }));
+        return Err(CoreError::FilmGrainAnalysisFailed(
+            "No final estimates generated after all phases".to_string()
+        ));
     }
 
     let mut final_level = calculate_median_level(&mut final_estimates);
