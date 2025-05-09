@@ -9,9 +9,6 @@
 8. Avoid overengineering solutions.
 9. Use proper rust file and directory structure according to Rust best practices.
 10. This is a small hobby project maintained by a single develper. The project scope should reflect this.
-11. Keep rust files small for easier editing. Under 300 lines.
-12. Refactor larger rust files. Logically split them up for easier editing.
-13. Look in docs/ for documentation.
 
 ## Drapto
 1. drapto supports both MacOS and Linux.

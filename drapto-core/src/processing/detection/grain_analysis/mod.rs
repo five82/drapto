@@ -40,7 +40,7 @@ use crate::config::CoreConfig;
 use crate::error::{CoreError, CoreResult};
 use crate::external::ffmpeg::EncodeParams;
 use crate::external::ffmpeg_executor::extract_sample;
-use crate::external::{FileMetadataProvider, FfmpegSpawner};
+use crate::external::{FileMetadataProvider, FfmpegSpawner, is_macos};
 
 // ============================================================================
 // SUBMODULES
@@ -166,6 +166,7 @@ use utils::calculate_median_level;
 ///     output_path: Path::new("/path/to/output.mkv").to_path_buf(),
 ///     quality: 24,
 ///     preset: 6,
+///     use_hw_decode: true,
 ///     crop_filter: None,
 ///     audio_channels: vec![2],
 ///     duration: 3600.0,
@@ -218,6 +219,13 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider>(
         "Duration:".cyan(),
         format!("{:.2}s", duration_secs).green()
     );
+
+    // Inform user about hardware acceleration status for the main encode
+    if base_encode_params.use_hw_decode && is_macos() {
+        log::info!("  {} {}", "Hardware:".cyan(), "VideoToolbox hardware decoding will be used for main encode (disabled during analysis)".green());
+    } else if base_encode_params.use_hw_decode {
+        log::info!("  {} {}", "Hardware:".cyan(), "Software decoding will be used (hardware acceleration not available on this platform)".yellow());
+    }
 
     // --- Get Configuration Parameters ---
     // Use configuration values if provided, otherwise use defaults

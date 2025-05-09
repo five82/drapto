@@ -6,7 +6,7 @@ use crate::error::{CoreError, CoreResult};
 use crate::processing::audio; // To access calculate_audio_bitrate
 use crate::processing::detection::grain_analysis::GrainLevel; // Import GrainLevel
 use colored::Colorize; // Import the trait for color methods
-use crate::external::{FfmpegSpawner, FfmpegProcess}; // Imports are correct
+use crate::external::{FfmpegSpawner, FfmpegProcess, is_macos}; // Import platform detection
 use ffmpeg_sidecar::command::FfmpegCommand;
 use ffmpeg_sidecar::event::{FfmpegEvent, LogLevel as FfmpegLogLevel}; // Renamed LogLevel to avoid conflict
 use std::time::Instant;
@@ -20,7 +20,8 @@ pub struct EncodeParams {
     pub output_path: PathBuf,
     pub quality: u32, // CRF value
     pub preset: u8,   // SVT-AV1 preset
-    // hw_accel field removed
+    /// Whether to use hardware acceleration for decoding (when available)
+    pub use_hw_decode: bool,
     pub crop_filter: Option<String>, // Optional crop filter string "crop=W:H:X:Y"
     pub audio_channels: Vec<u32>, // Detected audio channels for bitrate mapping
     pub duration: f64, // Total video duration in seconds for progress calculation
@@ -42,8 +43,8 @@ pub fn build_ffmpeg_args(
     // --- Input Arguments ---
     args.push("-hide_banner".to_string());
 
-    // Hardware Acceleration (Input Option - must come before input())
-    // No arguments needed for software decoding.
+    // Hardware acceleration is now handled separately in run_ffmpeg_encode
+    // to ensure it's placed before the input file
 
     // --- Filters and Stream Mapping ---
     // Conditionally add audio filter
@@ -225,17 +226,39 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner>(
             "  Output: {}",
             params.output_path.display()
         );
+
+        // Log hardware acceleration status for main encodes
+        if params.use_hw_decode && is_macos() {
+            info!("  {} {}", "Hardware:".cyan(), "VideoToolbox hardware decoding enabled".green().bold());
+        } else if params.use_hw_decode {
+            // Hardware acceleration is enabled in settings but not available on this platform
+            info!("  {} {}", "Hardware:".cyan(), "Software decoding (hardware acceleration not available on this platform)".yellow());
+        }
     } else if is_grain_analysis_sample {
     }
 
     debug!("Encode parameters: {:?}", params);
 
-    // Build arguments using the helper function, passing flags down
+    // Extract hardware acceleration options first
+    let mut hwaccel_args = Vec::new();
+    if params.use_hw_decode && is_macos() && !is_grain_analysis_sample {
+        hwaccel_args.push("-hwaccel");
+        hwaccel_args.push("videotoolbox");
+        info!("{}", "Using VideoToolbox hardware decoding".green().bold());
+    }
+
+    // Build other arguments using the helper function, passing flags down
     let ffmpeg_args = build_ffmpeg_args(params, None, disable_audio, is_grain_analysis_sample)?;
 
     // Create the command and set input/output/args
     // Use mutable command object and sequential calls
     let mut cmd = FfmpegCommand::new();
+
+    // Add hardware acceleration options BEFORE the input
+    if !hwaccel_args.is_empty() {
+        cmd.args(hwaccel_args.iter());
+    }
+
     cmd.input(params.input_path.to_string_lossy());
     cmd.args(ffmpeg_args.iter().map(|s| s.as_str())); // Add the built arguments
     cmd.output(params.output_path.to_string_lossy());

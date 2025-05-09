@@ -34,7 +34,7 @@
 use crate::config::{CoreConfig, DEFAULT_CORE_QUALITY_HD, DEFAULT_CORE_QUALITY_SD, DEFAULT_CORE_QUALITY_UHD};
 use crate::error::{CoreError, CoreResult};
 use crate::external::check_dependency;
-use crate::external::{FileMetadataProvider, FfmpegSpawner, FfprobeExecutor};
+use crate::external::{FileMetadataProvider, FfmpegSpawner, FfprobeExecutor, is_macos};
 use crate::external::ffmpeg::{run_ffmpeg_encode, EncodeParams};
 use crate::notifications::Notifier;
 use crate::processing::audio;
@@ -180,6 +180,13 @@ pub fn process_videos<S: FfmpegSpawner, P: FfprobeExecutor, N: Notifier, M: File
         .map(|s| s.into_string().unwrap_or_else(|_| "unknown-host-invalid-utf8".to_string()))
         .unwrap_or_else(|_| "unknown-host-error".to_string());
     info!("{} {}", "Running on host:".cyan(), hostname.yellow());
+
+    // Check if hardware acceleration is available
+    if is_macos() {
+        info!("{} {}", "Hardware:".cyan(), "VideoToolbox hardware decoding available".green().bold());
+    } else {
+        info!("{} {}", "Hardware:".cyan(), "Using software decoding (hardware acceleration not available on this platform)".yellow());
+    }
 
 
     // Initialize the results vector to store successful encoding results
@@ -387,6 +394,7 @@ pub fn process_videos<S: FfmpegSpawner, P: FfprobeExecutor, N: Notifier, M: File
             output_path: output_path.clone(),
             quality: quality.into(),
             preset: preset_value,
+            use_hw_decode: true, // Enable hardware decoding by default
             crop_filter: crop_filter_opt.clone(),
             audio_channels: audio_channels.clone(),
             duration: duration_secs,

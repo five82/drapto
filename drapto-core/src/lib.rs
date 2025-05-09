@@ -138,6 +138,14 @@ pub use processing::process_videos;
 /// Helper functions for formatting bytes and durations
 pub use utils::{format_bytes, format_duration};
 
+// ----- External Tool Interactions -----
+/// Re-export external tool traits, implementations, and platform detection
+pub use external::{
+    CrateFfprobeExecutor, FfmpegProcess, FfmpegSpawner, FfprobeExecutor,
+    FileMetadataProvider, SidecarProcess, SidecarSpawner, StdFsMetadataProvider,
+    is_macos,
+};
+
 // ============================================================================
 // PUBLIC STRUCTS
 // ============================================================================

@@ -14,6 +14,7 @@
 // - Concrete implementations using ffmpeg-sidecar and ffprobe crates
 // - Dependency checking functions
 // - File metadata access abstraction
+// - Platform detection utilities
 //
 // DESIGN PHILOSOPHY:
 // This module follows the dependency injection pattern, allowing consumers to
@@ -29,6 +30,7 @@ use crate::error::{CoreError, CoreResult};
 use std::io;
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::env;
 
 // ============================================================================
 // SUBMODULES
@@ -207,4 +209,33 @@ impl FileMetadataProvider for StdFsMetadataProvider {
         // Get the file metadata and extract the size
         Ok(std::fs::metadata(path)?.len())
     }
+}
+
+// ============================================================================
+// PLATFORM DETECTION
+// ============================================================================
+
+/// Checks if the current platform is macOS.
+///
+/// This function uses the `std::env::consts::OS` constant to determine
+/// if the current operating system is macOS.
+///
+/// # Returns
+///
+/// * `true` - If the current platform is macOS
+/// * `false` - Otherwise
+///
+/// # Examples
+///
+/// ```rust
+/// use drapto_core::external::is_macos;
+///
+/// if is_macos() {
+///     println!("Running on macOS, can use VideoToolbox");
+/// } else {
+///     println!("Not running on macOS");
+/// }
+/// ```
+pub fn is_macos() -> bool {
+    env::consts::OS == "macos"
 }
