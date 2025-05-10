@@ -25,13 +25,14 @@
 use crate::cli::EncodeArgs;
 use crate::config;
 use crate::platform::HardwareAcceleration;
-use crate::progress::CliProgressCallback;
+use crate::progress::CliProgress;
 
 // ---- External crate imports ----
 use drapto_core::{CoreError, EncodeResult};
 use drapto_core::external::{FfmpegSpawner, FfprobeExecutor};
 use drapto_core::external::StdFsMetadataProvider;
 use drapto_core::notifications::NtfyNotificationSender;
+use drapto_core::progress_reporting::{report_log_message, LogLevel}; // New direct reporting
 use colored::*;
 
 // ---- Standard library imports ----
@@ -202,7 +203,8 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor>(
         match drapto_core::processing::detection::grain_analysis::GrainLevel::from_str(level_str) {
             Ok(level) => Some(level),
             Err(_) => {
-                warn!("{} Invalid grain_max_level '{}'. Using default.", "Warning:".yellow().bold(), level_str);
+                let message = format!("{} Invalid grain_max_level '{}'. Using default.", "Warning:".yellow().bold(), level_str);
+                report_log_message(&message, LogLevel::Warning);
                 None
             }
         }
@@ -212,7 +214,8 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor>(
         match drapto_core::processing::detection::grain_analysis::GrainLevel::from_str(level_str) {
             Ok(level) => Some(level),
             Err(_) => {
-                warn!("{} Invalid grain_fallback_level '{}'. Using default.", "Warning:".yellow().bold(), level_str);
+                let message = format!("{} Invalid grain_fallback_level '{}'. Using default.", "Warning:".yellow().bold(), level_str);
+                report_log_message(&message, LogLevel::Warning);
                 None
             }
         }
@@ -221,8 +224,9 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor>(
     // Validate knee threshold is within valid range (0.1 to 1.0)
     let grain_knee_threshold = args.grain_knee_threshold.and_then(|threshold| {
         if !(0.1..=1.0).contains(&threshold) {
-            warn!("{} Knee threshold {} is outside valid range (0.1-1.0). Using default.",
+            let message = format!("{} Knee threshold {} is outside valid range (0.1-1.0). Using default.",
                 "Warning:".yellow().bold(), threshold);
+            report_log_message(&message, LogLevel::Warning);
             None
         } else {
             Some(threshold)
@@ -288,8 +292,8 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor>(
     // Build the final config
     let config = builder.build();
 
-    // --- Create Progress Callback ---
-    let progress_callback = CliProgressCallback::new(interactive);
+    // --- Create Progress Tracker ---
+    let _progress = CliProgress::new(interactive);
 
     // --- Detect Hardware Acceleration ---
     let hw_accel = HardwareAcceleration::detect();
@@ -305,7 +309,7 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor>(
          // Spawner is now passed in as an argument
          // Notifier is now passed in as an argument
 
-         // Call drapto_core::process_videos with our progress callback
+         // Call drapto_core::process_videos
          drapto_core::process_videos(
              spawner, // Pass the injected spawner instance (S)
              ffprobe_executor, // Pass the injected ffprobe executor instance (P)
@@ -313,8 +317,7 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor>(
              &StdFsMetadataProvider, // Pass the standard metadata provider
              &config, // Pass config (&CoreConfig)
              &files_to_process,
-             target_filename_override,
-             &progress_callback // Pass our progress callback
+             target_filename_override
          )
     };
 

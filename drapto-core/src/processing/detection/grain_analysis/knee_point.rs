@@ -18,6 +18,7 @@
 
 // ---- Internal module imports ----
 use super::types::GrainLevel;
+use crate::progress_reporting::{report_log_message, LogLevel};
 
 // ---- Standard library imports ----
 use std::collections::HashMap;
@@ -45,7 +46,7 @@ use std::collections::HashMap;
 ///
 /// * `results` - HashMap mapping grain levels to their encoded file sizes in bytes
 /// * `knee_threshold` - Threshold factor (0.0-1.0) for determining the knee point
-/// * `log_callback` - Function for logging analysis results
+/// * `sample_index` - The index of the sample being analyzed (for logging)
 ///
 /// # Returns
 ///
@@ -54,7 +55,7 @@ use std::collections::HashMap;
 pub(super) fn analyze_sample_with_knee_point(
     results: &HashMap<Option<GrainLevel>, u64>,
     knee_threshold: f64,
-    log_callback: &mut impl Fn(&str)
+    sample_index: usize
 ) -> GrainLevel {
     // ========================================================================
     // STEP 1: GET BASELINE SIZE (NO DENOISING)
@@ -65,19 +66,28 @@ pub(super) fn analyze_sample_with_knee_point(
     // First try None (no denoising), then fall back to Baseline if None is missing
     let baseline_size = match results.get(&None) {
         Some(&size) if size > 0 => {
-            log_callback("Using 'Baseline' (no denoising) for knee point analysis.");
+            report_log_message(
+                &format!("  Sample {}: Using 'Baseline' (no denoising) for knee point analysis.", sample_index),
+                LogLevel::Info
+            );
             size
         },
         _ => {
             // If None is missing or zero, try Baseline as fallback
             match results.get(&Some(GrainLevel::Baseline)) {
                 Some(&size) if size > 0 => {
-                    log_callback("Baseline 'None' missing or zero. Using 'Baseline' as fallback.");
+                    report_log_message(
+                        &format!("  Sample {}: Baseline 'None' missing or zero. Using 'Baseline' as fallback.", sample_index),
+                        LogLevel::Info
+                    );
                     size
                 },
                 _ => {
                     // If both None and Baseline are missing or zero, we can't perform the analysis
-                    log_callback("ERROR: 'Baseline' reference is missing or zero. Cannot analyze with knee point.");
+                    report_log_message(
+                        &format!("  Sample {}: ERROR: 'Baseline' reference is missing or zero. Cannot analyze with knee point.", sample_index),
+                        LogLevel::Error
+                    );
                     return GrainLevel::Baseline; // Return default value
                 }
             }
@@ -145,7 +155,10 @@ pub(super) fn analyze_sample_with_knee_point(
 
     // If no levels provided positive efficiency, return Baseline (no denoising)
     if efficiencies.is_empty() {
-        log_callback("No positive efficiency improvements found with knee point analysis.");
+        report_log_message(
+            &format!("  Sample {}: No positive efficiency improvements found with knee point analysis.", sample_index),
+            LogLevel::Info
+        );
         return GrainLevel::Baseline;
     }
 
@@ -167,10 +180,14 @@ pub(super) fn analyze_sample_with_knee_point(
 
     // Safety check: ensure maximum efficiency is positive
     if max_efficiency <= 0.0 {
-        log_callback(&format!(
-            "Max efficiency is not positive (Max: {:.2}). Using Baseline.",
-            max_efficiency
-        ));
+        report_log_message(
+            &format!(
+                "  Sample {}: Max efficiency is not positive (Max: {:.2}). Using Baseline.",
+                sample_index,
+                max_efficiency
+            ),
+            LogLevel::Info
+        );
         return GrainLevel::Baseline;
     }
 
@@ -203,19 +220,26 @@ pub(super) fn analyze_sample_with_knee_point(
     // This is the "knee point" - the optimal balance between denoising and quality
     if let Some(&(Some(level), _)) = candidates.first() {
         // Log the analysis results
-        log_callback(&format!(
-            "Knee point analysis: Max efficiency {:.2} at level {:?}. Threshold {:.1}%. Choosing: {:?}",
-            max_efficiency,
-            max_level.unwrap_or(GrainLevel::Baseline), // Default for logging
-            knee_threshold * 100.0,
-            level
-        ));
+        report_log_message(
+            &format!(
+                "  Sample {}: Knee point analysis: Max efficiency {:.2} at level {:?}. Threshold {:.1}%. Choosing: {:?}",
+                sample_index,
+                max_efficiency,
+                max_level.unwrap_or(GrainLevel::Baseline), // Default for logging
+                knee_threshold * 100.0,
+                level
+            ),
+            LogLevel::Info
+        );
 
         // Return the selected optimal grain level
         level
     } else {
         // No suitable candidates found
-        log_callback("No suitable candidates found in knee point analysis. Using Baseline.");
+        report_log_message(
+            &format!("  Sample {}: No suitable candidates found in knee point analysis. Using Baseline.", sample_index),
+            LogLevel::Info
+        );
 
         // Default to no denoising
         GrainLevel::Baseline

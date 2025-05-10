@@ -6,10 +6,12 @@ use crate::error::{CoreError, CoreResult};
 use crate::processing::audio; // To access calculate_audio_bitrate
 use crate::processing::detection::grain_analysis::GrainLevel; // Import GrainLevel
 use crate::external::{FfmpegSpawner, FfmpegProcess}; // Remove is_macos import
-use crate::progress::{ProgressCallback, ProgressEvent, LogLevel};
+use crate::progress_reporting::{
+    report_encode_start, report_encode_progress, report_encode_error,
+    report_hardware_acceleration, report_log_message, LogLevel,
+};
 use ffmpeg_sidecar::command::FfmpegCommand;
 use ffmpeg_sidecar::event::{FfmpegEvent, LogLevel as FfmpegLogLevel}; // Renamed LogLevel to avoid conflict
-use colored::Colorize;
 use std::time::Instant;
 use std::path::PathBuf; // Keep PathBuf, remove unused Path
 use log::{info, warn, error, debug, trace, log}; // Import log macros
@@ -178,15 +180,14 @@ pub fn build_ffmpeg_args(
 
 
 /// Executes an FFmpeg encode operation using ffmpeg-sidecar based on the provided parameters.
-/// Uses the standard `log` facade for logging and the progress callback for user-facing output.
+/// Uses the standard `log` facade for logging and direct progress reporting functions for user-facing output.
 /// Accepts a generic `FfmpegSpawner` to allow for mocking.
-pub fn run_ffmpeg_encode<S: FfmpegSpawner, C: ProgressCallback>(
+pub fn run_ffmpeg_encode<S: FfmpegSpawner>(
     spawner: &S,
     params: &EncodeParams,
     disable_audio: bool,
     is_grain_analysis_sample: bool, // Flag to control logging verbosity
     _grain_level_being_tested: Option<GrainLevel>,
-    progress_callback: &C,
 ) -> CoreResult<()> {
     // Extract filename for logging (used in both contexts)
     let filename_cow = params.input_path
@@ -200,20 +201,16 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner, C: ProgressCallback>(
         debug!("Starting grain sample FFmpeg encode for: {}", filename_cow);
     } else {
         // Standard verbose logging for main encode
-        info!("Starting FFmpeg encode for: {}", filename_cow.yellow());
+        report_encode_start(
+            &params.input_path,
+            &params.output_path,
+            params.use_hw_decode && is_hardware_acceleration_available()
+        );
     }
 
-    // Log output path for main encodes, or for grain samples only if debug is enabled.
-    if !is_grain_analysis_sample || log::log_enabled!(log::Level::Debug) {
-        info!(
-            "  Output: {}",
-            params.output_path.display()
-        );
-
-        // Log hardware acceleration status for main encodes
-        if params.use_hw_decode {
-            log_hardware_acceleration_status(progress_callback);
-        }
+    // Log hardware acceleration status for main encodes
+    if !is_grain_analysis_sample && params.use_hw_decode {
+        log_hardware_acceleration_status();
     }
 
     debug!("Encode parameters: {:?}", params);
@@ -230,10 +227,7 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner, C: ProgressCallback>(
 
     // Log hardware acceleration status if it was added
     if hw_accel_added {
-        progress_callback.on_progress(ProgressEvent::LogMessage {
-            message: "Using VideoToolbox hardware decoding".to_string(),
-            level: LogLevel::Info,
-        });
+        report_log_message("Using VideoToolbox hardware decoding", LogLevel::Info);
     }
 
     cmd.input(params.input_path.to_string_lossy());
@@ -301,25 +295,13 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner, C: ProgressCallback>(
 
                         // Report progress for main encodes (not grain analysis samples)
                         if !is_grain_analysis_sample {
-                            // Use progress callback for user-facing output
-                            progress_callback.on_progress(ProgressEvent::EncodeProgress {
-                                percent: percent as f32,
+                            report_encode_progress(
+                                percent as f32,
                                 current_secs,
-                                total_secs: duration_secs.unwrap_or(0.0),
-                                speed: progress.speed,
-                                fps: avg_encoding_fps as f32,
-                                eta: std::time::Duration::from_secs(eta_seconds as u64),
-                            });
-
-                            // Log to debug level to avoid duplication
-                            debug!(
-                                "Encoding progress: {:.2}% ({} / {}), Speed: {:.2}x, Avg FPS: {:.2}, ETA: {}",
-                                percent,
-                                format_duration_seconds(current_secs),
-                                duration_secs.map_or("??:??:??".to_string(), format_duration_seconds),
+                                duration_secs.unwrap_or(0.0),
                                 progress.speed,
-                                avg_encoding_fps,
-                                eta_str
+                                avg_encoding_fps as f32,
+                                std::time::Duration::from_secs(eta_seconds as u64)
                             );
                         }
 
@@ -433,6 +415,11 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner, C: ProgressCallback>(
         // Log error with appropriate prefix based on context
         let prefix = if is_grain_analysis_sample { "Grain sample encode" } else { "FFmpeg encode" };
         error!("❌ {} failed for {}: {}", prefix, filename_cow, error_message);
+
+        // Use direct reporting for non-grain-analysis errors
+        if !is_grain_analysis_sample {
+            report_encode_error(&params.input_path, &error_message);
+        }
 
         // Create a more specific error type based on stderr content
         if stderr_buffer.contains("No streams found") {
@@ -606,19 +593,13 @@ pub fn add_hardware_acceleration_to_command(
 }
 
 // Helper function to log hardware acceleration status
-fn log_hardware_acceleration_status<C: ProgressCallback>(progress_callback: &C) {
+fn log_hardware_acceleration_status() {
     let hw_accel_available = is_hardware_acceleration_available();
 
     if hw_accel_available {
-        progress_callback.on_progress(ProgressEvent::LogMessage {
-            message: "VideoToolbox hardware decoding enabled".to_string(),
-            level: LogLevel::Info,
-        });
+        report_hardware_acceleration(true, "VideoToolbox");
     } else {
-        progress_callback.on_progress(ProgressEvent::LogMessage {
-            message: "Software decoding (hardware acceleration not available on this platform)".to_string(),
-            level: LogLevel::Info,
-        });
+        report_hardware_acceleration(false, "VideoToolbox");
     }
 }
 

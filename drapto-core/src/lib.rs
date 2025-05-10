@@ -40,7 +40,6 @@
 //! use drapto_core::{CoreConfig, process_videos};
 //! use drapto_core::external::{SidecarSpawner, CrateFfprobeExecutor, StdFsMetadataProvider};
 //! use drapto_core::notifications::NtfyNotificationSender;
-//! use drapto_core::progress::NullProgressCallback;
 //! use drapto_core::processing::detection::GrainLevel;
 //! use std::path::PathBuf;
 //!
@@ -71,7 +70,6 @@
 //! let ffprobe_executor = CrateFfprobeExecutor::new();
 //! let notification_sender = NtfyNotificationSender::new("https://ntfy.sh/my-topic").unwrap();
 //! let metadata_provider = StdFsMetadataProvider;
-//! let progress_callback = NullProgressCallback;
 //!
 //! // Process videos
 //! let results = process_videos(
@@ -82,7 +80,6 @@
 //!     &config,
 //!     &files,
 //!     None,
-//!     &progress_callback,
 //! ).unwrap();
 //! ```
 //!
@@ -115,8 +112,8 @@ pub mod utils;
 /// Notification services for encoding progress updates
 pub mod notifications;
 
-/// Progress reporting abstractions and callback system
-pub mod progress;
+/// Progress reporting functions
+pub mod progress_reporting;
 
 /// Temporary file management utilities
 pub mod temp_files;
@@ -155,8 +152,12 @@ pub use external::{
 };
 
 // ----- Progress Reporting -----
-/// Progress reporting abstractions and callback system
-pub use progress::{ProgressCallback, ProgressEvent, LogLevel, NullProgressCallback};
+/// Progress reporting functions
+pub use progress_reporting::{
+    report_encode_start, report_encode_progress, report_encode_complete,
+    report_encode_error, report_hardware_acceleration, report_log_message,
+    LogLevel,
+};
 
 // ----- Notification Services -----
 /// Notification system types and implementations

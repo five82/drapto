@@ -39,7 +39,9 @@ use crate::external::ffmpeg::{run_ffmpeg_encode, EncodeParams};
 use crate::notifications::{NotificationType, NtfyNotificationSender};
 use crate::processing::audio;
 use crate::processing::detection::{self, grain_analysis};
-use crate::progress::{ProgressCallback, ProgressEvent, LogLevel};
+use crate::progress_reporting::{
+    report_hardware_acceleration, report_log_message, LogLevel,
+}; // Direct progress reporting
 use crate::utils::{format_duration, get_file_size};
 use crate::EncodeResult;
 use colored::Colorize;
@@ -65,9 +67,7 @@ use std::time::Instant;
 /// The function is generic over the types that implement the required traits:
 /// - `S`: FfmpegSpawner - For spawning ffmpeg processes
 /// - `P`: FfprobeExecutor - For executing ffprobe commands
-/// - `N`: NotificationSender - For sending notifications
 /// - `M`: FileMetadataProvider - For file system operations
-/// - `C`: ProgressCallback - For reporting progress (defaults to NullProgressCallback)
 ///
 /// This design allows for dependency injection and easier testing.
 ///
@@ -80,7 +80,6 @@ use std::time::Instant;
 /// * `config` - Core configuration containing encoding parameters and paths
 /// * `files_to_process` - List of paths to the video files to process
 /// * `target_filename_override` - Optional override for the output filename
-/// * `progress_callback` - Implementation of ProgressCallback for reporting progress
 ///
 /// # Returns
 ///
@@ -93,7 +92,6 @@ use std::time::Instant;
 /// use drapto_core::{CoreConfig, process_videos, EncodeResult};
 /// use drapto_core::external::{SidecarSpawner, CrateFfprobeExecutor, StdFsMetadataProvider};
 /// use drapto_core::notifications::NtfyNotificationSender;
-/// use drapto_core::progress::NullProgressCallback;
 /// use drapto_core::processing::detection::GrainLevel;
 /// use std::path::PathBuf;
 ///
@@ -102,7 +100,6 @@ use std::time::Instant;
 /// let ffprobe_executor = CrateFfprobeExecutor::new();
 /// let notification_sender = NtfyNotificationSender::new("https://ntfy.sh/my-topic").unwrap();
 /// let metadata_provider = StdFsMetadataProvider;
-/// let progress_callback = NullProgressCallback;
 ///
 /// // Create configuration using the builder pattern
 /// let config = drapto_core::config::CoreConfigBuilder::new()
@@ -135,7 +132,6 @@ use std::time::Instant;
 ///     &config,
 ///     &files,
 ///     None,
-///     &progress_callback,
 /// ) {
 ///     Ok(results) => {
 ///         println!("Successfully processed {} files", results.len());
@@ -152,7 +148,6 @@ pub fn process_videos<
     S: FfmpegSpawner,
     P: FfprobeExecutor,
     M: FileMetadataProvider,
-    C: ProgressCallback
 >(
     spawner: &S,
     ffprobe_executor: &P,
@@ -161,7 +156,6 @@ pub fn process_videos<
     config: &CoreConfig,
     files_to_process: &[PathBuf],
     target_filename_override: Option<PathBuf>,
-    progress_callback: &C,
 ) -> CoreResult<Vec<EncodeResult>>
 {
     // ========================================================================
@@ -169,29 +163,17 @@ pub fn process_videos<
     // ========================================================================
 
     // Verify that required external tools (ffmpeg and ffprobe) are available
-    progress_callback.on_progress(ProgressEvent::LogMessage {
-        message: "Checking for required external commands...".to_string(),
-        level: LogLevel::Info,
-    });
+    report_log_message("Checking for required external commands...", LogLevel::Info);
 
     // Check for ffmpeg
     let _ffmpeg_cmd_parts = check_dependency("ffmpeg")?;
-    progress_callback.on_progress(ProgressEvent::LogMessage {
-        message: "ffmpeg found.".to_string(),
-        level: LogLevel::Info,
-    });
+    report_log_message("ffmpeg found.", LogLevel::Info);
 
     // Check for ffprobe
     let _ffprobe_cmd_parts = check_dependency("ffprobe")?;
-    progress_callback.on_progress(ProgressEvent::LogMessage {
-        message: "ffprobe found.".to_string(),
-        level: LogLevel::Info,
-    });
+    report_log_message("ffprobe found.", LogLevel::Info);
 
-    progress_callback.on_progress(ProgressEvent::LogMessage {
-        message: "External dependency check passed.".to_string(),
-        level: LogLevel::Info,
-    });
+    report_log_message("External dependency check passed.", LogLevel::Info);
 
     // ========================================================================
     // STEP 2: GET SYSTEM INFORMATION
@@ -203,20 +185,14 @@ pub fn process_videos<
         .map(|s| s.into_string().unwrap_or_else(|_| "unknown-host-invalid-utf8".to_string()))
         .unwrap_or_else(|_| "unknown-host-error".to_string());
 
-    progress_callback.on_progress(ProgressEvent::LogMessage {
-        message: format!("Running on host: {}", hostname),
-        level: LogLevel::Info,
-    });
+    report_log_message(&format!("Running on host: {}", hostname), LogLevel::Info);
 
     // Report hardware acceleration capabilities
     // We don't use is_macos() directly anymore - this should be handled by the CLI
     let hw_accel_available = std::env::consts::OS == "macos";
     let hw_accel_type = if hw_accel_available { "VideoToolbox" } else { "None" };
 
-    progress_callback.on_progress(ProgressEvent::HardwareAcceleration {
-        available: hw_accel_available,
-        acceleration_type: hw_accel_type.to_string(),
-    });
+    report_hardware_acceleration(hw_accel_available, hw_accel_type);
 
 
     // Initialize the results vector to store successful encoding results
@@ -417,7 +393,7 @@ pub fn process_videos<
         // ========================================================================
 
         // Log information about audio streams (channels, bitrates)
-        let _ = audio::log_audio_info(ffprobe_executor, input_path, progress_callback);
+        let _ = audio::log_audio_info(ffprobe_executor, input_path);
 
         // Get audio channel information for encoding
         let audio_channels = match ffprobe_executor.get_audio_channels(input_path) {
@@ -456,18 +432,18 @@ pub fn process_videos<
         // Analyze grain/noise in the video to determine optimal denoising parameters
         let final_hqdn3d_params_result = if config.enable_denoise {
             // Perform grain analysis if denoising is enabled
-            progress_callback.on_progress(ProgressEvent::LogMessage {
-                message: "Grain detection enabled, analyzing video using relative sample comparison...".to_string(),
-                level: LogLevel::Info,
-            });
+            report_log_message(
+                "Grain detection enabled, analyzing video using relative sample comparison...",
+                LogLevel::Info
+            );
+
             grain_analysis::analyze_grain(
                 input_path,
                 config,
                 &initial_encode_params,
                 duration_secs,
                 spawner,
-                metadata_provider,
-                progress_callback
+                metadata_provider
             )
         } else {
             // Skip grain analysis if denoising is disabled
@@ -549,7 +525,6 @@ pub fn process_videos<
             false, // disable_audio: Keep audio in the output
             false, // is_grain_analysis_sample: This is the main encode, not a sample
             None,  // grain_level_being_tested: Not applicable for final encode
-            progress_callback, // Pass the progress callback
         );
 
         // ========================================================================

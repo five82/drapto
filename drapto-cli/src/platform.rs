@@ -24,8 +24,7 @@
 use std::env;
 
 // ---- External crate imports ----
-use colored::*;
-use log::info;
+use drapto_core::progress_reporting::{report_hardware_acceleration};
 
 // ============================================================================
 // PLATFORM DETECTION
@@ -93,11 +92,11 @@ impl HardwareAcceleration {
     /// This function logs information about the available hardware acceleration
     /// capabilities to the info log level.
     pub fn log_capabilities(&self) {
-        if self.videotoolbox_decode_available {
-            info!("{} {}", "Hardware:".cyan(), "VideoToolbox hardware decoding available".green().bold());
-        } else {
-            info!("{} {}", "Hardware:".cyan(), "Using software decoding (hardware acceleration not available on this platform)".yellow());
-        }
+        // Use the new direct reporting function
+        report_hardware_acceleration(
+            self.videotoolbox_decode_available,
+            "VideoToolbox"
+        );
     }
 
     /// Gets FFmpeg hardware acceleration arguments for the current platform.
@@ -107,12 +106,12 @@ impl HardwareAcceleration {
     /// * `Vec<String>` - The FFmpeg hardware acceleration arguments
     pub fn get_ffmpeg_hwaccel_args(&self) -> Vec<String> {
         let mut args = Vec::new();
-        
+
         if self.videotoolbox_decode_available {
             args.push("-hwaccel".to_string());
             args.push("videotoolbox".to_string());
         }
-        
+
         args
     }
 }
