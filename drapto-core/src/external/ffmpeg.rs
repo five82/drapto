@@ -10,11 +10,13 @@ use crate::progress_reporting::{
     report_encode_start, report_encode_progress, report_encode_error,
     report_hardware_acceleration, report_log_message, LogLevel,
 };
+use crate::styling;
 use ffmpeg_sidecar::command::FfmpegCommand;
 use ffmpeg_sidecar::event::{FfmpegEvent, LogLevel as FfmpegLogLevel}; // Renamed LogLevel to avoid conflict
 use std::time::Instant;
 use std::path::PathBuf; // Keep PathBuf, remove unused Path
 use log::{info, warn, error, debug, trace, log}; // Import log macros
+use colored::Colorize; // Import Colorize trait for color method
 
 /// Parameters required for running an FFmpeg encode operation.
 #[derive(Debug, Clone)]
@@ -225,9 +227,15 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner>(
     // Add hardware acceleration options BEFORE the input
     let hw_accel_added = add_hardware_acceleration_to_command(&mut cmd, params.use_hw_decode, is_grain_analysis_sample);
 
-    // Log hardware acceleration status if it was added
+    // Log hardware acceleration status if it was added with better formatting
     if hw_accel_added {
-        report_log_message("Using VideoToolbox hardware decoding", LogLevel::Info);
+        report_log_message(
+            &styling::format_hardware_status(
+                true,
+                "VideoToolbox hardware decoding enabled for this operation"
+            ),
+            LogLevel::Info
+        );
     }
 
     cmd.input(params.input_path.to_string_lossy());
@@ -239,15 +247,30 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner>(
 
     // Log command details at appropriate level based on context
     let log_level = if is_grain_analysis_sample { log::Level::Debug } else { log::Level::Info };
-    let prefix = if is_grain_analysis_sample { "FFmpeg command (grain sample)" } else { "FFmpeg command details" };
-    log!(log_level, "🔧 {}:\n  {}", prefix, cmd_debug);
+
+    // Convert command to string vector for formatting
+    let cmd_parts: Vec<String> = cmd_debug.split_whitespace().map(String::from).collect();
+
+    // Use the new FFmpeg command formatting function
+    let formatted_cmd = crate::styling::format_ffmpeg_command(&cmd_parts, is_grain_analysis_sample);
+
+    log!(log_level, "{}", formatted_cmd);
 
 
     // --- Execution and Progress ---
     // Log start at appropriate level based on context
     let log_level = if is_grain_analysis_sample { log::Level::Debug } else { log::Level::Info };
-    let message = if is_grain_analysis_sample { "Starting grain sample encode..." } else { "Starting encode process..." };
-    log!(log_level, "🚀 {}", message);
+
+    if log_level == log::Level::Info {
+        // For main encodes, display a more prominent start message with better formatting
+        log!(log_level, "{}", crate::styling::format_subsection("Starting Encode Process"));
+    } else {
+        // For grain analysis samples, use simpler logging with spinner
+        log!(log_level, "{}", crate::styling::format_spinner(
+            "Starting grain sample encode",
+            None
+        ));
+    }
     let start_time = Instant::now();
 
     // Use the injected spawner
@@ -402,8 +425,17 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner>(
     if status.success() {
         // Log success at appropriate level based on context
         let log_level = if is_grain_analysis_sample { log::Level::Debug } else { log::Level::Info };
-        let prefix = if is_grain_analysis_sample { "Grain sample encode" } else { "Encode" };
-        log!(log_level, "✅ {} finished successfully for {}", prefix, filename_cow);
+
+        if log_level == log::Level::Info {
+            // For main encodes, display a more prominent success message with section formatting
+            log!(log_level, "{}", crate::styling::format_section(&format!(
+                "Encode Complete: {}",
+                crate::styling::format_filename(&filename_cow)
+            )));
+        } else {
+            // For grain analysis samples, use simpler logging
+            log!(log_level, "✅ Grain sample encode finished successfully for {}", filename_cow);
+        }
         Ok(())
     } else {
         let error_message = format!(
@@ -412,12 +444,23 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner>(
             stderr_buffer.trim()
         );
 
-        // Log error with appropriate prefix based on context
-        let prefix = if is_grain_analysis_sample { "Grain sample encode" } else { "FFmpeg encode" };
-        error!("❌ {} failed for {}: {}", prefix, filename_cow, error_message);
+        // Log error with appropriate formatting based on context
+        if is_grain_analysis_sample {
+            // For grain analysis samples, use simpler logging
+            error!("❌ {}", crate::styling::format_error(&format!(
+                "Grain sample encode failed for {}: {}",
+                crate::styling::format_filename(&filename_cow),
+                error_message
+            )));
+        } else {
+            // For main encodes, use the detailed error formatting
+            error!("{}", crate::styling::format_detailed_error(
+                &error_message,
+                &format!("FFmpeg encode failed for {}", crate::styling::format_filename(&filename_cow)),
+                Some("Check the FFmpeg output above for more specific error details")
+            ));
 
-        // Use direct reporting for non-grain-analysis errors
-        if !is_grain_analysis_sample {
+            // Use direct reporting for non-grain-analysis errors
             report_encode_error(&params.input_path, &error_message);
         }
 
@@ -592,14 +635,25 @@ pub fn add_hardware_acceleration_to_command(
     false
 }
 
-// Helper function to log hardware acceleration status
+// Helper function to log hardware acceleration status with improved formatting
 fn log_hardware_acceleration_status() {
     let hw_accel_available = is_hardware_acceleration_available();
 
+    // Use the enhanced hardware acceleration status reporting
     if hw_accel_available {
+        log::info!("{}", styling::format_section("Hardware Acceleration"));
         report_hardware_acceleration(true, "VideoToolbox");
+        log::info!("  {} {}",
+            "Note:".color(styling::COLOR_LABEL).bold(),
+            "Hardware acceleration is used for decoding only, not encoding".color(styling::COLOR_INFO)
+        );
     } else {
+        log::info!("{}", styling::format_section("Hardware Acceleration"));
         report_hardware_acceleration(false, "VideoToolbox");
+        log::info!("  {} {}",
+            "Note:".color(styling::COLOR_LABEL).bold(),
+            "Software decoding will be used for all operations".color(styling::COLOR_INFO)
+        );
     }
 }
 

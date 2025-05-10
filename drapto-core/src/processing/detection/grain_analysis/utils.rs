@@ -19,8 +19,8 @@
 use super::constants::HQDN3D_PARAMS;
 use super::types::GrainLevel;
 
-// ---- External crate imports ----
-use colored::*;
+// ---- Internal crate imports ----
+use crate::styling;
 
 /// Determines the appropriate hqdn3d filter parameter string based on the detected grain level.
 ///
@@ -68,9 +68,11 @@ pub fn determine_hqdn3d_params(level: GrainLevel) -> Option<String> {
         .or_else(|| {
             // This should never happen if all GrainLevel variants are covered in HQDN3D_PARAMS
             log::warn!(
-                "{} Could not find hqdn3d params for level {:?}, this is unexpected.",
-                "Warning:".yellow().bold(),
-                level
+                "{}",
+                styling::format_warning(&format!(
+                    "Could not find hqdn3d params for level {:?}, this is unexpected.",
+                    level
+                ))
             );
             None
         })
@@ -245,7 +247,8 @@ pub(super) fn calculate_median_level(levels: &mut [GrainLevel]) -> GrainLevel {
     // Handle empty input case
     if levels.is_empty() {
         // This case should ideally not be reached if called after successful analysis phases
-        log::warn!("calculate_median_level called with empty list. Defaulting to Baseline.");
+        log::warn!("{}", crate::styling::format_warning(
+            "calculate_median_level called with empty list. Defaulting to Baseline."));
         return GrainLevel::Baseline;
     }
 

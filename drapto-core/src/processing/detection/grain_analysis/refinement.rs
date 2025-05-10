@@ -110,7 +110,8 @@ pub(super) fn calculate_refinement_range(initial_estimates: &[GrainLevel]) -> (G
     // Handle empty input case
     if initial_estimates.is_empty() {
         // This shouldn't happen if the function is called correctly
-        log::warn!("calculate_refinement_range called with empty estimates. Defaulting range.");
+        log::warn!("{}", crate::styling::format_warning(
+            "calculate_refinement_range called with empty estimates. Defaulting range."));
         return (GrainLevel::Baseline, GrainLevel::VeryLight);
     }
 

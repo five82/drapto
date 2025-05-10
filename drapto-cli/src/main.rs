@@ -31,9 +31,9 @@ use drapto_cli::logging::get_timestamp;
 // ---- External crate imports ----
 use drapto_core::external::{SidecarSpawner, CrateFfprobeExecutor};
 use drapto_core::notifications::NtfyNotificationSender;
+use drapto_core::styling;
 use clap::Parser;
 use daemonize::Daemonize;
-use colored::*;
 
 // ---- Standard library imports ----
 use std::io::{self, Write};
@@ -71,9 +71,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Provide feedback about logging level to help with debugging
     if log::log_enabled!(log::Level::Trace) {
-        log::info!("{}", "Trace level logging enabled.".yellow().bold());
+        log::info!("{}", styling::format_header("Trace level logging enabled."));
     } else if log::log_enabled!(log::Level::Debug) {
-        log::info!("{}", "Debug level logging enabled.".yellow().bold());
+        log::info!("{}", styling::format_header("Debug level logging enabled."));
     }
 
     // SECTION: Command-line Argument Parsing
@@ -94,8 +94,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let (discovered_files, effective_input_dir) = match discover_encode_files(&args) {
                  Ok(result) => result,
                  Err(e) => {
-                     // Format error message with color for better visibility
-                     eprintln!("{} {}", "Error during file discovery:".red().bold(), e);
+                     // Format error message with consistent styling
+                     eprintln!("{}", styling::format_error(&format!("Error during file discovery: {}", e)));
                      process::exit(1);
                  }
             };
@@ -133,28 +133,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 // Show files that will be processed
                 if !discovered_files.is_empty() {
-                    eprintln!("{}", "Will encode the following files:".cyan().bold());
+                    eprintln!("{}", styling::format_header("Will encode the following files:"));
                     for file in &discovered_files {
-                        eprintln!("  - {}", file.display().to_string().green());
+                        eprintln!("  - {}", styling::format_value(&file.display().to_string()));
                     }
                 } else {
-                    eprintln!("{}", "No .mkv files found to encode in the specified input.".yellow());
+                    eprintln!("{}", styling::format_warning("No .mkv files found to encode in the specified input."));
                 }
 
                 // Show log file path so user knows where to find output
-                eprintln!("{} {}", "Log file:".cyan(), main_log_path.display().to_string().green());
+                eprintln!("{}", styling::format_key_value("Log file:", &main_log_path.display().to_string()));
 
                 // Inform user that process is going to background
-                eprintln!("{}", "Starting Drapto daemon in the background...".green().bold());
+                eprintln!("{}", styling::format_header("Starting Drapto daemon in the background..."));
 
                 // Single flush operation after all messages
                 if let Err(e) = io::stderr().flush() {
-                    eprintln!("{} Failed to flush stderr before daemonizing: {}", "Warning:".yellow().bold(), e);
+                    eprintln!("{}", styling::format_warning(&format!(
+                        "Failed to flush stderr before daemonizing: {}", e)));
                 }
 
                 // Create log directory if it doesn't exist
                 if let Err(e) = std::fs::create_dir_all(&log_dir) {
-                    eprintln!("{} Failed to create log directory: {}", "Error:".red().bold(), e);
+                    eprintln!("{}", styling::format_error(&format!(
+                        "Failed to create log directory: {}", e)));
                     process::exit(1);
                 }
 
@@ -162,7 +164,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let log_file = match std::fs::File::create(&main_log_path) {
                     Ok(file) => file,
                     Err(e) => {
-                        eprintln!("{} Failed to create log file: {}", "Error:".red().bold(), e);
+                        eprintln!("{}", styling::format_error(&format!(
+                            "Failed to create log file: {}", e)));
                         process::exit(1);
                     }
                 };
@@ -170,7 +173,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let log_file_stderr = match log_file.try_clone() {
                     Ok(file) => file,
                     Err(e) => {
-                        eprintln!("{} Failed to clone log file handle: {}", "Error:".red().bold(), e);
+                        eprintln!("{}", styling::format_error(&format!(
+                            "Failed to clone log file handle: {}", e)));
                         process::exit(1);
                     }
                 };
@@ -190,7 +194,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     Err(e) => {
                         // Failed to daemonize, report error and exit
-                        eprintln!("{} {}", "Error starting daemon:".red().bold(), e);
+                        eprintln!("{}", styling::format_error(&format!("Error starting daemon: {}", e)));
                         process::exit(1);
                     }
                 }
@@ -210,7 +214,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 match NtfyNotificationSender::new(topic) {
                     Ok(sender) => Some(sender),
                     Err(e) => {
-                        eprintln!("{} Failed to create notification sender: {}", "Warning:".yellow().bold(), e);
+                        eprintln!("{}", styling::format_warning(&format!(
+                            "Failed to create notification sender: {}", e)));
                         None
                     }
                 }
@@ -238,7 +243,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // This primarily catches errors that occur before logging is fully set up,
         // if run_encode fails early, or in the parent process before daemonization
         let prefix = if interactive_mode { "Error" } else { "Daemon Error" };
-        eprintln!("{} {}", format!("{}:", prefix).red().bold(), e);
+        eprintln!("{}", styling::format_error(&format!("{}: {}", prefix, e)));
         process::exit(1); // Exit with error code
     }
 

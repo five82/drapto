@@ -27,7 +27,6 @@
 
 // ---- External crate imports ----
 use rand::{thread_rng, Rng};
-use colored::Colorize;
 
 // ---- Standard library imports ----
 use std::collections::HashMap;
@@ -40,7 +39,9 @@ use crate::external::ffmpeg::EncodeParams;
 use crate::external::ffmpeg_executor::extract_sample;
 use crate::external::{FileMetadataProvider, FfmpegSpawner};
 use crate::progress_reporting::{report_log_message, LogLevel};
+use crate::styling;
 use crate::temp_files;
+use colored::Colorize; // Import Colorize trait for color method
 
 // ============================================================================
 // SUBMODULES
@@ -209,29 +210,47 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider>(
         .map(|name| name.to_string_lossy())
         .unwrap_or_else(|| file_path.to_string_lossy());
 
-    report_log_message(&format!("Starting grain analysis (knee point + refinement) for: {}", filename_cow), LogLevel::Info);
-    report_log_message(&format!("Duration: {:.2}s", duration_secs), LogLevel::Info);
+    // Display a header for the grain analysis process using the new section formatting
+    report_log_message(
+        &styling::format_section(&format!("Grain Analysis for {}", styling::format_filename(&filename_cow))),
+        LogLevel::Info
+    );
+
+    // --- Get Configuration Parameters ---
+    let sample_duration = config.film_grain_sample_duration;
+    let knee_threshold = config.film_grain_knee_threshold;
+    let max_level = config.film_grain_max_level;
+
+    // Display basic information about the video
+    let info_lines = vec![
+        styling::format_key_value("Video Duration:", &format!("{:.2}s", duration_secs)),
+        styling::format_key_value("Sample Duration:", &format!("{}s per sample", sample_duration)),
+        styling::format_key_value("Knee Threshold:", &format!("{:.2}", knee_threshold)),
+        styling::format_key_value("Maximum Level:", &format!("{:?}", max_level)),
+    ];
+
+    report_log_message(
+        &styling::format_group("Analysis Parameters:", &info_lines),
+        LogLevel::Info
+    );
 
     // Inform user about hardware acceleration status for the main encode
     if base_encode_params.use_hw_decode {
         let hw_accel_available = std::env::consts::OS == "macos";
         if hw_accel_available {
             report_log_message(
-                "VideoToolbox hardware decoding will be used for main encode (disabled during analysis)",
+                &styling::format_hardware_status(true, "VideoToolbox (disabled during analysis)"),
                 LogLevel::Info
             );
         } else {
             report_log_message(
-                "Software decoding will be used (hardware acceleration not available on this platform)",
+                &styling::format_hardware_status(false, "Not available on this platform"),
                 LogLevel::Info
             );
         }
     }
 
-    // --- Get Configuration Parameters ---
-    let sample_duration = config.film_grain_sample_duration;
-    let knee_threshold = config.film_grain_knee_threshold;
-    let max_level = config.film_grain_max_level;
+    // Configuration parameters are already retrieved above
 
     // --- Determine Sample Count ---
     let base_samples = (duration_secs / SECS_PER_SAMPLE_TARGET).ceil() as usize;
@@ -245,8 +264,11 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider>(
     let min_required_duration = (sample_duration * num_samples as u32) as f64;
     if duration_secs < min_required_duration {
         log::warn!(
-            "{} Video duration ({:.2}s) is too short for the minimum required duration ({:.2}s) for {} samples. Skipping grain analysis.",
-            "Warning:".yellow().bold(), duration_secs, min_required_duration, num_samples
+            "{}",
+            styling::format_warning(&format!(
+                "Video duration ({:.2}s) is too short for the minimum required duration ({:.2}s) for {} samples. Skipping grain analysis.",
+                duration_secs, min_required_duration, num_samples
+            ))
         );
         return Ok(None);
     }
@@ -274,8 +296,11 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider>(
 
     if latest_possible_start <= start_boundary {
         log::warn!(
-            "{} Video duration ({:.2}s) results in an invalid sampling window ({:.2}s - {:.2}s) for sample duration {}. Skipping grain analysis.",
-            "Warning:".yellow().bold(), duration_secs, start_boundary, end_boundary, sample_duration
+            "{}",
+            styling::format_warning(&format!(
+                "Video duration ({:.2}s) results in an invalid sampling window ({:.2}s - {:.2}s) for sample duration {}. Skipping grain analysis.",
+                duration_secs, start_boundary, end_boundary, sample_duration
+            ))
         );
         return Ok(None);
     }
@@ -295,14 +320,21 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider>(
     log::debug!("Created temporary directory for samples: {}", temp_dir_path.display());
 
     // --- Phase 1: Test Initial Values ---
-    report_log_message("Phase 1: Testing initial grain levels...", LogLevel::Info);
+    report_log_message(
+        &styling::format_grain_analysis_phase(1, "Testing initial grain levels"),
+        LogLevel::Info
+    );
 
     let mut phase1_results: Vec<HashMap<Option<GrainLevel>, u64>> = Vec::with_capacity(num_samples);
     let mut raw_sample_paths: Vec<PathBuf> = Vec::with_capacity(num_samples); // Store raw sample paths
 
     for (i, &start_time) in sample_start_times.iter().enumerate() {
         report_log_message(
-            &format!("Processing sample {}/{} (Start: {:.2}s, Duration: {}s)...", i + 1, num_samples, start_time, sample_duration),
+            &styling::format_sample_processing(
+                i + 1,
+                num_samples,
+                &format!("Start: {:.2}s, Duration: {}s", start_time, sample_duration)
+            ),
             LogLevel::Info
         );
 
@@ -365,8 +397,9 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider>(
             };
 
             let size_mb = encoded_size as f64 / (1024.0 * 1024.0);
+            let is_baseline = level_opt.is_none();
             report_log_message(
-                &format!("      -> {:<10} size: {:.2} MB", level_desc, size_mb),
+                &styling::format_grain_level_result(&level_desc, size_mb, is_baseline, false),
                 LogLevel::Info
             );
             results_for_this_sample.insert(*level_opt, encoded_size);
@@ -376,7 +409,7 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider>(
 
     // --- Phase 2: Initial Estimation with Knee Point ---
     report_log_message(
-        "Phase 2: Estimating optimal grain per sample using Knee Point...",
+        &styling::format_grain_analysis_phase(2, "Estimating optimal grain per sample using Knee Point"),
         LogLevel::Info
     );
 
@@ -397,32 +430,57 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider>(
         .collect::<Vec<_>>()
         .join(", ");
 
+    // Format the initial estimates with better visual structure
     report_log_message(
-        &format!("  Initial estimates per sample: [{}]", formatted_initial_estimates),
+        &format!("  {} {}\n    {}",
+            "Initial Estimates:".color(styling::COLOR_LABEL).bold(),
+            "Per Sample".color(styling::COLOR_LABEL),
+            formatted_initial_estimates.color(styling::COLOR_HIGHLIGHT).bold()
+        ),
         LogLevel::Info
     );
 
 
     // --- Phase 3: Adaptive Refinement ---
-    report_log_message("Phase 3: Adaptive Refinement...", LogLevel::Info);
+    report_log_message(
+        &styling::format_grain_analysis_phase(3, "Adaptive Refinement"),
+        LogLevel::Info
+    );
 
     let mut phase3_results: Vec<HashMap<Option<GrainLevel>, u64>> = vec![HashMap::new(); num_samples];
 
     if initial_estimates.len() < 3 {
-        let message = format!("  Too few samples ({}) for reliable refinement. Skipping Phase 3.", initial_estimates.len());
-        report_log_message(&message, LogLevel::Info);
+        report_log_message(
+            &styling::format_warning(&format!(
+                "Too few samples ({}) for reliable refinement. Skipping Phase 3.",
+                initial_estimates.len()
+            )),
+            LogLevel::Info
+        );
     } else {
         let (lower_bound, upper_bound) = calculate_refinement_range(&initial_estimates);
-        let message = format!("  Calculated refinement range based on initial estimates: {:?} to {:?}", lower_bound, upper_bound);
-        report_log_message(&message, LogLevel::Info);
+        // Format the refinement range with better visual structure
+        report_log_message(
+            &format!("  {} {} {} {}",
+                "Refinement Range:".color(styling::COLOR_LABEL).bold(),
+                format!("{:?}", lower_bound).color(styling::COLOR_VALUE),
+                "to".color(styling::COLOR_LABEL),
+                format!("{:?}", upper_bound).color(styling::COLOR_VALUE).bold()
+            ),
+            LogLevel::Info
+        );
 
         let refined_params = generate_refinement_params(
             lower_bound, upper_bound, &initial_test_levels
         );
 
         if refined_params.is_empty() {
-            let message = "  No refinement parameters generated within the range. Skipping Phase 3 testing.";
-            report_log_message(message, LogLevel::Info);
+            report_log_message(
+                &styling::format_warning(
+                    "No refinement parameters generated within the range. Skipping Phase 3 testing."
+                ),
+                LogLevel::Info
+            );
         } else {
             // Extract the strength values from the parameters for better labeling
             let param_descriptions: Vec<String> = refined_params.iter().enumerate().map(|(idx, (_l, p))| {
@@ -438,8 +496,25 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider>(
                     p)
             }).collect();
 
-            let message = format!("  Testing {} refined parameter sets: {:?}", refined_params.len(), param_descriptions);
-            report_log_message(&message, LogLevel::Info);
+            // Format the refined parameter sets with better visual structure
+            report_log_message(
+                &format!("  {} {}",
+                    "Testing Refined Parameter Sets:".color(styling::COLOR_LABEL).bold(),
+                    format!("{} sets", refined_params.len()).color(styling::COLOR_HIGHLIGHT).bold()
+                ),
+                LogLevel::Info
+            );
+
+            // Create a formatted list of parameter descriptions
+            let formatted_descriptions = param_descriptions.iter().enumerate()
+                .map(|(i, desc)| format!("    {} {}",
+                    format!("#{}", i+1).color(styling::COLOR_LABEL).bold(),
+                    desc.color(styling::COLOR_VALUE)
+                ))
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            report_log_message(&formatted_descriptions, LogLevel::Info);
             log::debug!("  (Note: Parameter validation, like ensuring non-negative values, occurs during generation/parsing)");
 
             for (idx, (level_opt, params_str)) in refined_params.iter().enumerate() {
@@ -457,7 +532,7 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider>(
                     |l| format!("{:?}", l)
                 );
                 report_log_message(
-                    &format!("    Testing refined level {}...", level_desc),
+                    &styling::format_processing_step(&format!("Testing refined level {}", level_desc)),
                     LogLevel::Info
                 );
 
@@ -512,10 +587,16 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider>(
                     };
 
                     let size_mb = encoded_size as f64 / (1024.0 * 1024.0);
-                    report_log_message(
-                        &format!("      -> {:<35} (Sample {}) size: {:.2} MB", level_desc, i + 1, size_mb),
-                        LogLevel::Info
+                    let is_baseline = level_opt.is_none();
+
+                    // Format with sample number prefix
+                    let result = format!(
+                        "      Sample {} - {}",
+                        format!("{}", i + 1).color(styling::COLOR_LABEL).bold(),
+                        styling::format_grain_level_result(&level_desc, size_mb, is_baseline, false)
                     );
+
+                    report_log_message(&result, LogLevel::Info);
                     phase3_results[i].insert(*level_opt, encoded_size);
                 }
             }
@@ -524,7 +605,7 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider>(
 
     // --- Phase 4: Final Analysis with Combined Results ---
     report_log_message(
-        "Phase 4: Final analysis with knee point on combined results...",
+        &styling::format_grain_analysis_phase(4, "Final analysis with knee point on combined results"),
         LogLevel::Info
     );
 
@@ -548,8 +629,13 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider>(
         .collect::<Vec<_>>()
         .join(", ");
 
+    // Format the final estimates with better visual structure
     report_log_message(
-        &format!("  Final estimates per sample (after refinement): [{}]", formatted_estimates),
+        &format!("  {} {}\n    {}",
+            "Final Estimates:".color(styling::COLOR_LABEL).bold(),
+            "Per Sample".color(styling::COLOR_LABEL),
+            formatted_estimates.color(styling::COLOR_HIGHLIGHT).bold()
+        ),
         LogLevel::Info
     );
 
@@ -565,13 +651,78 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider>(
 
     // Apply max level constraint if configured
     if final_level > max_level {
-        let message = format!("Detected level {:?} exceeds maximum allowed level {:?}. Using maximum level.", final_level, max_level);
-        report_log_message(&message, LogLevel::Info);
+        report_log_message(
+            &styling::format_warning(&format!(
+                "Detected level {:?} exceeds maximum allowed level {:?}. Using maximum level.",
+                final_level, max_level
+            )),
+            LogLevel::Info
+        );
         final_level = max_level;
     }
 
-    let final_message = format!("Final detected grain level for {}: {:?}", filename_cow, final_level);
-    report_log_message(&final_message, LogLevel::Info);
+    // Collect all the grain level sizes for the chart
+    let mut level_sizes: Vec<(&str, f64)> = Vec::new();
+
+    // Add baseline and standard levels from phase1_results (using first sample)
+    if !phase1_results.is_empty() {
+        for (level_opt, size) in &phase1_results[0] {
+            let level_name = match level_opt {
+                None => "Baseline",
+                Some(GrainLevel::Baseline) => "Baseline",
+                Some(GrainLevel::VeryLight) => "VeryLight",
+                Some(GrainLevel::Light) => "Light",
+                Some(GrainLevel::Moderate) => "Moderate",
+                Some(GrainLevel::Elevated) => "Elevated",
+            };
+            level_sizes.push((level_name, *size as f64 / (1024.0 * 1024.0)));
+        }
+    }
+
+    // Sort by level strength (Baseline first, then increasing strength)
+    level_sizes.sort_by(|(a, _), (b, _)| {
+        let order = ["Baseline", "VeryLight", "Light", "Moderate", "Elevated"];
+        let a_idx = order.iter().position(|&x| x == *a).unwrap_or(999);
+        let b_idx = order.iter().position(|&x| x == *b).unwrap_or(999);
+        a_idx.cmp(&b_idx)
+    });
+
+    // Create and display the enhanced grain analysis summary
+    let final_level_str = format!("{:?}", final_level);
+    let summary = styling::format_grain_analysis_summary(&final_level_str, &level_sizes);
+    report_log_message(&summary, LogLevel::Info);
+
+    // Add detailed description of the detected level
+    let (description, technical_details) = match final_level {
+        GrainLevel::Baseline => (
+            "No denoising applied. This is the baseline reference with all original grain/noise preserved.",
+            "No hqdn3d filter applied (original video quality)"
+        ),
+        GrainLevel::VeryLight => (
+            "Very light denoising that preserves most fine details while reducing minimal noise.",
+            "hqdn3d=0.5:0.3:3:3 (minimal spatial and temporal filtering)"
+        ),
+        GrainLevel::Light => (
+            "Light denoising that preserves important details while reducing visible noise.",
+            "hqdn3d=1:0.7:4:4 (balanced spatial and temporal filtering)"
+        ),
+        GrainLevel::Moderate => (
+            "Moderate denoising that reduces noticeable grain while maintaining overall quality.",
+            "hqdn3d=1.5:1.0:6:6 (stronger spatial and temporal filtering)"
+        ),
+        GrainLevel::Elevated => (
+            "Elevated denoising for videos with significant grain, preserving essential details.",
+            "hqdn3d=2:1.3:8:8 (strong temporal filtering for grain reduction)"
+        ),
+    };
+
+    let level_description = styling::format_grain_level_description(
+        &final_level_str,
+        description,
+        technical_details
+    );
+
+    report_log_message(&level_description, LogLevel::Info);
 
     // temp_dir cleanup happens automatically on drop
 

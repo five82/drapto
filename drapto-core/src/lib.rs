@@ -117,6 +117,9 @@ pub mod progress_reporting;
 /// Temporary file management utilities
 pub mod temp_files;
 
+/// Terminal output styling utilities
+pub mod styling;
+
 // ============================================================================
 // PUBLIC API RE-EXPORTS
 // ============================================================================
@@ -165,6 +168,17 @@ pub use notifications::{NotificationType, NtfyNotificationSender};
 // ----- Temporary File Management -----
 /// Temporary file management utilities
 pub use temp_files::{create_grain_analysis_dir, create_analysis_dir, cleanup_base_dirs, create_temp_file_path};
+
+// ----- Styling Utilities -----
+/// Terminal output styling functions
+pub use styling::{
+    format_header, format_label, format_value, format_filename,
+    format_warning, format_error, format_progress, format_divider,
+    format_short_divider, format_key_value, format_progress_message,
+    format_hardware_status, format_warning_prefix, format_error_prefix,
+    format_time_value, format_success, format_phase_header, format_metric,
+    format_processing_step, format_result, format_sample_processing
+};
 
 // ============================================================================
 // PUBLIC STRUCTS

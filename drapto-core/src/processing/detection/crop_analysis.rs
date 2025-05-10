@@ -23,7 +23,6 @@
 // AI-ASSISTANT-INFO: Black bar detection and crop parameter generation
 
 // ---- External crate imports ----
-use colored::*;
 use ffmpeg_sidecar::command::FfmpegCommand;
 use ffmpeg_sidecar::event::FfmpegEvent;
 use regex::Regex;
@@ -33,6 +32,7 @@ use crate::error::CoreResult;
 use crate::external::{FfmpegProcess, FfmpegSpawner};
 use crate::external::ffmpeg::add_hardware_acceleration_to_command;
 use crate::processing::detection::VideoProperties;
+use crate::styling;
 
 // ---- Standard library imports ----
 use std::path::Path;
@@ -318,48 +318,41 @@ pub fn detect_crop<S: FfmpegSpawner>(
     // STEP 1: Determine initial crop threshold based on video properties
     let (mut crop_threshold, is_hdr) = determine_crop_threshold(video_props);
 
-    // STEP 2: For HDR content, refine the threshold using black level analysis
-    if is_hdr {
-        println!("🔬 Performing HDR black level analysis...");
-        log::info!("Running HDR black level analysis for {}...", input_file.display());
-        crop_threshold = run_hdr_blackdetect(spawner, input_file, crop_threshold)?;
-    }
+    // Display a header for the crop detection process
+    println!("{}", styling::format_header(&format!("Starting Crop Detection for: {}", styling::format_filename(&input_file.display().to_string()))));
 
-    // STEP 3: Log video properties for debugging
     // Extract filename for logging
     let filename_cow = input_file
         .file_name()
         .map(|name| name.to_string_lossy())
         .unwrap_or_else(|| input_file.to_string_lossy());
 
-    // Log video properties with colors and multiple lines
-    log::info!(
-        "{} {}",
-        "Video Properties for:".cyan(),
-        filename_cow.yellow()
-    );
-    log::info!(
-        "  {:<18} {}", // Left-align label with padding
-        "Resolution:".cyan(),
-        format!("{}x{}", video_props.width, video_props.height).green()
-    );
-    log::info!(
-        "  {:<18} {}", // Left-align label with padding
-        "Duration:".cyan(),
-        format!("{:.2}s", video_props.duration_secs).green()
-    );
-    log::info!(
-        "  {:<18} {}", // Left-align label with padding
-        "HDR:".cyan(),
-        format!("{}", is_hdr).green()
-    );
-    log::info!(
-        "  {:<18} {}", // Left-align label with padding
-        "Crop Threshold:".cyan(),
-        format!("{}", crop_threshold).green()
-    );
+    // Log video properties with consistent styling
+    println!("{}", styling::format_divider());
+    println!("{}", styling::format_header("Video Properties"));
+    println!("{}", styling::format_key_value("Resolution:", &format!("{}x{}", video_props.width, video_props.height)));
+    println!("{}", styling::format_key_value("Duration:", &format!("{:.2}s", video_props.duration_secs)));
+    println!("{}", styling::format_key_value("HDR:", &format!("{}", is_hdr)));
+    println!("{}", styling::format_key_value("Initial Crop Threshold:", &format!("{}", crop_threshold)));
+    println!("{}", styling::format_divider());
 
-    // STEP 4: Calculate effective analysis duration (skipping credits)
+    // Also log to file
+    log::info!("{} {}", styling::format_label("Video Properties for:"), styling::format_filename(&filename_cow));
+    log::info!("{}", styling::format_key_value("Resolution:", &format!("{}x{}", video_props.width, video_props.height)));
+    log::info!("{}", styling::format_key_value("Duration:", &format!("{:.2}s", video_props.duration_secs)));
+    log::info!("{}", styling::format_key_value("HDR:", &format!("{}", is_hdr)));
+    log::info!("{}", styling::format_key_value("Initial Crop Threshold:", &format!("{}", crop_threshold)));
+
+    // STEP 2: For HDR content, refine the threshold using black level analysis
+    if is_hdr {
+        println!("{}", styling::format_processing_step("Performing HDR black level analysis..."));
+        log::info!("Running HDR black level analysis for {}...", input_file.display());
+        crop_threshold = run_hdr_blackdetect(spawner, input_file, crop_threshold)?;
+        println!("{}", styling::format_result("Refined HDR Crop Threshold:", &format!("{}", crop_threshold), true));
+        log::info!("{}", styling::format_key_value("Refined HDR Crop Threshold:", &format!("{}", crop_threshold)));
+    }
+
+    // STEP 3: Calculate effective analysis duration (skipping credits)
     let credits_skip = calculate_credits_skip(video_props.duration_secs);
     let analysis_duration = if video_props.duration_secs > credits_skip {
         video_props.duration_secs - credits_skip
@@ -368,15 +361,20 @@ pub fn detect_crop<S: FfmpegSpawner>(
     };
 
     if credits_skip > 0.0 {
+        println!("{}", styling::format_result(
+            "Credits Skip:",
+            &format!("{:.2}s (Effective duration: {:.2}s)", credits_skip, analysis_duration),
+            false
+        ));
         log::debug!(
             "Skipping last {:.2}s for crop analysis (credits). Effective duration: {:.2}s",
             credits_skip, analysis_duration
         );
     }
 
-    // STEP 5: Run crop detection analysis
-    println!("✂️ {}", "Running crop detection analysis...".cyan().bold());
-    log::info!("Running crop detection analysis for {}...", filename_cow.yellow());
+    // STEP 4: Run crop detection analysis
+    println!("{}", styling::format_processing_step("Running crop detection analysis..."));
+    log::info!("Running crop detection analysis for {}...", styling::format_filename(&filename_cow));
 
     let crop_filter = run_cropdetect(
         spawner,
@@ -386,17 +384,25 @@ pub fn detect_crop<S: FfmpegSpawner>(
         analysis_duration,
     )?;
 
-    // STEP 6: Report results
+    // STEP 5: Report results
+    println!("{}", styling::format_divider());
     if crop_filter.is_none() {
-        println!("✅ {}", "Crop detection complete: No cropping needed.".green());
-        log::info!("No cropping filter determined for {}.", input_file.display().to_string().yellow());
+        println!("{}", styling::format_success("Crop detection complete"));
+        println!("{}", styling::format_result("Result:", "No cropping needed", true));
+        log::info!("No cropping filter determined for {}.", styling::format_filename(&input_file.display().to_string()));
     } else {
-        println!(
-            "✅ {} {}",
-            "Crop detection complete:".green(),
-            crop_filter.as_deref().unwrap_or("").green().bold()
+        println!("{}", styling::format_success("Crop detection complete"));
+        println!("{}", styling::format_result(
+            "Crop Filter:",
+            crop_filter.as_deref().unwrap_or(""),
+            true
+        ));
+        log::info!("Crop filter for {}: {}",
+            styling::format_filename(&input_file.display().to_string()),
+            crop_filter.as_deref().unwrap_or("")
         );
     }
+    println!("{}", styling::format_divider());
 
     // Return the crop filter and HDR status
     Ok((crop_filter, is_hdr))

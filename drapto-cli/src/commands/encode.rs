@@ -33,7 +33,7 @@ use drapto_core::external::{FfmpegSpawner, FfprobeExecutor};
 use drapto_core::external::StdFsMetadataProvider;
 use drapto_core::notifications::NtfyNotificationSender;
 use drapto_core::progress_reporting::{report_log_message, LogLevel}; // New direct reporting
-use colored::*;
+use drapto_core::styling; // Import styling module
 
 // ---- Standard library imports ----
 use std::fs;
@@ -170,29 +170,39 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor>(
     let main_log_filename = format!("drapto_encode_run_{}.log", crate::logging::get_timestamp()); // Keep get_timestamp usage
     let main_log_path = log_dir.join(&main_log_filename); // Use reference
 
-    // --- Log Initial Info using standard log macros with color ---
-    info!("{}", "========================================".cyan().bold());
-    info!("{} {}", "Drapto Encode Run Started:".green().bold(), chrono::Local::now().to_string().green());
-    info!("  {:<25} {}", "Original Input arg:".cyan(), args.input_path.display().to_string().yellow());
-    info!("  {:<25} {}", "Original Output arg:".cyan(), args.output_dir.display().to_string().yellow());
-    info!("  {:<25} {}", "Effective Output directory:".cyan(), actual_output_dir.display().to_string().green());
+    // --- Log Initial Info using standard log macros with consistent styling ---
+    info!("{}", styling::format_divider());
+    info!("{} {}", styling::format_header("Drapto Encode Run Started:"),
+        styling::format_value(&chrono::Local::now().to_string()));
+    info!("{}", styling::format_key_value("Original Input arg:",
+        &args.input_path.display().to_string()));
+    info!("{}", styling::format_key_value("Original Output arg:",
+        &args.output_dir.display().to_string()));
+    info!("{}", styling::format_key_value("Effective Output directory:",
+        &actual_output_dir.display().to_string()));
     if let Some(fname) = &target_filename_override {
-        info!("  {:<25} {}", "Effective Output filename:".cyan(), fname.display().to_string().green());
+        info!("{}", styling::format_key_value("Effective Output filename:",
+            &fname.display().to_string()));
     }
-    info!("  {:<25} {}", "Log directory:".cyan(), log_dir.display().to_string().green());
-    info!("  {:<25} {}", "Main log file (info):".cyan(), main_log_path.display().to_string().green());
-    info!("  {:<25} {}", "Interactive mode:".cyan(), interactive.to_string().green());
+    info!("{}", styling::format_key_value("Log directory:",
+        &log_dir.display().to_string()));
+    info!("{}", styling::format_key_value("Main log file (info):",
+        &main_log_path.display().to_string()));
+    info!("{}", styling::format_key_value("Interactive mode:",
+        &interactive.to_string()));
     // Hardware acceleration has been removed. Software decoding is always used.
-    info!("{}", "========================================".cyan().bold());
+    info!("{}", styling::format_divider());
 
     // --- PID File Handling (Daemon Mode Only) ---
     if !interactive {
         let pid_path = log_dir.join("drapto.pid");
         // Create PID file with current process ID after daemonization
         if let Err(e) = std::fs::write(&pid_path, std::process::id().to_string()) {
-            warn!("{} Failed to create PID file at {}: {}", "Warning:".yellow().bold(), pid_path.display(), e);
+            warn!("{}", styling::format_warning(&format!(
+                "Failed to create PID file at {}: {}", pid_path.display(), e)));
         } else {
-            info!("{} {}", "PID file created at:".green(), pid_path.display().to_string().yellow());
+            info!("{}", styling::format_key_value("PID file created at:",
+                &pid_path.display().to_string()));
         }
     }
 
@@ -203,7 +213,8 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor>(
         match drapto_core::processing::detection::grain_analysis::GrainLevel::from_str(level_str) {
             Ok(level) => Some(level),
             Err(_) => {
-                let message = format!("{} Invalid grain_max_level '{}'. Using default.", "Warning:".yellow().bold(), level_str);
+                let message = styling::format_warning(&format!(
+                    "Invalid grain_max_level '{}'. Using default.", level_str));
                 report_log_message(&message, LogLevel::Warning);
                 None
             }
@@ -214,7 +225,8 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor>(
         match drapto_core::processing::detection::grain_analysis::GrainLevel::from_str(level_str) {
             Ok(level) => Some(level),
             Err(_) => {
-                let message = format!("{} Invalid grain_fallback_level '{}'. Using default.", "Warning:".yellow().bold(), level_str);
+                let message = styling::format_warning(&format!(
+                    "Invalid grain_fallback_level '{}'. Using default.", level_str));
                 report_log_message(&message, LogLevel::Warning);
                 None
             }
@@ -224,8 +236,8 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor>(
     // Validate knee threshold is within valid range (0.1 to 1.0)
     let grain_knee_threshold = args.grain_knee_threshold.and_then(|threshold| {
         if !(0.1..=1.0).contains(&threshold) {
-            let message = format!("{} Knee threshold {} is outside valid range (0.1-1.0). Using default.",
-                "Warning:".yellow().bold(), threshold);
+            let message = styling::format_warning(&format!(
+                "Knee threshold {} is outside valid range (0.1-1.0). Using default.", threshold));
             report_log_message(&message, LogLevel::Warning);
             None
         } else {
@@ -300,9 +312,13 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor>(
     hw_accel.log_capabilities();
 
     // --- Execute Core Logic ---
-    info!("{} {} file(s).", "Processing".green(), files_to_process.len().to_string().green().bold());
+    info!("{} {}",
+        styling::format_header("Processing"),
+        styling::format_value(&format!("{} file(s).", files_to_process.len())));
+
     let processing_result = if files_to_process.is_empty() {
-         warn!("{} No processable .mkv files found in the specified input path.", "Warning:".yellow().bold()); // Use warn level
+         warn!("{}", styling::format_warning(
+             "No processable .mkv files found in the specified input path.")); // Use warn level
          Ok(Vec::new())
     } else {
          // Pass the Option<PathBuf> target_filename_override
@@ -328,51 +344,57 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor>(
             successfully_encoded = results.to_vec();
             // Use warn level if no files encoded (unless it was expected due to no files found)
             if successfully_encoded.is_empty() && !matches!(processing_result, Err(CoreError::NoFilesFound)) {
-                 warn!("{} No files were successfully encoded.", "Warning:".yellow().bold());
+                 warn!("{}", styling::format_warning("No files were successfully encoded."));
             } else if !successfully_encoded.is_empty() {
-                 info!("{} {} file(s).", "Successfully encoded".green(), successfully_encoded.len().to_string().green().bold());
+                 info!("{} {}",
+                     styling::format_header("Successfully encoded"),
+                     styling::format_value(&format!("{} file(s).", successfully_encoded.len())));
             }
         }
         Err(e) => {
             // Use error level for fatal errors
-            error!("{} {}", "FATAL CORE ERROR during processing:".red().bold(), e);
+            error!("{}", styling::format_error(&format!("FATAL CORE ERROR during processing: {}", e)));
             return Err(e.into());
         }
     }
 
     // --- Clean up temporary directories ---
-    info!("{}", "Cleaning up temporary directories...".cyan());
+    info!("{}", styling::format_label("Cleaning up temporary directories..."));
     if let Err(e) = drapto_core::temp_files::cleanup_base_dirs(&config) {
-        warn!("{} Failed to clean up temporary directories: {}", "Warning:".yellow().bold(), e);
+        warn!("{}", styling::format_warning(&format!("Failed to clean up temporary directories: {}", e)));
     }
 
 
     // --- Print Summary ---
     if !successfully_encoded.is_empty() {
-        info!("{}", "========================================".cyan().bold());
-        info!("{}", "Encoding Summary:".green().bold());
-        info!("{}", "========================================".cyan().bold());
+        info!("{}", styling::format_divider());
+        info!("{}", styling::format_header("Encoding Summary:"));
+        info!("{}", styling::format_divider());
         for result in &successfully_encoded {
             let reduction = if result.input_size > 0 {
                 100u64.saturating_sub(result.output_size.saturating_mul(100) / result.input_size)
             } else {
                 0
             };
-            info!("{}", result.filename.to_string().yellow().bold()); // Log filename directly, bold yellow
-            info!("  {:<13} {}", "Encode time:".cyan(), drapto_core::format_duration(result.duration).green());
-            info!("  {:<13} {}", "Input size:".cyan(), drapto_core::format_bytes(result.input_size).green());
-            info!("  {:<13} {}", "Output size:".cyan(), drapto_core::format_bytes(result.output_size).green());
-            info!("  {:<13} {}", "Reduced by:".cyan(), format!("{}%", reduction).green());
-            info!("{}", "----------------------------------------".cyan());
+            info!("{}", styling::format_filename(&result.filename)); // Log filename with consistent styling
+            info!("{}", styling::format_key_value("Encode time:", &drapto_core::format_duration(result.duration)));
+            info!("{}", styling::format_key_value("Input size:", &drapto_core::format_bytes(result.input_size)));
+            info!("{}", styling::format_key_value("Output size:", &drapto_core::format_bytes(result.output_size)));
+            info!("{}", styling::format_key_value("Reduced by:", &format!("{}%", reduction)));
+            info!("{}", styling::format_short_divider());
         }
     }
 
     // --- Final Timing ---
     let total_elapsed_time = total_start_time.elapsed();
-    info!("{}", "========================================".cyan().bold());
-    info!("{} {}", "Total encode execution time:".green().bold(), drapto_core::format_duration(total_elapsed_time).green());
-    info!("{} {}", "Drapto Encode Run Finished:".green().bold(), chrono::Local::now().to_string().green());
-    info!("{}", "========================================".cyan().bold());
+    info!("{}", styling::format_divider());
+    info!("{} {}",
+        styling::format_header("Total encode execution time:"),
+        styling::format_value(&drapto_core::format_duration(total_elapsed_time)));
+    info!("{} {}",
+        styling::format_header("Drapto Encode Run Finished:"),
+        styling::format_value(&chrono::Local::now().to_string()));
+    info!("{}", styling::format_divider());
 
     // env_logger handles flushing automatically.
 

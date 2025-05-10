@@ -87,10 +87,14 @@ pub fn extract_sample<S: FfmpegSpawner>( // Added generic parameter S
     duration_secs: u32,
     output_dir: &Path,
 ) -> CoreResult<PathBuf> {
-    log::debug!(
-        "Extracting sample: input={}, start={}, duration={}, out_dir={}",
-        input_path.display(), start_time_secs, duration_secs, output_dir.display()
-   );
+    // Use more structured logging for sample extraction
+    log::info!("{}", crate::styling::format_spinner(
+        "Extracting sample",
+        Some(&format!("at position {}s ({}s duration)",
+            start_time_secs,
+            duration_secs
+        ))
+    ));
 
    // Generate a unique filename for the sample within the output directory
    let output_path = temp_files::create_temp_file_path(output_dir, "raw_sample", "mkv");
@@ -104,7 +108,11 @@ pub fn extract_sample<S: FfmpegSpawner>( // Added generic parameter S
     let hw_accel_added = add_hardware_acceleration_to_command(&mut cmd, true, false);
 
     if hw_accel_added {
-        log::debug!("Using VideoToolbox hardware decoding for sample extraction");
+        // Use better formatting for hardware acceleration status
+        log::info!("{}", crate::styling::format_hardware_status(
+            true,
+            "Using VideoToolbox hardware decoding for sample extraction"
+        ));
     }
 
     cmd.input(input_path.to_string_lossy().as_ref());
@@ -128,17 +136,27 @@ pub fn extract_sample<S: FfmpegSpawner>( // Added generic parameter S
     // Spawn the command using the provided spawner and wait for completion
     let status = spawner.spawn(cmd)?.wait()?; // Use spawner here
     if !status.success() {
-        log::error!("Sample extraction failed: {}", status);
+        // Use the detailed error formatting for better error presentation
+        log::error!("{}", crate::styling::format_detailed_error(
+            &format!("FFmpeg process exited with status: {}", status),
+            "Failed to extract video sample",
+            Some("Check if the input file is valid and the specified time range exists in the video")
+        ));
         return Err(CoreError::CommandFailed(
             "ffmpeg (sample extraction)".to_string(),
             status,
-           "Sample extraction process failed".to_string()));
+            "Sample extraction process failed".to_string()));
    }
 
    // The file existence check is redundant since FFmpeg would have failed if it couldn't create the file
    // FFmpeg's success status is sufficient to confirm the operation completed correctly
 
-   log::debug!("Sample extracted successfully to: {}", output_path.display());
+   // Log success with better formatting
+   log::info!("{}", crate::styling::format_success(&format!(
+       "Sample extracted successfully to: {}",
+       crate::styling::format_filename(&output_path.to_string_lossy())
+   )));
+
    Ok(output_path) // Return the path to the created sample
 }
 

@@ -84,11 +84,14 @@ impl CrateFfprobeExecutor {
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
             log::error!(
-                "{} bitplanenoise failed for {}. Status: {}. Stderr: {}",
-                cmd_name,
-                input_path.display(),
-                output.status,
-                stderr
+                "{}",
+                crate::styling::format_error(&format!(
+                    "{} bitplanenoise failed for {}. Status: {}. Stderr: {}",
+                    cmd_name,
+                    input_path.display(),
+                    output.status,
+                    stderr
+                ))
             );
             return Err(CoreError::CommandFailed(
                 format!("{} bitplanenoise", cmd_name),
@@ -144,12 +147,15 @@ impl FfprobeExecutor for CrateFfprobeExecutor {
                     })
                     .collect();
                 if channels.is_empty() {
-                     log::warn!("No audio streams found by ffprobe for {}", input_path.display());
+                     log::warn!("{}", crate::styling::format_warning(
+                         &format!("No audio streams found by ffprobe for {}", input_path.display())));
                 }
                 Ok(channels)
             }
             Err(err) => {
-                log::error!("ffprobe (crate) failed for audio channels on {}: {:?}", input_path.display(), err);
+                log::error!("{}", crate::styling::format_error(
+                    &format!("ffprobe (crate) failed for audio channels on {}: {:?}",
+                        input_path.display(), err)));
                 Err(map_ffprobe_error(err, "audio channels"))
             }
         }
@@ -198,7 +204,9 @@ impl FfprobeExecutor for CrateFfprobeExecutor {
                 })
             }
             Err(err) => {
-                 log::error!("ffprobe (crate) failed for video properties on {}: {:?}", input_path.display(), err);
+                 log::error!("{}", crate::styling::format_error(
+                     &format!("ffprobe (crate) failed for video properties on {}: {:?}",
+                         input_path.display(), err)));
                 Err(map_ffprobe_error(err, "video properties"))
             }
         }
