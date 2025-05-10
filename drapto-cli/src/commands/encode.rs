@@ -337,14 +337,10 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor>(
         }
     }
 
-    // --- Clean up temporary directory ---
-    let grain_tmp_dir = actual_output_dir.join("grain_samples_tmp");
-    if grain_tmp_dir.exists() { // Check if it exists before trying to remove
-        info!("{} {}", "Cleaning up temporary directory:".cyan(), grain_tmp_dir.display().to_string().yellow());
-        match fs::remove_dir_all(&grain_tmp_dir) {
-            Ok(_) => info!("{} {}", "Successfully removed temporary directory:".green(), grain_tmp_dir.display().to_string().yellow()),
-            Err(e) => warn!("{} Failed to remove temporary directory {}: {}", "Warning:".yellow().bold(), grain_tmp_dir.display(), e),
-        }
+    // --- Clean up temporary directories ---
+    info!("{}", "Cleaning up temporary directories...".cyan());
+    if let Err(e) = drapto_core::temp_files::cleanup_base_dirs(&config) {
+        warn!("{} Failed to clean up temporary directories: {}", "Warning:".yellow().bold(), e);
     }
 
 

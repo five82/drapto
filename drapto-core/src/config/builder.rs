@@ -61,6 +61,9 @@ pub struct CoreConfigBuilder {
     output_dir: Option<PathBuf>,
     log_dir: Option<PathBuf>,
 
+    // Optional directory fields
+    temp_dir: Option<PathBuf>,
+
     // Optional fields with defaults
     enable_denoise: bool,
     default_encoder_preset: Option<u8>,
@@ -89,6 +92,9 @@ impl CoreConfigBuilder {
             input_dir: None,
             output_dir: None,
             log_dir: None,
+
+            // Optional directory fields
+            temp_dir: None,
 
             // Optional fields with defaults
             enable_denoise: true,
@@ -146,6 +152,20 @@ impl CoreConfigBuilder {
     /// * Self for method chaining
     pub fn log_dir(mut self, log_dir: PathBuf) -> Self {
         self.log_dir = Some(log_dir);
+        self
+    }
+
+    /// Sets the temporary files directory.
+    ///
+    /// # Arguments
+    ///
+    /// * `temp_dir` - The directory for temporary files
+    ///
+    /// # Returns
+    ///
+    /// * Self for method chaining
+    pub fn temp_dir(mut self, temp_dir: PathBuf) -> Self {
+        self.temp_dir = Some(temp_dir);
         self
     }
 
@@ -350,6 +370,7 @@ impl CoreConfigBuilder {
             input_dir,
             output_dir,
             log_dir,
+            temp_dir: self.temp_dir,
             enable_denoise: self.enable_denoise,
             default_encoder_preset: self.default_encoder_preset,
             preset: self.preset,

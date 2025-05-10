@@ -118,6 +118,9 @@ pub mod notifications;
 /// Progress reporting abstractions and callback system
 pub mod progress;
 
+/// Temporary file management utilities
+pub mod temp_files;
+
 // ============================================================================
 // PUBLIC API RE-EXPORTS
 // ============================================================================
@@ -158,6 +161,10 @@ pub use progress::{ProgressCallback, ProgressEvent, LogLevel, NullProgressCallba
 // ----- Notification Services -----
 /// Notification system types and implementations
 pub use notifications::{NotificationType, NtfyNotificationSender};
+
+// ----- Temporary File Management -----
+/// Temporary file management utilities
+pub use temp_files::{create_grain_analysis_dir, create_analysis_dir, cleanup_base_dirs, create_temp_file_path};
 
 // ============================================================================
 // PUBLIC STRUCTS

@@ -27,12 +27,10 @@
 
 // ---- External crate imports ----
 use rand::{thread_rng, Rng};
-use tempfile::Builder as TempFileBuilder;
 use colored::Colorize;
 
 // ---- Standard library imports ----
 use std::collections::HashMap;
-use std::fs;
 use std::path::{Path, PathBuf};
 
 // ---- Internal crate imports ----
@@ -42,6 +40,7 @@ use crate::external::ffmpeg::EncodeParams;
 use crate::external::ffmpeg_executor::extract_sample;
 use crate::external::{FileMetadataProvider, FfmpegSpawner};
 use crate::progress::{ProgressCallback, ProgressEvent, LogLevel};
+use crate::temp_files;
 
 // ============================================================================
 // SUBMODULES
@@ -142,6 +141,7 @@ use utils::calculate_median_level;
 ///     input_dir: Path::new("/path/to/input").to_path_buf(),
 ///     output_dir: Path::new("/path/to/output").to_path_buf(),
 ///     log_dir: Path::new("/path/to/logs").to_path_buf(),
+///     temp_dir: None,
 ///     enable_denoise: true,
 ///
 ///     // Grain analysis configuration
@@ -304,12 +304,7 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider, C: ProgressCallb
     log::debug!("Generated random sample start times: {:?}", sample_start_times);
 
     // --- Create Temporary Directory ---
-    let samples_tmp_base_dir = config.output_dir.join("grain_samples_tmp");
-    fs::create_dir_all(&samples_tmp_base_dir).map_err(CoreError::Io)?;
-    let temp_dir = TempFileBuilder::new()
-        .prefix("analysis_grain_") // Updated prefix
-        .tempdir_in(&samples_tmp_base_dir)
-        .map_err(CoreError::Io)?;
+    let temp_dir = temp_files::create_grain_analysis_dir(config)?;
     let temp_dir_path = temp_dir.path();
     log::debug!("Created temporary directory for samples: {}", temp_dir_path.display());
 

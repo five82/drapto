@@ -132,6 +132,9 @@ pub struct CoreConfig {
     /// Directory for log files and temporary files
     pub log_dir: PathBuf,
 
+    /// Optional directory for temporary files (defaults to output_dir)
+    pub temp_dir: Option<PathBuf>,
+
     // ---- Encoder Settings ----
 
     /// Default encoder preset (0-13, lower is slower/better quality)
@@ -190,4 +193,37 @@ pub struct CoreConfig {
     /// Number of refinement points to test during adaptive refinement
     /// More points provide more accurate results but increase processing time
     pub film_grain_refinement_points_count: Option<usize>,
+}
+
+impl Default for CoreConfig {
+    fn default() -> Self {
+        Self {
+            // Path Configuration
+            input_dir: PathBuf::from("."),
+            output_dir: PathBuf::from("."),
+            log_dir: PathBuf::from("."),
+            temp_dir: None,
+
+            // Encoder Settings
+            default_encoder_preset: None,
+            preset: None,
+            quality_sd: None,
+            quality_hd: None,
+            quality_uhd: None,
+            default_crop_mode: None,
+
+            // Notification Settings
+            ntfy_topic: None,
+
+            // Processing Options
+            enable_denoise: false,
+
+            // Grain Analysis Configuration
+            film_grain_sample_duration: None,
+            film_grain_knee_threshold: None,
+            film_grain_fallback_level: None,
+            film_grain_max_level: None,
+            film_grain_refinement_points_count: None,
+        }
+    }
 }

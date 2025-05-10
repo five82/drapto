@@ -5,10 +5,9 @@ use ffmpeg_sidecar::command::FfmpegCommand;
 use ffmpeg_sidecar::event::FfmpegEvent;
 use ffmpeg_sidecar::child::FfmpegChild as SidecarChild;
 use crate::external::ffmpeg::add_hardware_acceleration_to_command;
+use crate::temp_files;
 use std::process::ExitStatus;
 use std::path::{Path, PathBuf};
-use rand::{thread_rng, Rng};
-use rand::distributions::Alphanumeric; // For filename generation
 
 // --- FFmpeg Execution Abstraction ---
 
@@ -79,7 +78,7 @@ impl FfmpegSpawner for SidecarSpawner {
 
 /// Extracts a raw video sample using ffmpeg's -c copy.
 ///
-/// Creates a temporary file within the specified `output_dir`.
+/// Creates a temporary file within the specified `output_dir` using the temp_files module.
 /// The file will be cleaned up when the `output_dir` (assumed to be a TempDir) is dropped.
 pub fn extract_sample<S: FfmpegSpawner>( // Added generic parameter S
     spawner: &S, // Added spawner argument
@@ -94,13 +93,7 @@ pub fn extract_sample<S: FfmpegSpawner>( // Added generic parameter S
    );
 
    // Generate a unique filename for the sample within the output directory
-   let random_suffix: String = thread_rng()
-       .sample_iter(&Alphanumeric)
-       .take(6) // 6 random characters
-       .map(char::from)
-       .collect();
-   let filename = format!("raw_sample_{}.mkv", random_suffix);
-   let output_path = output_dir.join(filename);
+   let output_path = temp_files::create_temp_file_path(output_dir, "raw_sample", "mkv");
 
 
    // Use mutable command object and sequential calls
