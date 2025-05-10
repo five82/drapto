@@ -169,7 +169,7 @@ pub fn format_progress_message(
     eta: &str,
 ) -> String {
     format!(
-        "⏳ {} {} ({} / {}), Speed: {}, Avg FPS: {:.2}, ETA: {}",
+        "⧖ {} {} ({} / {}), Speed: {}, Avg FPS: {:.2}, ETA: {}",
         format_label(label),
         format_progress(percent),
         format_time_value(current),
@@ -216,7 +216,8 @@ pub fn format_hardware_status(enabled: bool, details: &str) -> String {
 ///
 /// * A formatted success message string
 pub fn format_success(text: &str) -> String {
-    format!("✅ {}", text.color(COLOR_SUCCESS).bold())
+    let colored_text = text.color(COLOR_SUCCESS).bold();
+    format!("{} {}", "✓".color(COLOR_SUCCESS).bold(), colored_text)
 }
 
 /// Formats a phase header with consistent styling (blue, bold)
@@ -230,10 +231,13 @@ pub fn format_success(text: &str) -> String {
 ///
 /// * A formatted phase header string
 pub fn format_phase_header(phase_number: usize, description: &str) -> String {
+    let phase_text = format!("Phase {}:", phase_number).color(COLOR_PHASE).bold();
+    let desc_text = description.color(COLOR_PHASE);
     format!(
-        "🔍 {} {}",
-        format!("Phase {}:", phase_number).color(COLOR_PHASE).bold(),
-        description.color(COLOR_PHASE)
+        "{} {} {}",
+        "◎".color(COLOR_PHASE).bold(),
+        phase_text,
+        desc_text
     )
 }
 
@@ -265,7 +269,8 @@ pub fn format_metric(value: &str, important: bool) -> ColoredString {
 ///
 /// * A formatted processing step string
 pub fn format_processing_step(step: &str) -> String {
-    format!("⚙️ {}", step.color(COLOR_HEADER))
+    let colored_step = step.color(COLOR_HEADER);
+    format!("{} {}", "»".color(COLOR_HEADER), colored_step)
 }
 
 /// Formats a result with consistent styling
@@ -299,9 +304,11 @@ pub fn format_result(label: &str, value: &str, important: bool) -> String {
 ///
 /// * A formatted sample processing message
 pub fn format_sample_processing(sample_number: usize, total_samples: usize, description: &str) -> String {
+    let label = format_label("Sample");
     format!(
-        "📊 {} {}/{}{}{}",
-        format_label("Sample"),
+        "{} {} {}/{}{}{}",
+        "◆".color(COLOR_LABEL),
+        label,
         format_value(&sample_number.to_string()).bold(),
         format_value(&total_samples.to_string()),
         if description.is_empty() { "".to_string() } else { ": ".to_string() },
@@ -383,13 +390,15 @@ pub fn format_group(title: &str, content: &[String]) -> String {
 ///
 /// * A formatted spinner message
 pub fn format_spinner(message: &str, operation: Option<&str>) -> String {
+    let label = format_label(message);
     match operation {
         Some(op) => format!(
-            "⏳ {} {}",
-            format_label(message),
+            "{} {} {}",
+            "⧖".color(COLOR_LABEL),
+            label,
             format_value(op).bold()
         ),
-        None => format!("⏳ {}", format_label(message))
+        None => format!("{} {}", "⧖".color(COLOR_LABEL), label)
     }
 }
 
@@ -467,11 +476,14 @@ pub fn format_enhanced_progress(percent: f64, message: &str, context: &str, elap
     };
 
     let progress_bar = create_progress_bar(percent, 20);
+    let label = format_label(message);
+    let progress_percent = format_progress(percent);
 
     format!(
-        "⏳ {} {} [{}] {}{}",
-        format_label(message),
-        format_progress(percent),
+        "{} {} {} [{}] {}{}",
+        "⧖".color(COLOR_LABEL),
+        label,
+        progress_percent,
         progress_bar,
         context.color(COLOR_INFO),
         elapsed_text
@@ -492,7 +504,7 @@ fn create_progress_bar(percent: f64, width: usize) -> ColoredString {
     let filled_width = ((percent / 100.0) * width as f64).round() as usize;
     let empty_width = width.saturating_sub(filled_width);
 
-    let filled = "=".repeat(filled_width);
+    let filled = "#".repeat(filled_width);
     let empty = " ".repeat(empty_width);
     let progress_bar = format!("{}{}", filled, empty);
 
@@ -688,9 +700,11 @@ pub fn format_ffmpeg_command(command: &[String], is_sample: bool) -> String {
 
     if is_sample {
         // For sample commands, use simpler formatting
+        let label = "FFmpeg command (sample):".color(COLOR_LABEL).bold();
         return format!(
-            "🔧 {} {}",
-            "FFmpeg command (sample):".color(COLOR_LABEL).bold(),
+            "{} {} {}",
+            "⚬".color(COLOR_LABEL).bold(),
+            label,
             command.join(" ").color(COLOR_VALUE)
         );
     }
@@ -749,7 +763,8 @@ pub fn format_ffmpeg_command(command: &[String], is_sample: bool) -> String {
 
     // Format the grouped command
     let mut formatted = String::new();
-    formatted.push_str(&format!("🎬 {}\n", "FFmpeg Command:".color(COLOR_HEADER).bold()));
+    let header = "FFmpeg Command:".color(COLOR_HEADER).bold();
+    formatted.push_str(&format!("{} {}\n", "⚬".color(COLOR_HEADER).bold(), header));
 
     for (i, group) in grouped_command.iter().enumerate() {
         if i > 0 {
@@ -831,11 +846,15 @@ pub fn format_config_summary(config_items: &[(&str, &str, &str, bool)]) -> Strin
 ///
 /// * A formatted grain analysis phase header
 pub fn format_grain_analysis_phase(phase_number: usize, description: &str) -> String {
+    let phase_text = format!("Phase {}:", phase_number).color(COLOR_PHASE).bold();
+    let desc_text = description.color(COLOR_PHASE);
+
     format!(
-        "{}\n🔍 {} {}\n{}",
+        "{}\n{} {} {}\n{}",
         format_short_divider(),
-        format!("Phase {}:", phase_number).color(COLOR_PHASE).bold(),
-        description.color(COLOR_PHASE),
+        "◎".color(COLOR_PHASE).bold(),
+        phase_text,
+        desc_text,
         format_short_divider()
     )
 }
@@ -892,7 +911,8 @@ pub fn format_grain_level_chart(sizes: &[(&str, f64)], selected_level: &str) -> 
     }
 
     let terminal_width = get_terminal_width();
-    let max_bar_width = terminal_width.saturating_sub(30);
+    // Make bars shorter to prevent line wrapping
+    let max_bar_width = terminal_width.saturating_sub(30).min(60);
 
     let mut result = String::new();
     result.push_str(&format!("{}\n", "Grain Level Comparison:".color(COLOR_HEADER).bold()));
@@ -902,7 +922,7 @@ pub fn format_grain_level_chart(sizes: &[(&str, f64)], selected_level: &str) -> 
         let relative_size = size / max_size;
         let bar_width = (relative_size * max_bar_width as f64).round() as usize;
 
-        let bar = "█".repeat(bar_width);
+        let bar = "#".repeat(bar_width);
         let bar_color = if is_selected {
             COLOR_HIGHLIGHT
         } else if level == "Baseline" {

@@ -212,14 +212,15 @@ pub fn report_encode_error(input_path: &Path, message: &str) {
 /// * `available` - Whether hardware acceleration is available
 /// * `acceleration_type` - Type of hardware acceleration (e.g., "VideoToolbox")
 pub fn report_hardware_acceleration(available: bool, acceleration_type: &str) {
-    let status_icon = if available { "✅" } else { "ℹ️" };
     let status_text = if available {
-        format!("{} hardware decoding enabled", acceleration_type).color(styling::COLOR_SUCCESS).bold().to_string()
+        let text = format!("{} hardware decoding enabled", acceleration_type).color(styling::COLOR_SUCCESS).bold().to_string();
+        format!("{} {}", "✓".color(styling::COLOR_SUCCESS).bold(), text)
     } else {
-        "Using software decoding (hardware acceleration not available)".color(styling::COLOR_INFO).to_string()
+        let text = "Using software decoding (hardware acceleration not available)".color(styling::COLOR_INFO).to_string();
+        format!("{} {}", "i".color(styling::COLOR_INFO), text)
     };
 
-    info!("{} {}", status_icon, status_text);
+    info!("{}", status_text);
 }
 
 /// Reports a log message with the specified level.
