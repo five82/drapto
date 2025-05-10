@@ -48,7 +48,7 @@ use colored::*;
 /// ```rust
 /// use drapto_core::processing::detection::grain_analysis::{GrainLevel, determine_hqdn3d_params};
 ///
-/// // No denoising for very clean videos
+/// // No denoising for videos with no grain
 /// assert_eq!(determine_hqdn3d_params(GrainLevel::Baseline), None);
 ///
 /// // Light denoising for light grain

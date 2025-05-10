@@ -60,7 +60,7 @@ Phase 1: Testing initial grain levels...
       -> Elevated   size: 12.40 MB
 ```
 
-Note: The output logs have been updated to consistently use "Baseline" instead of "None" when referring to videos with no grain or when no denoising is applied.
+Note: The output logs consistently use "Baseline" when referring to videos with no grain or when no denoising is applied.
 
 ### Grain Level Classification
 
