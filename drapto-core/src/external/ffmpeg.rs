@@ -12,7 +12,7 @@ use ffmpeg_sidecar::event::{FfmpegEvent, LogLevel as FfmpegLogLevel}; // Renamed
 use colored::Colorize;
 use std::time::Instant;
 use std::path::PathBuf; // Keep PathBuf, remove unused Path
-use log::{info, warn, error, debug, log}; // Import log macros
+use log::{info, warn, error, debug, trace, log}; // Import log macros
 
 /// Parameters required for running an FFmpeg encode operation.
 #[derive(Debug, Clone)]
@@ -188,29 +188,19 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner, C: ProgressCallback>(
     _grain_level_being_tested: Option<GrainLevel>,
     progress_callback: &C,
 ) -> CoreResult<()> {
-    // Log start differently based on context
+    // Extract filename for logging (used in both contexts)
+    let filename_cow = params.input_path
+        .file_name()
+        .map(|name| name.to_string_lossy())
+        .unwrap_or_else(|| params.input_path.to_string_lossy());
+
+    // Log start with appropriate level based on context
     if is_grain_analysis_sample {
         // Less verbose for grain samples
-        // Extract filename for logging
-        let filename_cow = params.input_path
-            .file_name()
-            .map(|name| name.to_string_lossy())
-            .unwrap_or_else(|| params.input_path.to_string_lossy());
-        debug!(
-            "Starting grain sample FFmpeg encode for: {}",
-            filename_cow // Use the extracted filename
-        );
+        debug!("Starting grain sample FFmpeg encode for: {}", filename_cow);
     } else {
         // Standard verbose logging for main encode
-        // Extract filename for logging using to_string_lossy for consistent Cow<'_, str> type
-        let filename_cow = params.input_path
-            .file_name()
-            .map(|name| name.to_string_lossy()) // Returns Cow<'_, str>
-            .unwrap_or_else(|| params.input_path.to_string_lossy()); // Also returns Cow<'_, str>
-        info!(
-            "Starting FFmpeg encode for: {}",
-            filename_cow.yellow() // Use the Cow (implicitly derefs to &str)
-        );
+        info!("Starting FFmpeg encode for: {}", filename_cow.yellow());
     }
 
     // Log output path for main encodes, or for grain samples only if debug is enabled.
@@ -252,26 +242,18 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner, C: ProgressCallback>(
 
     // Log the constructed command before spawning using Debug format
     let cmd_debug = format!("{:?}", cmd); // Log the final command state
-    // Conditionally log user-facing command details
-    if !is_grain_analysis_sample {
-        info!(
-            "🔧 FFmpeg command details:\n  {}",
-            cmd_debug
-        );
-    } else {
-        // Log command details at debug level for grain samples
-        debug!("🔧 FFmpeg command (grain sample):\n  {}", cmd_debug);
-    }
+
+    // Log command details at appropriate level based on context
+    let log_level = if is_grain_analysis_sample { log::Level::Debug } else { log::Level::Info };
+    let prefix = if is_grain_analysis_sample { "FFmpeg command (grain sample)" } else { "FFmpeg command details" };
+    log!(log_level, "🔧 {}:\n  {}", prefix, cmd_debug);
 
 
     // --- Execution and Progress ---
-    // Log start differently based on context
-    // Log start at info level only for main encode
-    if !is_grain_analysis_sample {
-        info!("🚀 Starting encode process...");
-    } else {
-        debug!("🚀 Starting grain sample encode..."); // Use debug for grain samples
-    }
+    // Log start at appropriate level based on context
+    let log_level = if is_grain_analysis_sample { log::Level::Debug } else { log::Level::Info };
+    let message = if is_grain_analysis_sample { "Starting grain sample encode..." } else { "Starting encode process..." };
+    log!(log_level, "🚀 {}", message);
     let start_time = Instant::now();
 
     // Use the injected spawner
@@ -341,38 +323,50 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner, C: ProgressCallback>(
                             );
                         }
 
-                        // Always log detailed debug progress regardless of sample type
-                        debug!(
-                            "Progress ({}): frame={}, fps={:.2}, time={}, bitrate={:.2}kbits/s, speed={:.2}x, size={}kB, percent={:.2}%, ETA={}",
-                            if is_grain_analysis_sample { "grain sample" } else { "main encode" },
-                            progress.frame,
-                            avg_encoding_fps,
-                            format_duration_seconds(current_secs),
-                            progress.bitrate_kbps,
-                            progress.speed,
-                            progress.size_kb,
-                            percent,
-                            eta_str
-                        );
+                        // Only log detailed progress at trace level to avoid redundancy
+                        if log::log_enabled!(log::Level::Trace) {
+                            trace!(
+                                "Progress ({}): frame={}, fps={:.2}, time={}, bitrate={:.2}kbits/s, speed={:.2}x, size={}kB, percent={:.2}%, ETA={}",
+                                if is_grain_analysis_sample { "grain sample" } else { "main encode" },
+                                progress.frame,
+                                avg_encoding_fps,
+                                format_duration_seconds(current_secs),
+                                progress.bitrate_kbps,
+                                progress.speed,
+                                progress.size_kb,
+                                percent,
+                                eta_str
+                            );
+                        }
 
                         last_reported_percent = percent;
                     }
                 }
             FfmpegEvent::Error(err_str) => {
-                // Filter out "No streams found" errors from logs
-                // This is a non-fatal FFmpeg error that appears frequently during both
-                // grain analysis and main encode, creating noise in the logs.
-                // We filter it here to prevent duplicate error messages while still
-                // maintaining proper error handling.
-                if !err_str.contains("No streams found") {
-                    // Only log errors that aren't "No streams found"
+                // Filter common non-critical FFmpeg error messages
+                // These messages appear frequently during encoding but don't indicate
+                // actual problems that would affect the output.
+                let non_critical_patterns = [
+                    "No streams found",
+                    "Could not find codec parameters",
+                    "Application provided invalid, non monotonically increasing dts",
+                    "Invalid timestamp",
+                    "Metadata:.*not found",
+                ];
+
+                let is_non_critical = non_critical_patterns.iter().any(|pattern| err_str.contains(pattern));
+
+                if is_non_critical {
+                    // Log non-critical errors at debug level to reduce noise
+                    debug!("ffmpeg non-critical message: {}", err_str);
+                } else {
+                    // Log critical errors at error level
                     error!("ffmpeg stderr error: {}", err_str);
                 }
 
                 // Always capture errors in the buffer for later processing
-                // even if we don't log them, so error handling still works.
-                // This ensures the error is still properly propagated as a
-                // CoreError::NoStreamsFound when needed.
+                // even if we don't log them at error level, so error handling still works.
+                // This ensures errors are still properly propagated when needed.
                 stderr_buffer.push_str(&err_str);
                 stderr_buffer.push('\n');
             }
@@ -381,12 +375,25 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner, C: ProgressCallback>(
                 log!(target: "ffmpeg_log", rust_log_level, "{}", log_str);
 
                 if log_str.starts_with("Svt[info]:") {
-                    // Conditionally log SVT info to info level
-                    if !is_grain_analysis_sample {
+                    // Keep important configuration and summary SVT messages at info level
+                    // but downgrade routine progress messages to debug level
+                    let is_important_svt_message =
+                        log_str.contains("SVT [config]") ||
+                        log_str.contains("SVT [version]") ||
+                        log_str.contains("SVT [build]") ||
+                        log_str.contains("-------------------------------------------") ||
+                        log_str.contains("Level of Parallelism") ||
+                        log_str.contains("SUMMARY");
+
+                    if is_important_svt_message && !is_grain_analysis_sample {
+                        // Log important SVT messages at info level for main encodes
                         info!("{}", log_str);
                     } else {
-                        // Log SVT info at debug level for grain samples
-                        debug!("SVT Info (grain sample): {}", log_str);
+                        // Log routine SVT messages or all grain sample SVT messages at debug level
+                        debug!("{}{}",
+                            if is_grain_analysis_sample { "SVT Info (grain sample): " } else { "" },
+                            log_str
+                        );
                     }
                 }
 
@@ -411,12 +418,10 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner, C: ProgressCallback>(
         .unwrap_or_else(|| params.input_path.to_string_lossy());
 
     if status.success() {
-        // Log success based on context
-        if is_grain_analysis_sample {
-            debug!("✅ Grain sample encode finished successfully for {}", filename_cow);
-        } else {
-            info!("✅ Encode finished successfully for {}", filename_cow);
-        }
+        // Log success at appropriate level based on context
+        let log_level = if is_grain_analysis_sample { log::Level::Debug } else { log::Level::Info };
+        let prefix = if is_grain_analysis_sample { "Grain sample encode" } else { "Encode" };
+        log!(log_level, "✅ {} finished successfully for {}", prefix, filename_cow);
         Ok(())
     } else {
         let error_message = format!(
@@ -425,12 +430,9 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner, C: ProgressCallback>(
             stderr_buffer.trim()
         );
 
-        // Log error based on context
-        if is_grain_analysis_sample {
-            error!("❌ Grain sample encode failed for {}: {}", filename_cow, error_message);
-        } else {
-            error!("FFmpeg encode failed for {}: {}", filename_cow, error_message);
-        }
+        // Log error with appropriate prefix based on context
+        let prefix = if is_grain_analysis_sample { "Grain sample encode" } else { "FFmpeg encode" };
+        error!("❌ {} failed for {}: {}", prefix, filename_cow, error_message);
 
         // Create a more specific error type based on stderr content
         if stderr_buffer.contains("No streams found") {
@@ -541,13 +543,18 @@ fn parse_ffmpeg_time(time_str: &str) -> Result<f64, &'static str> {
 }
 
 /// Helper to map ffmpeg log levels to Rust log levels
+///
+/// Maps FFmpeg log levels to appropriate Rust log levels:
+/// - FFmpeg fatal/error -> Rust error
+/// - FFmpeg warning -> Rust warn
+/// - FFmpeg info -> Rust info
+/// - FFmpeg unknown -> Rust debug (fallback)
 fn map_ffmpeg_log_level(level: &FfmpegLogLevel) -> log::Level {
     match level {
-        FfmpegLogLevel::Unknown => log::Level::Trace,
-        FfmpegLogLevel::Info => log::Level::Info,
+        FfmpegLogLevel::Fatal | FfmpegLogLevel::Error => log::Level::Error,
         FfmpegLogLevel::Warning => log::Level::Warn,
-        FfmpegLogLevel::Error => log::Level::Error,
-        _ => log::Level::Debug,
+        FfmpegLogLevel::Info => log::Level::Info,
+        FfmpegLogLevel::Unknown => log::Level::Debug,
     }
 }
 
