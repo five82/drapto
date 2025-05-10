@@ -238,7 +238,6 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor>(
         .input_dir(effective_input_dir)
         .output_dir(actual_output_dir.clone())
         .log_dir(log_dir.clone())
-        .default_encoder_preset(config::DEFAULT_ENCODER_PRESET as u8)
         .enable_denoise(!args.no_denoise); // Invert the flag: no_denoise=true means enable_denoise=false
 
     // Add optional parameters if they are provided
@@ -260,7 +259,7 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor>(
     } else {
         config::DEFAULT_CROP_MODE // Use default otherwise
     };
-    builder = builder.default_crop_mode(crop_mode);
+    builder = builder.crop_mode(crop_mode);
 
     // Add ntfy topic if provided
     if let Some(topic) = args.ntfy {
@@ -269,7 +268,7 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor>(
 
     // Add preset if provided
     if let Some(preset) = args.preset {
-        builder = builder.preset(preset);
+        builder = builder.encoder_preset(preset);
     }
 
     // Add grain analysis configuration if provided
@@ -285,6 +284,7 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor>(
         builder = builder.film_grain_max_level(level);
     }
 
+    // Keep this for backward compatibility, but it has no effect
     if let Some(level) = grain_fallback_level {
         builder = builder.film_grain_fallback_level(level);
     }

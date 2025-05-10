@@ -46,10 +46,11 @@ use crate::processing::detection::grain_analysis::GrainLevel;
 ///     .output_dir(PathBuf::from("/path/to/output"))
 ///     .log_dir(PathBuf::from("/path/to/logs"))
 ///     .enable_denoise(true)
+///     .encoder_preset(6)
 ///     .quality_sd(24)
 ///     .quality_hd(26)
 ///     .quality_uhd(28)
-///     .default_crop_mode("auto")
+///     .crop_mode("auto")
 ///     .ntfy_topic("https://ntfy.sh/my-topic")
 ///     .film_grain_max_level(GrainLevel::Moderate)
 ///     .build();
@@ -66,18 +67,16 @@ pub struct CoreConfigBuilder {
 
     // Optional fields with defaults
     enable_denoise: bool,
-    default_encoder_preset: Option<u8>,
-    preset: Option<u8>,
-    quality_sd: Option<u8>,
-    quality_hd: Option<u8>,
-    quality_uhd: Option<u8>,
-    default_crop_mode: Option<String>,
+    encoder_preset: u8,
+    quality_sd: u8,
+    quality_hd: u8,
+    quality_uhd: u8,
+    crop_mode: String,
     ntfy_topic: Option<String>,
-    film_grain_sample_duration: Option<u32>,
-    film_grain_knee_threshold: Option<f64>,
-    film_grain_fallback_level: Option<GrainLevel>,
-    film_grain_max_level: Option<GrainLevel>,
-    film_grain_refinement_points_count: Option<usize>,
+    film_grain_sample_duration: u32,
+    film_grain_knee_threshold: f64,
+    film_grain_max_level: GrainLevel,
+    film_grain_refinement_points_count: usize,
 }
 
 impl CoreConfigBuilder {
@@ -98,18 +97,16 @@ impl CoreConfigBuilder {
 
             // Optional fields with defaults
             enable_denoise: true,
-            default_encoder_preset: Some(6),
-            preset: None,
-            quality_sd: None,
-            quality_hd: None,
-            quality_uhd: None,
-            default_crop_mode: Some("auto".to_string()),
+            encoder_preset: super::DEFAULT_ENCODER_PRESET,
+            quality_sd: super::DEFAULT_CORE_QUALITY_SD,
+            quality_hd: super::DEFAULT_CORE_QUALITY_HD,
+            quality_uhd: super::DEFAULT_CORE_QUALITY_UHD,
+            crop_mode: super::DEFAULT_CROP_MODE.to_string(),
             ntfy_topic: None,
-            film_grain_sample_duration: None,
-            film_grain_knee_threshold: None,
-            film_grain_fallback_level: None,
-            film_grain_max_level: None,
-            film_grain_refinement_points_count: None,
+            film_grain_sample_duration: super::DEFAULT_GRAIN_SAMPLE_DURATION,
+            film_grain_knee_threshold: super::DEFAULT_GRAIN_KNEE_THRESHOLD,
+            film_grain_max_level: super::DEFAULT_GRAIN_MAX_LEVEL,
+            film_grain_refinement_points_count: super::DEFAULT_GRAIN_REFINEMENT_POINTS,
         }
     }
 
@@ -183,31 +180,45 @@ impl CoreConfigBuilder {
         self
     }
 
-    /// Sets the default encoder preset.
+    /// Sets the encoder preset.
     ///
     /// # Arguments
     ///
-    /// * `preset` - The default encoder preset (0-13, lower is slower/better quality)
+    /// * `preset` - The encoder preset (0-13, lower is slower/better quality)
     ///
     /// # Returns
     ///
     /// * Self for method chaining
-    pub fn default_encoder_preset(mut self, preset: u8) -> Self {
-        self.default_encoder_preset = Some(preset);
+    pub fn encoder_preset(mut self, preset: u8) -> Self {
+        self.encoder_preset = preset;
         self
     }
 
-    /// Sets the encoder preset override.
+    /// Sets the encoder preset (alias for encoder_preset for backward compatibility).
     ///
     /// # Arguments
     ///
-    /// * `preset` - The encoder preset override (0-13, lower is slower/better quality)
+    /// * `preset` - The encoder preset (0-13, lower is slower/better quality)
     ///
     /// # Returns
     ///
     /// * Self for method chaining
     pub fn preset(mut self, preset: u8) -> Self {
-        self.preset = Some(preset);
+        self.encoder_preset = preset;
+        self
+    }
+
+    /// Sets the encoder preset (alias for encoder_preset for backward compatibility).
+    ///
+    /// # Arguments
+    ///
+    /// * `preset` - The encoder preset (0-13, lower is slower/better quality)
+    ///
+    /// # Returns
+    ///
+    /// * Self for method chaining
+    pub fn default_encoder_preset(mut self, preset: u8) -> Self {
+        self.encoder_preset = preset;
         self
     }
 
@@ -221,7 +232,7 @@ impl CoreConfigBuilder {
     ///
     /// * Self for method chaining
     pub fn quality_sd(mut self, quality: u8) -> Self {
-        self.quality_sd = Some(quality);
+        self.quality_sd = quality;
         self
     }
 
@@ -235,7 +246,7 @@ impl CoreConfigBuilder {
     ///
     /// * Self for method chaining
     pub fn quality_hd(mut self, quality: u8) -> Self {
-        self.quality_hd = Some(quality);
+        self.quality_hd = quality;
         self
     }
 
@@ -249,21 +260,35 @@ impl CoreConfigBuilder {
     ///
     /// * Self for method chaining
     pub fn quality_uhd(mut self, quality: u8) -> Self {
-        self.quality_uhd = Some(quality);
+        self.quality_uhd = quality;
         self
     }
 
-    /// Sets the default crop mode.
+    /// Sets the crop mode.
     ///
     /// # Arguments
     ///
-    /// * `mode` - The default crop mode ("auto", "none", etc.)
+    /// * `mode` - The crop mode ("auto", "none", etc.)
+    ///
+    /// # Returns
+    ///
+    /// * Self for method chaining
+    pub fn crop_mode(mut self, mode: &str) -> Self {
+        self.crop_mode = mode.to_string();
+        self
+    }
+
+    /// Sets the crop mode (alias for crop_mode for backward compatibility).
+    ///
+    /// # Arguments
+    ///
+    /// * `mode` - The crop mode ("auto", "none", etc.)
     ///
     /// # Returns
     ///
     /// * Self for method chaining
     pub fn default_crop_mode(mut self, mode: &str) -> Self {
-        self.default_crop_mode = Some(mode.to_string());
+        self.crop_mode = mode.to_string();
         self
     }
 
@@ -291,7 +316,7 @@ impl CoreConfigBuilder {
     ///
     /// * Self for method chaining
     pub fn film_grain_sample_duration(mut self, duration: u32) -> Self {
-        self.film_grain_sample_duration = Some(duration);
+        self.film_grain_sample_duration = duration;
         self
     }
 
@@ -305,21 +330,7 @@ impl CoreConfigBuilder {
     ///
     /// * Self for method chaining
     pub fn film_grain_knee_threshold(mut self, threshold: f64) -> Self {
-        self.film_grain_knee_threshold = Some(threshold);
-        self
-    }
-
-    /// Sets the fallback grain level for grain analysis.
-    ///
-    /// # Arguments
-    ///
-    /// * `level` - The fallback grain level
-    ///
-    /// # Returns
-    ///
-    /// * Self for method chaining
-    pub fn film_grain_fallback_level(mut self, level: GrainLevel) -> Self {
-        self.film_grain_fallback_level = Some(level);
+        self.film_grain_knee_threshold = threshold;
         self
     }
 
@@ -333,7 +344,7 @@ impl CoreConfigBuilder {
     ///
     /// * Self for method chaining
     pub fn film_grain_max_level(mut self, level: GrainLevel) -> Self {
-        self.film_grain_max_level = Some(level);
+        self.film_grain_max_level = level;
         self
     }
 
@@ -347,7 +358,23 @@ impl CoreConfigBuilder {
     ///
     /// * Self for method chaining
     pub fn film_grain_refinement_points_count(mut self, count: usize) -> Self {
-        self.film_grain_refinement_points_count = Some(count);
+        self.film_grain_refinement_points_count = count;
+        self
+    }
+
+    /// Sets the fallback grain level for grain analysis.
+    /// This method is kept for backward compatibility but has no effect.
+    ///
+    /// # Arguments
+    ///
+    /// * `level` - The fallback grain level
+    ///
+    /// # Returns
+    ///
+    /// * Self for method chaining
+    pub fn film_grain_fallback_level(self, _level: GrainLevel) -> Self {
+        // This parameter is no longer used, but we keep the method for backward compatibility
+        log::debug!("film_grain_fallback_level is deprecated and has no effect");
         self
     }
 
@@ -372,16 +399,14 @@ impl CoreConfigBuilder {
             log_dir,
             temp_dir: self.temp_dir,
             enable_denoise: self.enable_denoise,
-            default_encoder_preset: self.default_encoder_preset,
-            preset: self.preset,
+            encoder_preset: self.encoder_preset,
             quality_sd: self.quality_sd,
             quality_hd: self.quality_hd,
             quality_uhd: self.quality_uhd,
-            default_crop_mode: self.default_crop_mode,
+            crop_mode: self.crop_mode,
             ntfy_topic: self.ntfy_topic,
             film_grain_sample_duration: self.film_grain_sample_duration,
             film_grain_knee_threshold: self.film_grain_knee_threshold,
-            film_grain_fallback_level: self.film_grain_fallback_level,
             film_grain_max_level: self.film_grain_max_level,
             film_grain_refinement_points_count: self.film_grain_refinement_points_count,
         }

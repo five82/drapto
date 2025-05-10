@@ -267,9 +267,8 @@ Drapto provides several configuration options to fine-tune the grain analysis an
 | `enable_denoise` | Enable/disable the entire grain management system | `true` |
 | `film_grain_sample_duration` | Duration in seconds for each sample | `10` |
 | `film_grain_knee_threshold` | Threshold for knee point detection (0.0-1.0) | `0.8` |
-| `film_grain_fallback_level` | Fallback level if analysis fails | `Baseline` |
 | `film_grain_max_level` | Maximum allowed grain level | `Elevated` |
-| `film_grain_refinement_points_count` | Number of refinement points to test (0 = auto) | `5` |
+| `film_grain_refinement_points_count` | Number of refinement points to test | `5` |
 
 These options can be set via command-line arguments or configuration files.
 

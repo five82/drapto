@@ -144,21 +144,21 @@ use utils::calculate_median_level;
 ///     temp_dir: None,
 ///     enable_denoise: true,
 ///
-///     // Grain analysis configuration
-///     film_grain_sample_duration: Some(5),
-///     film_grain_knee_threshold: Some(0.8),
-///     film_grain_fallback_level: Some(GrainLevel::Baseline),
-///     film_grain_max_level: Some(GrainLevel::Moderate),
-///     film_grain_refinement_points_count: Some(5),
+///     // Encoder settings
+///     encoder_preset: 6,
+///     quality_sd: 24,
+///     quality_hd: 26,
+///     quality_uhd: 28,
+///     crop_mode: "auto".to_string(),
 ///
-///     // Other fields...
-///     default_encoder_preset: Some(6),
-///     preset: None,
-///     quality_sd: Some(24),
-///     quality_hd: Some(26),
-///     quality_uhd: Some(28),
-///     default_crop_mode: Some("auto".to_string()),
+///     // Notification settings
 ///     ntfy_topic: None,
+///
+///     // Grain analysis configuration
+///     film_grain_sample_duration: 5,
+///     film_grain_knee_threshold: 0.8,
+///     film_grain_max_level: GrainLevel::Moderate,
+///     film_grain_refinement_points_count: 5,
 /// };
 ///
 /// // Create a complete EncodeParams instance
@@ -229,12 +229,9 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider>(
     }
 
     // --- Get Configuration Parameters ---
-    // Use configuration values if provided, otherwise use defaults
-    let sample_duration = config.film_grain_sample_duration.unwrap_or(DEFAULT_SAMPLE_DURATION_SECS);
-    let knee_threshold = config.film_grain_knee_threshold.unwrap_or(KNEE_THRESHOLD);
-    // Fallback level no longer used since we propagate errors directly
-    let _fallback_level = config.film_grain_fallback_level.unwrap_or(GrainLevel::Baseline);
-    let max_level = config.film_grain_max_level.unwrap_or(GrainLevel::Elevated);
+    let sample_duration = config.film_grain_sample_duration;
+    let knee_threshold = config.film_grain_knee_threshold;
+    let max_level = config.film_grain_max_level;
 
     // --- Determine Sample Count ---
     let base_samples = (duration_secs / SECS_PER_SAMPLE_TARGET).ceil() as usize;

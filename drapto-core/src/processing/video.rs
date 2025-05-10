@@ -31,7 +31,7 @@
 // AI-ASSISTANT-INFO: Main video encoding orchestration module
 
 // ---- Internal crate imports ----
-use crate::config::{CoreConfig, DEFAULT_CORE_QUALITY_HD, DEFAULT_CORE_QUALITY_SD, DEFAULT_CORE_QUALITY_UHD};
+use crate::config::CoreConfig;
 use crate::error::{CoreError, CoreResult};
 use crate::external::check_dependency;
 use crate::external::{FileMetadataProvider, FfmpegSpawner, FfprobeExecutor};
@@ -107,15 +107,14 @@ use std::time::Instant;
 ///     .output_dir(PathBuf::from("/path/to/output"))
 ///     .log_dir(PathBuf::from("/path/to/logs"))
 ///     .enable_denoise(true)
-///     .default_encoder_preset(6)
+///     .encoder_preset(6)
 ///     .quality_sd(24)
 ///     .quality_hd(26)
 ///     .quality_uhd(28)
-///     .default_crop_mode("auto")
+///     .crop_mode("auto")
 ///     .ntfy_topic("https://ntfy.sh/my-topic")
 ///     .film_grain_sample_duration(5)
 ///     .film_grain_knee_threshold(0.8)
-///     .film_grain_fallback_level(GrainLevel::Baseline)
 ///     .film_grain_max_level(GrainLevel::Moderate)
 ///     .film_grain_refinement_points_count(5)
 ///     .build();
@@ -343,13 +342,13 @@ pub fn process_videos<
         // Lower CRF values = higher quality but larger files
         let quality = if video_width >= UHD_WIDTH_THRESHOLD {
             // UHD (4K) quality setting
-            config.quality_uhd.unwrap_or(DEFAULT_CORE_QUALITY_UHD)
+            config.quality_uhd
         } else if video_width >= HD_WIDTH_THRESHOLD {
             // HD (1080p) quality setting
-            config.quality_hd.unwrap_or(DEFAULT_CORE_QUALITY_HD)
+            config.quality_hd
         } else {
             // SD (below 1080p) quality setting
-            config.quality_sd.unwrap_or(DEFAULT_CORE_QUALITY_SD)
+            config.quality_sd
         };
 
         // Determine the category label for logging
@@ -374,7 +373,7 @@ pub fn process_videos<
         // ========================================================================
 
         // Check if crop detection is disabled in the configuration
-        let disable_crop = config.default_crop_mode.as_deref() == Some("off");
+        let disable_crop = config.crop_mode == "off";
 
         // Detect black bars in the video and generate crop parameters if needed
         let (crop_filter_opt, _is_hdr) = match detection::detect_crop(spawner, input_path, &video_props, disable_crop) {
@@ -410,7 +409,7 @@ pub fn process_videos<
         // ========================================================================
 
         // Determine encoder preset (speed vs quality tradeoff, lower = better quality but slower)
-        let preset_value = config.preset.or(config.default_encoder_preset).unwrap_or(6);
+        let preset_value = config.encoder_preset;
 
         // Build initial encoding parameters (without denoising settings)
         let mut initial_encode_params = EncodeParams {
