@@ -1,5 +1,5 @@
 // drapto-core/src/external/ffprobe_executor.rs
-use crate::error::{CoreError, CoreResult};
+use crate::error::{CoreError, CoreResult, command_start_error, command_failed_error};
 use crate::processing::detection::properties::VideoProperties; // Keep this import
 use ffprobe::{ffprobe, FfProbeError}; // Import from the new crate
 use std::path::Path;
@@ -79,7 +79,7 @@ impl CrateFfprobeExecutor {
                 "-of", "csv=p=0", // Output format: CSV, no header (print_section=0)
             ])
             .output() // Use output() for simplicity first
-            .map_err(|e| CoreError::CommandStart(cmd_name.to_string(), e))?;
+            .map_err(|e| command_start_error(cmd_name, e))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
@@ -90,10 +90,10 @@ impl CrateFfprobeExecutor {
                 output.status,
                 stderr
             );
-            return Err(CoreError::CommandFailed(
+            return Err(command_failed_error(
                 format!("{} bitplanenoise", cmd_name),
                 output.status,
-                stderr,
+                stderr
             ));
         }
 
@@ -215,13 +215,13 @@ fn map_ffprobe_error(err: FfProbeError, context: &str) -> CoreError {
     match err {
         FfProbeError::Io(io_err) => {
              // Ambiguous if it's starting the command or reading output, lean towards CommandStart
-             CoreError::CommandStart(format!("ffprobe ({})", context), io_err)
+             command_start_error(format!("ffprobe ({})", context), io_err)
         }
         // Adjusted for ffprobe v0.3.3 FfProbeError::Status variant
         FfProbeError::Status(output) => {
             // Pass the actual ExitStatus (output.status) instead of a string representation
             let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-            CoreError::CommandFailed(format!("ffprobe ({})", context), output.status, stderr)
+            command_failed_error(format!("ffprobe ({})", context), output.status, stderr)
         }
         // Adjusted for ffprobe v0.3.3 FfProbeError::Deserialize variant (assuming name)
         FfProbeError::Deserialize(err) => {
@@ -231,58 +231,3 @@ fn map_ffprobe_error(err: FfProbeError, context: &str) -> CoreError {
         _ => CoreError::FfprobeParse(format!("Unknown ffprobe error during {}: {:?}", context, err)),
     }
 }
-
-
-// --- Old Implementation (Removed) ---
-/*
-/// Concrete implementation using std::process::Command.
-pub struct CommandFfprobeExecutor;
-
-impl FfprobeExecutor for CommandFfprobeExecutor {
-    fn get_audio_channels(&self, input_path: &Path) -> CoreResult<Vec<u32>> {
-        get_audio_channels_impl(input_path)
-    }
-    fn get_video_properties(&self, input_path: &Path) -> CoreResult<VideoProperties> {
-        // Note: This relies on the function being pub(crate) in properties.rs
-        crate::processing::detection::properties::get_video_properties_impl(input_path)
-    }
-}
-
-// Original logic moved into a private implementation function
-fn get_audio_channels_impl(input_path: &Path) -> CoreResult<Vec<u32>> {
-    // We assume ffprobe is found directly for now.
-    let cmd_name = "ffprobe";
-    let output = Command::new(cmd_name)
-        .args([
-            "-v",
-            "error",
-            "-select_streams",
-            "a",
-            "-show_entries",
-            "stream=channels",
-            "-of",
-            "csv=p=0",
-        ])
-        .arg(input_path)
-        .output()
-        .map_err(|e| CoreError::CommandStart(cmd_name.to_string(), e))?;
-
-    if !output.status.success() {
-        return Err(CoreError::CommandFailed(
-            cmd_name.to_string(),
-            output.status, // Keep original ExitStatus here
-            String::from_utf8_lossy(&output.stderr).into_owned(),
-        ));
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    stdout
-        .lines()
-        .map(|line| {
-            line.trim()
-                .parse::<u32>()
-                .map_err(|e| CoreError::FfprobeParse(format!("Failed to parse channel count '{}': {}", line, e)))
-        })
-        .collect()
-}
-*/

@@ -2,7 +2,7 @@
 //
 // This module encapsulates the logic for executing ffmpeg commands using ffmpeg-sidecar.
 
-use crate::error::{CoreError, CoreResult};
+use crate::error::{CoreError, CoreResult, command_failed_error};
 use crate::processing::audio; // To access calculate_audio_bitrate
 use crate::processing::detection::grain_analysis::GrainLevel; // Import GrainLevel
 use crate::external::{FfmpegSpawner, FfmpegProcess}; // Remove is_macos import
@@ -428,10 +428,10 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner>(
             // propagate it properly here for correct error handling
             Err(CoreError::NoStreamsFound(filename_cow.to_string()))
         } else {
-            Err(CoreError::CommandFailed(
-                "ffmpeg (sidecar)".to_string(),
+            Err(command_failed_error(
+                "ffmpeg (sidecar)",
                 status,
-                error_message,
+                error_message
             ))
         }
     }

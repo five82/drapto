@@ -1,6 +1,6 @@
 // drapto-core/src/external/ffmpeg_executor.rs
 
-use crate::error::{CoreError, CoreResult};
+use crate::error::{CoreResult, command_start_error, command_wait_error, command_failed_error};
 use ffmpeg_sidecar::command::FfmpegCommand;
 use ffmpeg_sidecar::event::FfmpegEvent;
 use ffmpeg_sidecar::child::FfmpegChild as SidecarChild;
@@ -40,10 +40,10 @@ impl FfmpegProcess for SidecarProcess {
     {
         let iterator = self.0.iter().map_err(|e| {
             log::error!("Failed to get ffmpeg event iterator: {}", e);
-            CoreError::CommandFailed(
-                "ffmpeg (sidecar - get iter)".to_string(),
+            command_failed_error(
+                "ffmpeg (sidecar - get iter)",
                 ExitStatus::default(), // Placeholder status
-                e.to_string(),
+                e.to_string()
             )
         })?;
         for event in iterator {
@@ -53,7 +53,7 @@ impl FfmpegProcess for SidecarProcess {
     }
 
     fn wait(&mut self) -> CoreResult<ExitStatus> {
-        self.0.wait().map_err(|e| CoreError::CommandWait("ffmpeg (sidecar)".to_string(), e))
+        self.0.wait().map_err(|e| command_wait_error("ffmpeg (sidecar)", e))
     }
 }
 
@@ -69,7 +69,7 @@ impl FfmpegSpawner for SidecarSpawner {
     fn spawn(&self, mut cmd: FfmpegCommand) -> CoreResult<Self::Process> {
         // spawn consumes cmd, requires mutability if called like cmd.spawn()
         cmd.spawn().map(SidecarProcess)
-                 .map_err(|e| CoreError::CommandStart("ffmpeg (sidecar)".to_string(), e))
+                 .map_err(|e| command_start_error("ffmpeg (sidecar)", e))
     }
 }
 
@@ -129,10 +129,11 @@ pub fn extract_sample<S: FfmpegSpawner>( // Added generic parameter S
     let status = spawner.spawn(cmd)?.wait()?; // Use spawner here
     if !status.success() {
         log::error!("Sample extraction failed: {}", status);
-        return Err(CoreError::CommandFailed(
-            "ffmpeg (sample extraction)".to_string(),
+        return Err(command_failed_error(
+            "ffmpeg (sample extraction)",
             status,
-           "Sample extraction process failed".to_string()));
+            "Sample extraction process failed"
+        ));
    }
 
    // The file existence check is redundant since FFmpeg would have failed if it couldn't create the file

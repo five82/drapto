@@ -34,11 +34,11 @@ use drapto_core::notifications::NtfyNotificationSender;
 use clap::Parser;
 use daemonize::Daemonize;
 use colored::*;
+use anyhow::{Context, Result};
 
 // ---- Standard library imports ----
 use std::io::{self, Write};
 use std::path::PathBuf;
-use std::process;
 
 // ---- Logging imports ----
 use env_logger::Env;
@@ -56,7 +56,7 @@ use log::Level;
 /// # Returns
 /// - `Ok(())` if the application completes successfully
 /// - `Err(...)` if an error occurs during execution
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<()> {
     // SECTION: Logging Setup
     // Configure env_logger with custom format that only shows log level for non-INFO messages
     env_logger::Builder::from_env(Env::default().default_filter_or("drapto=info"))
@@ -87,18 +87,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // SECTION: Command Dispatch
     // Process the selected command - execution happens either in the original process
     // (interactive mode) or in a daemon process (non-interactive mode)
-    let result = match cli_args.command {
+    let _ = match cli_args.command {
         Commands::Encode(args) => {
             // STEP 1: Discover files to encode
             // Find all .mkv files in the input directory or validate the input file
-            let (discovered_files, effective_input_dir) = match discover_encode_files(&args) {
-                 Ok(result) => result,
-                 Err(e) => {
-                     // Format error message with color for better visibility
-                     eprintln!("{} {}", "Error during file discovery:".red().bold(), e);
-                     process::exit(1);
-                 }
-            };
+            let (discovered_files, effective_input_dir) = discover_encode_files(&args)
+                .with_context(|| "Error during file discovery")?;
 
             // STEP 2: Calculate log path (needed before daemonization for user feedback)
             // This logic mirrors the start of run_encode to predict the log path
@@ -153,27 +147,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
 
                 // Create log directory if it doesn't exist
-                if let Err(e) = std::fs::create_dir_all(&log_dir) {
-                    eprintln!("{} Failed to create log directory: {}", "Error:".red().bold(), e);
-                    process::exit(1);
-                }
+                std::fs::create_dir_all(&log_dir)
+                    .with_context(|| format!("Failed to create log directory: {}", log_dir.display()))?;
 
                 // Create and open log file for the daemon's stdout/stderr
-                let log_file = match std::fs::File::create(&main_log_path) {
-                    Ok(file) => file,
-                    Err(e) => {
-                        eprintln!("{} Failed to create log file: {}", "Error:".red().bold(), e);
-                        process::exit(1);
-                    }
-                };
+                let log_file = std::fs::File::create(&main_log_path)
+                    .with_context(|| format!("Failed to create log file: {}", main_log_path.display()))?;
+
                 // Clone the file handle for stderr
-                let log_file_stderr = match log_file.try_clone() {
-                    Ok(file) => file,
-                    Err(e) => {
-                        eprintln!("{} Failed to clone log file handle: {}", "Error:".red().bold(), e);
-                        process::exit(1);
-                    }
-                };
+                let log_file_stderr = log_file.try_clone()
+                    .context("Failed to clone log file handle")?;
 
                 // Create daemonize configuration
                 // Note: PID file is handled in run_encode after log setup
@@ -183,17 +166,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .stderr(log_file_stderr); // Redirect stderr to our log file
 
                 // Attempt to daemonize the process
-                match daemonize.start() {
-                    Ok(_) => {
-                        // Parent process exits here after successful fork
-                        // The daemon child process continues execution below
-                    }
-                    Err(e) => {
-                        // Failed to daemonize, report error and exit
-                        eprintln!("{} {}", "Error starting daemon:".red().bold(), e);
-                        process::exit(1);
-                    }
-                }
+                daemonize.start()
+                    .with_context(|| "Failed to start daemon process")?;
+                // Parent process exits here after successful fork
+                // The daemon child process continues execution below
                 // Child process continues execution from this point
             }
 
@@ -210,7 +186,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 match NtfyNotificationSender::new(topic) {
                     Ok(sender) => Some(sender),
                     Err(e) => {
-                        eprintln!("{} Failed to create notification sender: {}", "Warning:".yellow().bold(), e);
+                        log::warn!("{} Failed to create notification sender: {}", "Warning:".yellow().bold(), e);
                         None
                     }
                 }
@@ -231,16 +207,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         // Future commands would be added here as additional match arms
     };
-
-    // SECTION: Error Handling
-    if let Err(e) = result {
-        // Handle errors differently based on mode
-        // This primarily catches errors that occur before logging is fully set up,
-        // if run_encode fails early, or in the parent process before daemonization
-        let prefix = if interactive_mode { "Error" } else { "Daemon Error" };
-        eprintln!("{} {}", format!("{}:", prefix).red().bold(), e);
-        process::exit(1); // Exit with error code
-    }
 
     // Success
     Ok(())

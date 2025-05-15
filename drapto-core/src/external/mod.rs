@@ -24,7 +24,7 @@
 // AI-ASSISTANT-INFO: External tool interactions and abstractions for ffmpeg/ffprobe
 
 // ---- Internal crate imports ----
-use crate::error::{CoreError, CoreResult};
+use crate::error::{CoreError, CoreResult, command_start_error};
 
 // ---- Standard library imports ----
 use std::io;
@@ -77,7 +77,7 @@ pub use ffprobe_executor::{CrateFfprobeExecutor, FfprobeExecutor};
 ///
 /// * `Ok(Vec<String>)` - A vector containing the command parts if the command is found
 /// * `Err(CoreError::DependencyNotFound)` - If the command is not found
-/// * `Err(CoreError::CommandStart)` - If the command exists but fails to start
+/// * `Err(CoreError::Command)` - If the command exists but fails to start
 ///
 /// # Examples
 ///
@@ -118,7 +118,7 @@ pub(crate) fn check_dependency(cmd_name: &str) -> CoreResult<Vec<String>> {
             } else {
                 // Command exists but failed to start
                 log::error!("Failed to start dependency check command '{}': {}", cmd_name, e);
-                Err(CoreError::CommandStart(cmd_name.to_string(), e))
+                Err(command_start_error(cmd_name, e))
             }
         }
     }

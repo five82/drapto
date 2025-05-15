@@ -34,6 +34,7 @@ use drapto_core::external::StdFsMetadataProvider;
 use drapto_core::notifications::NtfyNotificationSender;
 use drapto_core::progress_reporting::{report_log_message, LogLevel}; // New direct reporting
 use colored::*;
+use anyhow::{Context, Result, anyhow};
 
 // ---- Standard library imports ----
 use std::fs;
@@ -63,36 +64,36 @@ use log::{info, warn, error};
 /// - If the input path doesn't exist or is inaccessible
 /// - If the input is a file but not a .mkv file
 /// - If the input is neither a file nor a directory
-pub fn discover_encode_files(args: &EncodeArgs) -> Result<(Vec<PathBuf>, PathBuf), Box<dyn std::error::Error>> {
+pub fn discover_encode_files(args: &EncodeArgs) -> Result<(Vec<PathBuf>, PathBuf)> {
     // Resolve the input path to its canonical form (absolute path with symlinks resolved)
     let input_path = args.input_path.canonicalize()
-        .map_err(|e| format!("Invalid input path '{}': {}", args.input_path.display(), e))?;
+        .with_context(|| format!("Invalid input path '{}'", args.input_path.display()))?;
 
     // Get metadata to determine if the input is a file or directory
     let metadata = fs::metadata(&input_path)
-        .map_err(|e| format!("Failed to access input path '{}': {}", input_path.display(), e))?;
+        .with_context(|| format!("Failed to access input path '{}'", input_path.display()))?;
 
     if metadata.is_dir() {
         // Directory input: Find all .mkv files in the directory
         match drapto_core::find_processable_files(&input_path) {
              Ok(files) => Ok((files, input_path.clone())),
              Err(CoreError::NoFilesFound) => Ok((Vec::new(), input_path.clone())), // Empty vector if no files found
-             Err(e) => Err(e.into()), // Propagate other core errors
+             Err(e) => Err(e).context("Error finding processable files"), // Add context to core errors
         }
     } else if metadata.is_file() {
         // File input: Verify it's a .mkv file
         if input_path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("mkv")) {
             // Get the parent directory to use as the effective input directory
-            let parent_dir = input_path.parent().ok_or_else(|| {
-                CoreError::PathError(format!("Could not determine parent directory for file '{}'", input_path.display()))
-            })?.to_path_buf();
+            let parent_dir = input_path.parent()
+                .ok_or_else(|| anyhow!("Could not determine parent directory for file '{}'", input_path.display()))?
+                .to_path_buf();
             Ok((vec![input_path.clone()], parent_dir))
         } else {
-            Err(format!("Input file '{}' is not a .mkv file.", input_path.display()).into())
+            Err(anyhow!("Input file '{}' is not a .mkv file", input_path.display()))
         }
     } else {
         // Neither file nor directory
-        Err(format!("Input path '{}' is neither a file nor a directory.", input_path.display()).into())
+        Err(anyhow!("Input path '{}' is neither a file nor a directory", input_path.display()))
     }
 }
 
@@ -131,7 +132,7 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor>(
     interactive: bool,
     files_to_process: Vec<PathBuf>,
     effective_input_dir: PathBuf,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<()> {
     let total_start_time = Instant::now();
 
     // Determine actual output directory and potential target filename
@@ -162,8 +163,10 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor>(
     // --- Create Output Dir ---
     // Note: Log dir is already created in main.rs before daemonization if in daemon mode
     // We still create it here for interactive mode or in case it was deleted
-    fs::create_dir_all(&actual_output_dir)?;
-    fs::create_dir_all(&log_dir)?;
+    fs::create_dir_all(&actual_output_dir)
+        .with_context(|| format!("Failed to create output directory '{}'", actual_output_dir.display()))?;
+    fs::create_dir_all(&log_dir)
+        .with_context(|| format!("Failed to create log directory '{}'", log_dir.display()))?;
 
     // --- Logging Setup (Handled by env_logger via RUST_LOG) ---
     // We still need the log path for potential PID file and user info.
@@ -319,6 +322,7 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor>(
              &files_to_process,
              target_filename_override
          )
+         .context("Video processing failed")
     };
 
     // --- Handle Core Results ---
@@ -326,24 +330,26 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor>(
     match processing_result {
         Ok(ref results) => {
             successfully_encoded = results.to_vec();
-            // Use warn level if no files encoded (unless it was expected due to no files found)
-            if successfully_encoded.is_empty() && !matches!(processing_result, Err(CoreError::NoFilesFound)) {
+            // Use warn level if no files encoded
+            if successfully_encoded.is_empty() {
                  warn!("{} No files were successfully encoded.", "Warning:".yellow().bold());
-            } else if !successfully_encoded.is_empty() {
+            } else {
                  info!("{} {} file(s).", "Successfully encoded".green(), successfully_encoded.len().to_string().green().bold());
             }
         }
         Err(e) => {
             // Use error level for fatal errors
             error!("{} {}", "FATAL CORE ERROR during processing:".red().bold(), e);
-            return Err(e.into());
+            return Err(e);
         }
     }
 
     // --- Clean up temporary directories ---
     info!("{}", "Cleaning up temporary directories...".cyan());
-    if let Err(e) = drapto_core::temp_files::cleanup_base_dirs(&config) {
-        warn!("{} Failed to clean up temporary directories: {}", "Warning:".yellow().bold(), e);
+    if let Err(e) = drapto_core::temp_files::cleanup_base_dirs(&config)
+        .context("Failed to clean up temporary directories")
+    {
+        warn!("{} {}", "Warning:".yellow().bold(), e);
     }
 
 
