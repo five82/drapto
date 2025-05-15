@@ -167,7 +167,11 @@ pub use notifications::{NotificationType, NtfyNotificationSender};
 
 // ----- Temporary File Management -----
 /// Temporary file management utilities
-pub use temp_files::{create_grain_analysis_dir, create_analysis_dir, cleanup_base_dirs, create_temp_file_path};
+pub use temp_files::{
+    create_temp_dir, create_temp_file, create_temp_file_path, cleanup_base_dirs,
+    // Convenience functions
+    create_grain_analysis_dir, create_analysis_dir
+};
 
 // ----- Hardware Acceleration -----
 /// Hardware acceleration detection and configuration
