@@ -30,7 +30,6 @@ use crate::error::{CoreError, CoreResult, command_start_error};
 use std::io;
 use std::path::Path;
 use std::process::{Command, Stdio};
-use std::env;
 
 // ============================================================================
 // SUBMODULES
@@ -215,27 +214,6 @@ impl FileMetadataProvider for StdFsMetadataProvider {
 // PLATFORM DETECTION
 // ============================================================================
 
-/// Checks if the current platform is macOS.
-///
-/// This function uses the `std::env::consts::OS` constant to determine
-/// if the current operating system is macOS.
-///
-/// # Returns
-///
-/// * `true` - If the current platform is macOS
-/// * `false` - Otherwise
-///
-/// # Examples
-///
-/// ```rust
-/// use drapto_core::external::is_macos;
-///
-/// if is_macos() {
-///     println!("Running on macOS, can use VideoToolbox");
-/// } else {
-///     println!("Not running on macOS");
-/// }
-/// ```
-pub fn is_macos() -> bool {
-    env::consts::OS == "macos"
-}
+// Platform detection has been moved to the hardware_accel module
+// Re-export the is_macos function for backward compatibility
+pub use crate::hardware_accel::is_macos;

@@ -5,10 +5,14 @@
 use crate::error::{CoreError, CoreResult, command_failed_error};
 use crate::processing::audio; // To access calculate_audio_bitrate
 use crate::processing::detection::grain_analysis::GrainLevel; // Import GrainLevel
-use crate::external::{FfmpegSpawner, FfmpegProcess}; // Remove is_macos import
+use crate::external::{FfmpegSpawner, FfmpegProcess};
+use crate::hardware_accel::{
+    is_hardware_acceleration_available, add_hardware_acceleration_to_command,
+    log_hardware_acceleration_status
+};
 use crate::progress_reporting::{
     report_encode_start, report_encode_progress, report_encode_error,
-    report_hardware_acceleration, report_log_message, LogLevel,
+    report_log_message, LogLevel,
 };
 use ffmpeg_sidecar::command::FfmpegCommand;
 use ffmpeg_sidecar::event::{FfmpegEvent, LogLevel as FfmpegLogLevel}; // Renamed LogLevel to avoid conflict
@@ -555,51 +559,6 @@ fn calculate_eta(duration_secs: Option<f64>, current_secs: f64, speed: f32) -> f
         }
     } else {
         0.0
-    }
-}
-
-// Helper function to check if hardware acceleration is available
-fn is_hardware_acceleration_available() -> bool {
-    std::env::consts::OS == "macos"
-}
-
-/// Adds hardware acceleration options to an FFmpeg command.
-///
-/// IMPORTANT: This must be called BEFORE adding the input file to the command.
-///
-/// # Arguments
-///
-/// * `cmd` - The FFmpeg command to add hardware acceleration options to
-/// * `use_hw_decode` - Whether to use hardware acceleration
-/// * `is_grain_analysis_sample` - Whether this is a grain analysis sample (hardware acceleration is disabled for grain analysis)
-///
-/// # Returns
-///
-/// * `bool` - Whether hardware acceleration was added
-pub fn add_hardware_acceleration_to_command(
-    cmd: &mut FfmpegCommand,
-    use_hw_decode: bool,
-    is_grain_analysis_sample: bool,
-) -> bool {
-    let hw_accel_available = is_hardware_acceleration_available();
-
-    if use_hw_decode && hw_accel_available && !is_grain_analysis_sample {
-        cmd.arg("-hwaccel");
-        cmd.arg("videotoolbox");
-        return true;
-    }
-
-    false
-}
-
-// Helper function to log hardware acceleration status
-fn log_hardware_acceleration_status() {
-    let hw_accel_available = is_hardware_acceleration_available();
-
-    if hw_accel_available {
-        report_hardware_acceleration(true, "VideoToolbox");
-    } else {
-        report_hardware_acceleration(false, "VideoToolbox");
     }
 }
 

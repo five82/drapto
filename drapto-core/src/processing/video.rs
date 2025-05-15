@@ -36,12 +36,11 @@ use crate::error::{CoreError, CoreResult};
 use crate::external::check_dependency;
 use crate::external::{FileMetadataProvider, FfmpegSpawner, FfprobeExecutor};
 use crate::external::ffmpeg::{run_ffmpeg_encode, EncodeParams};
+use crate::hardware_accel::log_hardware_acceleration_status;
 use crate::notifications::{NotificationType, NtfyNotificationSender};
 use crate::processing::audio;
 use crate::processing::detection::{self, grain_analysis};
-use crate::progress_reporting::{
-    report_hardware_acceleration, report_log_message, LogLevel,
-}; // Direct progress reporting
+use crate::progress_reporting::{report_log_message, LogLevel}; // Direct progress reporting
 use crate::utils::{format_duration, get_file_size};
 use crate::EncodeResult;
 use colored::Colorize;
@@ -186,12 +185,8 @@ pub fn process_videos<
 
     report_log_message(&format!("Running on host: {}", hostname), LogLevel::Info);
 
-    // Report hardware acceleration capabilities
-    // We don't use is_macos() directly anymore - this should be handled by the CLI
-    let hw_accel_available = std::env::consts::OS == "macos";
-    let hw_accel_type = if hw_accel_available { "VideoToolbox" } else { "None" };
-
-    report_hardware_acceleration(hw_accel_available, hw_accel_type);
+    // Report hardware acceleration capabilities using the centralized module
+    log_hardware_acceleration_status();
 
 
     // Initialize the results vector to store successful encoding results

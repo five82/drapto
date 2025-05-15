@@ -117,6 +117,9 @@ pub mod progress_reporting;
 /// Temporary file management utilities
 pub mod temp_files;
 
+/// Hardware acceleration detection and configuration
+pub mod hardware_accel;
+
 // ============================================================================
 // PUBLIC API RE-EXPORTS
 // ============================================================================
@@ -165,6 +168,13 @@ pub use notifications::{NotificationType, NtfyNotificationSender};
 // ----- Temporary File Management -----
 /// Temporary file management utilities
 pub use temp_files::{create_grain_analysis_dir, create_analysis_dir, cleanup_base_dirs, create_temp_file_path};
+
+// ----- Hardware Acceleration -----
+/// Hardware acceleration detection and configuration
+pub use hardware_accel::{
+    HardwareAcceleration, is_macos, is_hardware_acceleration_available,
+    add_hardware_acceleration_to_command, log_hardware_acceleration_status
+};
 
 // ============================================================================
 // PUBLIC STRUCTS

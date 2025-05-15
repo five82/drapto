@@ -20,98 +20,18 @@
 //
 // AI-ASSISTANT-INFO: Platform-specific functionality and detection
 
-// ---- Standard library imports ----
-use std::env;
-
 // ---- External crate imports ----
-use drapto_core::progress_reporting::{report_hardware_acceleration};
 
 // ============================================================================
 // PLATFORM DETECTION
 // ============================================================================
 
-/// Checks if the current platform is macOS.
-///
-/// This function uses the `std::env::consts::OS` constant to determine
-/// if the current operating system is macOS.
-///
-/// # Returns
-///
-/// * `true` - If the current platform is macOS
-/// * `false` - Otherwise
-///
-/// # Examples
-///
-/// ```rust
-/// use drapto_cli::platform::is_macos;
-///
-/// if is_macos() {
-///     println!("Running on macOS, can use VideoToolbox");
-/// } else {
-///     println!("Not running on macOS");
-/// }
-/// ```
-pub fn is_macos() -> bool {
-    env::consts::OS == "macos"
-}
+/// Re-export is_macos from hardware_accel module
+pub use drapto_core::hardware_accel::is_macos;
 
 // ============================================================================
 // HARDWARE ACCELERATION
 // ============================================================================
 
-/// Represents hardware acceleration capabilities for the current platform.
-#[derive(Debug, Clone, Copy)]
-pub struct HardwareAcceleration {
-    /// Whether VideoToolbox hardware decoding is available (macOS only)
-    pub videotoolbox_decode_available: bool,
-}
-
-impl Default for HardwareAcceleration {
-    fn default() -> Self {
-        Self::detect()
-    }
-}
-
-impl HardwareAcceleration {
-    /// Detects hardware acceleration capabilities for the current platform.
-    ///
-    /// # Returns
-    ///
-    /// * `HardwareAcceleration` - The detected hardware acceleration capabilities
-    pub fn detect() -> Self {
-        // Currently, we only support VideoToolbox on macOS
-        let videotoolbox_decode_available = is_macos();
-
-        Self {
-            videotoolbox_decode_available,
-        }
-    }
-
-    /// Logs information about hardware acceleration capabilities.
-    ///
-    /// This function logs information about the available hardware acceleration
-    /// capabilities to the info log level.
-    pub fn log_capabilities(&self) {
-        // Use the new direct reporting function
-        report_hardware_acceleration(
-            self.videotoolbox_decode_available,
-            "VideoToolbox"
-        );
-    }
-
-    /// Gets FFmpeg hardware acceleration arguments for the current platform.
-    ///
-    /// # Returns
-    ///
-    /// * `Vec<String>` - The FFmpeg hardware acceleration arguments
-    pub fn get_ffmpeg_hwaccel_args(&self) -> Vec<String> {
-        let mut args = Vec::new();
-
-        if self.videotoolbox_decode_available {
-            args.push("-hwaccel".to_string());
-            args.push("videotoolbox".to_string());
-        }
-
-        args
-    }
-}
+/// Re-export HardwareAcceleration from hardware_accel module
+pub use drapto_core::hardware_accel::HardwareAcceleration;

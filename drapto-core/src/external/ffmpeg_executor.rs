@@ -4,7 +4,7 @@ use crate::error::{CoreResult, command_start_error, command_wait_error, command_
 use ffmpeg_sidecar::command::FfmpegCommand;
 use ffmpeg_sidecar::event::FfmpegEvent;
 use ffmpeg_sidecar::child::FfmpegChild as SidecarChild;
-use crate::external::ffmpeg::add_hardware_acceleration_to_command;
+use crate::hardware_accel::add_hardware_acceleration_to_command;
 use crate::temp_files;
 use std::process::ExitStatus;
 use std::path::{Path, PathBuf};

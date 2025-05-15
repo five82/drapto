@@ -39,6 +39,7 @@ use crate::error::{CoreError, CoreResult};
 use crate::external::ffmpeg::EncodeParams;
 use crate::external::ffmpeg_executor::extract_sample;
 use crate::external::{FileMetadataProvider, FfmpegSpawner};
+use crate::hardware_accel::is_hardware_acceleration_available;
 use crate::progress_reporting::{report_log_message, LogLevel};
 use crate::temp_files;
 
@@ -214,7 +215,7 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider>(
 
     // Inform user about hardware acceleration status for the main encode
     if base_encode_params.use_hw_decode {
-        let hw_accel_available = std::env::consts::OS == "macos";
+        let hw_accel_available = is_hardware_acceleration_available();
         if hw_accel_available {
             report_log_message(
                 "VideoToolbox hardware decoding will be used for main encode (disabled during analysis)",

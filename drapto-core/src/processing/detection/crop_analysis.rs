@@ -31,7 +31,7 @@ use regex::Regex;
 // ---- Internal crate imports ----
 use crate::error::CoreResult;
 use crate::external::{FfmpegProcess, FfmpegSpawner};
-use crate::external::ffmpeg::add_hardware_acceleration_to_command;
+use crate::hardware_accel::add_hardware_acceleration_to_command;
 use crate::processing::detection::VideoProperties;
 
 // ---- Standard library imports ----
