@@ -33,7 +33,6 @@ use drapto_core::external::{SidecarSpawner, CrateFfprobeExecutor};
 use drapto_core::notifications::NtfyNotificationSender;
 use clap::Parser;
 use daemonize::Daemonize;
-use colored::*;
 use anyhow::{Context, Result};
 
 // ---- Standard library imports ----
@@ -71,9 +70,9 @@ fn main() -> Result<()> {
 
     // Provide feedback about logging level to help with debugging
     if log::log_enabled!(log::Level::Trace) {
-        log::info!("{}", "Trace level logging enabled.".yellow().bold());
+        log::info!("Trace level logging enabled.");
     } else if log::log_enabled!(log::Level::Debug) {
-        log::info!("{}", "Debug level logging enabled.".yellow().bold());
+        log::info!("Debug level logging enabled.");
     }
 
     // SECTION: Command-line Argument Parsing
@@ -127,23 +126,23 @@ fn main() -> Result<()> {
 
                 // Show files that will be processed
                 if !discovered_files.is_empty() {
-                    eprintln!("{}", "Will encode the following files:".cyan().bold());
+                    eprintln!("Will encode the following files:");
                     for file in &discovered_files {
-                        eprintln!("  - {}", file.display().to_string().green());
+                        eprintln!("  - {}", file.display());
                     }
                 } else {
-                    eprintln!("{}", "No .mkv files found to encode in the specified input.".yellow());
+                    eprintln!("No .mkv files found to encode in the specified input.");
                 }
 
                 // Show log file path so user knows where to find output
-                eprintln!("{} {}", "Log file:".cyan(), main_log_path.display().to_string().green());
+                eprintln!("Log file: {}", main_log_path.display());
 
                 // Inform user that process is going to background
-                eprintln!("{}", "Starting Drapto daemon in the background...".green().bold());
+                eprintln!("Starting Drapto daemon in the background...");
 
                 // Single flush operation after all messages
                 if let Err(e) = io::stderr().flush() {
-                    eprintln!("{} Failed to flush stderr before daemonizing: {}", "Warning:".yellow().bold(), e);
+                    eprintln!("Warning: Failed to flush stderr before daemonizing: {}", e);
                 }
 
                 // Create log directory if it doesn't exist
@@ -186,7 +185,7 @@ fn main() -> Result<()> {
                 match NtfyNotificationSender::new(topic) {
                     Ok(sender) => Some(sender),
                     Err(e) => {
-                        log::warn!("{} Failed to create notification sender: {}", "Warning:".yellow().bold(), e);
+                        log::warn!("Warning: Failed to create notification sender: {}", e);
                         None
                     }
                 }

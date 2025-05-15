@@ -244,14 +244,14 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner>(
     // Log command details at appropriate level based on context
     let log_level = if is_grain_analysis_sample { log::Level::Debug } else { log::Level::Info };
     let prefix = if is_grain_analysis_sample { "FFmpeg command (grain sample)" } else { "FFmpeg command details" };
-    log!(log_level, "🔧 {}:\n  {}", prefix, cmd_debug);
+    log!(log_level, "{}:\n  {}", prefix, cmd_debug);
 
 
     // --- Execution and Progress ---
     // Log start at appropriate level based on context
     let log_level = if is_grain_analysis_sample { log::Level::Debug } else { log::Level::Info };
     let message = if is_grain_analysis_sample { "Starting grain sample encode..." } else { "Starting encode process..." };
-    log!(log_level, "🚀 {}", message);
+    log!(log_level, "{}", message);
     let start_time = Instant::now();
 
     // Use the injected spawner
@@ -407,7 +407,7 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner>(
         // Log success at appropriate level based on context
         let log_level = if is_grain_analysis_sample { log::Level::Debug } else { log::Level::Info };
         let prefix = if is_grain_analysis_sample { "Grain sample encode" } else { "Encode" };
-        log!(log_level, "✅ {} finished successfully for {}", prefix, filename_cow);
+        log!(log_level, "{} finished successfully for {}", prefix, filename_cow);
         Ok(())
     } else {
         let error_message = format!(
@@ -418,7 +418,7 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner>(
 
         // Log error with appropriate prefix based on context
         let prefix = if is_grain_analysis_sample { "Grain sample encode" } else { "FFmpeg encode" };
-        error!("❌ {} failed for {}: {}", prefix, filename_cow, error_message);
+        error!("{} failed for {}: {}", prefix, filename_cow, error_message);
 
         // Use direct reporting for non-grain-analysis errors
         if !is_grain_analysis_sample {

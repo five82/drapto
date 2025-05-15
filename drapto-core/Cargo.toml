@@ -33,7 +33,6 @@ serde_json = "1.0"               # JSON support for serde
 
 # ---- Logging ----
 log = "0.4"                      # Logging facade for the core library
-colored = "2"                    # Terminal color output for logs
 
 # ---- Randomization ----
 rand = "0.8"                     # Random number generation for grain analysis sampling

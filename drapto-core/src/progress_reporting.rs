@@ -20,7 +20,6 @@
 // AI-ASSISTANT-INFO: Direct progress reporting functions using the log crate
 
 // ---- External crate imports ----
-use colored::*;
 use log::{debug, info, warn, error};
 
 // ---- Standard library imports ----
@@ -44,11 +43,11 @@ pub fn report_encode_start(input_path: &Path, output_path: &Path, using_hw_accel
         .map(|name| name.to_string_lossy().to_string())
         .unwrap_or_else(|| input_path.to_string_lossy().to_string());
 
-    info!("Starting FFmpeg encode for: {}", filename.yellow());
+    info!("Starting FFmpeg encode for: {}", filename);
     info!("  Output: {}", output_path.display());
 
     if using_hw_accel {
-        info!("  {} {}", "Hardware:".cyan(), "VideoToolbox hardware decoding enabled".green().bold());
+        info!("  Hardware: VideoToolbox hardware decoding enabled");
     }
 }
 
@@ -82,14 +81,13 @@ pub fn report_encode_progress(
     let total_time = format_duration_seconds(total_secs);
 
     info!(
-        "⏳ {} {:.2}% ({} / {}), Speed: {}, Avg FPS: {:.2}, ETA: {}",
-        "Encoding progress:".cyan(),
-        percent.to_string().green().bold(),
-        current_time.yellow(),
-        total_time.yellow(),
-        format!("{:.2}x", speed).green().bold(),
+        "Encoding progress: {:.2}% ({} / {}), Speed: {:.2}x, Avg FPS: {:.2}, ETA: {}",
+        percent,
+        current_time,
+        total_time,
+        speed,
         fps,
-        eta_str.green().bold()
+        eta_str
     );
 
     // Also log to debug level for potential file logging without colors
@@ -133,12 +131,12 @@ pub fn report_encode_complete(
         0
     };
 
-    info!("{}", filename.yellow().bold());
-    info!("  {:<13} {}", "Encode time:".cyan(), crate::format_duration(duration).green());
-    info!("  {:<13} {}", "Input size:".cyan(), crate::format_bytes(input_size).green());
-    info!("  {:<13} {}", "Output size:".cyan(), crate::format_bytes(output_size).green());
-    info!("  {:<13} {}", "Reduced by:".cyan(), format!("{}%", reduction).green());
-    info!("{}", "----------------------------------------".cyan());
+    info!("{}", filename);
+    info!("  {:<13} {}", "Encode time:", crate::format_duration(duration));
+    info!("  {:<13} {}", "Input size:", crate::format_bytes(input_size));
+    info!("  {:<13} {}", "Output size:", crate::format_bytes(output_size));
+    info!("  {:<13} {}", "Reduced by:", format!("{}%", reduction));
+    info!("{}", "----------------------------------------");
 
     // Also log to debug level for potential file logging without colors
     debug!(
@@ -164,7 +162,7 @@ pub fn report_encode_error(input_path: &Path, message: &str) {
         .map(|name| name.to_string_lossy().to_string())
         .unwrap_or_else(|| input_path.to_string_lossy().to_string());
 
-    error!("Error encoding {}: {}", filename.red().bold(), message);
+    error!("Error encoding {}: {}", filename, message);
 }
 
 /// Reports hardware acceleration status.
@@ -175,9 +173,9 @@ pub fn report_encode_error(input_path: &Path, message: &str) {
 /// * `acceleration_type` - Type of hardware acceleration (e.g., "VideoToolbox")
 pub fn report_hardware_acceleration(available: bool, acceleration_type: &str) {
     if available {
-        info!("{} {}", "Hardware:".cyan(), format!("{} hardware decoding available", acceleration_type).green().bold());
+        info!("Hardware: {} hardware decoding available", acceleration_type);
     } else {
-        info!("{} {}", "Hardware:".cyan(), "Using software decoding (hardware acceleration not available on this platform)".yellow());
+        info!("Hardware: Using software decoding (hardware acceleration not available on this platform)");
     }
 }
 

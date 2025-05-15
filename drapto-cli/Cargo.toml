@@ -37,7 +37,6 @@ drapto-core = { path = "../drapto-core" }  # Core library for video processing
 # ---- Logging ----
 env_logger = "0.11"              # Environment-based logging configuration
 log = "0.4"                      # Logging facade
-colored = "2"                    # Terminal color output for logs
 
 # ---- Error Handling ----
 anyhow = "1.0"                   # Flexible error handling with context

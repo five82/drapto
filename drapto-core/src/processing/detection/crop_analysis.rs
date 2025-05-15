@@ -23,7 +23,6 @@
 // AI-ASSISTANT-INFO: Black bar detection and crop parameter generation
 
 // ---- External crate imports ----
-use colored::*;
 use ffmpeg_sidecar::command::FfmpegCommand;
 use ffmpeg_sidecar::event::FfmpegEvent;
 use regex::Regex;
@@ -332,31 +331,30 @@ pub fn detect_crop<S: FfmpegSpawner>(
         .map(|name| name.to_string_lossy())
         .unwrap_or_else(|| input_file.to_string_lossy());
 
-    // Log video properties with colors and multiple lines
+    // Log video properties with multiple lines
     log::info!(
-        "{} {}",
-        "Video Properties for:".cyan(),
-        filename_cow.yellow()
+        "Video Properties for: {}",
+        filename_cow
     );
     log::info!(
         "  {:<18} {}", // Left-align label with padding
-        "Resolution:".cyan(),
-        format!("{}x{}", video_props.width, video_props.height).green()
+        "Resolution:",
+        format!("{}x{}", video_props.width, video_props.height)
     );
     log::info!(
         "  {:<18} {}", // Left-align label with padding
-        "Duration:".cyan(),
-        format!("{:.2}s", video_props.duration_secs).green()
+        "Duration:",
+        format!("{:.2}s", video_props.duration_secs)
     );
     log::info!(
         "  {:<18} {}", // Left-align label with padding
-        "HDR:".cyan(),
-        format!("{}", is_hdr).green()
+        "HDR:",
+        format!("{}", is_hdr)
     );
     log::info!(
         "  {:<18} {}", // Left-align label with padding
-        "Crop Threshold:".cyan(),
-        format!("{}", crop_threshold).green()
+        "Crop Threshold:",
+        format!("{}", crop_threshold)
     );
 
     // STEP 4: Calculate effective analysis duration (skipping credits)
@@ -375,8 +373,8 @@ pub fn detect_crop<S: FfmpegSpawner>(
     }
 
     // STEP 5: Run crop detection analysis
-    println!("✂️ {}", "Running crop detection analysis...".cyan().bold());
-    log::info!("Running crop detection analysis for {}...", filename_cow.yellow());
+    println!("Running crop detection analysis...");
+    log::info!("Running crop detection analysis for {}...", filename_cow);
 
     let crop_filter = run_cropdetect(
         spawner,
@@ -388,13 +386,12 @@ pub fn detect_crop<S: FfmpegSpawner>(
 
     // STEP 6: Report results
     if crop_filter.is_none() {
-        println!("✅ {}", "Crop detection complete: No cropping needed.".green());
-        log::info!("No cropping filter determined for {}.", input_file.display().to_string().yellow());
+        println!("Crop detection complete: No cropping needed.");
+        log::info!("No cropping filter determined for {}.", input_file.display());
     } else {
         println!(
-            "✅ {} {}",
-            "Crop detection complete:".green(),
-            crop_filter.as_deref().unwrap_or("").green().bold()
+            "Crop detection complete: {}",
+            crop_filter.as_deref().unwrap_or("")
         );
     }
 

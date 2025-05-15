@@ -27,7 +27,6 @@
 
 // ---- External crate imports ----
 use rand::{thread_rng, Rng};
-use colored::Colorize;
 
 // ---- Standard library imports ----
 use std::collections::HashMap;
@@ -246,8 +245,8 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider>(
     let min_required_duration = (sample_duration * num_samples as u32) as f64;
     if duration_secs < min_required_duration {
         log::warn!(
-            "{} Video duration ({:.2}s) is too short for the minimum required duration ({:.2}s) for {} samples. Skipping grain analysis.",
-            "Warning:".yellow().bold(), duration_secs, min_required_duration, num_samples
+            "Warning: Video duration ({:.2}s) is too short for the minimum required duration ({:.2}s) for {} samples. Skipping grain analysis.",
+            duration_secs, min_required_duration, num_samples
         );
         return Ok(None);
     }
@@ -275,8 +274,8 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider>(
 
     if latest_possible_start <= start_boundary {
         log::warn!(
-            "{} Video duration ({:.2}s) results in an invalid sampling window ({:.2}s - {:.2}s) for sample duration {}. Skipping grain analysis.",
-            "Warning:".yellow().bold(), duration_secs, start_boundary, end_boundary, sample_duration
+            "Warning: Video duration ({:.2}s) results in an invalid sampling window ({:.2}s - {:.2}s) for sample duration {}. Skipping grain analysis.",
+            duration_secs, start_boundary, end_boundary, sample_duration
         );
         return Ok(None);
     }

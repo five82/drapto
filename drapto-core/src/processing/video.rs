@@ -41,7 +41,6 @@ use crate::processing::detection::{self, grain_analysis};
 use crate::progress_reporting::{report_log_message, LogLevel}; // Direct progress reporting
 use crate::utils::{format_duration, get_file_size};
 use crate::EncodeResult;
-use colored::Colorize;
 
 // ---- External crate imports ----
 use log::{info, warn, error};
@@ -249,7 +248,7 @@ pub fn process_videos<
         }
 
         // Log the current file being processed
-        info!("{} {}", "Processing:".cyan().bold(), filename.yellow());
+        info!("Processing: {}", filename);
 
         // ========================================================================
         // STEP 3.3: SEND START NOTIFICATION
@@ -339,9 +338,9 @@ pub fn process_videos<
         // Log the detected resolution and selected quality
         info!(
             "Detected video width: {} ({}) - CRF set to {}",
-            video_width.to_string().green(),
-            category.green(),
-            quality.to_string().green().bold()
+            video_width,
+            category,
+            quality
         );
 
         // ========================================================================

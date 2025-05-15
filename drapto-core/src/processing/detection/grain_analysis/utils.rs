@@ -20,7 +20,6 @@ use super::constants::HQDN3D_PARAMS;
 use super::types::GrainLevel;
 
 // ---- External crate imports ----
-use colored::*;
 
 /// Determines the appropriate hqdn3d filter parameter string based on the detected grain level.
 ///
@@ -68,8 +67,7 @@ pub fn determine_hqdn3d_params(level: GrainLevel) -> Option<String> {
         .or_else(|| {
             // This should never happen if all GrainLevel variants are covered in HQDN3D_PARAMS
             log::warn!(
-                "{} Could not find hqdn3d params for level {:?}, this is unexpected.",
-                "Warning:".yellow().bold(),
+                "Warning: Could not find hqdn3d params for level {:?}, this is unexpected.",
                 level
             );
             None
