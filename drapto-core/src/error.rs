@@ -16,8 +16,7 @@
 // - I/O and filesystem errors (Io, Walkdir, PathError)
 // - External command errors (Command with CommandErrorKind)
 // - Parsing errors (FfprobeParse, JsonParseError)
-// - Video processing errors (VideoInfoError, NoFilesFound)
-// - Dependency errors (DependencyNotFound)
+// - Video processing errors (VideoInfoError, NoFilesFound, OperationFailed)
 // - Film grain analysis errors (FilmGrainEncodingFailed, FilmGrainAnalysisFailed)
 // - Notification errors (NotificationError)
 //
@@ -126,10 +125,6 @@ pub enum CoreError {
     /// Error indicating that no suitable video files were found
     #[error("No suitable video files found in input directory")]
     NoFilesFound,
-
-    /// Error indicating that a required external dependency is missing
-    #[error("Required external command '{0}' not found or failed to execute. Please ensure it's installed and in your PATH.")]
-    DependencyNotFound(String),
 
     /// General operation failure
     #[error("Operation failed: {0}")]

@@ -79,6 +79,12 @@ pub struct CoreConfigBuilder {
     film_grain_refinement_points_count: usize,
 }
 
+impl Default for CoreConfigBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CoreConfigBuilder {
     /// Creates a new CoreConfigBuilder with default values.
     ///

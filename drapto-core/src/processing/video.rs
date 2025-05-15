@@ -10,14 +10,13 @@
 //
 // KEY COMPONENTS:
 // - process_videos: Main entry point for processing multiple video files
-// - Dependency checking for required external tools
 // - Video property detection and quality selection
 // - Crop detection and grain analysis
 // - ffmpeg execution and result handling
 // - Notification sending for encoding events
 //
 // WORKFLOW:
-// 1. Check for required external dependencies (ffmpeg, ffprobe)
+// 1. Get system information (hostname, hardware acceleration capabilities)
 // 2. For each video file:
 //    a. Determine output path and check for existing files
 //    b. Detect video properties (resolution, duration, etc.)
@@ -33,7 +32,6 @@
 // ---- Internal crate imports ----
 use crate::config::CoreConfig;
 use crate::error::{CoreError, CoreResult};
-use crate::external::check_dependency;
 use crate::external::{FileMetadataProvider, FfmpegSpawner, FfprobeExecutor};
 use crate::external::ffmpeg::{run_ffmpeg_encode, EncodeParams};
 use crate::hardware_accel::log_hardware_acceleration_status;
@@ -157,24 +155,7 @@ pub fn process_videos<
 ) -> CoreResult<Vec<EncodeResult>>
 {
     // ========================================================================
-    // STEP 1: CHECK DEPENDENCIES
-    // ========================================================================
-
-    // Verify that required external tools (ffmpeg and ffprobe) are available
-    report_log_message("Checking for required external commands...", LogLevel::Info);
-
-    // Check for ffmpeg
-    let _ffmpeg_cmd_parts = check_dependency("ffmpeg")?;
-    report_log_message("ffmpeg found.", LogLevel::Info);
-
-    // Check for ffprobe
-    let _ffprobe_cmd_parts = check_dependency("ffprobe")?;
-    report_log_message("ffprobe found.", LogLevel::Info);
-
-    report_log_message("External dependency check passed.", LogLevel::Info);
-
-    // ========================================================================
-    // STEP 2: GET SYSTEM INFORMATION
+    // STEP 1: GET SYSTEM INFORMATION
     // ========================================================================
 
     // Get the hostname for logging and notifications

@@ -141,8 +141,8 @@ impl NtfyNotificationSender {
         // Build the notification payload
         // Start with the required fields (topic and message)
         let mut payload_builder = Payload::new(topic)
-            .message(&notification.get_message())
-            .title(&notification.get_title());
+            .message(notification.get_message())
+            .title(notification.get_title());
 
         // Add priority
         let priority = match map_priority(notification.get_priority()) {

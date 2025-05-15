@@ -12,7 +12,6 @@
 // KEY COMPONENTS:
 // - Traits for external tool interactions (FfmpegSpawner, FfprobeExecutor)
 // - Concrete implementations using ffmpeg-sidecar and ffprobe crates
-// - Dependency checking functions
 // - File metadata access abstraction
 // - Platform detection utilities
 //
@@ -24,12 +23,10 @@
 // AI-ASSISTANT-INFO: External tool interactions and abstractions for ffmpeg/ffprobe
 
 // ---- Internal crate imports ----
-use crate::error::{CoreError, CoreResult, command_start_error};
+use crate::error::CoreResult;
 
 // ---- Standard library imports ----
-use std::io;
 use std::path::Path;
-use std::process::{Command, Stdio};
 
 // ============================================================================
 // SUBMODULES
@@ -57,71 +54,6 @@ pub use ffmpeg_executor::{FfmpegProcess, FfmpegSpawner, SidecarProcess, SidecarS
 // ----- FFprobe Execution -----
 /// Traits and implementations for executing ffprobe commands
 pub use ffprobe_executor::{CrateFfprobeExecutor, FfprobeExecutor};
-
-// ============================================================================
-// DEPENDENCY CHECKING
-// ============================================================================
-
-/// Checks if a required external command is available and executable.
-///
-/// This function attempts to run the specified command with a `-version` argument
-/// to verify that it exists and is executable. It is used to check for the
-/// presence of required external tools like ffmpeg and ffprobe.
-///
-/// # Arguments
-///
-/// * `cmd_name` - The name of the command to check (e.g., "ffmpeg")
-///
-/// # Returns
-///
-/// * `Ok(Vec<String>)` - A vector containing the command parts if the command is found
-/// * `Err(CoreError::DependencyNotFound)` - If the command is not found
-/// * `Err(CoreError::Command)` - If the command exists but fails to start
-///
-/// # Examples
-///
-/// ```rust,no_run
-/// // This function is internal to the crate, so we can't call it directly in doctests
-/// // Example usage within the crate:
-/// // match check_dependency("ffmpeg") {
-/// //     Ok(_) => println!("ffmpeg is available"),
-/// //     Err(e) => eprintln!("ffmpeg check failed: {}", e),
-/// // }
-/// ```
-pub(crate) fn check_dependency(cmd_name: &str) -> CoreResult<Vec<String>> {
-    // Define the argument to use for version checking
-    let version_arg = "-version";
-
-    // Create a vector with the command name
-    let direct_cmd_parts = vec![cmd_name.to_string()];
-
-    // Attempt to run the command with the version argument
-    let direct_result = Command::new(&direct_cmd_parts[0])
-        .arg(version_arg)
-        .stdout(Stdio::null())  // Discard stdout
-        .stderr(Stdio::null())  // Discard stderr
-        .status();              // Just check the exit status
-
-    // Handle the result
-    match direct_result {
-        Ok(_) => {
-            // Command executed successfully
-            log::debug!("Found dependency directly: {}", cmd_name);
-            Ok(direct_cmd_parts)
-        }
-        Err(e) => {
-            if e.kind() == io::ErrorKind::NotFound {
-                // Command not found
-                log::warn!("Dependency '{}' not found.", cmd_name);
-                Err(CoreError::DependencyNotFound(cmd_name.to_string()))
-            } else {
-                // Command exists but failed to start
-                log::error!("Failed to start dependency check command '{}': {}", cmd_name, e);
-                Err(command_start_error(cmd_name, e))
-            }
-        }
-    }
-}
 
 // ============================================================================
 // AUDIO CHANNEL DETECTION
