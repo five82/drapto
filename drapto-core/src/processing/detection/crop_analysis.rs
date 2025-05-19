@@ -87,11 +87,7 @@ fn run_hdr_blackdetect<S: FfmpegSpawner>(spawner: &S, input_file: &Path, initial
     cmd.hide_banner();
 
     // Add hardware acceleration options BEFORE the input
-    let hw_accel_added = add_hardware_acceleration_to_command(&mut cmd, true, false);
-
-    if hw_accel_added {
-        log::debug!("Using VideoToolbox hardware decoding for HDR black level analysis");
-    }
+    add_hardware_acceleration_to_command(&mut cmd, true, false); // Don't need to check return value
 
     cmd.input(input_file.to_string_lossy()); // Use reference
     cmd.filter_complex(filter);
@@ -173,12 +169,8 @@ fn run_cropdetect<S: FfmpegSpawner>(
     let mut cmd = FfmpegCommand::new();
     cmd.hide_banner();
 
-    // Add hardware acceleration options BEFORE the input
-    let hw_accel_added = add_hardware_acceleration_to_command(&mut cmd, true, false);
-
-    if hw_accel_added {
-        log::debug!("Using VideoToolbox hardware decoding for crop detection");
-    }
+    // Add hardware acceleration options BEFORE the input - no need to log status
+    add_hardware_acceleration_to_command(&mut cmd, true, false);
 
     cmd.input(input_file.to_string_lossy()); // Use reference
     cmd.filter_complex(&cropdetect_filter);

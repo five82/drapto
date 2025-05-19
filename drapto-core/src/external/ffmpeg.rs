@@ -6,13 +6,9 @@ use crate::error::{CoreError, CoreResult, command_failed_error};
 use crate::processing::audio; // To access calculate_audio_bitrate
 use crate::processing::detection::grain_analysis::GrainLevel; // Import GrainLevel
 use crate::external::{FfmpegSpawner, FfmpegProcess};
-use crate::hardware_accel::{
-    is_hardware_acceleration_available, add_hardware_acceleration_to_command,
-    log_hardware_acceleration_status
-};
+use crate::hardware_accel::add_hardware_acceleration_to_command;
 use crate::progress_reporting::{
     report_encode_start, report_encode_progress, report_encode_error,
-    report_log_message, LogLevel,
 };
 use ffmpeg_sidecar::command::FfmpegCommand;
 use ffmpeg_sidecar::event::{FfmpegEvent, LogLevel as FfmpegLogLevel}; // Renamed LogLevel to avoid conflict
@@ -207,15 +203,14 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner>(
         // Standard verbose logging for main encode
         report_encode_start(
             &params.input_path,
-            &params.output_path,
-            params.use_hw_decode && is_hardware_acceleration_available()
+            &params.output_path
         );
     }
 
-    // Log hardware acceleration status for main encodes
-    if !is_grain_analysis_sample && params.use_hw_decode {
-        log_hardware_acceleration_status();
-    }
+    // NOTE: There appears to be a duplicate "Hardware: VideoToolbox hardware decoding available" message
+    // in the terminal output that occurs after report_encode_start but before ffmpeg command execution.
+    // This may be coming from ffmpeg-sidecar or another external source and is not logged by any of our
+    // code in this file.
 
     debug!("Encode parameters: {:?}", params);
 
@@ -229,9 +224,10 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner>(
     // Add hardware acceleration options BEFORE the input
     let hw_accel_added = add_hardware_acceleration_to_command(&mut cmd, params.use_hw_decode, is_grain_analysis_sample);
 
-    // Log hardware acceleration status if it was added
-    if hw_accel_added {
-        report_log_message("Using VideoToolbox hardware decoding", LogLevel::Info);
+    // Only log hardware acceleration at debug level for detailed troubleshooting
+    // Hardware acceleration status is already logged at the start of processing
+    if hw_accel_added && log::log_enabled!(log::Level::Debug) {
+        debug!("VideoToolbox hardware decoding enabled for this encode");
     }
 
     cmd.input(params.input_path.to_string_lossy());

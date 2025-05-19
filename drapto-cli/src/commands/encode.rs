@@ -24,7 +24,6 @@
 // ---- Internal crate imports ----
 use crate::cli::EncodeArgs;
 use crate::config;
-use crate::platform::HardwareAcceleration;
 use crate::progress::CliProgress;
 
 // ---- External crate imports ----
@@ -297,10 +296,9 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor>(
     // --- Create Progress Tracker ---
     let _progress = CliProgress::new(interactive);
 
-    // --- Detect Hardware Acceleration ---
-    let hw_accel = HardwareAcceleration::detect();
-    hw_accel.log_capabilities();
-
+    // NOTE: We don't need to log hardware acceleration here
+    // Hardware acceleration status is logged by the core library in process_videos
+    
     // --- Execute Core Logic ---
     info!("Processing {} file(s).", files_to_process.len());
     let processing_result = if files_to_process.is_empty() {

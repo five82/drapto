@@ -184,38 +184,12 @@ Tables should:
 
 This section provides comprehensive examples of proper terminal output following the Drapto CLI design principles.
 
-### Command Help Text
-
-```
-drapto encode --help
-
-ENCODE: Convert video to AV1 format
-
-USAGE
-  drapto encode [options] <input_file>
-
-OPTIONS
-  -o, --output <file>       Output file path (default: input_file.av1.mp4)
-  -p, --preset <preset>     Encoding preset [faster, fast, medium, slow, slower] (default: medium)
-  -q, --quality <crf>       Quality setting (CRF) from 0-63, lower is better (default: 30)
-  -g, --grain <level>       Grain level [baseline, light, moderate, elevated, heavy] (default: auto)
-      --hardware            Use hardware acceleration for decoding when available
-  -v, --verbose             Show detailed output
-      --json                Output in JSON format
-  -h, --help                Show this help
-
-EXAMPLES
-  drapto encode video.mp4
-  drapto encode video.mp4 --preset slow --quality 24
-  drapto encode video.mp4 --grain moderate --hardware
-```
-
 ### Complete Workflow Example
 
 Below is an example of a complete workflow showing the proper terminal output for a video encoding process:
 
 ```
-$ drapto encode movie.mkv --preset medium --hardware
+$ drapto encode movie.mkv -i input_dir/ -o output_dir/
 
 ===== Initialization =====
 

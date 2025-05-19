@@ -123,8 +123,14 @@ pub fn add_hardware_acceleration_to_command(
     let hw_accel_available = is_hardware_acceleration_available();
 
     if use_hw_decode && hw_accel_available && !is_grain_analysis_sample {
+        // IMPORTANT: This call is adding hw acceleration options to the command
+        // but is NOT logging anything. The "Hardware: VideoToolbox hardware decoding available"
+        // message in the output is coming from another source when this function is called.
         cmd.arg("-hwaccel");
         cmd.arg("videotoolbox");
+        
+        // Note: This function doesn't directly log anything.
+        // When it returns true, the caller usually logs a message.
         return true;
     }
 

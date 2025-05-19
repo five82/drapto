@@ -165,7 +165,7 @@ pub fn process_videos<
 
     report_log_message(&format!("Running on host: {}", hostname), LogLevel::Info);
 
-    // Report hardware acceleration capabilities using the centralized module
+    // This is the ONLY place we should log hardware acceleration status
     log_hardware_acceleration_status();
 
 

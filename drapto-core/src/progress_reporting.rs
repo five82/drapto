@@ -36,8 +36,7 @@ use std::time::Duration;
 ///
 /// * `input_path` - Path to the input file
 /// * `output_path` - Path to the output file
-/// * `using_hw_accel` - Whether hardware acceleration is being used
-pub fn report_encode_start(input_path: &Path, output_path: &Path, using_hw_accel: bool) {
+pub fn report_encode_start(input_path: &Path, output_path: &Path) {
     let filename = input_path
         .file_name()
         .map(|name| name.to_string_lossy().to_string())
@@ -45,10 +44,6 @@ pub fn report_encode_start(input_path: &Path, output_path: &Path, using_hw_accel
 
     info!("Starting FFmpeg encode for: {}", filename);
     info!("  Output: {}", output_path.display());
-
-    if using_hw_accel {
-        info!("  Hardware: VideoToolbox hardware decoding enabled");
-    }
 }
 
 /// Reports progress during an encoding process.

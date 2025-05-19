@@ -99,13 +99,9 @@ pub fn extract_sample<S: FfmpegSpawner>( // Added generic parameter S
    // Use mutable command object and sequential calls
     let mut cmd = FfmpegCommand::new();
 
-    // Add hardware acceleration options BEFORE the input
+    // Add hardware acceleration options BEFORE the input - no need to log status
     // Note: We use hardware acceleration for sample extraction but not for grain analysis
-    let hw_accel_added = add_hardware_acceleration_to_command(&mut cmd, true, false);
-
-    if hw_accel_added {
-        log::debug!("Using VideoToolbox hardware decoding for sample extraction");
-    }
+    add_hardware_acceleration_to_command(&mut cmd, true, false);
 
     cmd.input(input_path.to_string_lossy().as_ref());
     cmd.arg("-ss");
