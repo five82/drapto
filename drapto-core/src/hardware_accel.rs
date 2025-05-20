@@ -150,3 +150,22 @@ pub fn log_hardware_acceleration_status() {
         report_hardware_acceleration(false, "VideoToolbox");
     }
 }
+
+/// Gets a human-readable string describing the hardware acceleration capabilities.
+///
+/// This function is useful for displaying hardware acceleration information
+/// in user interfaces.
+///
+/// # Returns
+///
+/// * `Option<String>` - A string describing the hardware acceleration capabilities,
+///   or None if no hardware acceleration is available
+pub fn get_hardware_accel_info() -> Option<String> {
+    let hw_accel_available = is_hardware_acceleration_available();
+
+    if hw_accel_available {
+        Some("VideoToolbox".to_string())
+    } else {
+        None
+    }
+}

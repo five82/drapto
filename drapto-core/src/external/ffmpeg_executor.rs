@@ -1,4 +1,23 @@
+// ============================================================================
 // drapto-core/src/external/ffmpeg_executor.rs
+// ============================================================================
+//
+// FFMPEG EXECUTOR: FFmpeg Process Management and Abstraction
+//
+// This module provides abstractions for spawning and interacting with FFmpeg
+// processes. It defines traits and implementations for executing FFmpeg commands
+// and handling their events and lifecycle.
+//
+// KEY COMPONENTS:
+// - FfmpegProcess: Trait representing an active FFmpeg process
+// - FfmpegSpawner: Trait for creating new FFmpeg processes
+// - SidecarFfmpegSpawner: Concrete implementation using ffmpeg-sidecar
+//
+// ARCHITECTURE:
+// The module follows a trait-based design that allows for flexible process 
+// management and testing through dependency injection patterns.
+//
+// AI-ASSISTANT-INFO: FFmpeg process management and execution abstraction
 
 use crate::error::{CoreResult, command_start_error, command_wait_error, command_failed_error};
 use ffmpeg_sidecar::command::FfmpegCommand;
@@ -24,8 +43,7 @@ pub trait FfmpegProcess {
 /// Trait representing something that can spawn an FfmpegProcess.
 pub trait FfmpegSpawner {
     type Process: FfmpegProcess;
-    /// Spawns the ffmpeg command.
-    // Signature takes cmd by value, matching ffmpeg-sidecar's spawn(self)
+    /// Spawns the ffmpeg command, consuming the command object.
     fn spawn(&self, cmd: FfmpegCommand) -> CoreResult<Self::Process>;
 }
 
@@ -64,10 +82,7 @@ pub struct SidecarSpawner;
 impl FfmpegSpawner for SidecarSpawner {
     type Process = SidecarProcess;
 
-    // Add mut back to cmd parameter in the IMPL only, based on E0596 hint
-    // Trait still takes `cmd: FfmpegCommand`
     fn spawn(&self, mut cmd: FfmpegCommand) -> CoreResult<Self::Process> {
-        // spawn consumes cmd, requires mutability if called like cmd.spawn()
         cmd.spawn().map(SidecarProcess)
                  .map_err(|e| command_start_error("ffmpeg (sidecar)", e))
     }
@@ -132,8 +147,6 @@ pub fn extract_sample<S: FfmpegSpawner>( // Added generic parameter S
         ));
    }
 
-   // The file existence check is redundant since FFmpeg would have failed if it couldn't create the file
-   // FFmpeg's success status is sufficient to confirm the operation completed correctly
 
    log::debug!("Sample extracted successfully to: {}", output_path.display());
    Ok(output_path) // Return the path to the created sample

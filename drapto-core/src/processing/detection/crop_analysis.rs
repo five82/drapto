@@ -311,8 +311,9 @@ pub fn detect_crop<S: FfmpegSpawner>(
 
     // STEP 2: For HDR content, refine the threshold using black level analysis
     if is_hdr {
-        println!("🔬 Performing HDR black level analysis...");
-        log::info!("Running HDR black level analysis for {}...", input_file.display());
+        // Use the centralized function for analysis step reporting
+        crate::progress_reporting::report_analysis_step("🔬", "Performing HDR black level analysis...");
+        log::debug!("Running HDR black level analysis for {}...", input_file.display());
         crop_threshold = run_hdr_blackdetect(spawner, input_file, crop_threshold)?;
     }
 
@@ -323,31 +324,32 @@ pub fn detect_crop<S: FfmpegSpawner>(
         .map(|name| name.to_string_lossy())
         .unwrap_or_else(|| input_file.to_string_lossy());
 
-    // Log video properties with multiple lines
-    log::info!(
-        "Video Properties for: {}",
-        filename_cow
-    );
-    log::info!(
-        "  {:<18} {}", // Left-align label with padding
-        "Resolution:",
-        format!("{}x{}", video_props.width, video_props.height)
-    );
-    log::info!(
-        "  {:<18} {}", // Left-align label with padding
-        "Duration:",
-        format!("{:.2}s", video_props.duration_secs)
-    );
-    log::info!(
-        "  {:<18} {}", // Left-align label with padding
-        "HDR:",
-        format!("{}", is_hdr)
-    );
-    log::info!(
-        "  {:<18} {}", // Left-align label with padding
-        "Crop Threshold:",
-        format!("{}", crop_threshold)
-    );
+    // We're moving HDR display to the initialization section
+    // Keep the is_hdr detection logic but don't log it here
+    
+    // Log the rest of the information in verbose mode only
+    if crate::progress_reporting::should_print(crate::progress_reporting::VerbosityLevel::Verbose) {
+        // Log video properties with multiple lines
+        log::info!(
+            "Video Properties for: {}",
+            filename_cow
+        );
+        log::info!(
+            "  {:<18} {}", // Left-align label with padding
+            "Resolution:",
+            format!("{}x{}", video_props.width, video_props.height)
+        );
+        log::info!(
+            "  {:<18} {}", // Left-align label with padding
+            "Duration:",
+            format!("{:.2}s", video_props.duration_secs)
+        );
+        log::info!(
+            "  {:<18} {}", // Left-align label with padding
+            "Crop Threshold:",
+            format!("{}", crop_threshold)
+        );
+    }
 
     // STEP 4: Calculate effective analysis duration (skipping credits)
     let credits_skip = calculate_credits_skip(video_props.duration_secs);
@@ -365,8 +367,8 @@ pub fn detect_crop<S: FfmpegSpawner>(
     }
 
     // STEP 5: Run crop detection analysis
-    println!("Running crop detection analysis...");
-    log::info!("Running crop detection analysis for {}...", filename_cow);
+    // Removed redundant "Analyzing frames..." message for cleaner output
+    // We'll implement real progress tracking later if needed
 
     let crop_filter = run_cropdetect(
         spawner,
@@ -376,15 +378,23 @@ pub fn detect_crop<S: FfmpegSpawner>(
         analysis_duration,
     )?;
 
-    // STEP 6: Report results
+    // STEP 6: Report results using the centralized formatting function
     if crop_filter.is_none() {
-        println!("Crop detection complete: No cropping needed.");
-        log::info!("No cropping filter determined for {}.", input_file.display());
+        // Use the centralized function for success+status formatting
+        crate::progress_reporting::report_completion_with_status(
+            "Crop detection complete",
+            "Detected crop", 
+            "None required"
+        );
+        log::debug!("No cropping needed for {}", input_file.display());
     } else {
-        println!(
-            "Crop detection complete: {}",
+        // Use the centralized function for success+status formatting
+        crate::progress_reporting::report_completion_with_status(
+            "Crop detection complete",
+            "Detected crop", 
             crop_filter.as_deref().unwrap_or("")
         );
+        log::debug!("Applied crop filter: {}", crop_filter.as_deref().unwrap_or(""));
     }
 
     // Return the crop filter and HDR status

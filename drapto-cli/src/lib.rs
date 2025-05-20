@@ -42,6 +42,9 @@ pub mod platform;
 /// CLI-specific progress reporting implementation
 pub mod progress;
 
+/// Terminal UI components and styling
+pub mod terminal;
+
 // ---- Public re-exports ----
 // These items are re-exported to make them directly accessible to the binary crate
 // and integration tests without requiring explicit imports from submodules

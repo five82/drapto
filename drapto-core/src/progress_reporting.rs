@@ -2,29 +2,170 @@
 // drapto-core/src/progress_reporting.rs
 // ============================================================================
 //
-// PROGRESS REPORTING: Direct Progress Reporting Functions
+// PROGRESS REPORTING: Core Progress Reporting API
 //
-// This module provides direct functions for reporting progress during encoding
-// and other operations. It uses the standard `log` crate for output, eliminating
-// the need for a separate callback-based progress reporting system.
+// This module provides an API for the core library to report progress and
+// output messages in a consistent format, without direct dependencies on
+// CLI-specific formatting. It uses the standard `log` crate for output.
 //
 // KEY COMPONENTS:
-// - Functions for reporting different types of progress events
-// - Helper functions for formatting durations, sizes, etc.
+// - Progress callback system for real-time progress reporting
+// - Standard message formatting functions with consistent styling
+// - Verbosity control for filtering messages
 //
-// DESIGN PHILOSOPHY:
-// This module simplifies the progress reporting system by using the logging
-// system directly, rather than through a callback-based abstraction. This
-// reduces complexity while maintaining the same functionality.
+// ARCHITECTURAL DESIGN:
+// This module serves as an abstraction layer between the core library and
+// the CLI interface. It maintains consistent formatting while allowing the
+// CLI to control the actual rendering and styling. This creates a clean
+// separation of concerns:
 //
-// AI-ASSISTANT-INFO: Direct progress reporting functions using the log crate
+// 1. Core library: Reports events and progress via this API
+// 2. CLI layer: Handles actual rendering and user interaction
+//
+// The core library uses standard logging interfaces while the CLI can
+// implement more sophisticated output formatting.
+//
+// AI-ASSISTANT-INFO: Core progress reporting API with consistent formatting
 
 // ---- External crate imports ----
-use log::{debug, info, warn, error};
+use log::{debug};
+use once_cell::sync::Lazy;
 
 // ---- Standard library imports ----
 use std::path::Path;
 use std::time::Duration;
+use std::sync::Mutex;
+
+// ============================================================================
+// PROGRESS REPORTER INTERFACE
+// ============================================================================
+
+/// A trait that defines how progress and status information should be displayed
+/// This allows the core library to delegate all formatting decisions to the CLI
+pub trait ProgressReporter: Send + Sync {
+    /// Report a section header (major workflow phase)
+    fn section(&self, title: &str);
+    
+    /// Report a processing step (» Processing step)
+    fn processing_step(&self, message: &str);
+    
+    /// Report a status line (key-value pair with optional highlighting)
+    fn status(&self, label: &str, value: &str, highlight: bool);
+    
+    /// Report success message (✓ Success)
+    fn success(&self, message: &str);
+    
+    /// Report a sub-item (indented under a processing step)
+    fn sub_item(&self, message: &str);
+    
+    /// Report a completion with associated status (Success + Status line)
+    fn completion_with_status(&self, success_message: &str, status_label: &str, status_value: &str);
+    
+    /// Report an analysis step with emoji
+    fn analysis_step(&self, emoji: &str, message: &str);
+    
+    /// Report an encoding summary with formatted details
+    fn encoding_summary(&self, filename: &str, duration: Duration, input_size: u64, output_size: u64);
+    
+    /// Report video filters being applied
+    fn video_filters(&self, filters_str: &str, is_sample: bool);
+    
+    /// Report film grain synthesis settings
+    fn film_grain(&self, level: Option<u8>, is_sample: bool);
+    
+    /// Report duration used for progress calculation
+    fn duration(&self, duration_secs: f64, is_sample: bool);
+    
+    /// Report an encoder message
+    fn encoder_message(&self, message: &str, is_sample: bool);
+    
+    /// Report empty lines for spacing
+    fn section_separator(&self);
+    
+    /// Report hardware acceleration status
+    fn hardware_acceleration(&self, available: bool, acceleration_type: &str);
+    
+    /// Report encode start
+    fn encode_start(&self, input_path: &Path, output_path: &Path);
+    
+    /// Report encode error
+    fn encode_error(&self, input_path: &Path, message: &str);
+    
+    /// Report a simple message with specific verbosity
+    fn log_message(&self, message: &str, level: LogLevel, verbosity: Option<VerbosityLevel>);
+    
+    /// Report progress with a progress bar
+    fn progress_bar(&self, percent: f32, elapsed_secs: f64, total_secs: f64, speed: Option<f32>, fps: Option<f32>, eta: Option<Duration>);
+}
+
+// ============================================================================
+// PROGRESS REPORTER REGISTRY
+// ============================================================================
+
+// Global progress reporter instance using lazily initialized static
+static PROGRESS_REPORTER: Lazy<Mutex<Option<Box<dyn ProgressReporter>>>> = 
+    Lazy::new(|| Mutex::new(None));
+
+/// Register a progress reporter implementation
+/// This should be called by the CLI to provide formatting implementation
+pub fn set_progress_reporter(reporter: Box<dyn ProgressReporter>) {
+    if let Ok(mut r) = PROGRESS_REPORTER.lock() {
+        *r = Some(reporter);
+    }
+}
+
+/// Get a reference to the current progress reporter, if any
+fn get_progress_reporter() -> Option<&'static dyn ProgressReporter> {
+    // First try to get the lock
+    if let Ok(reporter_guard) = PROGRESS_REPORTER.lock() {
+        // If we have a reporter, return a reference to it
+        if let Some(reporter) = &*reporter_guard {
+            // This is unsafe but necessary because we need to return a static reference
+            // The actual reporter is stored in a static Lazy<Mutex> so it lives for the program duration
+            let reporter_ptr = reporter.as_ref() as *const dyn ProgressReporter;
+            return Some(unsafe { &*reporter_ptr });
+        }
+    }
+    None
+}
+
+// ============================================================================
+// PROGRESS CALLBACK SYSTEM
+// ============================================================================
+
+/// Type definition for progress callback functions
+pub type ProgressCallback = Box<dyn FnMut(f32, f64, f64, f32, f32, Duration) + Send + 'static>;
+
+// Global progress callback using lazily initialized static
+static PROGRESS_CALLBACK: Lazy<Mutex<Option<Box<dyn FnMut(f32, f64, f64, f32, f32, Duration) + Send + 'static>>>> = 
+    Lazy::new(|| Mutex::new(None));
+
+/// Sets a callback function for progress reporting
+///
+/// This callback will be called whenever `report_encode_progress` is called,
+/// allowing clients to handle progress updates in a custom way.
+///
+/// # Arguments
+///
+/// * `callback` - A boxed function that takes progress parameters
+///   - percent: f32 - Progress percentage (0.0 to 100.0)
+///   - current_secs: f64 - Current time position in seconds
+///   - total_secs: f64 - Total duration in seconds
+///   - speed: f32 - Encoding speed (e.g., 2.5x means 2.5x realtime)
+///   - fps: f32 - Average frames per second
+///   - eta: Duration - Estimated time remaining
+pub fn set_progress_callback(callback: ProgressCallback) {
+    if let Ok(mut cb) = PROGRESS_CALLBACK.lock() {
+        *cb = Some(callback);
+    }
+}
+
+/// Clears the progress callback
+pub fn clear_progress_callback() {
+    if let Ok(mut cb) = PROGRESS_CALLBACK.lock() {
+        *cb = None;
+    }
+}
 
 // ============================================================================
 // PROGRESS REPORTING FUNCTIONS
@@ -37,13 +178,9 @@ use std::time::Duration;
 /// * `input_path` - Path to the input file
 /// * `output_path` - Path to the output file
 pub fn report_encode_start(input_path: &Path, output_path: &Path) {
-    let filename = input_path
-        .file_name()
-        .map(|name| name.to_string_lossy().to_string())
-        .unwrap_or_else(|| input_path.to_string_lossy().to_string());
-
-    info!("Starting FFmpeg encode for: {}", filename);
-    info!("  Output: {}", output_path.display());
+    if let Some(reporter) = get_progress_reporter() {
+        reporter.encode_start(input_path, output_path);
+    }
 }
 
 /// Reports progress during an encoding process.
@@ -64,37 +201,36 @@ pub fn report_encode_progress(
     fps: f32,
     eta: Duration,
 ) {
-    // Format the ETA
-    let eta_str = if eta.as_secs() > 0 {
-        crate::format_duration(eta)
+    // Call progress callback if set
+    let use_callback = if let Ok(mut callback_opt) = PROGRESS_CALLBACK.lock() {
+        if let Some(callback) = &mut *callback_opt {
+            // Call the callback with the progress parameters
+            (callback)(percent, current_secs, total_secs, speed, fps, eta);
+            true
+        } else {
+            false
+        }
     } else {
-        "< 1s".to_string()
+        false
     };
-
-    // Format the current and total time
-    let current_time = format_duration_seconds(current_secs);
-    let total_time = format_duration_seconds(total_secs);
-
-    info!(
-        "Encoding progress: {:.2}% ({} / {}), Speed: {:.2}x, Avg FPS: {:.2}, ETA: {}",
-        percent,
-        current_time,
-        total_time,
-        speed,
-        fps,
-        eta_str
-    );
-
-    // Also log to debug level for potential file logging without colors
-    debug!(
-        "Encoding progress: {:.2}% ({} / {}), Speed: {:.2}x, Avg FPS: {:.2}, ETA: {}",
-        percent,
-        current_time,
-        total_time,
-        speed,
-        fps,
-        eta_str
-    );
+    
+    // Early return if callback was successfully called
+    if use_callback {
+        return;
+    }
+    
+    // Otherwise, use the progress reporter for central formatting
+    if let Some(reporter) = get_progress_reporter() {
+        // Use the dedicated progress bar function
+        reporter.progress_bar(
+            percent,
+            current_secs,
+            total_secs,
+            Some(speed),
+            Some(fps),
+            Some(eta)
+        );
+    }
 }
 
 /// Reports the completion of an encoding process.
@@ -119,25 +255,21 @@ pub fn report_encode_complete(
         .map(|name| name.to_string_lossy().to_string())
         .unwrap_or_else(|| input_path.to_string_lossy().to_string());
 
-    // Calculate size reduction percentage
+    // Use the centralized encoding summary function
+    report_encoding_summary(&filename, duration, input_size, output_size);
+
+    // Calculate reduction percentage
     let reduction = if input_size > 0 {
-        100 - ((output_size * 100) / input_size)
+        100.0 - ((output_size as f64 / input_size as f64) * 100.0)
     } else {
-        0
+        0.0
     };
-
-    info!("{}", filename);
-    info!("  {:<13} {}", "Encode time:", crate::format_duration(duration));
-    info!("  {:<13} {}", "Input size:", crate::format_bytes(input_size));
-    info!("  {:<13} {}", "Output size:", crate::format_bytes(output_size));
-    info!("  {:<13} {}", "Reduced by:", format!("{}%", reduction));
-    info!("{}", "----------------------------------------");
-
+    
     // Also log to debug level for potential file logging without colors
     debug!(
-        "Encode complete for {}: Duration: {}, Input: {} bytes, Output: {} bytes, Reduction: {}%",
+        "Encode complete for {}: Duration: {}, Input: {} bytes, Output: {} bytes, Reduction: {:.2}%",
         filename,
-        crate::format_duration(duration),
+        crate::utils::format_duration(duration),
         input_size,
         output_size,
         reduction
@@ -151,13 +283,9 @@ pub fn report_encode_complete(
 /// * `input_path` - Path to the input file
 /// * `message` - Error message
 pub fn report_encode_error(input_path: &Path, message: &str) {
-    // Extract filename for logging
-    let filename = input_path
-        .file_name()
-        .map(|name| name.to_string_lossy().to_string())
-        .unwrap_or_else(|| input_path.to_string_lossy().to_string());
-
-    error!("Error encoding {}: {}", filename, message);
+    if let Some(reporter) = get_progress_reporter() {
+        reporter.encode_error(input_path, message);
+    }
 }
 
 /// Reports hardware acceleration status.
@@ -167,10 +295,8 @@ pub fn report_encode_error(input_path: &Path, message: &str) {
 /// * `available` - Whether hardware acceleration is available
 /// * `acceleration_type` - Type of hardware acceleration (e.g., "VideoToolbox")
 pub fn report_hardware_acceleration(available: bool, acceleration_type: &str) {
-    if available {
-        info!("Hardware: {} hardware decoding available", acceleration_type);
-    } else {
-        info!("Hardware: Using software decoding (hardware acceleration not available on this platform)");
+    if let Some(reporter) = get_progress_reporter() {
+        reporter.hardware_acceleration(available, acceleration_type);
     }
 }
 
@@ -181,34 +307,197 @@ pub fn report_hardware_acceleration(available: bool, acceleration_type: &str) {
 /// * `message` - The log message
 /// * `level` - The log level (debug, info, warning, error)
 pub fn report_log_message(message: &str, level: LogLevel) {
-    match level {
-        LogLevel::Debug => debug!("{}", message),
-        LogLevel::Info => info!("{}", message),
-        LogLevel::Warning => warn!("{}", message),
-        LogLevel::Error => error!("{}", message),
+    // Use verbose verbosity level for backward compatibility
+    report_log_message_with_verbosity(message, level, Some(VerbosityLevel::Verbose));
+}
+
+/// Reports a log message with the specified level and an optional verbosity level.
+///
+/// # Arguments
+///
+/// * `message` - The log message
+/// * `level` - The log level (debug, info, warning, error)
+/// * `verbosity` - Optional verbosity level (defaults to Normal)
+pub fn report_log_message_with_verbosity(message: &str, level: LogLevel, verbosity: Option<VerbosityLevel>) {
+    if let Some(reporter) = get_progress_reporter() {
+        reporter.log_message(message, level, verbosity);
     }
 }
+
+// ============================================================================
+// TERMINAL UI STYLE HELPERS
+// ============================================================================
+// These functions provide a bridge to the CLI's terminal.rs formatting
+// while keeping the core library independent of CLI-specific code.
+// They use standard logging to avoid direct dependencies.
+
+/// Reports a processing step in a consistent format
+/// This automatically adds appropriate spacing before the step
+///
+/// # Arguments
+///
+/// * `message` - The processing step message
+pub fn report_processing_step(message: &str) {
+    if let Some(reporter) = get_progress_reporter() {
+        reporter.processing_step(message);
+    }
+}
+
+/// Reports a sub-item under a processing step
+///
+/// # Arguments
+///
+/// * `message` - The sub-item message
+pub fn report_sub_item(message: &str) {
+    if let Some(reporter) = get_progress_reporter() {
+        reporter.sub_item(message);
+    }
+}
+
+/// Reports a success message with checkmark
+/// This automatically adds appropriate spacing before the message
+///
+/// # Arguments
+///
+/// * `message` - The success message
+pub fn report_success(message: &str) {
+    if let Some(reporter) = get_progress_reporter() {
+        reporter.success(message);
+    }
+}
+
+/// Reports a completion with associated status in a consistent format
+/// This should be used for cases like "Crop detection complete" + "Detected crop: XXX"
+/// 
+/// # Arguments
+/// 
+/// * `success_message` - The main completion/success message
+/// * `status_label` - The label for the status line
+/// * `status_value` - The value for the status line
+pub fn report_completion_with_status(success_message: &str, status_label: &str, status_value: &str) {
+    if let Some(reporter) = get_progress_reporter() {
+        reporter.completion_with_status(success_message, status_label, status_value);
+    }
+}
+
+/// Reports a specialized analysis step with emoji
+///
+/// # Arguments
+///
+/// * `emoji` - The emoji character to use
+/// * `message` - The message to display
+pub fn report_analysis_step(emoji: &str, message: &str) {
+    if let Some(reporter) = get_progress_reporter() {
+        reporter.analysis_step(emoji, message);
+    }
+}
+
+/// Reports an encoding summary with consistent formatting
+///
+/// # Arguments
+///
+/// * `filename` - Name of the encoded file
+/// * `duration` - Encoding duration
+/// * `input_size` - Size of input file in bytes
+/// * `output_size` - Size of output file in bytes
+pub fn report_encoding_summary(filename: &str, duration: Duration, input_size: u64, output_size: u64) {
+    if let Some(reporter) = get_progress_reporter() {
+        reporter.encoding_summary(filename, duration, input_size, output_size);
+    }
+}
+
+/// Reports empty lines to separate logical groups
+/// This follows the design guide by using proper spacing instead of separator lines
+pub fn report_section_separator() {
+    if let Some(reporter) = get_progress_reporter() {
+        reporter.section_separator();
+    }
+}
+
+/// Reports filters being applied to video encode
+/// 
+/// # Arguments
+/// 
+/// * `filters_str` - String describing the filters being applied
+/// * `is_sample` - Whether this is a grain analysis sample (reduces verbosity)
+pub fn report_video_filters(filters_str: &str, is_sample: bool) {
+    if let Some(reporter) = get_progress_reporter() {
+        reporter.video_filters(filters_str, is_sample);
+    }
+}
+
+/// Reports film grain synthesis settings
+///
+/// # Arguments
+///
+/// * `level` - Film grain synthesis level 
+/// * `is_sample` - Whether this is a grain analysis sample (reduces verbosity)
+pub fn report_film_grain(level: Option<u8>, is_sample: bool) {
+    if let Some(reporter) = get_progress_reporter() {
+        reporter.film_grain(level, is_sample);
+    }
+}
+
+/// Reports duration used for progress calculation
+///
+/// # Arguments
+///
+/// * `duration_secs` - Duration in seconds
+/// * `is_sample` - Whether this is a grain analysis sample (reduces verbosity)
+pub fn report_duration(duration_secs: f64, is_sample: bool) {
+    if let Some(reporter) = get_progress_reporter() {
+        reporter.duration(duration_secs, is_sample);
+    }
+}
+
+/// Reports encoder message from FFmpeg
+///
+/// # Arguments
+///
+/// * `message` - The message from the encoder
+/// * `is_sample` - Whether this is a grain analysis sample (reduces verbosity)
+pub fn report_encoder_message(message: &str, is_sample: bool) {
+    if let Some(reporter) = get_progress_reporter() {
+        reporter.encoder_message(message, is_sample);
+    }
+}
+
+/// Reports a status line with a label and value
+///
+/// # Arguments
+///
+/// * `label` - The label for the status
+/// * `value` - The value to display
+pub fn report_status(label: &str, value: &str) {
+    if let Some(reporter) = get_progress_reporter() {
+        reporter.status(label, value, false);
+    }
+}
+
+/// Reports information only in verbose mode
+///
+/// # Arguments
+///
+/// * `message` - The verbose info message
+pub fn report_verbose_info(message: &str) {
+    if let Some(reporter) = get_progress_reporter() {
+        reporter.log_message(message, LogLevel::Info, Some(VerbosityLevel::Verbose));
+    }
+}
+
+/// Prints an empty line for vertical spacing
+pub fn report_empty_line() {
+    if let Some(reporter) = get_progress_reporter() {
+        reporter.log_message("", LogLevel::Info, Some(VerbosityLevel::Normal));
+    }
+}
+
+// Removed separator line function as it's not used in the CLI design guide
 
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
 
-/// Formats a duration in seconds as a human-readable string.
-///
-/// # Arguments
-///
-/// * `seconds` - Duration in seconds
-///
-/// # Returns
-///
-/// * A formatted string (e.g., "01:30:45")
-fn format_duration_seconds(seconds: f64) -> String {
-    let hours = (seconds / 3600.0) as u64;
-    let minutes = ((seconds % 3600.0) / 60.0) as u64;
-    let secs = (seconds % 60.0) as u64;
-
-    format!("{:02}:{:02}:{:02}", hours, minutes, secs)
-}
 
 /// Log levels for progress reporting.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -221,4 +510,42 @@ pub enum LogLevel {
     Warning,
     /// Error message
     Error,
+}
+
+/// Verbosity levels for progress reporting.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VerbosityLevel {
+    /// Normal mode (quiet by default, only essential info)
+    Normal,
+    /// Verbose mode (detailed output for troubleshooting)
+    Verbose,
+}
+
+/// Global verbosity level for progress reporting
+static mut VERBOSITY: VerbosityLevel = VerbosityLevel::Normal;
+
+/// Sets the verbosity level for progress reporting.
+///
+/// # Arguments
+///
+/// * `level` - The verbosity level to set
+pub fn set_verbosity(level: VerbosityLevel) {
+    unsafe { VERBOSITY = level; }
+}
+
+/// Determines if a message at the given verbosity level should be printed.
+///
+/// # Arguments
+///
+/// * `level` - The verbosity level of the message
+///
+/// # Returns
+///
+/// * `true` if the message should be printed, `false` otherwise
+pub fn should_print(level: VerbosityLevel) -> bool {
+    let current = unsafe { VERBOSITY };
+    match (current, level) {
+        (VerbosityLevel::Normal, VerbosityLevel::Verbose) => false,
+        _ => true,
+    }
 }

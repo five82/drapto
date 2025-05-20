@@ -25,6 +25,8 @@
 use crate::cli::EncodeArgs;
 use crate::config;
 use crate::progress::CliProgress;
+use crate::terminal;
+use crate::terminal::VerbosityLevel;
 
 // ---- External crate imports ----
 use drapto_core::{CoreError, EncodeResult};
@@ -32,6 +34,7 @@ use drapto_core::external::{FfmpegSpawner, FfprobeExecutor};
 use drapto_core::external::StdFsMetadataProvider;
 use drapto_core::notifications::NtfyNotificationSender;
 use drapto_core::progress_reporting::{report_log_message, LogLevel}; // New direct reporting
+use drapto_core::processing::detection::properties::VideoProperties;
 use anyhow::{Context, Result, anyhow};
 
 // ---- Standard library imports ----
@@ -41,7 +44,28 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 // ---- Logging imports ----
-use log::{info, warn, error};
+use log::{info, warn};
+
+/// Helper function to detect if a video is HDR based on its properties
+/// 
+/// # Arguments
+/// * `video_props` - The video properties to check
+/// 
+/// # Returns
+/// * A tuple containing:
+///   - Crop threshold (u8) for use in crop detection
+///   - Boolean indicating if the video is HDR
+fn detect_hdr(video_props: &VideoProperties) -> (u8, bool) {
+    // Extract color space information (BT.2020 or PQ/HLG indicates HDR)
+    let is_hdr = video_props.color_space.as_ref()
+        .map(|cs| cs.contains("bt2020") || cs.contains("pq") || cs.contains("hlg"))
+        .unwrap_or(false);
+    
+    // Determine crop threshold (higher for HDR)
+    let crop_threshold = if is_hdr { 20 } else { 16 };
+    
+    (crop_threshold, is_hdr)
+}
 
 /// Discovers .mkv files to encode based on the provided arguments.
 ///
@@ -171,20 +195,101 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor>(
     let main_log_filename = format!("drapto_encode_run_{}.log", crate::logging::get_timestamp()); // Keep get_timestamp usage
     let main_log_path = log_dir.join(&main_log_filename); // Use reference
 
-    // --- Log Initial Info using standard log macros ---
-    info!("========================================");
-    info!("Drapto Encode Run Started: {}", chrono::Local::now().to_string());
-    info!("  {:<25} {}", "Original Input arg:", args.input_path.display());
-    info!("  {:<25} {}", "Original Output arg:", args.output_dir.display());
-    info!("  {:<25} {}", "Effective Output directory:", actual_output_dir.display());
-    if let Some(fname) = &target_filename_override {
-        info!("  {:<25} {}", "Effective Output filename:", fname.display());
+    // --- Log Initial Info using our new terminal module ---
+    terminal::print_section("Initialization");
+    
+    // Get file information from ffprobe for more useful user info
+    let file_info = if !files_to_process.is_empty() {
+        ffprobe_executor.get_media_info(&files_to_process[0]).ok()
+    } else {
+        None
+    };
+    
+    // Simplify the display path for better readability
+    let input_path_display = args.input_path.display().to_string();
+    let output_display = if let Some(fname) = &target_filename_override {
+        fname.display().to_string()
+    } else {
+        actual_output_dir.display().to_string()
+    };
+    
+    // Format duration if available
+    let duration_display = if let Some(info) = &file_info {
+        if let Some(duration_secs) = info.duration {
+            let formatted = crate::progress::CliProgress::format_duration_seconds(duration_secs);
+            Some(formatted)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    
+    // Format resolution if available
+    let resolution_display = if let Some(info) = &file_info {
+        if let (Some(width), Some(height)) = (info.width, info.height) {
+            if width > 0 && height > 0 {
+                let resolution_type = if width >= 3840 {
+                    "(UHD)"
+                } else if width >= 1280 {
+                    // Combines both 1080p and 720p into HD
+                    "(HD)"
+                } else {
+                    "(SD)"
+                };
+                
+                Some(format!("{}x{} {}", width, height, resolution_type))
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    
+    // Show only the most essential information
+    terminal::print_status("Input", &input_path_display, false);
+    terminal::print_status("Output", &output_display, false);
+    
+    if let Some(duration) = duration_display {
+        terminal::print_status("Duration", &duration, false);
     }
-    info!("  {:<25} {}", "Log directory:", log_dir.display());
-    info!("  {:<25} {}", "Main log file (info):", main_log_path.display());
-    info!("  {:<25} {}", "Interactive mode:", interactive);
-    // Hardware acceleration has been removed. Software decoding is always used.
-    info!("========================================");
+    
+    if let Some(resolution) = resolution_display {
+        terminal::print_status("Resolution", &resolution, false);
+    }
+    
+    // Show hardware acceleration info
+    let hw_accel_info = drapto_core::hardware_accel::get_hardware_accel_info();
+    let hw_display = match hw_accel_info {
+        Some(info) => format!("{} (decode only)", info),
+        None => "None available".to_string()
+    };
+    terminal::print_status("Hardware", &hw_display, false);
+    
+    // Check for HDR video if we have file information
+    // This requires getting video properties, but we'd need to do this detection anyway
+    if !files_to_process.is_empty() {
+        // We only need to check the first file for now
+        if let Ok(video_props) = ffprobe_executor.get_video_properties(&files_to_process[0]) {
+            // Quick detection without full crop analysis
+            let (_, is_hdr) = detect_hdr(&video_props);
+            terminal::print_status("HDR Video", if is_hdr { "Yes" } else { "No" }, false);
+        }
+    }
+    
+    // We only show verbose info in verbose mode
+    if terminal::should_print(VerbosityLevel::Verbose) {
+        // These are only shown in verbose mode
+        terminal::print_status("Log file", &main_log_path.display().to_string(), false);
+        terminal::print_status("Interactive mode", &interactive.to_string(), false);
+        terminal::print_status("Run started", &chrono::Local::now().to_string(), false);
+    }
+    
+    // No divider here - we'll rely on section spacing
+    // Note: Terminal module already sets verbosity in progress_reporting when initialized
 
     // --- PID File Handling (Daemon Mode Only) ---
     if !interactive {
@@ -204,8 +309,11 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor>(
         match drapto_core::processing::detection::grain_analysis::GrainLevel::from_str(level_str) {
             Ok(level) => Some(level),
             Err(_) => {
-                let message = format!("Warning: Invalid grain_max_level '{}'. Using default.", level_str);
-                report_log_message(&message, LogLevel::Warning);
+                // Only show detailed warnings in verbose mode
+                if terminal::should_print(VerbosityLevel::Verbose) {
+                    let message = format!("Warning: Invalid grain_max_level '{}'. Using default.", level_str);
+                    report_log_message(&message, LogLevel::Warning);
+                }
                 None
             }
         }
@@ -215,8 +323,11 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor>(
         match drapto_core::processing::detection::grain_analysis::GrainLevel::from_str(level_str) {
             Ok(level) => Some(level),
             Err(_) => {
-                let message = format!("Warning: Invalid grain_fallback_level '{}'. Using default.", level_str);
-                report_log_message(&message, LogLevel::Warning);
+                // Only show detailed warnings in verbose mode
+                if terminal::should_print(VerbosityLevel::Verbose) {
+                    let message = format!("Warning: Invalid grain_fallback_level '{}'. Using default.", level_str);
+                    report_log_message(&message, LogLevel::Warning);
+                }
                 None
             }
         }
@@ -225,9 +336,12 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor>(
     // Validate knee threshold is within valid range (0.1 to 1.0)
     let grain_knee_threshold = args.grain_knee_threshold.and_then(|threshold| {
         if !(0.1..=1.0).contains(&threshold) {
-            let message = format!("Warning: Knee threshold {} is outside valid range (0.1-1.0). Using default.",
-                threshold);
-            report_log_message(&message, LogLevel::Warning);
+            // Only show detailed warnings in verbose mode
+            if terminal::should_print(VerbosityLevel::Verbose) {
+                let message = format!("Warning: Knee threshold {} is outside valid range (0.1-1.0). Using default.",
+                    threshold);
+                report_log_message(&message, LogLevel::Warning);
+            }
             None
         } else {
             Some(threshold)
@@ -294,28 +408,61 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor>(
     let config = builder.build();
 
     // --- Create Progress Tracker ---
-    let _progress = CliProgress::new(interactive);
+    // Create a progress tracker with both interactive flag and verbosity based on terminal settings
+    let progress = CliProgress::new(interactive);
+    
+    // Update progress reporting in the core library to use our progress tracker
+    drapto_core::progress_reporting::set_progress_callback(Box::new(move |
+        percent, 
+        current_secs, 
+        total_secs, 
+        speed, 
+        fps, 
+        eta
+    | {
+        // Forward progress to our CLI progress display
+        progress.process_encode_progress(
+            percent, 
+            current_secs, 
+            total_secs, 
+            speed, 
+            fps, 
+            eta
+        );
+    }));
 
     // NOTE: We don't need to log hardware acceleration here
     // Hardware acceleration status is logged by the core library in process_videos
     
     // --- Execute Core Logic ---
-    info!("Processing {} file(s).", files_to_process.len());
+    terminal::print_section("Video Analysis");
+    if terminal::should_print(VerbosityLevel::Verbose) {
+        terminal::print_processing(&format!("Analyzing {} file(s)", files_to_process.len()));
+    } else {
+        // Simple message for normal mode
+        terminal::print_processing("Detecting black bars");
+    }
+    
     let processing_result = if files_to_process.is_empty() {
          warn!("Warning: No processable .mkv files found in the specified input path."); // Use warn level
          Ok(Vec::new())
     } else {
-         // Pass the Option<PathBuf> target_filename_override
-         // Spawner is now passed in as an argument
-         // Notifier is now passed in as an argument
+         // Only show detailed command info in verbose mode
+         if terminal::should_print(VerbosityLevel::Verbose) {
+             for file in &files_to_process {
+                 if let Some(filename) = file.file_name() {
+                     terminal::print_status("File", &filename.to_string_lossy(), false);
+                 }
+             }
+         }
 
          // Call drapto_core::process_videos
          drapto_core::process_videos(
-             spawner, // Pass the injected spawner instance (S)
-             ffprobe_executor, // Pass the injected ffprobe executor instance (P)
-             notification_sender, // Pass the injected notification sender instance (N)
-             &StdFsMetadataProvider, // Pass the standard metadata provider
-             &config, // Pass config (&CoreConfig)
+             spawner,
+             ffprobe_executor,
+             notification_sender,
+             &StdFsMetadataProvider,
+             &config,
              &files_to_process,
              target_filename_override
          )
@@ -329,53 +476,90 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor>(
             successfully_encoded = results.to_vec();
             // Use warn level if no files encoded
             if successfully_encoded.is_empty() {
-                 warn!("Warning: No files were successfully encoded.");
+                terminal::print_error(
+                    "No files encoded", 
+                    "No files were successfully encoded", 
+                    Some("Check that your input files are valid .mkv files")
+                );
             } else {
-                 info!("Successfully encoded {} file(s).", successfully_encoded.len());
+                terminal::print_success(&format!("Successfully encoded {} file(s)", successfully_encoded.len()));
             }
         }
         Err(e) => {
             // Use error level for fatal errors
-            error!("FATAL CORE ERROR during processing: {}", e);
+            terminal::print_error(
+                "Fatal error during processing", 
+                &e.to_string(), 
+                None
+            );
             return Err(e);
         }
     }
 
     // --- Clean up temporary directories ---
-    info!("Cleaning up temporary directories...");
+    // Only show cleanup messages in verbose mode
+    if terminal::should_print(VerbosityLevel::Verbose) {
+        terminal::print_processing("Cleaning up temporary directories");
+    }
+    
     if let Err(e) = drapto_core::temp_files::cleanup_base_dirs(&config)
         .context("Failed to clean up temporary directories")
     {
-        warn!("Warning: {}", e);
+        // Always show errors regardless of verbosity
+        terminal::print_error("Cleanup warning", &e.to_string(), None);
     }
 
 
     // --- Print Summary ---
     if !successfully_encoded.is_empty() {
-        info!("========================================");
-        info!("Encoding Summary:");
-        info!("========================================");
+        terminal::print_section("Summary");
+        
         for result in &successfully_encoded {
             let reduction = if result.input_size > 0 {
                 100u64.saturating_sub(result.output_size.saturating_mul(100) / result.input_size)
             } else {
                 0
             };
-            info!("{}", result.filename); // Log filename directly
-            info!("  {:<13} {}", "Encode time:", drapto_core::format_duration(result.duration));
-            info!("  {:<13} {}", "Input size:", drapto_core::format_bytes(result.input_size));
-            info!("  {:<13} {}", "Output size:", drapto_core::format_bytes(result.output_size));
-            info!("  {:<13} {}", "Reduced by:", format!("{}%", reduction));
-            info!("----------------------------------------");
+            
+            // Only print filename if multiple files
+            if successfully_encoded.len() > 1 {
+                terminal::print_subsection(&result.filename);
+            }
+            
+            // Print file statistics with shorter labels
+            terminal::print_status("Time", &drapto_core::format_duration(result.duration), false);
+            terminal::print_status("Input", &drapto_core::format_bytes(result.input_size), false);
+            terminal::print_status("Output", &drapto_core::format_bytes(result.output_size), true);
+            terminal::print_status("Reduction", &format!("{}%", reduction), true);
         }
     }
 
     // --- Final Timing ---
     let total_elapsed_time = total_start_time.elapsed();
-    info!("========================================");
-    info!("Total encode execution time: {}", drapto_core::format_duration(total_elapsed_time));
-    info!("Drapto Encode Run Finished: {}", chrono::Local::now().to_string());
-    info!("========================================");
+    
+    // Only show completion section in verbose mode
+    if terminal::should_print(VerbosityLevel::Verbose) {
+        terminal::print_section("Completion");
+        terminal::print_status(
+            "Total time", 
+            &drapto_core::format_duration(total_elapsed_time), 
+            true
+        );
+        terminal::print_status(
+            "Finished at", 
+            &chrono::Local::now().to_string(), 
+            false
+        );
+    } else {
+        // In normal mode, just show total time as regular status
+        // Add a bit of spacing first (1 line)
+        terminal::print_empty_line();
+        terminal::print_status(
+            "Total time", 
+            &drapto_core::format_duration(total_elapsed_time), 
+            true
+        );
+    }
 
     // env_logger handles flushing automatically.
 

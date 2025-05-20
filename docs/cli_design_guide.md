@@ -202,7 +202,6 @@ $ drapto encode movie.mkv -i input_dir/ -o output_dir/
 ===== Video Analysis =====
 
 » Detecting black bars
-  Analyzing frames...
   ⧖ Progress: 100.0% [##############################] (10.0 / 10.0s)
 
 ✓ Crop detection complete

@@ -27,6 +27,7 @@
 use drapto_cli::{Cli, Commands, run_encode};
 use drapto_cli::commands::encode::discover_encode_files;
 use drapto_cli::logging::get_timestamp;
+use drapto_cli::terminal::{self, VerbosityLevel};
 
 // ---- External crate imports ----
 use drapto_core::external::{SidecarSpawner, CrateFfprobeExecutor};
@@ -81,6 +82,23 @@ fn main() -> Result<()> {
 
     // Extract interactive mode flag (affects daemonization)
     let interactive_mode = cli_args.interactive;
+    
+    // Configure terminal output settings
+    let verbosity_level = if cli_args.verbose {
+        VerbosityLevel::Verbose
+    } else {
+        VerbosityLevel::Normal
+    };
+    
+    // Set verbosity level in the terminal module
+    // This automatically propagates to the core library via the terminal module
+    terminal::set_verbosity(verbosity_level);
+    
+    // Configure color settings (disabled if --no-color flag is used)
+    terminal::set_color(!cli_args.no_color);
+    
+    // Register the CLI progress reporter to centralize all formatting
+    terminal::register_cli_reporter();
 
 
     // SECTION: Command Dispatch
@@ -124,21 +142,12 @@ fn main() -> Result<()> {
                 // Display all pre-daemonization information in a single block
                 // to reduce the number of flush operations needed
 
-                // Show files that will be processed
-                if !discovered_files.is_empty() {
-                    eprintln!("Will encode the following files:");
-                    for file in &discovered_files {
-                        eprintln!("  - {}", file.display());
-                    }
-                } else {
-                    eprintln!("No .mkv files found to encode in the specified input.");
-                }
-
-                // Show log file path so user knows where to find output
-                eprintln!("Log file: {}", main_log_path.display());
-
-                // Inform user that process is going to background
-                eprintln!("Starting Drapto daemon in the background...");
+                // Show pre-daemonization messages using the centralized functions
+                // These use eprintln! internally instead of log macros
+                // since logging will be redirected to the daemon log file
+                crate::terminal::print_daemon_file_list(&discovered_files);
+                crate::terminal::print_daemon_log_info(&main_log_path);
+                crate::terminal::print_daemon_starting();
 
                 // Single flush operation after all messages
                 if let Err(e) = io::stderr().flush() {

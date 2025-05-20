@@ -38,7 +38,7 @@ use crate::hardware_accel::log_hardware_acceleration_status;
 use crate::notifications::{NotificationType, NtfyNotificationSender};
 use crate::processing::audio;
 use crate::processing::detection::{self, grain_analysis};
-use crate::progress_reporting::{report_log_message, LogLevel}; // Direct progress reporting
+use crate::progress_reporting::{report_log_message_with_verbosity, LogLevel, VerbosityLevel}; // Direct progress reporting
 use crate::utils::{format_duration, get_file_size};
 use crate::EncodeResult;
 
@@ -163,7 +163,7 @@ pub fn process_videos<
         .map(|s| s.into_string().unwrap_or_else(|_| "unknown-host-invalid-utf8".to_string()))
         .unwrap_or_else(|_| "unknown-host-error".to_string());
 
-    report_log_message(&format!("Running on host: {}", hostname), LogLevel::Info);
+    report_log_message_with_verbosity(&format!("Running on host: {}", hostname), LogLevel::Info, Some(VerbosityLevel::Verbose));
 
     // This is the ONLY place we should log hardware acceleration status
     log_hardware_acceleration_status();
@@ -215,9 +215,9 @@ pub fn process_videos<
 
         // Skip processing if the output file already exists to avoid overwriting
         if output_path.exists() {
-            // Log the error with details
+            // Log the error with details - always shown regardless of verbosity
             let error_msg = format!(
-                "ERROR: Output file already exists: {}. Skipping encode.",
+                "Output file already exists: {}. Skipping encode.",
                 output_path.display()
             );
             error!("{}", error_msg);
@@ -242,13 +242,16 @@ pub fn process_videos<
                 }
             }
 
-            // Add a separator in the log and skip to the next file
-            info!("----------------------------------------");
+            // Skip to the next file
+            // Add an empty line for spacing
+            crate::progress_reporting::report_empty_line();
             continue;
         }
 
-        // Log the current file being processed
-        info!("Processing: {}", filename);
+        // Only log the file being processed in verbose mode
+        if crate::progress_reporting::should_print(crate::progress_reporting::VerbosityLevel::Verbose) {
+            info!("Processing: {}", filename);
+        }
 
         // ========================================================================
         // STEP 3.3: SEND START NOTIFICATION
@@ -295,8 +298,8 @@ pub fn process_videos<
                     }
                 }
 
-                // Add a separator in the log and skip to the next file
-                info!("----------------------------------------");
+                // Add spacing in the log and skip to the next file
+                crate::progress_reporting::report_section_separator();
                 continue;
             }
         };
@@ -335,13 +338,15 @@ pub fn process_videos<
             "SD"
         };
 
-        // Log the detected resolution and selected quality
-        info!(
-            "Detected video width: {} ({}) - CRF set to {}",
-            video_width,
-            category,
-            quality
-        );
+        // Log the detected resolution and selected quality only in verbose mode
+        if crate::progress_reporting::should_print(crate::progress_reporting::VerbosityLevel::Verbose) {
+            info!(
+                "Detected video width: {} ({}) - CRF set to {}",
+                video_width,
+                category,
+                quality
+            );
+        }
 
         // ========================================================================
         // STEP 3.6: PERFORM CROP DETECTION
@@ -406,9 +411,10 @@ pub fn process_videos<
         // Analyze grain/noise in the video to determine optimal denoising parameters
         let final_hqdn3d_params_result = if config.enable_denoise {
             // Perform grain analysis if denoising is enabled
-            report_log_message(
+            report_log_message_with_verbosity(
                 "Grain detection enabled, analyzing video using relative sample comparison...",
-                LogLevel::Info
+                LogLevel::Info,
+                Some(VerbosityLevel::Verbose)
             );
 
             grain_analysis::analyze_grain(
@@ -471,8 +477,8 @@ pub fn process_videos<
                      }
                  }
 
-                 // Add a separator in the log and skip to the next file
-                 info!("----------------------------------------");
+                 // Add spacing in the log and skip to the next file
+                 crate::progress_reporting::report_section_separator();
                  continue; // Skip this file
              }
          };
@@ -523,12 +529,13 @@ pub fn process_videos<
                     output_size,
                 });
 
-                // Log completion message
-                let completion_log_msg = format!("Completed: {} in {}",
-                    filename,
-                    format_duration(file_elapsed_time)
+                        // Log completion message using the success formatter
+                crate::progress_reporting::report_success(
+                    &format!("Encoding complete: {} in {}",
+                        filename,
+                        format_duration(file_elapsed_time)
+                    )
                 );
-                info!("{}", completion_log_msg);
 
                 // ========================================================================
                 // STEP 3.14: SEND SUCCESS NOTIFICATION
@@ -609,8 +616,8 @@ pub fn process_videos<
             }
         }
 
-        // Add a separator in the log before processing the next file
-        info!("----------------------------------------");
+        // Add an empty line for spacing between files
+        crate::progress_reporting::report_empty_line();
 
     } // End of loop through files
 

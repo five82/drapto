@@ -1,10 +1,39 @@
+// ============================================================================
 // drapto-core/src/external/ffprobe_executor.rs
+// ============================================================================
+//
+// FFPROBE INTEGRATION: Video Analysis and Media Information Extraction
+//
+// This module provides abstractions for executing ffprobe commands to analyze
+// media files and extract properties such as dimensions, duration, audio channels,
+// and bitplane noise for grain analysis.
+//
+// KEY COMPONENTS:
+// - FfprobeExecutor trait: Defines the interface for ffprobe operations
+// - CrateFfprobeExecutor: Concrete implementation using the ffprobe crate
+// - MediaInfo: Structure containing extracted media information
+//
+// DESIGN PHILOSOPHY:
+// The module follows the dependency injection pattern with a trait-based
+// interface, allowing for testing and flexibility in implementation.
+//
+// AI-ASSISTANT-INFO: FFprobe execution for media analysis and information extraction
 use crate::error::{CoreError, CoreResult, command_start_error, command_failed_error};
-use crate::processing::detection::properties::VideoProperties; // Keep this import
-use ffprobe::{ffprobe, FfProbeError}; // Import from the new crate
+use crate::processing::detection::properties::VideoProperties;
+use ffprobe::{ffprobe, FfProbeError};
 use std::path::Path;
-use std::process::Command; // Added missing import
-// Removed unused BufRead
+use std::process::Command;
+
+/// Struct containing media information.
+#[derive(Debug, Default, Clone)]
+pub struct MediaInfo {
+    /// Duration of the media in seconds
+    pub duration: Option<f64>,
+    /// Width of the video stream
+    pub width: Option<i64>,
+    /// Height of the video stream
+    pub height: Option<i64>,
+}
 
 // --- Ffprobe Execution Abstraction ---
 
@@ -16,6 +45,8 @@ pub trait FfprobeExecutor {
     fn get_video_properties(&self, input_path: &Path) -> CoreResult<VideoProperties>;
     /// Runs ffprobe with bitplanenoise filter (bitplane 1, luma plane 0) to analyze grain, sampling based on duration.
     fn run_ffprobe_bitplanenoise(&self, input_path: &Path, duration_secs: f64) -> CoreResult<Vec<f32>>; // Changed return type
+    /// Gets media information for a given input file.
+    fn get_media_info(&self, input_path: &Path) -> CoreResult<MediaInfo>;
 }
 
 // --- New Implementation using `ffprobe` crate (and Command for specific tasks) ---
@@ -29,8 +60,7 @@ impl CrateFfprobeExecutor {
         Self
     }
 
-    // --- New function for Bitplane Noise Analysis ---
-    // Moved inside impl CrateFfprobeExecutor
+    // --- Bitplane Noise Analysis Implementation ---
     fn run_ffprobe_bitplanenoise_impl(&self, input_path: &Path, duration_secs: f64) -> CoreResult<Vec<f32>> { // Changed return type
         let cmd_name = "ffprobe";
         const TARGET_SAMPLES: f64 = 10.0; // Aim for roughly 10 samples
@@ -208,13 +238,48 @@ impl FfprobeExecutor for CrateFfprobeExecutor {
     fn run_ffprobe_bitplanenoise(&self, input_path: &Path, duration_secs: f64) -> CoreResult<Vec<f32>> { // Changed return type
         self.run_ffprobe_bitplanenoise_impl(input_path, duration_secs)
     }
+    
+    // Implement the new get_media_info trait method
+    fn get_media_info(&self, input_path: &Path) -> CoreResult<MediaInfo> {
+        // Implement directly to avoid infinite recursion
+        log::debug!("Running ffprobe (via crate) for media info on: {}", input_path.display());
+        match ffprobe(input_path) {
+            Ok(metadata) => {
+                let mut info = MediaInfo::default();
+                
+                // Get duration from format
+                info.duration = metadata
+                    .format
+                    .duration
+                    .as_deref()
+                    .and_then(|d| d.parse::<f64>().ok());
+                
+                // Find video stream
+                if let Some(video_stream) = metadata
+                    .streams
+                    .iter()
+                    .find(|s| s.codec_type.as_deref() == Some("video")) 
+                {
+                    // Get width and height
+                    info.width = video_stream.width;
+                    info.height = video_stream.height;
+                }
+                
+                Ok(info)
+            }
+            Err(err) => {
+                log::warn!("Failed to get media info: {:?}", err);
+                Err(map_ffprobe_error(err, "media info"))
+            }
+        }
+    }
 }
 
 // Helper function to map ffprobe crate errors to CoreError
 fn map_ffprobe_error(err: FfProbeError, context: &str) -> CoreError {
     match err {
         FfProbeError::Io(io_err) => {
-             // Ambiguous if it's starting the command or reading output, lean towards CommandStart
+             // Use CommandStart for all IO errors when executing ffprobe
              command_start_error(format!("ffprobe ({})", context), io_err)
         }
         // Adjusted for ffprobe v0.3.3 FfProbeError::Status variant
