@@ -34,7 +34,6 @@ use drapto_core::external::{FfmpegSpawner, FfprobeExecutor};
 use drapto_core::external::StdFsMetadataProvider;
 use drapto_core::notifications::NtfyNotificationSender;
 use drapto_core::progress_reporting::{report_log_message, LogLevel}; // New direct reporting
-use drapto_core::processing::detection::properties::VideoProperties;
 use anyhow::{Context, Result, anyhow};
 
 // ---- Standard library imports ----
@@ -46,25 +45,22 @@ use std::str::FromStr;
 // ---- Logging imports ----
 use log::{info, warn};
 
-/// Helper function to detect if a video is HDR based on its properties
-/// 
-/// # Arguments
-/// * `video_props` - The video properties to check
-/// 
-/// # Returns
-/// * A tuple containing:
-///   - Crop threshold (u8) for use in crop detection
-///   - Boolean indicating if the video is HDR
-fn detect_hdr(video_props: &VideoProperties) -> (u8, bool) {
-    // Extract color space information (BT.2020 or PQ/HLG indicates HDR)
-    let is_hdr = video_props.color_space.as_ref()
-        .map(|cs| cs.contains("bt2020") || cs.contains("pq") || cs.contains("hlg"))
-        .unwrap_or(false);
+
+/// Format bytes as human-readable size
+fn format_bytes(bytes: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = KB * 1024;
+    const GB: u64 = MB * 1024;
     
-    // Determine crop threshold (higher for HDR)
-    let crop_threshold = if is_hdr { 20 } else { 16 };
-    
-    (crop_threshold, is_hdr)
+    if bytes < KB {
+        format!("{} bytes", bytes)
+    } else if bytes < MB {
+        format!("{:.2} KB", bytes as f64 / KB as f64)
+    } else if bytes < GB {
+        format!("{:.2} MB", bytes as f64 / MB as f64)
+    } else {
+        format!("{:.2} GB", bytes as f64 / GB as f64)
+    }
 }
 
 /// Discovers .mkv files to encode based on the provided arguments.
@@ -196,7 +192,6 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor>(
     let main_log_path = log_dir.join(&main_log_filename); // Use reference
 
     // --- Log Initial Info using our new terminal module ---
-    terminal::print_section("Initialization");
     
     // Get file information from ffprobe for more useful user info
     let file_info = if !files_to_process.is_empty() {
@@ -249,9 +244,12 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor>(
         None
     };
     
+    // Print initialization section
+    terminal::print_section("INITIALIZATION");
+    
     // Show only the most essential information
-    terminal::print_status("Input", &input_path_display, false);
-    terminal::print_status("Output", &output_display, false);
+    terminal::print_status("Input file", &input_path_display, false);
+    terminal::print_status("Output file", &output_display, false);
     
     if let Some(duration) = duration_display {
         terminal::print_status("Duration", &duration, false);
@@ -268,17 +266,6 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor>(
         None => "None available".to_string()
     };
     terminal::print_status("Hardware", &hw_display, false);
-    
-    // Check for HDR video if we have file information
-    // This requires getting video properties, but we'd need to do this detection anyway
-    if !files_to_process.is_empty() {
-        // We only need to check the first file for now
-        if let Ok(video_props) = ffprobe_executor.get_video_properties(&files_to_process[0]) {
-            // Quick detection without full crop analysis
-            let (_, is_hdr) = detect_hdr(&video_props);
-            terminal::print_status("HDR Video", if is_hdr { "Yes" } else { "No" }, false);
-        }
-    }
     
     // We only show verbose info in verbose mode
     if terminal::should_print(VerbosityLevel::Verbose) {
@@ -435,12 +422,15 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor>(
     // Hardware acceleration status is logged by the core library in process_videos
     
     // --- Execute Core Logic ---
-    terminal::print_section("Video Analysis");
-    if terminal::should_print(VerbosityLevel::Verbose) {
-        terminal::print_processing(&format!("Analyzing {} file(s)", files_to_process.len()));
-    } else {
-        // Simple message for normal mode
-        terminal::print_processing("Detecting black bars");
+    // Only print section if we have files to process
+    if !files_to_process.is_empty() {
+        terminal::print_section("VIDEO ANALYSIS");
+        if terminal::should_print(VerbosityLevel::Verbose) {
+            terminal::print_processing_no_spacing(&format!("Analyzing {} file(s)", files_to_process.len()));
+        } else {
+            // Simple message for normal mode
+            terminal::print_processing_no_spacing("Detecting black bars");
+        }
     }
     
     let processing_result = if files_to_process.is_empty() {
@@ -482,7 +472,25 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor>(
                     Some("Check that your input files are valid .mkv files")
                 );
             } else {
+                // Print complete section
+                terminal::print_section("ENCODING COMPLETE");
                 terminal::print_success(&format!("Successfully encoded {} file(s)", successfully_encoded.len()));
+                
+                // Show summary for each file
+                for result in &successfully_encoded {
+                    let reduction = if result.input_size > 0 {
+                        100.0 - ((result.output_size as f64 / result.input_size as f64) * 100.0)
+                    } else {
+                        0.0
+                    };
+                    
+                    terminal::print_empty_line();
+                    terminal::print_subsection(&result.filename);
+                    terminal::print_status("Encode time", &drapto_core::utils::format_duration(result.duration), false);
+                    terminal::print_status("Input size", &format_bytes(result.input_size), false);
+                    terminal::print_status("Output size", &format_bytes(result.output_size), false);
+                    terminal::print_status("Reduced by", &format!("{:.1}%", reduction), true);
+                }
             }
         }
         Err(e) => {

@@ -46,6 +46,9 @@ pub trait ProgressReporter: Send + Sync {
     /// Report a section header (major workflow phase)
     fn section(&self, title: &str);
     
+    /// Report a subsection header
+    fn subsection(&self, title: &str);
+    
     /// Report a processing step (» Processing step)
     fn processing_step(&self, message: &str);
     
@@ -340,6 +343,28 @@ pub fn report_log_message_with_verbosity(message: &str, level: LogLevel, verbosi
 pub fn report_processing_step(message: &str) {
     if let Some(reporter) = get_progress_reporter() {
         reporter.processing_step(message);
+    }
+}
+
+/// Reports a subsection header
+///
+/// # Arguments
+///
+/// * `title` - The subsection title
+pub fn report_subsection(title: &str) {
+    if let Some(reporter) = get_progress_reporter() {
+        reporter.subsection(title);
+    }
+}
+
+/// Reports a section header
+///
+/// # Arguments
+///
+/// * `title` - The section title
+pub fn report_section(title: &str) {
+    if let Some(reporter) = get_progress_reporter() {
+        reporter.section(title);
     }
 }
 

@@ -288,32 +288,18 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner>(
     // Log the constructed command before spawning using Debug format
     let cmd_debug = format!("{:?}", cmd); // Log the final command state
 
-    // Log command details at appropriate level based on context
-    let log_level = if is_grain_analysis_sample {
-        log::Level::Debug
-    } else {
-        log::Level::Info
-    };
-    let prefix = if is_grain_analysis_sample {
-        "FFmpeg command (grain sample)"
-    } else {
-        "FFmpeg command details"
-    };
-    log!(log_level, "{}:\n  {}", prefix, cmd_debug);
+    // Only log FFmpeg command in verbose mode or for grain samples at debug level
+    if is_grain_analysis_sample {
+        debug!("FFmpeg command (grain sample):\n  {}", cmd_debug);
+    } else if crate::progress_reporting::should_print(crate::progress_reporting::VerbosityLevel::Verbose) {
+        log::info!("FFmpeg command details:\n  {}", cmd_debug);
+    }
 
     // --- Execution and Progress ---
-    // Log start at appropriate level based on context
-    let log_level = if is_grain_analysis_sample {
-        log::Level::Debug
-    } else {
-        log::Level::Info
-    };
-    let message = if is_grain_analysis_sample {
-        "Starting grain sample encode..."
-    } else {
-        "Starting encode process..."
-    };
-    log!(log_level, "{}", message);
+    // Only log verbose messages for grain samples at debug level
+    if is_grain_analysis_sample {
+        debug!("Starting grain sample encode...");
+    }
     let start_time = Instant::now();
 
     // Use the injected spawner

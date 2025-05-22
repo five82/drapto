@@ -442,12 +442,14 @@ pub fn process_videos<
                  // Convert the detected grain level to hqdn3d filter parameters
                  let params_opt = grain_analysis::determine_hqdn3d_params(result.detected_level);
 
-                 // Log the results
-                 info!(
-                     "Grain analysis result: {:?}, applying filter: {}",
-                     result.detected_level,
-                     params_opt.as_deref().unwrap_or("No parameters") // No parameters means no denoising needed (Baseline)
-                 );
+                 // Log the results only in verbose mode
+                 if crate::progress_reporting::should_print(crate::progress_reporting::VerbosityLevel::Verbose) {
+                     info!(
+                         "Grain analysis result: {:?}, applying filter: {}",
+                         result.detected_level,
+                         params_opt.as_deref().unwrap_or("No parameters") // No parameters means no denoising needed (Baseline)
+                     );
+                 }
 
                  // Return the parameters (or None for Baseline videos)
                  params_opt
@@ -488,10 +490,43 @@ pub fn process_videos<
         // ========================================================================
 
         // Update the initial parameters with the determined denoising filter
-        initial_encode_params.hqdn3d_params = final_hqdn3d_params;
+        initial_encode_params.hqdn3d_params = final_hqdn3d_params.clone();
 
         // Create the final set of parameters for the main encode
         let final_encode_params = initial_encode_params;
+        
+        // Print encoding configuration section (only in verbose mode)
+        if crate::progress_reporting::should_print(crate::progress_reporting::VerbosityLevel::Verbose) {
+            crate::progress_reporting::report_section("ENCODING CONFIGURATION");
+            
+            // Video settings
+            crate::progress_reporting::report_subsection("Video:");
+            crate::progress_reporting::report_status("Preset", &format!("{} (SVT-AV1)", preset_value));
+            crate::progress_reporting::report_status("Quality", &format!("{} (CRF)", quality));
+            
+            if let Some(ref hqdn3d) = final_hqdn3d_params {
+                let grain_level_str = match hqdn3d.as_str() {
+                    "hqdn3d=1.5:1.1:4:3" => "VeryLight",
+                    "hqdn3d=2.8:2.1:4:3" => "Light", 
+                    "hqdn3d=3.5:3.5:4.5:4.5" => "Moderate",
+                    "hqdn3d=8:6:12:9" => "Elevated",
+                    _ => "Custom",
+                };
+                crate::progress_reporting::report_status("Grain Level", &format!("{} ({})", grain_level_str, hqdn3d));
+            } else {
+                crate::progress_reporting::report_status("Grain Level", "None (no denoising)");
+            }
+            
+            // Hardware info
+            crate::progress_reporting::report_empty_line();
+            crate::progress_reporting::report_subsection("Hardware:");
+            let hw_info = crate::hardware_accel::get_hardware_accel_info();
+            let hw_display = match hw_info {
+                Some(info) => format!("{} (decode only)", info),
+                None => "None available".to_string()
+            };
+            crate::progress_reporting::report_status("Acceleration", &hw_display);
+        }
 
         // ========================================================================
         // STEP 3.12: EXECUTE FFMPEG ENCODING

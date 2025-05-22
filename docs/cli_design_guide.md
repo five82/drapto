@@ -27,16 +27,16 @@ Drapto CLI uses a consistent and well-defined visual hierarchy to organize infor
    - Formatting: Bold, uppercase, with separators
    - Example: `===== VIDEO ANALYSIS =====`
 
-2. **Secondary (Level 2)**: Logical groupings or important operations
-   - Formatting: Bold with leading symbol
-   - Example: `  » Analyzing grain levels`
+2. **Secondary (Level 2)**: Logical groupings, operations, or completion messages
+   - Formatting: Bold with leading symbol (» for operations, ✓ for success)
+   - Examples: `  » Analyzing grain levels`, `  ✓ Analysis complete`
 
-3. **Tertiary (Level 3)**: Individual actions or status items
-   - Formatting: Regular with status symbol
-   - Example: `  ⧖ Processing sample 3/5`
+3. **Tertiary (Level 3)**: Individual actions or progress items
+   - Formatting: Regular with progress symbol
+   - Example: `    ⧖ Processing sample 3/5`
 
 4. **Quaternary (Level 4)**: Key-value pairs and primary information
-   - Formatting: Regular with bold values for emphasis
+   - Formatting: Regular text (bold values only for critical information)
    - Example: `    Input file:      movie.mkv`
 
 5. **Supporting (Level 5)**: Details, metrics, and secondary information
@@ -47,7 +47,7 @@ Drapto CLI uses a consistent and well-defined visual hierarchy to organize infor
 
 Whitespace is a critical component of visual hierarchy. Use it consistently:
 
-- **Between major sections**: Double line break
+- **Between major sections**: Single line break
 - **Between subsections**: Single line break
 - **Between related items**: No line break
 - **Indentation**: 2 spaces per level of hierarchy
@@ -71,9 +71,9 @@ Whitespace is a critical component of visual hierarchy. Use it consistently:
 | Level | Element Type | Formatting | Color | Indentation | Symbol | Example |
 |-------|--------------|------------|-------|-------------|--------|---------|
 | 1 | Main Sections | Bold, uppercase | Cyan | None | ===== | `===== VIDEO ANALYSIS =====` |
-| 2 | Subsections | Bold | White | 2 spaces | » | `  » Analyzing grain levels` |
-| 3 | Operations | Regular | White | 2 spaces | ⧖ / ✓ / ✗ | `  ⧖ Processing sample 3/5` |
-| 4 | Primary Info | Bold values | White | 4 spaces | None | `    Input file:      movie.mkv` |
+| 2 | Subsections/Success | Bold | White | 2 spaces | » / ✓ | `  » Analyzing grain levels` / `  ✓ Analysis complete` |
+| 3 | Operations/Progress | Regular | White | 4 spaces | ⧖ / ◆ | `    ⧖ Processing sample 3/5` |
+| 4 | Primary Info | Regular | White | 4 spaces | None | `    Input file:      movie.mkv` |
 | 5 | Details | Regular | White/Gray | 4-6 spaces | None | `    Speed: 2.5x, Avg FPS: 24.5` |
 | X | Critical Alert | Bold | Red/Yellow | Same as context | ✗ / ⚠ | `  ✗ Error: Encoding failed` |
 
@@ -187,7 +187,7 @@ Sections create visual separation between different parts of the output:
 ===== NEXT SECTION =====
 ```
 
-Use a blank line between major sections to enhance visual separation.
+Use a single blank line between major sections to enhance visual separation.
 
 ### Progress Bars
 
@@ -211,7 +211,7 @@ Encoding: 45.2% [###..]
 
 Status lines display key-value information:
 - Align labels consistently
-- Highlight important values with bold
+- Use bold sparingly, only for critical values (e.g., significant reductions)
 - Group related status lines together
 - Use consistent spacing for alignment
 

@@ -67,11 +67,11 @@ pub mod styling {
     pub const EMPTY_LINE: &str = "";
     
     // Vertical spacing - adjusted to match design guide
-    pub const LINE_SPACING_BEFORE_SECTION: usize = 1;      // Lines before section header (one empty line)
-    pub const LINE_SPACING_AFTER_SECTION: usize = 1;       // One line after section header
-    pub const LINE_SPACING_BEFORE_PROCESSING: usize = 0;   // No extra lines before processing step
+    pub const LINE_SPACING_BEFORE_SECTION: usize = 1;      // Single line break before sections
+    pub const LINE_SPACING_AFTER_SECTION: usize = 1;       // Single line after section header
+    pub const LINE_SPACING_BEFORE_PROCESSING: usize = 1;   // Single line break between subsections
     pub const LINE_SPACING_AFTER_SUCCESS: usize = 0;       // No extra lines after success message
-    pub const LINE_SPACING_BETWEEN_SECTIONS: usize = 1;    // One line between sections
+    pub const LINE_SPACING_BETWEEN_SECTIONS: usize = 1;    // Single line break between sections
 }
 
 // ============================================================================
@@ -92,6 +92,12 @@ static mut VERBOSITY: VerbosityLevel = VerbosityLevel::Normal;
 
 // Global color setting
 static USE_COLOR: AtomicBool = AtomicBool::new(true);
+
+// Track if we've printed the encoding section
+static ENCODING_SECTION_PRINTED: AtomicBool = AtomicBool::new(false);
+
+// Track if we've printed the first encoder message for spacing
+static FIRST_ENCODER_MESSAGE_PRINTED: AtomicBool = AtomicBool::new(false);
 
 /// Set whether to use color in terminal output
 pub fn set_color(enable: bool) {
@@ -175,15 +181,15 @@ pub fn print_section(title: &str) {
             info!("{}", styling::EMPTY_LINE);
         }
         
-        // Format section header with cyan color for the title
+        // Format section header with uppercase title and cyan color for the title only
         let header = if should_use_color() {
             format!("{}{}{}", 
                 styling::SECTION_PREFIX, 
-                title.cyan().bold(), 
+                title.to_uppercase().cyan().bold(), 
                 styling::SECTION_SUFFIX
             )
         } else {
-            format!("{}{}{}", styling::SECTION_PREFIX, title, styling::SECTION_SUFFIX)
+            format!("{}{}{}", styling::SECTION_PREFIX, title.to_uppercase(), styling::SECTION_SUFFIX)
         };
         
         // Log the section header using the info! macro
@@ -214,12 +220,12 @@ pub fn print_status(label: &str, value: &str, highlight: bool) {
         
         let formatted_label = format!("{}{}{}", label, ":", " ".repeat(padding));
         
-        // Format the value with appropriate styling
+        // Format the value with appropriate styling - bold for important values (Level 4 hierarchy)
         let formatted_value = if should_use_color() && highlight {
-            // Use green for highlighted values
-            value.green().to_string()
+            // Use bold for highlighted/important values, optionally with green for critical success values
+            value.bold().to_string()
         } else if should_use_color() {
-            // Use regular color for non-highlighted values
+            // Regular values can still be bold if they're key information
             value.to_string()
         } else {
             value.to_string()
@@ -237,11 +243,8 @@ pub fn print_status(label: &str, value: &str, highlight: bool) {
 /// * `message` - The success message to display
 pub fn print_success(message: &str) {
     if should_print(VerbosityLevel::Normal) {
-        if should_use_color() {
-            info!("{} {}", styling::SUCCESS_SYMBOL.green(), message.green());
-        } else {
-            info!("{} {}", styling::SUCCESS_SYMBOL, message);
-        }
+        // Success symbol should not be colored - add proper indentation for Level 2
+        info!("{}{} {}", styling::SUBSECTION_INDENT, styling::SUCCESS_SYMBOL, message);
         
         // Add spacing after success messages for visual clarity
         for _ in 0..styling::LINE_SPACING_AFTER_SUCCESS {
@@ -262,14 +265,14 @@ pub fn print_success(message: &str) {
 pub fn print_completion_with_status(success_message: &str, status_label: &str, status_value: &str) {
     // Print the success message (without extra spacing)
     if should_print(VerbosityLevel::Normal) {
-        if should_use_color() {
-            info!("{} {}", styling::SUCCESS_SYMBOL.green(), success_message.green());
-        } else {
-            info!("{} {}", styling::SUCCESS_SYMBOL, success_message);
-        }
+        // Add a blank line before the success message for proper spacing between subsections
+        info!("{}", styling::EMPTY_LINE);
+        
+        // Success symbol should not be colored, add proper indentation for Level 2
+        info!("{}{} {}", styling::SUBSECTION_INDENT, styling::SUCCESS_SYMBOL, success_message);
     }
     
-    // Print the associated status line
+    // Print the associated status line with Level 4 indentation
     print_status(status_label, status_value, false);
 }
 
@@ -279,16 +282,34 @@ pub fn print_completion_with_status(success_message: &str, status_label: &str, s
 ///
 /// * `message` - The processing step message to display
 pub fn print_processing(message: &str) {
+    print_processing_internal(message, true);
+}
+
+/// Print a processing step message without preceding blank line
+/// Used for the first processing step after a section header
+///
+/// # Arguments
+///
+/// * `message` - The processing step message to display
+pub fn print_processing_no_spacing(message: &str) {
+    print_processing_internal(message, false);
+}
+
+/// Internal function for printing processing steps
+fn print_processing_internal(message: &str, add_spacing: bool) {
     if should_print(VerbosityLevel::Normal) {
-        // Add spacing before processing steps for visual grouping
-        for _ in 0..styling::LINE_SPACING_BEFORE_PROCESSING {
-            info!("{}", styling::EMPTY_LINE);
+        // Add spacing before processing steps for visual grouping (if requested)
+        if add_spacing {
+            for _ in 0..styling::LINE_SPACING_BEFORE_PROCESSING {
+                info!("{}", styling::EMPTY_LINE);
+            }
         }
         
+        // Processing symbol should not be colored; make message bold for Level 2 hierarchy
         if should_use_color() {
-            info!("{} {}", styling::PROCESSING_SYMBOL.cyan(), message);
+            info!("{}{} {}", styling::SUBSECTION_INDENT, styling::PROCESSING_SYMBOL, message.bold());
         } else {
-            info!("{} {}", styling::PROCESSING_SYMBOL, message);
+            info!("{}{} {}", styling::SUBSECTION_INDENT, styling::PROCESSING_SYMBOL, message);
         }
     }
 }
@@ -303,7 +324,8 @@ pub fn print_processing(message: &str) {
 pub fn print_error(title: &str, message: &str, suggestion: Option<&str>) {
     // Always print errors regardless of verbosity
     if should_use_color() {
-        info!("{} {}", styling::ERROR_SYMBOL.red(), title.red().bold());
+        // Only the title text should be red, not the symbol
+        info!("{} {}", styling::ERROR_SYMBOL, title.red().bold());
     } else {
         info!("{} {}", styling::ERROR_SYMBOL, title);
     }
@@ -368,17 +390,9 @@ pub fn print_progress_bar(
         };
         
         // Create progress line
-        let progress_symbol = if should_use_color() {
-            styling::PROGRESS_SYMBOL.cyan().to_string()
-        } else {
-            styling::PROGRESS_SYMBOL.to_string()
-        };
+        let progress_symbol = styling::PROGRESS_SYMBOL;
         
-        let progress_bar = if should_use_color() {
-            format!("[{}{}]", filled.cyan(), empty)
-        } else {
-            format!("[{}{}]", filled, empty)
-        };
+        let progress_bar = format!("[{}{}]", filled, empty);
         
         let mut progress_line = format!(
             "{} Encoding: {:.1}% {} ({} / {})", 
@@ -413,6 +427,7 @@ pub fn print_progress_bar(
 /// * `title` - The title of the subsection
 pub fn print_subsection(title: &str) {
     if should_print(VerbosityLevel::Normal) {
+        // Subsections should always be bold for Level 2 hierarchy
         if should_use_color() {
             info!("{}{}", styling::SUBSECTION_INDENT, title.bold());
         } else {
@@ -425,9 +440,10 @@ pub fn print_subsection(title: &str) {
 /// This replaces the divider line with proper spacing according to the design guide
 pub fn print_section_separator() {
     if should_print(VerbosityLevel::Normal) {
-        // Add two empty lines for section separation
-        info!("{}", styling::EMPTY_LINE);
-        info!("{}", styling::EMPTY_LINE);
+        // Add empty lines for section separation based on design guide
+        for _ in 0..styling::LINE_SPACING_BETWEEN_SECTIONS {
+            info!("{}", styling::EMPTY_LINE);
+        }
     }
 }
 
@@ -449,11 +465,8 @@ pub fn print_sub_item(message: &str) {
 /// * `message` - The progress message to display
 pub fn print_progress_indicator(message: &str) {
     if should_print(VerbosityLevel::Normal) {
-        if should_use_color() {
-            info!("{}{} {}", styling::STATUS_INDENT, styling::PROGRESS_SYMBOL.cyan(), message);
-        } else {
-            info!("{}{} {}", styling::STATUS_INDENT, styling::PROGRESS_SYMBOL, message);
-        }
+        // Progress symbol should not be colored - Level 3 with 4-space indentation
+        info!("{}{} {}", styling::SUB_ITEM_INDENT, styling::PROGRESS_SYMBOL, message);
     }
 }
 
@@ -665,6 +678,10 @@ impl drapto_core::progress_reporting::ProgressReporter for CliProgressReporter {
         print_section(title);
     }
     
+    fn subsection(&self, title: &str) {
+        print_subsection(title);
+    }
+    
     fn processing_step(&self, message: &str) {
         print_processing(message);
     }
@@ -700,11 +717,12 @@ impl drapto_core::progress_reporting::ProgressReporter for CliProgressReporter {
         
         if !filters_str.is_empty() {
             if should_print(VerbosityLevel::Normal) {
-                info!("Applying video filters: {}", filters_str);
+                // Use sub-item formatting for Level 3 hierarchy
+                print_sub_item(&format!("Applying video filters: {}", filters_str));
             }
         } else {
             if should_print(VerbosityLevel::Normal) {
-                info!("No video filters applied.");
+                print_sub_item("No video filters applied.");
             }
         }
     }
@@ -716,11 +734,12 @@ impl drapto_core::progress_reporting::ProgressReporter for CliProgressReporter {
         
         if let Some(value) = level {
             if should_print(VerbosityLevel::Normal) {
-                info!("Applying film grain synthesis: level={}", value);
+                // Use sub-item formatting for Level 3 hierarchy
+                print_sub_item(&format!("Applying film grain synthesis: level={}", value));
             }
         } else {
             if should_print(VerbosityLevel::Normal) {
-                info!("No film grain synthesis applied (denoise level is None or 0).");
+                print_sub_item("No film grain synthesis applied (denoise level is None or 0).");
             }
         }
     }
@@ -731,7 +750,8 @@ impl drapto_core::progress_reporting::ProgressReporter for CliProgressReporter {
         }
         
         if should_print(VerbosityLevel::Normal) {
-            info!("Using provided duration for progress: {}", format_time_hms(duration_secs));
+            // Use sub-item formatting for Level 3 hierarchy
+            print_sub_item(&format!("Using provided duration for progress: {}", format_time_hms(duration_secs)));
         }
     }
     
@@ -741,6 +761,10 @@ impl drapto_core::progress_reporting::ProgressReporter for CliProgressReporter {
         }
         
         if should_print(VerbosityLevel::Normal) {
+            // Add a blank line before the first encoder message for readability
+            if !FIRST_ENCODER_MESSAGE_PRINTED.swap(true, Ordering::Relaxed) {
+                print_empty_line();
+            }
             info!("{}", message);
         }
     }
@@ -758,9 +782,21 @@ impl drapto_core::progress_reporting::ProgressReporter for CliProgressReporter {
             let filename = input_path.file_name()
                 .map(|name| name.to_string_lossy().to_string())
                 .unwrap_or_else(|| input_path.to_string_lossy().to_string());
-                
-            info!("Starting FFmpeg encode for: {}", filename);
-            info!("  Output: {}", output_path.display());
+            
+            // Print the encoding section header only once for the first encode
+            if !ENCODING_SECTION_PRINTED.swap(true, Ordering::Relaxed) {
+                print_section("ENCODING PROGRESS");
+                // Use no-spacing variant for first item after section
+                print_processing_no_spacing(&format!("Encoding: {}", filename));
+            } else {
+                // Use regular spacing for subsequent files
+                print_processing(&format!("Encoding: {}", filename));
+            }
+            
+            // Only show output path in verbose mode
+            if should_print(VerbosityLevel::Verbose) {
+                print_sub_item(&format!("Output: {}", output_path.display()));
+            }
         }
     }
     
@@ -855,11 +891,9 @@ pub fn print_daemon_starting() {
 /// * `message` - The message to display
 pub fn print_analysis_step(emoji: &str, message: &str) {
     if should_print(VerbosityLevel::Normal) {
-        if should_use_color() {
-            info!("{} {}", emoji, message.bold());
-        } else {
-            info!("{} {}", emoji, message);
-        }
+        // Emoji should not have special formatting - keep it simple
+        // This is typically used for verbose mode analysis steps
+        info!("{} {}", emoji, message);
     }
 }
 
