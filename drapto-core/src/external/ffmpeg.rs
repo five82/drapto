@@ -34,7 +34,7 @@ use crate::progress_reporting::{report_encode_progress, report_encode_start};
 // ---- External crate imports ----
 use ffmpeg_sidecar::command::FfmpegCommand;
 use ffmpeg_sidecar::event::{FfmpegEvent, LogLevel as FfmpegLogLevel}; // Renamed LogLevel to avoid conflict
-use log::{debug, log, trace, warn};
+use log::{debug, info, log, trace, warn};
 
 // ---- Standard library imports ----
 use std::path::PathBuf;
@@ -256,6 +256,14 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner>(
     } else {
         // Standard verbose logging for main encode
         report_encode_start(&params.input_path, &params.output_path);
+        
+        // Also log start with progress target for file logging
+        info!(
+            target: "drapto::progress",
+            "Starting encode: {} -> {}",
+            params.input_path.display(),
+            params.output_path.display()
+        );
     }
 
     debug!("Encode parameters: {:?}", params);
@@ -348,6 +356,8 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner>(
     }
     let mut stderr_buffer = String::new();
     let mut last_reported_percent = -3.0;
+    let mut last_log_time = Instant::now();
+    let mut last_logged_percent_threshold = -1;
 
     // Event loop using handle_events
     child.handle_events(|event| {
@@ -383,6 +393,37 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner>(
                             avg_encoding_fps as f32,
                             std::time::Duration::from_secs(eta_seconds as u64)
                         );
+                    }
+
+                    // Log progress to file at regular intervals for long-running encodes
+                    // This provides progress visibility in log files when running in daemon mode
+                    let current_threshold = (percent as i32 / 10) * 10; // Round down to nearest 10%
+                    let should_log_progress = !is_grain_analysis_sample && (
+                        // Log when we cross a 10% threshold (10%, 20%, 30%, etc.)
+                        (current_threshold > last_logged_percent_threshold && current_threshold >= 10) ||
+                        // Log at start (0%)
+                        (percent >= 0.0 && last_logged_percent_threshold < 0) ||
+                        // Log at 100% completion
+                        percent >= 100.0 ||
+                        // Log every 5 minutes regardless of percentage (for very slow encodes)
+                        last_log_time.elapsed() >= std::time::Duration::from_secs(300)
+                    );
+                    
+                    if should_log_progress {
+                        // Log progress with a special target that can be filtered
+                        // This allows file logging to capture it while console can ignore it
+                        info!(
+                            target: "drapto::progress",
+                            "Encoding progress: {:.1}% complete | Time: {} / {} | Speed: {:.2}x | FPS: {:.1} | ETA: {}",
+                            percent,
+                            format_duration_seconds(current_secs),
+                            format_duration_seconds(duration_secs.unwrap_or(0.0)),
+                            progress.speed,
+                            avg_encoding_fps,
+                            eta_str
+                        );
+                        last_log_time = Instant::now();
+                        last_logged_percent_threshold = current_threshold;
                     }
 
                     // Only log detailed progress at trace level to avoid redundancy

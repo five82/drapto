@@ -484,7 +484,7 @@ fn init_progress_bar(total_secs: f64) -> ProgressBar {
 /// * `fps` - Optional frames per second
 /// * `eta` - Optional estimated time remaining
 pub fn print_progress_bar(
-    percent: f32,
+    _percent: f32,
     elapsed_secs: f64,
     total_secs: f64,
     speed: Option<f32>,
@@ -524,10 +524,9 @@ pub fn print_progress_bar(
             pb.tick();
         }
     } else {
-        // Fallback to simple logging for non-interactive terminals
-        if percent as i32 % 10 == 0 {
-            info!("Encoding progress: {:.0}% complete", percent);
-        }
+        // Non-interactive mode: Progress is logged via debug! in ffmpeg.rs
+        // This ensures progress appears in log files for daemon mode
+        // No need to duplicate logging here
     }
 }
 

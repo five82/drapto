@@ -125,6 +125,8 @@ pub fn setup_file_logging(log_path: &Path) -> Result<()> {
         .level_for("drapto", log_level)
         .level_for("drapto_cli", log_level)
         .level_for("drapto_core", log_level)
+        // Filter out progress messages from console output
+        .level_for("drapto::progress", log::LevelFilter::Off)
         .chain(std::io::stdout());
     
     // File formatter - strips ANSI codes for clean file output
@@ -148,6 +150,8 @@ pub fn setup_file_logging(log_path: &Path) -> Result<()> {
         .level_for("drapto", log_level)
         .level_for("drapto_cli", log_level)
         .level_for("drapto_core", log_level)
+        // Ensure progress messages are included in file output
+        .level_for("drapto::progress", log_level)
         .chain(fern::log_file(log_path)?);
     
     // Combine both outputs
