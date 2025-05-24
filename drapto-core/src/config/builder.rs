@@ -200,33 +200,6 @@ impl CoreConfigBuilder {
         self
     }
 
-    /// Sets the encoder preset (alias for encoder_preset for backward compatibility).
-    ///
-    /// # Arguments
-    ///
-    /// * `preset` - The encoder preset (0-13, lower is slower/better quality)
-    ///
-    /// # Returns
-    ///
-    /// * Self for method chaining
-    pub fn preset(mut self, preset: u8) -> Self {
-        self.encoder_preset = preset;
-        self
-    }
-
-    /// Sets the encoder preset (alias for encoder_preset for backward compatibility).
-    ///
-    /// # Arguments
-    ///
-    /// * `preset` - The encoder preset (0-13, lower is slower/better quality)
-    ///
-    /// # Returns
-    ///
-    /// * Self for method chaining
-    pub fn default_encoder_preset(mut self, preset: u8) -> Self {
-        self.encoder_preset = preset;
-        self
-    }
 
     /// Sets the CRF quality for Standard Definition videos.
     ///
@@ -284,19 +257,6 @@ impl CoreConfigBuilder {
         self
     }
 
-    /// Sets the crop mode (alias for crop_mode for backward compatibility).
-    ///
-    /// # Arguments
-    ///
-    /// * `mode` - The crop mode ("auto", "none", etc.)
-    ///
-    /// # Returns
-    ///
-    /// * Self for method chaining
-    pub fn default_crop_mode(mut self, mode: &str) -> Self {
-        self.crop_mode = mode.to_string();
-        self
-    }
 
     /// Sets the ntfy.sh topic URL for sending notifications.
     ///
@@ -368,21 +328,6 @@ impl CoreConfigBuilder {
         self
     }
 
-    /// Sets the fallback grain level for grain analysis.
-    /// This method is kept for backward compatibility but has no effect.
-    ///
-    /// # Arguments
-    ///
-    /// * `level` - The fallback grain level
-    ///
-    /// # Returns
-    ///
-    /// * Self for method chaining
-    pub fn film_grain_fallback_level(self, _level: GrainLevel) -> Self {
-        // This parameter is no longer used, but we keep the method for backward compatibility
-        log::debug!("film_grain_fallback_level is deprecated and has no effect");
-        self
-    }
 
     /// Builds a CoreConfig instance from the builder.
     ///
