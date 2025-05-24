@@ -22,7 +22,6 @@
 
 // ---- Standard library imports ----
 
-
 // ============================================================================
 // CLI PROGRESS UTILITIES
 // ============================================================================
@@ -51,12 +50,12 @@ impl CliProgress {
     ///
     /// * A new CliProgress instance
     pub fn new(interactive: bool) -> Self {
-        Self { 
+        Self {
             interactive,
             verbose: false,
         }
     }
-    
+
     /// Display progress information using the terminal module.
     ///
     /// This method is used to display progress information for encoding operations.
@@ -92,7 +91,7 @@ impl CliProgress {
             );
         }
     }
-    
+
     /// Process a progress update from the core library.
     ///
     /// This method is called when the core library reports progress during

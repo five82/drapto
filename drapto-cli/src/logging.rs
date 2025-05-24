@@ -43,3 +43,122 @@ pub fn get_timestamp() -> String {
 // standard `log` macros and `env_logger` initialization in `main.rs`.
 // This provides better integration with the Rust ecosystem and
 // standardized logging levels (error, warn, info, debug, trace).
+
+use std::path::Path;
+use anyhow::Result;
+
+/// Strip ANSI escape codes from a string
+fn strip_ansi_codes(s: &str) -> String {
+    // Simple regex-free approach to strip ANSI codes
+    let mut result = String::with_capacity(s.len());
+    let mut chars = s.chars();
+    
+    while let Some(ch) = chars.next() {
+        if ch == '\x1b' {
+            // Skip the escape sequence
+            if chars.next() == Some('[') {
+                // Skip until we find a letter (end of sequence)
+                for next_ch in chars.by_ref() {
+                    if next_ch.is_alphabetic() {
+                        break;
+                    }
+                }
+            }
+        } else {
+            result.push(ch);
+        }
+    }
+    
+    result
+}
+
+/// Setup logging for interactive mode that logs to both console and file
+/// 
+/// Logging is controlled by the RUST_LOG environment variable:
+/// - Default: info level (normal output)
+/// - With --verbose flag: debug level (detailed output)
+/// - Can be overridden by setting RUST_LOG explicitly
+pub fn setup_file_logging(log_path: &Path) -> Result<()> {
+    // Create parent directory if it doesn't exist
+    if let Some(parent) = log_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    
+    // Parse RUST_LOG environment variable to determine log level
+    let log_level = std::env::var("RUST_LOG")
+        .ok()
+        .and_then(|s| s.parse::<log::LevelFilter>().ok())
+        .unwrap_or_else(|| {
+            // Check for drapto-specific level
+            if let Ok(val) = std::env::var("RUST_LOG") {
+                if val.starts_with("drapto=") {
+                    let level_str = val.trim_start_matches("drapto=");
+                    level_str.parse::<log::LevelFilter>().unwrap_or(log::LevelFilter::Info)
+                } else {
+                    log::LevelFilter::Info
+                }
+            } else {
+                log::LevelFilter::Info
+            }
+        });
+    
+    // Console formatter - simple and clean
+    let console_dispatch = fern::Dispatch::new()
+        .format(|out, message, record| {
+            let msg_str = format!("{}", message);
+            
+            // Check if this is ffmpeg output that already has [info] prefix
+            if msg_str.starts_with("[info]") || msg_str.starts_with("Svt[info]:") {
+                // Output as-is without additional formatting
+                out.finish(format_args!("{}", message))
+            } else if record.level() != log::Level::Info {
+                out.finish(format_args!(
+                    "[{}] {}",
+                    record.level(),
+                    message
+                ))
+            } else {
+                out.finish(format_args!("{}", message))
+            }
+        })
+        .level(log_level)
+        .level_for("drapto", log_level)
+        .level_for("drapto_cli", log_level)
+        .level_for("drapto_core", log_level)
+        .chain(std::io::stdout());
+    
+    // File formatter - strips ANSI codes for clean file output
+    let file_dispatch = fern::Dispatch::new()
+        .format(|out, message, record| {
+            let msg_str = format!("{}", message);
+            
+            // Strip ANSI escape codes for clean file output
+            let clean_str = strip_ansi_codes(&msg_str);
+            
+            // Format based on log level
+            if clean_str.starts_with("[info]") || clean_str.starts_with("Svt[info]:") {
+                out.finish(format_args!("{}", clean_str))
+            } else if record.level() != log::Level::Info {
+                out.finish(format_args!("[{}] {}", record.level(), clean_str))
+            } else {
+                out.finish(format_args!("{}", clean_str))
+            }
+        })
+        .level(log_level)
+        .level_for("drapto", log_level)
+        .level_for("drapto_cli", log_level)
+        .level_for("drapto_core", log_level)
+        .chain(fern::log_file(log_path)?);
+    
+    // Combine both outputs
+    fern::Dispatch::new()
+        .level(log_level)
+        .level_for("drapto", log_level)
+        .level_for("drapto_cli", log_level)
+        .level_for("drapto_core", log_level)
+        .chain(console_dispatch)
+        .chain(file_dispatch)
+        .apply()?;
+    
+    Ok(())
+}

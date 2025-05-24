@@ -81,19 +81,19 @@ impl NtfyNotificationSender {
     /// * `Err(CoreError)` - If the topic URL is invalid
     pub fn new(topic_url: &str) -> CoreResult<Self> {
         // Validate the topic URL
-        let parsed_url = Url::parse(topic_url)
-            .map_err(|e| CoreError::NotificationError(format!(
-                "Invalid ntfy topic URL '{}': {}",
-                topic_url, e
-            )))?;
+        let parsed_url = Url::parse(topic_url).map_err(|e| {
+            CoreError::NotificationError(format!("Invalid ntfy topic URL '{}': {}", topic_url, e))
+        })?;
 
         // Ensure the host is present and non-empty
         let _host = match parsed_url.host_str() {
             Some(h) if !h.is_empty() => h,
-            _ => return Err(CoreError::NotificationError(format!(
-                "URL '{}' must have a non-empty host",
-                topic_url
-            ))),
+            _ => {
+                return Err(CoreError::NotificationError(format!(
+                    "URL '{}' must have a non-empty host",
+                    topic_url
+                )));
+            }
         };
 
         // Extract the topic from the path (removing leading slash)
@@ -101,10 +101,10 @@ impl NtfyNotificationSender {
 
         // Ensure the topic is not empty
         if topic.is_empty() {
-             return Err(CoreError::NotificationError(format!(
-                 "URL '{}' is missing topic path",
-                 topic_url
-             )));
+            return Err(CoreError::NotificationError(format!(
+                "URL '{}' is missing topic path",
+                topic_url
+            )));
         }
 
         Ok(Self {
@@ -135,7 +135,12 @@ impl NtfyNotificationSender {
         // Build the ntfy dispatcher
         let dispatcher = match DispatcherBuilder::new(&base_url).build_blocking() {
             Ok(d) => d,
-            Err(e) => return Err(format!("Failed to build ntfy dispatcher for {}: {}", base_url, e)),
+            Err(e) => {
+                return Err(format!(
+                    "Failed to build ntfy dispatcher for {}: {}",
+                    base_url, e
+                ));
+            }
         };
 
         // Build the notification payload
@@ -148,7 +153,10 @@ impl NtfyNotificationSender {
         let priority = match map_priority(notification.get_priority()) {
             Some(p) => p,
             None => {
-                log::warn!("Invalid ntfy priority value provided: {}", notification.get_priority());
+                log::warn!(
+                    "Invalid ntfy priority value provided: {}",
+                    notification.get_priority()
+                );
                 NtfyPriority::Default
             }
         };
@@ -170,7 +178,10 @@ impl NtfyNotificationSender {
         // Send the notification
         match dispatcher.send(&final_payload) {
             Ok(_) => Ok(()),
-            Err(e) => Err(format!("Failed to send ntfy notification to {}: {}", self.topic_url, e)),
+            Err(e) => Err(format!(
+                "Failed to send ntfy notification to {}: {}",
+                self.topic_url, e
+            )),
         }
     }
 }
@@ -211,4 +222,3 @@ fn map_priority(p: u8) -> Option<NtfyPriority> {
         _ => None,                        // Invalid priority value
     }
 }
-

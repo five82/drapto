@@ -44,4 +44,4 @@ pub use properties::VideoProperties;
 pub use crop_analysis::detect_crop;
 
 /// Grain analysis function and related types
-pub use grain_analysis::{analyze_grain, GrainAnalysisResult, GrainLevel};
+pub use grain_analysis::{GrainAnalysisResult, GrainLevel, analyze_grain};

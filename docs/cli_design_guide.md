@@ -70,12 +70,14 @@ Whitespace is a critical component of visual hierarchy. Use it consistently:
 
 | Level | Element Type | Formatting | Color | Indentation | Symbol | Example |
 |-------|--------------|------------|-------|-------------|--------|---------|
-| 1 | Main Sections | Bold, uppercase | Cyan | None | ===== | `===== VIDEO ANALYSIS =====` |
+| 1 | Main Sections | Bold, uppercase | Cyan (title only) | None | ===== | `===== VIDEO ANALYSIS =====` |
 | 2 | Subsections/Success | Bold | White | 2 spaces | » / ✓ | `  » Analyzing grain levels` / `  ✓ Analysis complete` |
 | 3 | Operations/Progress | Regular | White | 4 spaces | ⧖ / ◆ | `    ⧖ Processing sample 3/5` |
-| 4 | Primary Info | Regular | White | 4 spaces | None | `    Input file:      movie.mkv` |
+| 4 | Primary Info | Regular | White/Green* | 4 spaces | None | `    Reduction:      65.2%` |
 | 5 | Details | Regular | White/Gray | 4-6 spaces | None | `    Speed: 2.5x, Avg FPS: 24.5` |
 | X | Critical Alert | Bold | Red/Yellow | Same as context | ✗ / ⚠ | `  ✗ Error: Encoding failed` |
+
+*Green for significant values (>50% reductions, optimal selections, good performance)
 
 ### Color Usage
 
@@ -88,16 +90,131 @@ Colors should be used sparingly and meaningfully to highlight important informat
 - **Maintain consistency** - Use the same color for the same type of information
 - **Ensure accessibility** - All information must be accessible without color
 
-#### Color Palette
+#### Color Palette and Usage Guidelines
 
 When colors are used, they should follow these guidelines:
 
-- **Cyan (Primary)**: Use only for section headers and important dividers
-- **Green (Secondary)**: Reserve for success indicators and critical values
-- **Yellow (Accent)**: Use only for warnings and truly important highlights
-- **Red**: Errors only
-- **White/Default**: Use for most general text, including labels and standard values
-- **Gray**: Less important details and secondary information
+##### Cyan (Primary - Structural)
+Use for major structural elements only:
+- Section headers (the title text only, not the delimiters)
+- Major phase transitions
+
+```
+===== VIDEO ANALYSIS =====  ← "VIDEO ANALYSIS" in cyan
+```
+
+##### Green (Secondary - Success & Optimal Values)
+Use to highlight positive outcomes and optimal selections:
+- Significant file size reductions (>50%)
+- Optimal/selected values in comparisons
+- Success completion messages (not just the symbol)
+- Performance metrics when notably good
+
+```
+✓ Encoding complete
+  Reduction:       65.2%  ← Value in green (significant reduction)
+
+Grain Level Comparison:
+  Moderate (selected) 1.24 GB  ← "Moderate (selected)" in green
+  Light              1.42 GB
+```
+
+##### Yellow/Amber (Accent - Attention & Caution)
+Use sparingly for information requiring attention:
+- Warnings and cautions
+- Moderate performance metrics
+- Values approaching limits
+- Important but not optimal selections
+
+```
+⚠ Hardware acceleration unavailable  ← Title in yellow
+  Speed: 0.8x  ← Value in yellow (below real-time)
+```
+
+##### Red (Critical - Errors Only)
+Reserve exclusively for error conditions:
+- Error messages and titles
+- Failed operations
+- Critical failures
+
+```
+✗ Error: Encoding failed  ← "Error: Encoding failed" in red
+```
+
+##### White/Default (Standard)
+Use for most text to maintain readability:
+- Labels and descriptions
+- Standard values
+- Regular status messages
+- Non-critical information
+
+##### Bold (Emphasis without Color)
+Use bold formatting for emphasis when color isn't appropriate:
+- Important values that don't fit other categories
+- Headers and subsection titles
+- Key metrics in monochrome mode
+
+##### Gray/Dim (De-emphasis)
+Use for less important supplementary information:
+- Debug output (in verbose mode)
+- Supplementary details
+- Already-processed items
+
+#### Practical Color Usage Examples
+
+##### Example 1: File Size Reduction
+```
+# Good - Highlights the key metric users care about
+✓ Encoding complete
+  Input size:      3.56 GB
+  Output size:     1.24 GB
+  Reduction:       65.2%     ← Green for significant reduction
+
+# Poor - No emphasis on the important metric
+✓ Encoding complete
+  Input size:      3.56 GB
+  Output size:     1.24 GB
+  Reduction:       65.2%     ← Same as other text
+```
+
+##### Example 2: Performance Metrics
+```
+# Good - Color indicates performance quality
+  Speed: 2.5x      ← Green (good performance)
+  Speed: 1.0x      ← White (acceptable)
+  Speed: 0.5x      ← Yellow (poor performance)
+
+# Poor - No indication of performance quality
+  Speed: 2.5x      ← All speeds look the same
+  Speed: 1.0x
+  Speed: 0.5x
+```
+
+##### Example 3: Selection Results
+```
+# Good - Clear visual indication of selection
+Grain analysis results:
+  Heavy:     8.0 MB
+  Moderate:  8.3 MB (selected)  ← "Moderate" and "(selected)" in green
+  Light:     10.5 MB
+  Baseline:  15.2 MB
+
+# Poor - Selection not visually distinct
+Grain analysis results:
+  Heavy:     8.0 MB
+  Moderate:  8.3 MB (selected)  ← Same as other options
+  Light:     10.5 MB
+  Baseline:  15.2 MB
+```
+
+#### When NOT to Use Color
+
+Avoid using color for:
+- Decorative purposes
+- Every piece of data
+- Information that's already clear from context
+- Symbols and icons (keep them monochrome)
+- Delimiters and separators (===, ---, etc.)
 
 Most terminal text should remain uncolored (default terminal color), with color applied selectively to guide the user's attention to what matters most.
 

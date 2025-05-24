@@ -14,19 +14,19 @@
 // - SidecarFfmpegSpawner: Concrete implementation using ffmpeg-sidecar
 //
 // ARCHITECTURE:
-// The module follows a trait-based design that allows for flexible process 
+// The module follows a trait-based design that allows for flexible process
 // management and testing through dependency injection patterns.
 //
 // AI-ASSISTANT-INFO: FFmpeg process management and execution abstraction
 
-use crate::error::{CoreResult, command_start_error, command_wait_error, command_failed_error};
-use ffmpeg_sidecar::command::FfmpegCommand;
-use ffmpeg_sidecar::event::FfmpegEvent;
-use ffmpeg_sidecar::child::FfmpegChild as SidecarChild;
+use crate::error::{CoreResult, command_failed_error, command_start_error, command_wait_error};
 use crate::hardware_accel::add_hardware_acceleration_to_command;
 use crate::temp_files;
-use std::process::ExitStatus;
+use ffmpeg_sidecar::child::FfmpegChild as SidecarChild;
+use ffmpeg_sidecar::command::FfmpegCommand;
+use ffmpeg_sidecar::event::FfmpegEvent;
 use std::path::{Path, PathBuf};
+use std::process::ExitStatus;
 
 // --- FFmpeg Execution Abstraction ---
 
@@ -34,7 +34,8 @@ use std::path::{Path, PathBuf};
 pub trait FfmpegProcess {
     /// Processes events from the running command using a provided handler closure.
     fn handle_events<F>(&mut self, handler: F) -> CoreResult<()>
-        where F: FnMut(FfmpegEvent) -> CoreResult<()>;
+    where
+        F: FnMut(FfmpegEvent) -> CoreResult<()>;
 
     /// Waits for the command to complete and returns its exit status.
     fn wait(&mut self) -> CoreResult<ExitStatus>;
@@ -54,14 +55,15 @@ pub struct SidecarProcess(SidecarChild); // Use the imported alias
 
 impl FfmpegProcess for SidecarProcess {
     fn handle_events<F>(&mut self, mut handler: F) -> CoreResult<()>
-        where F: FnMut(FfmpegEvent) -> CoreResult<()>
+    where
+        F: FnMut(FfmpegEvent) -> CoreResult<()>,
     {
         let iterator = self.0.iter().map_err(|e| {
             log::error!("Failed to get ffmpeg event iterator: {}", e);
             command_failed_error(
                 "ffmpeg (sidecar - get iter)",
                 ExitStatus::default(), // Placeholder status
-                e.to_string()
+                e.to_string(),
             )
         })?;
         for event in iterator {
@@ -71,7 +73,9 @@ impl FfmpegProcess for SidecarProcess {
     }
 
     fn wait(&mut self) -> CoreResult<ExitStatus> {
-        self.0.wait().map_err(|e| command_wait_error("ffmpeg (sidecar)", e))
+        self.0
+            .wait()
+            .map_err(|e| command_wait_error("ffmpeg (sidecar)", e))
     }
 }
 
@@ -83,11 +87,11 @@ impl FfmpegSpawner for SidecarSpawner {
     type Process = SidecarProcess;
 
     fn spawn(&self, mut cmd: FfmpegCommand) -> CoreResult<Self::Process> {
-        cmd.spawn().map(SidecarProcess)
-                 .map_err(|e| command_start_error("ffmpeg (sidecar)", e))
+        cmd.spawn()
+            .map(SidecarProcess)
+            .map_err(|e| command_start_error("ffmpeg (sidecar)", e))
     }
 }
-
 
 // --- Grain Detection Specific Functions ---
 
@@ -95,7 +99,8 @@ impl FfmpegSpawner for SidecarSpawner {
 ///
 /// Creates a temporary file within the specified `output_dir` using the temp_files module.
 /// The file will be cleaned up when the `output_dir` (assumed to be a TempDir) is dropped.
-pub fn extract_sample<S: FfmpegSpawner>( // Added generic parameter S
+pub fn extract_sample<S: FfmpegSpawner>(
+    // Added generic parameter S
     spawner: &S, // Added spawner argument
     input_path: &Path,
     start_time_secs: f64,
@@ -104,14 +109,16 @@ pub fn extract_sample<S: FfmpegSpawner>( // Added generic parameter S
 ) -> CoreResult<PathBuf> {
     log::debug!(
         "Extracting sample: input={}, start={}, duration={}, out_dir={}",
-        input_path.display(), start_time_secs, duration_secs, output_dir.display()
-   );
+        input_path.display(),
+        start_time_secs,
+        duration_secs,
+        output_dir.display()
+    );
 
-   // Generate a unique filename for the sample within the output directory
-   let output_path = temp_files::create_temp_file_path(output_dir, "raw_sample", "mkv");
+    // Generate a unique filename for the sample within the output directory
+    let output_path = temp_files::create_temp_file_path(output_dir, "raw_sample", "mkv");
 
-
-   // Use mutable command object and sequential calls
+    // Use mutable command object and sequential calls
     let mut cmd = FfmpegCommand::new();
 
     // Add hardware acceleration options BEFORE the input - no need to log status
@@ -143,13 +150,13 @@ pub fn extract_sample<S: FfmpegSpawner>( // Added generic parameter S
         return Err(command_failed_error(
             "ffmpeg (sample extraction)",
             status,
-            "Sample extraction process failed"
+            "Sample extraction process failed",
         ));
-   }
+    }
 
-
-   log::debug!("Sample extracted successfully to: {}", output_path.display());
-   Ok(output_path) // Return the path to the created sample
+    log::debug!(
+        "Sample extracted successfully to: {}",
+        output_path.display()
+    );
+    Ok(output_path) // Return the path to the created sample
 }
-
-

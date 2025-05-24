@@ -4,8 +4,8 @@
 //
 // FFMPEG INTEGRATION: FFmpeg Command Building and Execution
 //
-// This module encapsulates the logic for executing ffmpeg commands using 
-// ffmpeg-sidecar. It handles building complex ffmpeg command lines with 
+// This module encapsulates the logic for executing ffmpeg commands using
+// ffmpeg-sidecar. It handles building complex ffmpeg command lines with
 // appropriate arguments for video and audio encoding, progress reporting,
 // and error handling.
 //
@@ -28,13 +28,13 @@ use crate::error::{CoreError, CoreResult, command_failed_error};
 use crate::external::{FfmpegProcess, FfmpegSpawner};
 use crate::hardware_accel::add_hardware_acceleration_to_command;
 use crate::processing::audio; // To access calculate_audio_bitrate
-use crate::processing::detection::grain_analysis::GrainLevel; 
-use crate::progress_reporting::{report_encode_error, report_encode_progress, report_encode_start};
+use crate::processing::detection::grain_analysis::GrainLevel;
+use crate::progress_reporting::{report_encode_progress, report_encode_start};
 
 // ---- External crate imports ----
 use ffmpeg_sidecar::command::FfmpegCommand;
 use ffmpeg_sidecar::event::{FfmpegEvent, LogLevel as FfmpegLogLevel}; // Renamed LogLevel to avoid conflict
-use log::{debug, error, log, trace, warn};
+use log::{debug, log, trace, warn};
 
 // ---- Standard library imports ----
 use std::path::PathBuf;
@@ -210,7 +210,6 @@ pub fn build_ffmpeg_args(
         args.push("-an".to_string());
     }
 
-
     Ok(args)
 }
 
@@ -285,14 +284,35 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner>(
     cmd.args(ffmpeg_args.iter().map(|s| s.as_str())); // Add the built arguments
     cmd.output(params.output_path.to_string_lossy());
 
-    // Log the constructed command before spawning using Debug format
-    let cmd_debug = format!("{:?}", cmd); // Log the final command state
+    // Build a proper command string for logging
+    let mut cmd_parts = vec!["ffmpeg".to_string()];
+    
+    // Add hardware acceleration flags if they were added
+    if hw_accel_added {
+        cmd_parts.push("-hwaccel".to_string());
+        cmd_parts.push("videotoolbox".to_string());
+    }
+    
+    // Add input
+    cmd_parts.push("-i".to_string());
+    cmd_parts.push(params.input_path.to_string_lossy().to_string());
+    
+    // Add all the ffmpeg args
+    cmd_parts.extend(ffmpeg_args.clone());
+    
+    // Add output
+    cmd_parts.push(params.output_path.to_string_lossy().to_string());
+    
+    // Create a properly formatted command string
+    let cmd_string = cmd_parts.join(" ");
 
     // Only log FFmpeg command in verbose mode or for grain samples at debug level
     if is_grain_analysis_sample {
-        debug!("FFmpeg command (grain sample):\n  {}", cmd_debug);
-    } else if crate::progress_reporting::should_print(crate::progress_reporting::VerbosityLevel::Verbose) {
-        log::info!("FFmpeg command details:\n  {}", cmd_debug);
+        debug!("FFmpeg command (grain sample):\n  {}", cmd_string);
+    } else {
+        // Pass the properly formatted command parts as a JSON array string
+        let cmd_json = serde_json::to_string(&cmd_parts).unwrap_or_else(|_| cmd_string.clone());
+        crate::progress_reporting::report_ffmpeg_command(&cmd_json, false);
     }
 
     // --- Execution and Progress ---
@@ -391,8 +411,11 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner>(
                     // Log non-critical errors at debug level to reduce noise
                     debug!("ffmpeg non-critical message: {}", err_str);
                 } else {
-                    // Log critical errors at error level
-                    error!("ffmpeg stderr error: {}", err_str);
+                    // Use progress reporting for critical errors
+                    crate::progress_reporting::report_log_message(
+                        &format!("ffmpeg stderr error: {}", err_str),
+                        crate::progress_reporting::LogLevel::Error
+                    );
                 }
 
                 // Always capture errors in the buffer for later processing
@@ -402,29 +425,39 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner>(
             }
             FfmpegEvent::Log(level, log_str) => {
                 let rust_log_level = map_ffmpeg_log_level(&level);
-                log!(target: "ffmpeg_log", rust_log_level, "{}", log_str);
+                
+                // LOGGING POLICY FOR TERMINAL OUTPUT CLARITY:
+                // 
+                // 1. All ffmpeg [info] messages are downgraded to debug level
+                //    These are mostly metadata/stream mapping info that clutters output
+                //
+                // 2. For grain analysis samples:
+                //    - ALL messages (including Svt[info]) are logged at debug level only
+                //    - This prevents ANY output during the multiple sample encodes
+                //
+                // 3. For actual encoding:
+                //    - Regular [info] messages still go to debug level
+                //    - Svt[info] messages are shown in --verbose mode via report_encoder_message
+                //    - This gives users encoder config details when requested
+                //
+                // This approach follows our CLI design guide to minimize terminal clutter
+                // while still providing useful information when explicitly requested.
+                
+                let effective_log_level = if rust_log_level == log::Level::Info {
+                    // Always downgrade info to debug for cleaner output
+                    log::Level::Debug
+                } else {
+                    rust_log_level
+                };
+                
+                log!(target: "ffmpeg_log", effective_log_level, "{}", log_str);
 
-                if log_str.starts_with("Svt[info]:") {
-                    // Keep important configuration and summary SVT messages at info level
-                    // but downgrade routine progress messages to debug level
-                    let is_important_svt_message =
-                        log_str.contains("SVT [config]") ||
-                        log_str.contains("SVT [version]") ||
-                        log_str.contains("SVT [build]") ||
-                        log_str.contains("-------------------------------------------") ||
-                        log_str.contains("Level of Parallelism") ||
-                        log_str.contains("SUMMARY");
-
-                    if is_important_svt_message {
-                        // Use centralized reporting function for important encoder messages
-                        crate::progress_reporting::report_encoder_message(&log_str, is_grain_analysis_sample);
-                    }
-                    // Always log at debug level regardless of importance for debugging
-                    // Log routine SVT messages or all grain sample SVT messages at debug level
-                    debug!("{}{}",
-                        if is_grain_analysis_sample { "SVT Info (grain sample): " } else { "" },
-                        log_str
-                    );
+                // Only report Svt[info] messages for actual encoding in verbose mode
+                // Skip ALL messages from grain analysis samples to reduce clutter
+                if log_str.starts_with("Svt[info]:") && !is_grain_analysis_sample {
+                    // The encoder_message function in terminal.rs will only show these
+                    // when --verbose is enabled, keeping normal output clean
+                    crate::progress_reporting::report_encoder_message(&log_str, is_grain_analysis_sample);
                 }
 
                 stderr_buffer.push_str(&format!("[{:?}] {}", level, log_str));
@@ -449,23 +482,28 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner>(
         .unwrap_or_else(|| params.input_path.to_string_lossy());
 
     if status.success() {
+        // Clear any active progress bar before printing success messages
+        if !is_grain_analysis_sample {
+            crate::progress_reporting::clear_progress_bar();
+        }
+
         // Log success at appropriate level based on context
-        let log_level = if is_grain_analysis_sample {
-            log::Level::Debug
-        } else {
-            log::Level::Info
-        };
         let prefix = if is_grain_analysis_sample {
             "Grain sample encode"
         } else {
             "Encode"
         };
-        log!(
-            log_level,
-            "{} finished successfully for {}",
-            prefix,
-            filename_cow
-        );
+        // Use progress reporting for proper indentation
+        if is_grain_analysis_sample {
+            // Log at debug level for grain samples
+            log::debug!("{} finished successfully for {}", prefix, filename_cow);
+        } else {
+            // Use sub-item formatting for main encodes to properly indent
+            crate::progress_reporting::report_sub_item(&format!(
+                "{} finished successfully for {}",
+                prefix, filename_cow
+            ));
+        }
         Ok(())
     } else {
         let error_message = format!(
@@ -480,11 +518,12 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner>(
         } else {
             "FFmpeg encode"
         };
-        error!("{} failed for {}: {}", prefix, filename_cow, error_message);
-
-        // Use direct reporting for non-grain-analysis errors
+        // Use progress reporting for error messages
         if !is_grain_analysis_sample {
-            report_encode_error(&params.input_path, &error_message);
+            crate::progress_reporting::report_encode_error(&params.input_path, &error_message);
+        } else {
+            // For grain samples, just log at debug level
+            debug!("{} failed for {}: {}", prefix, filename_cow, error_message);
         }
 
         // Create a more specific error type based on stderr content

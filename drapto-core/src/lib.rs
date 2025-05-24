@@ -149,16 +149,15 @@ pub use utils::{format_bytes, format_duration};
 // ----- External Tool Interactions -----
 /// Re-export external tool traits, implementations, and platform detection
 pub use external::{
-    CrateFfprobeExecutor, FfmpegProcess, FfmpegSpawner, FfprobeExecutor,
-    FileMetadataProvider, SidecarProcess, SidecarSpawner, StdFsMetadataProvider,
+    CrateFfprobeExecutor, FfmpegProcess, FfmpegSpawner, FfprobeExecutor, FileMetadataProvider,
+    SidecarProcess, SidecarSpawner, StdFsMetadataProvider,
 };
 
 // ----- Progress Reporting -----
 /// Progress reporting functions
 pub use progress_reporting::{
-    report_encode_start, report_encode_progress, report_encode_complete,
-    report_encode_error, report_hardware_acceleration, report_log_message,
-    LogLevel,
+    LogLevel, report_encode_complete, report_encode_error, report_encode_progress,
+    report_encode_start, report_log_message,
 };
 
 // ----- Notification Services -----
@@ -168,16 +167,20 @@ pub use notifications::{NotificationType, NtfyNotificationSender};
 // ----- Temporary File Management -----
 /// Temporary file management utilities
 pub use temp_files::{
-    create_temp_dir, create_temp_file, create_temp_file_path, cleanup_base_dirs,
+    cleanup_base_dirs,
+    create_analysis_dir,
     // Convenience functions
-    create_grain_analysis_dir, create_analysis_dir
+    create_grain_analysis_dir,
+    create_temp_dir,
+    create_temp_file,
+    create_temp_file_path,
 };
 
 // ----- Hardware Acceleration -----
 /// Hardware acceleration detection and configuration
 pub use hardware_accel::{
-    HardwareAcceleration, is_macos, is_hardware_acceleration_available,
-    add_hardware_acceleration_to_command, log_hardware_acceleration_status
+    HardwareAcceleration, add_hardware_acceleration_to_command, is_hardware_acceleration_available,
+    is_macos, log_hardware_acceleration_status,
 };
 
 // ============================================================================
@@ -232,4 +235,3 @@ pub struct EncodeResult {
     /// Size of the encoded output file in bytes
     pub output_size: u64,
 }
-

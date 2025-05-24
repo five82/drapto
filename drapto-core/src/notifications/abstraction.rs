@@ -100,14 +100,27 @@ impl NotificationType {
     /// * A string representing the message body for this notification
     pub fn get_message(&self) -> String {
         match self {
-            NotificationType::EncodeStart { input_path, hostname, .. } => {
-                let filename = input_path.file_name()
+            NotificationType::EncodeStart {
+                input_path,
+                hostname,
+                ..
+            } => {
+                let filename = input_path
+                    .file_name()
                     .map(|name| name.to_string_lossy().to_string())
                     .unwrap_or_else(|| input_path.to_string_lossy().to_string());
                 format!("Started encoding {} on {}", filename, hostname)
-            },
-            NotificationType::EncodeComplete { input_path, input_size, output_size, duration, hostname, .. } => {
-                let filename = input_path.file_name()
+            }
+            NotificationType::EncodeComplete {
+                input_path,
+                input_size,
+                output_size,
+                duration,
+                hostname,
+                ..
+            } => {
+                let filename = input_path
+                    .file_name()
                     .map(|name| name.to_string_lossy().to_string())
                     .unwrap_or_else(|| input_path.to_string_lossy().to_string());
 
@@ -120,21 +133,34 @@ impl NotificationType {
 
                 let duration_secs = duration.as_secs();
                 let duration_str = if duration_secs >= 3600 {
-                    format!("{}h {}m {}s", duration_secs / 3600, (duration_secs % 3600) / 60, duration_secs % 60)
+                    format!(
+                        "{}h {}m {}s",
+                        duration_secs / 3600,
+                        (duration_secs % 3600) / 60,
+                        duration_secs % 60
+                    )
                 } else if duration_secs >= 60 {
                     format!("{}m {}s", duration_secs / 60, duration_secs % 60)
                 } else {
                     format!("{}s", duration_secs)
                 };
 
-                format!("Completed encoding {} on {} in {}. Reduced by {}%", filename, hostname, duration_str, reduction)
-            },
-            NotificationType::EncodeError { input_path, message, hostname } => {
-                let filename = input_path.file_name()
+                format!(
+                    "Completed encoding {} on {} in {}. Reduced by {}%",
+                    filename, hostname, duration_str, reduction
+                )
+            }
+            NotificationType::EncodeError {
+                input_path,
+                message,
+                hostname,
+            } => {
+                let filename = input_path
+                    .file_name()
                     .map(|name| name.to_string_lossy().to_string())
                     .unwrap_or_else(|| input_path.to_string_lossy().to_string());
                 format!("Error encoding {} on {}: {}", filename, hostname, message)
-            },
+            }
             NotificationType::Custom { message, .. } => message.clone(),
         }
     }

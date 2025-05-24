@@ -65,7 +65,6 @@ pub enum FilmGrainMetricType {
     /// Knee point detection algorithm that finds the point of diminishing returns
     /// in the denoising curve, balancing file size reduction and quality preservation.
     KneePoint,
-
     // Future strategies (currently disabled):
     // PercentMaxReduction - Uses a percentage of maximum reduction
     // OriginalEfficiency - Uses the original efficiency algorithm
@@ -146,7 +145,6 @@ pub const DEFAULT_GRAIN_REFINEMENT_POINTS: usize = 5;
 #[derive(Debug, Clone)]
 pub struct CoreConfig {
     // ---- Path Configuration ----
-
     /// Directory containing input video files to process
     pub input_dir: PathBuf,
 
@@ -160,7 +158,6 @@ pub struct CoreConfig {
     pub temp_dir: Option<PathBuf>,
 
     // ---- Encoder Settings ----
-
     /// Encoder preset (0-13, lower is slower/better quality)
     /// Default value is 6, which provides a good balance between speed and quality
     pub encoder_preset: u8,
@@ -179,18 +176,15 @@ pub struct CoreConfig {
     pub crop_mode: String,
 
     // ---- Notification Settings ----
-
     /// Optional ntfy.sh topic URL for sending notifications
     pub ntfy_topic: Option<String>,
 
     // ---- Processing Options ----
-
     /// Whether to enable light video denoising (hqdn3d)
     /// When true, grain analysis will be performed to determine optimal parameters
     pub enable_denoise: bool,
 
     // ---- Grain Analysis Configuration ----
-
     /// Sample duration for grain analysis in seconds
     /// Shorter samples process faster but may be less representative
     pub film_grain_sample_duration: u32,

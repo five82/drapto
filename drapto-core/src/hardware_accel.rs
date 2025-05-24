@@ -17,9 +17,9 @@
 // decoding on macOS. It provides a simple API for detecting and configuring hardware
 // acceleration.
 
-use std::env;
-use ffmpeg_sidecar::command::FfmpegCommand;
 use crate::progress_reporting::report_hardware_acceleration;
+use ffmpeg_sidecar::command::FfmpegCommand;
+use std::env;
 
 /// Represents hardware acceleration capabilities for the current platform.
 #[derive(Debug, Clone, Copy)]
@@ -54,10 +54,7 @@ impl HardwareAcceleration {
     /// This function logs information about the available hardware acceleration
     /// capabilities to the info log level.
     pub fn log_capabilities(&self) {
-        report_hardware_acceleration(
-            self.videotoolbox_decode_available,
-            "VideoToolbox"
-        );
+        report_hardware_acceleration(self.videotoolbox_decode_available, "VideoToolbox");
     }
 
     /// Gets FFmpeg hardware acceleration arguments for the current platform.
@@ -128,7 +125,7 @@ pub fn add_hardware_acceleration_to_command(
         // message in the output is coming from another source when this function is called.
         cmd.arg("-hwaccel");
         cmd.arg("videotoolbox");
-        
+
         // Note: This function doesn't directly log anything.
         // When it returns true, the caller usually logs a message.
         return true;

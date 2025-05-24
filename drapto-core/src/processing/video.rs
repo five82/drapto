@@ -32,23 +32,22 @@
 // ---- Internal crate imports ----
 use crate::config::CoreConfig;
 use crate::error::{CoreError, CoreResult};
-use crate::external::{FileMetadataProvider, FfmpegSpawner, FfprobeExecutor};
-use crate::external::ffmpeg::{run_ffmpeg_encode, EncodeParams};
+use crate::external::ffmpeg::{EncodeParams, run_ffmpeg_encode};
+use crate::external::{FfmpegSpawner, FfprobeExecutor, FileMetadataProvider};
 use crate::hardware_accel::log_hardware_acceleration_status;
 use crate::notifications::{NotificationType, NtfyNotificationSender};
 use crate::processing::audio;
 use crate::processing::detection::{self, grain_analysis};
-use crate::progress_reporting::{report_log_message_with_verbosity, LogLevel, VerbosityLevel}; // Direct progress reporting
-use crate::utils::{format_duration, get_file_size};
+// Direct progress reporting - only importing what we need
 use crate::EncodeResult;
+use crate::utils::{format_duration, get_file_size};
 
 // ---- External crate imports ----
-use log::{info, warn, error};
+use log::{error, info, warn};
 
 // ---- Standard library imports ----
 use std::path::PathBuf;
 use std::time::Instant;
-
 
 // ============================================================================
 // MAIN PROCESSING FUNCTION
@@ -139,11 +138,7 @@ use std::time::Instant;
 ///     }
 /// }
 /// ```
-pub fn process_videos<
-    S: FfmpegSpawner,
-    P: FfprobeExecutor,
-    M: FileMetadataProvider,
->(
+pub fn process_videos<S: FfmpegSpawner, P: FfprobeExecutor, M: FileMetadataProvider>(
     spawner: &S,
     ffprobe_executor: &P,
     notification_sender: Option<&NtfyNotificationSender>,
@@ -151,8 +146,7 @@ pub fn process_videos<
     config: &CoreConfig,
     files_to_process: &[PathBuf],
     target_filename_override: Option<PathBuf>,
-) -> CoreResult<Vec<EncodeResult>>
-{
+) -> CoreResult<Vec<EncodeResult>> {
     // ========================================================================
     // STEP 1: GET SYSTEM INFORMATION
     // ========================================================================
@@ -160,14 +154,18 @@ pub fn process_videos<
     // Get the hostname for logging and notifications
     // This helps identify which machine is performing the encoding
     let hostname = hostname::get()
-        .map(|s| s.into_string().unwrap_or_else(|_| "unknown-host-invalid-utf8".to_string()))
+        .map(|s| {
+            s.into_string()
+                .unwrap_or_else(|_| "unknown-host-invalid-utf8".to_string())
+        })
         .unwrap_or_else(|_| "unknown-host-error".to_string());
 
-    report_log_message_with_verbosity(&format!("Running on host: {}", hostname), LogLevel::Info, Some(VerbosityLevel::Verbose));
+    // Report hostname as a status line in verbose mode
+    log::debug!("Host: {}", hostname);
+    crate::progress_reporting::report_status("Host", &hostname);
 
     // This is the ONLY place we should log hardware acceleration status
     log_hardware_acceleration_status();
-
 
     // Initialize the results vector to store successful encoding results
     let mut results: Vec<EncodeResult> = Vec::new();
@@ -183,14 +181,24 @@ pub fn process_videos<
         // Extract the filename for logging and output path construction
         let filename = input_path
             .file_name()
-            .ok_or_else(|| CoreError::PathError(format!("Failed to get filename for {}", input_path.display())))?
+            .ok_or_else(|| {
+                CoreError::PathError(format!(
+                    "Failed to get filename for {}",
+                    input_path.display()
+                ))
+            })?
             .to_string_lossy()
             .to_string();
 
         // Extract the filename without extension (not currently used but kept for future use)
         let _filename_noext = input_path
             .file_stem()
-            .ok_or_else(|| CoreError::PathError(format!("Failed to get filename stem for {}", input_path.display())))?
+            .ok_or_else(|| {
+                CoreError::PathError(format!(
+                    "Failed to get filename stem for {}",
+                    input_path.display()
+                ))
+            })?
             .to_string_lossy()
             .to_string();
 
@@ -243,15 +251,13 @@ pub fn process_videos<
             }
 
             // Skip to the next file
-            // Add an empty line for spacing
-            crate::progress_reporting::report_empty_line();
             continue;
         }
 
-        // Only log the file being processed in verbose mode
-        if crate::progress_reporting::should_print(crate::progress_reporting::VerbosityLevel::Verbose) {
-            info!("Processing: {}", filename);
-        }
+        // Report file info as status lines
+        crate::progress_reporting::report_status("File", &filename);
+        log::debug!("Host: {}", hostname);
+        crate::progress_reporting::report_status("Host", &hostname);
 
         // ========================================================================
         // STEP 3.3: SEND START NOTIFICATION
@@ -281,7 +287,10 @@ pub fn process_videos<
             Ok(props) => props,
             Err(e) => {
                 // Log the error and skip this file
-                error!("Failed to get video properties for {}: {}. Skipping file.", filename, e);
+                error!(
+                    "Failed to get video properties for {}: {}. Skipping file.",
+                    filename, e
+                );
 
                 // Send an error notification if notification_sender is provided
                 if let Some(sender) = notification_sender {
@@ -314,7 +323,7 @@ pub fn process_videos<
 
         // Define resolution thresholds for quality selection
         const UHD_WIDTH_THRESHOLD: u32 = 3840; // 4K and above
-        const HD_WIDTH_THRESHOLD: u32 = 1920;  // 1080p and above
+        const HD_WIDTH_THRESHOLD: u32 = 1920; // 1080p and above
 
         // Select quality (CRF) based on video resolution
         // Lower CRF values = higher quality but larger files
@@ -338,15 +347,14 @@ pub fn process_videos<
             "SD"
         };
 
-        // Log the detected resolution and selected quality only in verbose mode
-        if crate::progress_reporting::should_print(crate::progress_reporting::VerbosityLevel::Verbose) {
-            info!(
-                "Detected video width: {} ({}) - CRF set to {}",
-                video_width,
-                category,
-                quality
-            );
-        }
+        // Report the detected resolution and selected quality as a status line
+        crate::progress_reporting::report_status(
+            "Video quality",
+            &format!("{} ({}) - CRF {}", video_width, category, quality),
+        );
+        crate::progress_reporting::report_status("Duration", &format!("{:.2}s", duration_secs));
+        log::debug!("Crop Threshold: 16");
+        crate::progress_reporting::report_status("Crop Threshold", "16");
 
         // ========================================================================
         // STEP 3.6: PERFORM CROP DETECTION
@@ -356,33 +364,43 @@ pub fn process_videos<
         let disable_crop = config.crop_mode == "off";
 
         // Detect black bars in the video and generate crop parameters if needed
-        let (crop_filter_opt, _is_hdr) = match detection::detect_crop(spawner, input_path, &video_props, disable_crop) {
-            Ok(result) => result,
-            Err(e) => {
-                // Log warning and proceed without cropping
-                warn!("Crop detection failed for {}: {}. Proceeding without cropping.", filename, e);
-                // Note: detect_crop currently returns Ok(None) for failures, but this handles
-                // potential future changes where it might return Err
-                (None, false)
-            }
-        };
+        let (crop_filter_opt, _is_hdr) =
+            match detection::detect_crop(spawner, input_path, &video_props, disable_crop) {
+                Ok(result) => result,
+                Err(e) => {
+                    // Log warning and proceed without cropping
+                    warn!(
+                        "Crop detection failed for {}: {}. Proceeding without cropping.",
+                        filename, e
+                    );
+                    // Note: detect_crop currently returns Ok(None) for failures, but this handles
+                    // potential future changes where it might return Err
+                    (None, false)
+                }
+            };
 
         // ========================================================================
         // STEP 3.7: ANALYZE AUDIO STREAMS
         // ========================================================================
+
+        // Header for audio analysis
+        crate::progress_reporting::report_processing_step("Audio analysis");
 
         // Log information about audio streams (channels, bitrates)
         let _ = audio::log_audio_info(ffprobe_executor, input_path);
 
         // Get audio channel information for encoding
         let audio_channels = match ffprobe_executor.get_audio_channels(input_path) {
-             Ok(channels) => channels,
-             Err(e) => {
-                 // Log warning and continue with empty channel list
-                 warn!("Error getting audio channels for ffmpeg command build: {}. Using empty list.", e);
-                 vec![] // Empty vector as fallback
-             }
-         };
+            Ok(channels) => channels,
+            Err(e) => {
+                // Log warning and continue with empty channel list
+                warn!(
+                    "Error getting audio channels for ffmpeg command build: {}. Using empty list.",
+                    e
+                );
+                vec![] // Empty vector as fallback
+            }
+        };
 
         // ========================================================================
         // STEP 3.8: PREPARE ENCODING PARAMETERS
@@ -410,20 +428,13 @@ pub fn process_videos<
 
         // Analyze grain/noise in the video to determine optimal denoising parameters
         let final_hqdn3d_params_result = if config.enable_denoise {
-            // Perform grain analysis if denoising is enabled
-            report_log_message_with_verbosity(
-                "Grain detection enabled, analyzing video using relative sample comparison...",
-                LogLevel::Info,
-                Some(VerbosityLevel::Verbose)
-            );
-
             grain_analysis::analyze_grain(
                 input_path,
                 config,
                 &initial_encode_params,
                 duration_secs,
                 spawner,
-                metadata_provider
+                metadata_provider,
             )
         } else {
             // Skip grain analysis if denoising is disabled
@@ -437,53 +448,44 @@ pub fn process_videos<
 
         // Process the results of grain analysis and determine final denoising parameters
         let final_hqdn3d_params: Option<String> = match final_hqdn3d_params_result {
-             // Case 1: Grain analysis completed successfully with a result
-             Ok(Some(result)) => {
-                 // Convert the detected grain level to hqdn3d filter parameters
-                 let params_opt = grain_analysis::determine_hqdn3d_params(result.detected_level);
+            // Case 1: Grain analysis completed successfully with a result
+            Ok(Some(result)) => {
+                // Grain level is already reported by the grain analysis module
+                // Return the parameters (or None for Baseline videos)
+                grain_analysis::determine_hqdn3d_params(result.detected_level)
+            }
+            // Case 2: Grain analysis was skipped or produced no result
+            Ok(None) => {
+                info!(
+                    "Grain analysis skipped or did not produce a result. Proceeding without denoising."
+                );
+                None
+            }
+            // Case 3: Grain analysis failed with an error
+            Err(e) => {
+                // Log the error and skip this file
+                error!("Grain analysis failed critically: {}. Skipping file.", e);
 
-                 // Log the results only in verbose mode
-                 if crate::progress_reporting::should_print(crate::progress_reporting::VerbosityLevel::Verbose) {
-                     info!(
-                         "Grain analysis result: {:?}, applying filter: {}",
-                         result.detected_level,
-                         params_opt.as_deref().unwrap_or("No parameters") // No parameters means no denoising needed (Baseline)
-                     );
-                 }
+                // Send an error notification if notification_sender is provided
+                if let Some(sender) = notification_sender {
+                    // Create a notification
+                    let notification = NotificationType::EncodeError {
+                        input_path: input_path.to_path_buf(),
+                        message: "Grain analysis failed".to_string(),
+                        hostname: hostname.clone(),
+                    };
 
-                 // Return the parameters (or None for Baseline videos)
-                 params_opt
-             }
-             // Case 2: Grain analysis was skipped or produced no result
-             Ok(None) => {
-                 info!("Grain analysis skipped or did not produce a result. Proceeding without denoising.");
-                 None
-             }
-             // Case 3: Grain analysis failed with an error
-             Err(e) => {
-                 // Log the error and skip this file
-                 error!("Grain analysis failed critically: {}. Skipping file.", e);
+                    // Send the notification
+                    if let Err(e) = sender.send_notification(&notification) {
+                        warn!("Failed to send error notification for {}: {}", filename, e);
+                    }
+                }
 
-                 // Send an error notification if notification_sender is provided
-                 if let Some(sender) = notification_sender {
-                     // Create a notification
-                     let notification = NotificationType::EncodeError {
-                         input_path: input_path.to_path_buf(),
-                         message: "Grain analysis failed".to_string(),
-                         hostname: hostname.clone(),
-                     };
-
-                     // Send the notification
-                     if let Err(e) = sender.send_notification(&notification) {
-                         warn!("Failed to send error notification for {}: {}", filename, e);
-                     }
-                 }
-
-                 // Add spacing in the log and skip to the next file
-                 crate::progress_reporting::report_section_separator();
-                 continue; // Skip this file
-             }
-         };
+                // Add spacing in the log and skip to the next file
+                crate::progress_reporting::report_section_separator();
+                continue; // Skip this file
+            }
+        };
 
         // ========================================================================
         // STEP 3.11: FINALIZE ENCODING PARAMETERS
@@ -494,39 +496,69 @@ pub fn process_videos<
 
         // Create the final set of parameters for the main encode
         let final_encode_params = initial_encode_params;
-        
+
         // Print encoding configuration section (only in verbose mode)
-        if crate::progress_reporting::should_print(crate::progress_reporting::VerbosityLevel::Verbose) {
-            crate::progress_reporting::report_section("ENCODING CONFIGURATION");
-            
-            // Video settings
-            crate::progress_reporting::report_subsection("Video:");
-            crate::progress_reporting::report_status("Preset", &format!("{} (SVT-AV1)", preset_value));
-            crate::progress_reporting::report_status("Quality", &format!("{} (CRF)", quality));
-            
-            if let Some(ref hqdn3d) = final_hqdn3d_params {
-                let grain_level_str = match hqdn3d.as_str() {
-                    "hqdn3d=1.5:1.1:4:3" => "VeryLight",
-                    "hqdn3d=2.8:2.1:4:3" => "Light", 
-                    "hqdn3d=3.5:3.5:4.5:4.5" => "Moderate",
-                    "hqdn3d=8:6:12:9" => "Elevated",
-                    _ => "Custom",
-                };
-                crate::progress_reporting::report_status("Grain Level", &format!("{} ({})", grain_level_str, hqdn3d));
-            } else {
-                crate::progress_reporting::report_status("Grain Level", "None (no denoising)");
-            }
-            
-            // Hardware info
-            crate::progress_reporting::report_empty_line();
-            crate::progress_reporting::report_subsection("Hardware:");
-            let hw_info = crate::hardware_accel::get_hardware_accel_info();
-            let hw_display = match hw_info {
-                Some(info) => format!("{} (decode only)", info),
-                None => "None available".to_string()
+        log::debug!("ENCODING CONFIGURATION");
+        // Video settings
+        log::debug!("Video:");
+        log::debug!("Preset: {} (SVT-AV1)", preset_value);
+        log::debug!("Quality: {} (CRF)", quality);
+
+        if let Some(ref hqdn3d) = final_hqdn3d_params {
+            let grain_level_str = match hqdn3d.as_str() {
+                "hqdn3d=1.5:1.1:4:3" => "VeryLight",
+                "hqdn3d=2.8:2.1:4:3" => "Light",
+                "hqdn3d=3.5:3.5:4.5:4.5" => "Moderate",
+                "hqdn3d=8:6:12:9" => "Elevated",
+                _ => "Custom",
             };
-            crate::progress_reporting::report_status("Acceleration", &hw_display);
+            log::debug!("Grain Level: {} ({})", grain_level_str, hqdn3d);
+        } else {
+            log::debug!("Grain Level: None (no denoising)");
         }
+
+        // Hardware info
+        log::debug!("Hardware:");
+        let hw_info = crate::hardware_accel::get_hardware_accel_info();
+        let hw_display = match hw_info {
+            Some(info) => format!("{} (decode only)", info),
+            None => "None available".to_string(),
+        };
+        log::debug!("Acceleration: {}", hw_display);
+
+        crate::progress_reporting::report_section("ENCODING CONFIGURATION");
+        // Video settings
+        crate::progress_reporting::report_subsection("Video:");
+        crate::progress_reporting::report_status(
+            "Preset",
+            &format!("{} (SVT-AV1)", preset_value),
+        );
+        crate::progress_reporting::report_status("Quality", &format!("{} (CRF)", quality));
+
+        if let Some(ref hqdn3d) = final_hqdn3d_params {
+            let grain_level_str = match hqdn3d.as_str() {
+                "hqdn3d=1.5:1.1:4:3" => "VeryLight",
+                "hqdn3d=2.8:2.1:4:3" => "Light",
+                "hqdn3d=3.5:3.5:4.5:4.5" => "Moderate",
+                "hqdn3d=8:6:12:9" => "Elevated",
+                _ => "Custom",
+            };
+            crate::progress_reporting::report_status(
+                "Grain Level",
+                &format!("{} ({})", grain_level_str, hqdn3d),
+            );
+        } else {
+            crate::progress_reporting::report_status("Grain Level", "None (no denoising)");
+        }
+
+        // Hardware info
+        crate::progress_reporting::report_subsection("Hardware:");
+        let hw_info = crate::hardware_accel::get_hardware_accel_info();
+        let hw_display = match hw_info {
+            Some(info) => format!("{} (decode only)", info),
+            None => "None available".to_string(),
+        };
+        crate::progress_reporting::report_status("Acceleration", &hw_display);
 
         // ========================================================================
         // STEP 3.12: EXECUTE FFMPEG ENCODING
@@ -564,13 +596,12 @@ pub fn process_videos<
                     output_size,
                 });
 
-                        // Log completion message using the success formatter
-                crate::progress_reporting::report_success(
-                    &format!("Encoding complete: {} in {}",
-                        filename,
-                        format_duration(file_elapsed_time)
-                    )
-                );
+                // Log completion message using the success formatter
+                crate::progress_reporting::report_success(&format!(
+                    "Encoding complete: {} in {}",
+                    filename,
+                    format_duration(file_elapsed_time)
+                ));
 
                 // ========================================================================
                 // STEP 3.14: SEND SUCCESS NOTIFICATION
@@ -590,7 +621,10 @@ pub fn process_videos<
 
                     // Send the notification
                     if let Err(e) = sender.send_notification(&notification) {
-                        warn!("Failed to send success notification for {}: {}", filename, e);
+                        warn!(
+                            "Failed to send success notification for {}: {}",
+                            filename, e
+                        );
                     }
                 }
             }
@@ -624,7 +658,7 @@ pub fn process_videos<
                                 warn!("Failed to send skip notification for {}: {}", filename, err);
                             }
                         }
-                    },
+                    }
                     _ => {
                         // Log the error for all other error types
                         error!(
@@ -643,7 +677,10 @@ pub fn process_videos<
 
                             // Send the notification
                             if let Err(err) = sender.send_notification(&notification) {
-                                warn!("Failed to send error notification for {}: {}", filename, err);
+                                warn!(
+                                    "Failed to send error notification for {}: {}",
+                                    filename, err
+                                );
                             }
                         }
                     }
@@ -651,9 +688,7 @@ pub fn process_videos<
             }
         }
 
-        // Add an empty line for spacing between files
-        crate::progress_reporting::report_empty_line();
-
+        // End of processing for this file
     } // End of loop through files
 
     // ========================================================================

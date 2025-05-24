@@ -31,13 +31,10 @@ use super::types::GrainLevel;
 pub(super) const HQDN3D_PARAMS: [(GrainLevel, &str); 4] = [
     // Very light denoising for barely noticeable grain
     (GrainLevel::VeryLight, "hqdn3d=0.5:0.3:3:3"),
-
     // Light denoising for light grain
     (GrainLevel::Light, "hqdn3d=1:0.7:4:4"),
-
     // Spatially-focused denoising for noticeable grain (higher spatial values)
     (GrainLevel::Moderate, "hqdn3d=1.5:1.0:6:6"),
-
     // Temporally-focused denoising for medium grain (higher temporal values)
     (GrainLevel::Elevated, "hqdn3d=2:1.3:8:8"),
 ];

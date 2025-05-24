@@ -87,7 +87,6 @@ pub struct CommandError {
 #[derive(Error, Debug)]
 pub enum CoreError {
     // ---- I/O and Filesystem Errors ----
-
     /// Standard I/O errors from the std::io module
     #[error("I/O error: {0}")]
     Io(#[from] io::Error),
@@ -101,13 +100,11 @@ pub enum CoreError {
     PathError(String),
 
     // ---- External Command Errors ----
-
     /// Errors that occur when executing external commands
     #[error("{}", format_command_error(.0))]
     Command(CommandError),
 
     // ---- Parsing Errors ----
-
     /// Errors that occur when parsing ffprobe output
     #[error("ffprobe output parsing error: {0}")]
     FfprobeParse(String),
@@ -121,7 +118,6 @@ pub enum CoreError {
     VideoInfoError(String),
 
     // ---- Video Processing Errors ----
-
     /// Error indicating that no suitable video files were found
     #[error("No suitable video files found in input directory")]
     NoFilesFound,
@@ -131,7 +127,6 @@ pub enum CoreError {
     OperationFailed(String),
 
     // ---- Film Grain Analysis Errors ----
-
     /// Errors that occur during film grain sample extraction or encoding
     #[error("Film grain sample extraction/encoding failed: {0}")]
     FilmGrainEncodingFailed(String),
@@ -145,7 +140,6 @@ pub enum CoreError {
     GrainAnalysisNoData(String),
 
     // ---- Notification Errors ----
-
     /// Errors that occur when sending notifications
     #[error("Notification error: {0}")]
     NotificationError(String),
@@ -201,7 +195,10 @@ fn format_command_error(err: &CommandError) -> String {
             format!("Failed to wait for {}: {}", err.command, io_err)
         }
         CommandErrorKind::Failed(status, stderr) => {
-            format!("Command {} failed with status {}. Stderr: {}", err.command, status, stderr)
+            format!(
+                "Command {} failed with status {}. Stderr: {}",
+                err.command, status, stderr
+            )
         }
     }
 }
@@ -227,7 +224,11 @@ pub fn command_wait_error(command: impl Into<String>, error: io::Error) -> CoreE
 }
 
 /// Convenience function to create a CommandFailed error
-pub fn command_failed_error(command: impl Into<String>, status: ExitStatus, stderr: impl Into<String>) -> CoreError {
+pub fn command_failed_error(
+    command: impl Into<String>,
+    status: ExitStatus,
+    stderr: impl Into<String>,
+) -> CoreError {
     CoreError::Command(CommandError {
         command: command.into(),
         kind: CommandErrorKind::Failed(status, stderr.into()),

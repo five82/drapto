@@ -174,11 +174,11 @@ pub fn generate_hqdn3d_params(strength_value: f32) -> String {
     // Define the anchor points for interpolation
     // Format: (strength, luma_spatial, chroma_spatial, temp_luma, temp_chroma)
     let anchor_points = [
-        (0.0, 0.0, 0.0, 0.0, 0.0),       // Baseline (no denoising)
-        (1.0, 0.5, 0.3, 3.0, 3.0),       // VeryLight
-        (2.0, 1.0, 0.7, 4.0, 4.0),       // Light
-        (3.0, 1.5, 1.0, 6.0, 6.0),       // Moderate
-        (4.0, 2.0, 1.3, 8.0, 8.0),       // Elevated
+        (0.0, 0.0, 0.0, 0.0, 0.0), // Baseline (no denoising)
+        (1.0, 0.5, 0.3, 3.0, 3.0), // VeryLight
+        (2.0, 1.0, 0.7, 4.0, 4.0), // Light
+        (3.0, 1.5, 1.0, 6.0, 6.0), // Moderate
+        (4.0, 2.0, 1.3, 8.0, 8.0), // Elevated
     ];
 
     // Find the two anchor points to interpolate between
@@ -196,16 +196,25 @@ pub fn generate_hqdn3d_params(strength_value: f32) -> String {
     // If we're at or beyond the maximum strength, use the highest anchor point
     if strength_value >= anchor_points[anchor_points.len() - 1].0 {
         let (_, luma, chroma, temp_luma, temp_chroma) = anchor_points[anchor_points.len() - 1];
-        return format!("hqdn3d={:.2}:{:.2}:{:.2}:{:.2}", luma, chroma, temp_luma, temp_chroma);
+        return format!(
+            "hqdn3d={:.2}:{:.2}:{:.2}:{:.2}",
+            luma, chroma, temp_luma, temp_chroma
+        );
     }
 
     // Extract the anchor points
-    let (lower_strength, lower_luma, lower_chroma, lower_temp_luma, lower_temp_chroma) = anchor_points[lower_idx];
-    let (upper_strength, upper_luma, upper_chroma, upper_temp_luma, upper_temp_chroma) = anchor_points[upper_idx];
+    let (lower_strength, lower_luma, lower_chroma, lower_temp_luma, lower_temp_chroma) =
+        anchor_points[lower_idx];
+    let (upper_strength, upper_luma, upper_chroma, upper_temp_luma, upper_temp_chroma) =
+        anchor_points[upper_idx];
 
     // Calculate the interpolation factor (0.0-1.0)
     let range = upper_strength - lower_strength;
-    let factor = if range > 0.0 { (strength_value - lower_strength) / range } else { 0.0 };
+    let factor = if range > 0.0 {
+        (strength_value - lower_strength) / range
+    } else {
+        0.0
+    };
 
     // Interpolate each parameter
     let luma = lower_luma + factor * (upper_luma - lower_luma);
@@ -214,7 +223,10 @@ pub fn generate_hqdn3d_params(strength_value: f32) -> String {
     let temp_chroma = lower_temp_chroma + factor * (upper_temp_chroma - lower_temp_chroma);
 
     // Format the parameters string
-    format!("hqdn3d={:.2}:{:.2}:{:.2}:{:.2}", luma, chroma, temp_luma, temp_chroma)
+    format!(
+        "hqdn3d={:.2}:{:.2}:{:.2}:{:.2}",
+        luma, chroma, temp_luma, temp_chroma
+    )
 }
 
 /// Calculates the median GrainLevel from a list of detected grain levels.

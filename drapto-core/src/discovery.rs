@@ -71,23 +71,23 @@ use std::path::{Path, PathBuf};
 pub fn find_processable_files(input_dir: &Path) -> CoreResult<Vec<PathBuf>> {
     // First, collect all entries from the directory, handling any WalkDir errors
     let entries: Vec<walkdir::DirEntry> = WalkDir::new(input_dir)
-        .min_depth(1)  // Skip the input directory itself
-        .max_depth(1)  // Don't search subdirectories
+        .min_depth(1) // Skip the input directory itself
+        .max_depth(1) // Don't search subdirectories
         .into_iter()
         .collect::<Result<Vec<_>, _>>() // Collect results, propagating the first error
-        .map_err(CoreError::Walkdir)?;  // Convert walkdir::Error to CoreError::Walkdir
+        .map_err(CoreError::Walkdir)?; // Convert walkdir::Error to CoreError::Walkdir
 
     // Filter the entries to find only .mkv files
     let files: Vec<PathBuf> = entries
         .into_iter()
-        .filter(|e| e.file_type().is_file())  // Only include files (not directories)
+        .filter(|e| e.file_type().is_file()) // Only include files (not directories)
         .filter_map(|entry| {
             entry
                 .path()
-                .extension()                                // Get the file extension
-                .and_then(|ext| ext.to_str())              // Convert to string (if valid UTF-8)
-                .filter(|ext_str| ext_str.eq_ignore_ascii_case("mkv"))  // Keep only .mkv files
-                .map(|_| entry.path().to_path_buf())       // Convert to PathBuf
+                .extension() // Get the file extension
+                .and_then(|ext| ext.to_str()) // Convert to string (if valid UTF-8)
+                .filter(|ext_str| ext_str.eq_ignore_ascii_case("mkv")) // Keep only .mkv files
+                .map(|_| entry.path().to_path_buf()) // Convert to PathBuf
         })
         .collect();
 
