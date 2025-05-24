@@ -133,12 +133,9 @@ pub fn process_videos(
 
     // Get the hostname for logging and notifications
     // This helps identify which machine is performing the encoding
-    let hostname = hostname::get()
-        .map(|s| {
-            s.into_string()
-                .unwrap_or_else(|_| "unknown-host-invalid-utf8".to_string())
-        })
-        .unwrap_or_else(|_| "unknown-host-error".to_string());
+    let hostname = std::env::var("HOSTNAME")
+        .or_else(|_| std::env::var("COMPUTERNAME")) // Windows fallback
+        .unwrap_or_else(|_| "unknown-host".to_string());
 
     // Report hostname as a status line in verbose mode
     log::debug!("Host: {}", hostname);

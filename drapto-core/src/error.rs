@@ -13,7 +13,7 @@
 // - CoreResult: Type alias for Result<T, CoreError> for consistent return types
 //
 // ERROR CATEGORIES:
-// - I/O and filesystem errors (Io, Walkdir, PathError)
+// - I/O and filesystem errors (Io, PathError)
 // - External command errors (Command with CommandErrorKind)
 // - Parsing errors (FfprobeParse, JsonParseError)
 // - Video processing errors (VideoInfoError, NoFilesFound, OperationFailed)
@@ -91,9 +91,6 @@ pub enum CoreError {
     #[error("I/O error: {0}")]
     Io(#[from] io::Error),
 
-    /// Errors that occur during directory traversal with walkdir
-    #[error("Directory traversal error: {0}")]
-    Walkdir(#[from] walkdir::Error),
 
     /// General path-related errors (invalid paths, missing files, etc.)
     #[error("Path error: {0}")]

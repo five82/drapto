@@ -39,7 +39,6 @@ use std::io::{self, IsTerminal};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
-use tabled::Table;
 
 // Import format_bytes from drapto_core
 use drapto_core::format_bytes;
@@ -1273,21 +1272,15 @@ pub fn print_encoding_summary(
 }
 
 /// Data structure for grain analysis table
-#[derive(tabled::Tabled)]
 pub struct GrainAnalysisRow {
-    #[tabled(rename = "Sample")]
     pub sample: String,
-    #[tabled(rename = "Time")]
     pub time: String,
-    #[tabled(rename = "Size (MB)")]
     pub size_mb: String,
-    #[tabled(rename = "Quality")]
     pub quality: String,
-    #[tabled(rename = "Selection")]
     pub selection: String,
 }
 
-/// Print grain analysis results as a table
+/// Print grain analysis results as a formatted list
 ///
 /// # Arguments
 ///
@@ -1297,51 +1290,30 @@ pub fn print_grain_analysis_table(results: &[GrainAnalysisRow]) {
         return;
     }
 
-    // Check terminal width
-    let term_width = term_size::dimensions().map(|(w, _)| w).unwrap_or(80);
-
-    if term_width < 60 {
-        // Fall back to simple list for narrow terminals
-        for (i, result) in results.iter().enumerate() {
-            info!(
-                "{}Sample {}: {} - {} MB ({})",
-                styling::SUB_ITEM_INDENT,
-                i + 1,
-                result.time,
-                result.size_mb,
-                result.selection
-            );
-        }
-        return;
-    }
-
-    // Create and configure table
-    let mut table = Table::new(results);
-
-    // Use ASCII style matching design guide
-    table
-        .with(tabled::settings::Style::ascii())
-        .with(tabled::settings::Alignment::left())
-        .with(tabled::settings::Padding::new(1, 1, 0, 0));
-
-    // Print each line with proper indentation
-    for line in table.to_string().lines() {
-        info!("{}{}", styling::SUB_ITEM_INDENT, line);
+    // Print header
+    info!("{}Sample  Time      Size (MB)  Quality  Selection", styling::SUB_ITEM_INDENT);
+    info!("{}------  --------  ---------  -------  ---------", styling::SUB_ITEM_INDENT);
+    
+    // Print each result with consistent spacing
+    for result in results {
+        info!(
+            "{}{:<6}  {:<8}  {:<9}  {:<7}  {}",
+            styling::SUB_ITEM_INDENT,
+            result.sample,
+            result.time,
+            result.size_mb,
+            result.quality,
+            result.selection
+        );
     }
 }
 
 /// Data structure for encoding summary table
-#[derive(tabled::Tabled)]
 pub struct EncodingSummaryRow {
-    #[tabled(rename = "File")]
     pub file: String,
-    #[tabled(rename = "Input")]
     pub input: String,
-    #[tabled(rename = "Output")]
     pub output: String,
-    #[tabled(rename = "Reduction")]
     pub reduction: String,
-    #[tabled(rename = "Time")]
     pub time: String,
 }
 
@@ -1357,32 +1329,16 @@ pub fn print_encoding_summary_table(summaries: &[EncodingSummaryRow]) {
 
     print_section("ENCODING SUMMARY");
 
-    // Check terminal width
-    let term_width = term_size::dimensions().map(|(w, _)| w).unwrap_or(80);
-
-    if term_width < 80 {
-        // Simple list for narrow terminals
-        for summary in summaries {
-            info!(
-                "{}{}: {} → {} ({})",
-                styling::STATUS_INDENT,
-                summary.file,
-                summary.input,
-                summary.output,
-                summary.reduction
-            );
-        }
-        return;
-    }
-
-    // Create table with minimal style
-    let mut table = Table::new(summaries);
-    table
-        .with(tabled::settings::Style::blank())
-        .with(tabled::settings::Alignment::left());
-
-    // Print table
-    for line in table.to_string().lines() {
-        info!("{}{}", styling::STATUS_INDENT, line);
+    // Simple formatted list that works on all terminal sizes
+    for summary in summaries {
+        info!(
+            "{}{}: {} → {} ({}) in {}",
+            styling::STATUS_INDENT,
+            summary.file,
+            summary.input,
+            summary.output,
+            summary.reduction,
+            summary.time
+        );
     }
 }

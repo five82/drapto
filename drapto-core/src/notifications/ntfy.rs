@@ -25,8 +25,6 @@ use crate::notifications::NotificationType;
 use ntfy::DispatcherBuilder;
 use ntfy::payload::{Payload, Priority as NtfyPriority};
 
-use url::Url;
-
 // ---- Standard library imports ----
 use log;
 
@@ -80,24 +78,33 @@ impl NtfyNotificationSender {
     /// * `Ok(NtfyNotificationSender)` - A new notification sender instance
     /// * `Err(CoreError)` - If the topic URL is invalid
     pub fn new(topic_url: &str) -> CoreResult<Self> {
-        // Validate the topic URL
-        let parsed_url = Url::parse(topic_url).map_err(|e| {
-            CoreError::NotificationError(format!("Invalid ntfy topic URL '{}': {}", topic_url, e))
-        })?;
+        // Basic URL validation - must start with https:// and have a topic path
+        if !topic_url.starts_with("https://") {
+            return Err(CoreError::NotificationError(format!(
+                "Invalid ntfy topic URL '{}': must start with https://",
+                topic_url
+            )));
+        }
 
-        // Ensure the host is present and non-empty
-        let _host = match parsed_url.host_str() {
-            Some(h) if !h.is_empty() => h,
-            _ => {
-                return Err(CoreError::NotificationError(format!(
-                    "URL '{}' must have a non-empty host",
-                    topic_url
-                )));
-            }
+        // Find the host part (after https://)
+        let after_scheme = &topic_url[8..]; // Skip "https://"
+        let host_end = after_scheme.find('/').unwrap_or(after_scheme.len());
+        let host = &after_scheme[..host_end];
+        
+        // Ensure the host is not empty
+        if host.is_empty() {
+            return Err(CoreError::NotificationError(format!(
+                "URL '{}' must have a non-empty host",
+                topic_url
+            )));
+        }
+
+        // Extract the topic from the path (after the host)
+        let topic = if host_end < after_scheme.len() {
+            &after_scheme[host_end + 1..] // Skip the '/'
+        } else {
+            ""
         };
-
-        // Extract the topic from the path (removing leading slash)
-        let topic = parsed_url.path().trim_start_matches('/');
 
         // Ensure the topic is not empty
         if topic.is_empty() {
@@ -123,14 +130,16 @@ impl NtfyNotificationSender {
     /// * `Ok(())` - If the notification was sent successfully
     /// * `Err(CoreError)` - If an error occurred while sending the notification
     pub fn send_notification(&self, notification: &NotificationType) -> CoreResult<()> {
-        // Parse the URL (already validated in new())
-        let parsed_url = Url::parse(&self.topic_url)
-            .map_err(|e| CoreError::NotificationError(format!("Invalid ntfy topic URL '{}': {}", self.topic_url, e)))?;
-
-        // Extract the base URL and topic
-        let host = parsed_url.host_str().unwrap_or("");
-        let base_url = format!("{}://{}", parsed_url.scheme(), host);
-        let topic = parsed_url.path().trim_start_matches('/');
+        // Extract base URL and topic from the stored URL (already validated in new())
+        let after_scheme = &self.topic_url[8..]; // Skip "https://"
+        let host_end = after_scheme.find('/').unwrap_or(after_scheme.len());
+        let host = &after_scheme[..host_end];
+        let base_url = format!("https://{}", host);
+        let topic = if host_end < after_scheme.len() {
+            &after_scheme[host_end + 1..] // Skip the '/'
+        } else {
+            ""
+        };
 
         // Build the ntfy dispatcher
         let dispatcher = DispatcherBuilder::new(&base_url).build_blocking()

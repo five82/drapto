@@ -26,8 +26,6 @@
 // ---- Internal crate imports ----
 use crate::error::{CoreError, CoreResult};
 
-// ---- External crate imports ----
-use walkdir::WalkDir;
 
 // ---- Standard library imports ----
 use std::path::{Path, PathBuf};
@@ -69,25 +67,25 @@ use std::path::{Path, PathBuf};
 /// }
 /// ```
 pub fn find_processable_files(input_dir: &Path) -> CoreResult<Vec<PathBuf>> {
-    // First, collect all entries from the directory, handling any WalkDir errors
-    let entries: Vec<walkdir::DirEntry> = WalkDir::new(input_dir)
-        .min_depth(1) // Skip the input directory itself
-        .max_depth(1) // Don't search subdirectories
-        .into_iter()
-        .collect::<Result<Vec<_>, _>>() // Collect results, propagating the first error
-        .map_err(CoreError::Walkdir)?; // Convert walkdir::Error to CoreError::Walkdir
-
+    // Read directory entries using standard library
+    let read_dir = std::fs::read_dir(input_dir)?;
+    
     // Filter the entries to find only .mkv files
-    let files: Vec<PathBuf> = entries
-        .into_iter()
-        .filter(|e| e.file_type().is_file()) // Only include files (not directories)
+    let files: Vec<PathBuf> = read_dir
         .filter_map(|entry| {
-            entry
-                .path()
-                .extension() // Get the file extension
-                .and_then(|ext| ext.to_str()) // Convert to string (if valid UTF-8)
-                .filter(|ext_str| ext_str.eq_ignore_ascii_case("mkv")) // Keep only .mkv files
-                .map(|_| entry.path().to_path_buf()) // Convert to PathBuf
+            let entry = entry.ok()?;
+            let path = entry.path();
+            
+            // Only include files (not directories)
+            if !path.is_file() {
+                return None;
+            }
+            
+            // Check for .mkv extension (case-insensitive)
+            path.extension()
+                .and_then(|ext| ext.to_str())
+                .filter(|ext_str| ext_str.eq_ignore_ascii_case("mkv"))
+                .map(|_| path.clone())
         })
         .collect();
 

@@ -25,7 +25,6 @@
 // ---- External crate imports ----
 use ffmpeg_sidecar::command::FfmpegCommand;
 use ffmpeg_sidecar::event::FfmpegEvent;
-use regex::Regex;
 
 // ---- Internal crate imports ----
 use crate::error::CoreResult;
@@ -65,7 +64,7 @@ fn determine_crop_threshold(props: &VideoProperties) -> (u32, bool) {
     let cs = props.color_space.as_deref().unwrap_or("");
 
     // Check if the color space matches common HDR color spaces (bt2020)
-    let is_hdr_cs = Regex::new(r"^(bt2020nc|bt2020c)$").unwrap().is_match(cs);
+    let is_hdr_cs = cs == "bt2020nc" || cs == "bt2020c";
 
     if is_hdr_cs {
         // For HDR content, use a higher initial threshold
@@ -139,10 +138,18 @@ fn run_hdr_blackdetect(
         stderr_output
     );
 
-    let black_level_re = Regex::new(r"black_level:\s*([0-9.]+)").unwrap();
-    let matches: Vec<f64> = black_level_re
-        .captures_iter(&stderr_output)
-        .filter_map(|cap| cap.get(1)?.as_str().parse::<f64>().ok())
+    // Parse black_level values from stderr output
+    let matches: Vec<f64> = stderr_output
+        .lines()
+        .filter_map(|line| {
+            if let Some(pos) = line.find("black_level:") {
+                let after_colon = &line[pos + "black_level:".len()..];
+                let value_str = after_colon.trim().split_whitespace().next()?;
+                value_str.parse::<f64>().ok()
+            } else {
+                None
+            }
+        })
         .collect();
 
     if matches.is_empty() {
@@ -253,20 +260,32 @@ fn run_cropdetect(
         stderr_output
     );
 
-    let crop_re = Regex::new(r"crop=(\d+):(\d+):(\d+):(\d+)").unwrap();
+    // Parse crop values from stderr output
     let mut crop_counts: std::collections::HashMap<(u32, u32, u32, u32), usize> =
         std::collections::HashMap::new();
     let mut valid_crops_found = false;
 
-    for cap in crop_re.captures_iter(&stderr_output) {
-        let w: u32 = cap[1].parse().unwrap();
-        let h: u32 = cap[2].parse().unwrap();
-        let x: u32 = cap[3].parse().unwrap();
-        let y: u32 = cap[4].parse().unwrap();
-
-        if w == orig_width {
-            valid_crops_found = true;
-            *crop_counts.entry((w, h, x, y)).or_insert(0) += 1;
+    // Parse crop=w:h:x:y patterns from stderr output
+    for line in stderr_output.lines() {
+        if let Some(crop_start) = line.find("crop=") {
+            let crop_part = &line[crop_start + 5..]; // Skip "crop="
+            let crop_end = crop_part.find(']').unwrap_or(crop_part.len());
+            let crop_values = &crop_part[..crop_end];
+            
+            let parts: Vec<&str> = crop_values.split(':').collect();
+            if parts.len() == 4 {
+                if let (Ok(w), Ok(h), Ok(x), Ok(y)) = (
+                    parts[0].parse::<u32>(),
+                    parts[1].parse::<u32>(),
+                    parts[2].parse::<u32>(),
+                    parts[3].parse::<u32>(),
+                ) {
+                    if w == orig_width {
+                        valid_crops_found = true;
+                        *crop_counts.entry((w, h, x, y)).or_insert(0) += 1;
+                    }
+                }
+            }
         }
     }
 
