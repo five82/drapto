@@ -40,7 +40,6 @@ pub mod logging;
 pub mod platform;
 
 /// CLI-specific progress reporting implementation
-pub mod progress;
 
 /// Terminal UI components and styling
 pub mod terminal;

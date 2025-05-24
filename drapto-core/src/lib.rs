@@ -121,7 +121,7 @@ pub mod hardware_accel;
 
 // ----- Configuration Types -----
 /// Main configuration structure for the core library
-pub use config::{CoreConfig, FilmGrainMetricType};
+pub use config::CoreConfig;
 
 // ----- File Discovery -----
 /// Function to find processable video files in a directory

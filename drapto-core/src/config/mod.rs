@@ -38,37 +38,6 @@ use crate::processing::detection::grain_analysis::GrainLevel;
 // ---- Re-exports ----
 pub use builder::CoreConfigBuilder;
 
-// ============================================================================
-// FILM GRAIN ANALYSIS TYPES
-// ============================================================================
-
-/// Strategy for determining the optimal film grain value during analysis.
-///
-/// This enum defines different algorithms that can be used to analyze
-/// film grain in a video and determine the optimal denoising parameters.
-///
-/// # Variants
-///
-/// * `KneePoint` - Uses knee point detection to find the optimal balance
-///   between file size reduction and visual quality preservation.
-///
-/// # Examples
-///
-/// ```rust,no_run
-/// use drapto_core::config::FilmGrainMetricType;
-///
-/// // Configure grain analysis to use knee point detection
-/// let metric_type = FilmGrainMetricType::KneePoint;
-/// ```
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum FilmGrainMetricType {
-    /// Knee point detection algorithm that finds the point of diminishing returns
-    /// in the denoising curve, balancing file size reduction and quality preservation.
-    KneePoint,
-    // Future strategies (currently disabled):
-    // PercentMaxReduction - Uses a percentage of maximum reduction
-    // OriginalEfficiency - Uses the original efficiency algorithm
-}
 
 // ============================================================================
 // DEFAULT CONSTANTS

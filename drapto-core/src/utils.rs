@@ -20,15 +20,8 @@
 //
 // AI-ASSISTANT-INFO: Utility functions for formatting and file operations
 
-// ---- Internal crate imports ----
-
 // ---- Standard library imports ----
 use std::time::Duration;
-
-// ============================================================================
-// FILE OPERATIONS
-// ============================================================================
-
 
 // ============================================================================
 // FORMATTING FUNCTIONS

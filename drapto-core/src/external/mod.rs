@@ -4,21 +4,14 @@
 //
 // EXTERNAL TOOLS: Interactions with External CLI Tools and File System
 //
-// This module encapsulates interactions with external command-line tools like
-// ffmpeg and ffprobe, as well as file system operations. It provides abstractions
-// through traits and concrete implementations to make these external dependencies
-// testable and maintainable.
+// This module encapsulates direct interactions with external command-line tools
+// like ffmpeg and ffprobe, as well as file system operations. It provides
+// simple functions without trait abstractions for cleaner, more direct code.
 //
 // KEY COMPONENTS:
-// - Traits for external tool interactions (FfmpegSpawner, FfprobeExecutor)
-// - Concrete implementations using ffmpeg-sidecar and ffprobe crates
-// - File metadata access abstraction
+// - Direct ffmpeg and ffprobe functions
+// - File metadata access functions
 // - Platform detection utilities
-//
-// DESIGN PHILOSOPHY:
-// This module follows the dependency injection pattern, allowing consumers to
-// provide their own implementations of the traits for testing or specialized
-// behavior. The default implementations use the ffmpeg-sidecar and ffprobe crates.
 //
 // AI-ASSISTANT-INFO: External tool interactions and abstractions for ffmpeg/ffprobe
 
@@ -54,11 +47,6 @@ pub use ffmpeg_executor::{spawn_ffmpeg, handle_ffmpeg_events, wait_for_ffmpeg, e
 // ----- FFprobe Execution -----
 /// Functions for executing ffprobe commands
 pub use ffprobe_executor::{get_audio_channels, get_video_properties, run_ffprobe_bitplanenoise, get_media_info, MediaInfo};
-
-// ============================================================================
-// AUDIO CHANNEL DETECTION
-// ============================================================================
-
 
 // ============================================================================
 // FILE METADATA ACCESS
