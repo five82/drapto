@@ -29,8 +29,6 @@ use crate::terminal;
 
 // ---- External crate imports ----
 use anyhow::{Context, Result, anyhow};
-use drapto_core::external::StdFsMetadataProvider;
-use drapto_core::external::{FfmpegSpawner, FfprobeExecutor};
 use drapto_core::notifications::NtfyNotificationSender;
 // Progress reporting is now handled through standard log levels
 use drapto_core::{CoreError, EncodeResult};
@@ -143,9 +141,7 @@ pub fn discover_encode_files(args: &EncodeArgs) -> Result<(Vec<PathBuf>, PathBuf
 /// # Returns
 /// * `Ok(())` - If the encoding process completes successfully
 /// * `Err(...)` - If an error occurs during the encoding process
-pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor>(
-    spawner: &S,
-    ffprobe_executor: &P,
+pub fn run_encode(
     notification_sender: Option<&NtfyNotificationSender>,
     args: EncodeArgs,
     interactive: bool,
@@ -201,7 +197,7 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor>(
 
     // Get file information from ffprobe for more useful user info
     let file_info = if !files_to_process.is_empty() {
-        ffprobe_executor.get_media_info(&files_to_process[0]).ok()
+        drapto_core::get_media_info(&files_to_process[0]).ok()
     } else {
         None
     };
@@ -410,10 +406,7 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor>(
     } else {
         // Call drapto_core::process_videos
         drapto_core::process_videos(
-            spawner,
-            ffprobe_executor,
             notification_sender,
-            &StdFsMetadataProvider,
             &config,
             &files_to_process,
             target_filename_override,

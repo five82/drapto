@@ -33,14 +33,14 @@
 use crate::config::CoreConfig;
 use crate::error::{CoreError, CoreResult};
 use crate::external::ffmpeg::{EncodeParams, run_ffmpeg_encode};
-use crate::external::{FfmpegSpawner, FfprobeExecutor, FileMetadataProvider};
+use crate::external::{get_file_size as external_get_file_size};
 use crate::hardware_accel::log_hardware_acceleration_status;
 use crate::notifications::{NotificationType, NtfyNotificationSender};
 use crate::processing::audio;
 use crate::processing::detection::{self, grain_analysis};
 // Direct progress reporting - only importing what we need
 use crate::EncodeResult;
-use crate::utils::{format_duration, get_file_size};
+use crate::utils::format_duration;
 
 // ---- External crate imports ----
 use log::{error, info, warn};
@@ -59,19 +59,9 @@ use std::time::Instant;
 /// the entire encoding workflow, from analyzing video properties to executing
 /// ffmpeg and reporting results.
 ///
-/// The function is generic over the types that implement the required traits:
-/// - `S`: FfmpegSpawner - For spawning ffmpeg processes
-/// - `P`: FfprobeExecutor - For executing ffprobe commands
-/// - `M`: FileMetadataProvider - For file system operations
-///
-/// This design allows for dependency injection and easier testing.
-///
 /// # Arguments
 ///
-/// * `spawner` - Implementation of FfmpegSpawner for executing ffmpeg
-/// * `ffprobe_executor` - Implementation of FfprobeExecutor for executing ffprobe
 /// * `notification_sender` - Implementation of NotificationSender for sending notifications
-/// * `metadata_provider` - Implementation of FileMetadataProvider for file operations
 /// * `config` - Core configuration containing encoding parameters and paths
 /// * `files_to_process` - List of paths to the video files to process
 /// * `target_filename_override` - Optional override for the output filename
@@ -85,16 +75,12 @@ use std::time::Instant;
 ///
 /// ```rust,no_run
 /// use drapto_core::{CoreConfig, process_videos, EncodeResult};
-/// use drapto_core::external::{SidecarSpawner, CrateFfprobeExecutor, StdFsMetadataProvider};
 /// use drapto_core::notifications::NtfyNotificationSender;
 /// use drapto_core::processing::detection::GrainLevel;
 /// use std::path::PathBuf;
 ///
 /// // Create dependencies
-/// let spawner = SidecarSpawner;
-/// let ffprobe_executor = CrateFfprobeExecutor::new();
 /// let notification_sender = NtfyNotificationSender::new("https://ntfy.sh/my-topic").unwrap();
-/// let metadata_provider = StdFsMetadataProvider;
 ///
 /// // Create configuration using the builder pattern
 /// let config = drapto_core::config::CoreConfigBuilder::new()
@@ -119,10 +105,7 @@ use std::time::Instant;
 ///
 /// // Process videos
 /// match process_videos(
-///     &spawner,
-///     &ffprobe_executor,
 ///     Some(&notification_sender),
-///     &metadata_provider,
 ///     &config,
 ///     &files,
 ///     None,
@@ -138,11 +121,8 @@ use std::time::Instant;
 ///     }
 /// }
 /// ```
-pub fn process_videos<S: FfmpegSpawner, P: FfprobeExecutor, M: FileMetadataProvider>(
-    spawner: &S,
-    ffprobe_executor: &P,
+pub fn process_videos(
     notification_sender: Option<&NtfyNotificationSender>,
-    metadata_provider: &M,
     config: &CoreConfig,
     files_to_process: &[PathBuf],
     target_filename_override: Option<PathBuf>,
@@ -283,7 +263,7 @@ pub fn process_videos<S: FfmpegSpawner, P: FfprobeExecutor, M: FileMetadataProvi
         // ========================================================================
 
         // Analyze the video file to get its properties (resolution, duration, etc.)
-        let video_props = match ffprobe_executor.get_video_properties(input_path) {
+        let video_props = match crate::external::get_video_properties(input_path) {
             Ok(props) => props,
             Err(e) => {
                 // Log the error and skip this file
@@ -365,7 +345,7 @@ pub fn process_videos<S: FfmpegSpawner, P: FfprobeExecutor, M: FileMetadataProvi
 
         // Detect black bars in the video and generate crop parameters if needed
         let (crop_filter_opt, _is_hdr) =
-            match detection::detect_crop(spawner, input_path, &video_props, disable_crop) {
+            match detection::detect_crop(input_path, &video_props, disable_crop) {
                 Ok(result) => result,
                 Err(e) => {
                     // Log warning and proceed without cropping
@@ -387,10 +367,10 @@ pub fn process_videos<S: FfmpegSpawner, P: FfprobeExecutor, M: FileMetadataProvi
         crate::progress_reporting::report_processing_step("Audio analysis");
 
         // Log information about audio streams (channels, bitrates)
-        let _ = audio::log_audio_info(ffprobe_executor, input_path);
+        let _ = audio::log_audio_info(input_path);
 
         // Get audio channel information for encoding
-        let audio_channels = match ffprobe_executor.get_audio_channels(input_path) {
+        let audio_channels = match crate::external::get_audio_channels(input_path) {
             Ok(channels) => channels,
             Err(e) => {
                 // Log warning and continue with empty channel list
@@ -433,8 +413,6 @@ pub fn process_videos<S: FfmpegSpawner, P: FfprobeExecutor, M: FileMetadataProvi
                 config,
                 &initial_encode_params,
                 duration_secs,
-                spawner,
-                metadata_provider,
             )
         } else {
             // Skip grain analysis if denoising is disabled
@@ -567,7 +545,6 @@ pub fn process_videos<S: FfmpegSpawner, P: FfprobeExecutor, M: FileMetadataProvi
         // Run the ffmpeg encoding process with the finalized parameters
         // Note: The run_ffmpeg_encode function handles its own start logging
         let encode_result = run_ffmpeg_encode(
-            spawner,
             &final_encode_params,
             false, // disable_audio: Keep audio in the output
             false, // is_grain_analysis_sample: This is the main encode, not a sample
@@ -585,8 +562,8 @@ pub fn process_videos<S: FfmpegSpawner, P: FfprobeExecutor, M: FileMetadataProvi
                 let file_elapsed_time = file_start_time.elapsed();
 
                 // Get input and output file sizes for comparison
-                let input_size = get_file_size(input_path)?;
-                let output_size = get_file_size(&output_path)?;
+                let input_size = external_get_file_size(input_path)?;
+                let output_size = external_get_file_size(&output_path)?;
 
                 // Add this file to the successful results
                 results.push(EncodeResult {

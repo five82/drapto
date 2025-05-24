@@ -21,48 +21,14 @@
 // AI-ASSISTANT-INFO: Utility functions for formatting and file operations
 
 // ---- Internal crate imports ----
-use crate::error::CoreResult;
 
 // ---- Standard library imports ----
-use std::fs;
-use std::path::Path;
 use std::time::Duration;
 
 // ============================================================================
 // FILE OPERATIONS
 // ============================================================================
 
-/// Gets the size of a file in bytes.
-///
-/// This function retrieves the size of the file at the specified path using
-/// the standard library's fs::metadata function.
-///
-/// # Arguments
-///
-/// * `path` - Path to the file to get the size of
-///
-/// # Returns
-///
-/// * `Ok(u64)` - The size of the file in bytes
-/// * `Err(CoreError::Io)` - If an error occurs accessing the file
-///
-/// # Examples
-///
-/// ```rust,no_run
-/// // This function is internal to the crate, so we can't call it directly in doctests
-/// // Example usage within the crate:
-/// // use std::path::Path;
-/// //
-/// // let path = Path::new("/path/to/file.mkv");
-/// // match get_file_size(path) {
-/// //     Ok(size) => println!("File size: {} bytes", size),
-/// //     Err(e) => eprintln!("Error getting file size: {}", e),
-/// // }
-/// ```
-pub(crate) fn get_file_size(path: &Path) -> CoreResult<u64> {
-    // Get the file metadata and extract the size
-    Ok(fs::metadata(path)?.len())
-}
 
 // ============================================================================
 // FORMATTING FUNCTIONS

@@ -35,41 +35,13 @@ pub struct MediaInfo {
     pub height: Option<i64>,
 }
 
-// --- Ffprobe Execution Abstraction ---
+// --- Direct Ffprobe Functions ---
 
-/// Trait for executing ffprobe commands.
-pub trait FfprobeExecutor {
-    /// Gets audio channel counts for a given input file.
-    fn get_audio_channels(&self, input_path: &Path) -> CoreResult<Vec<u32>>;
-    /// Gets video properties (dimensions, duration, color info) for a given input file.
-    fn get_video_properties(&self, input_path: &Path) -> CoreResult<VideoProperties>;
-    /// Runs ffprobe with bitplanenoise filter (bitplane 1, luma plane 0) to analyze grain, sampling based on duration.
-    fn run_ffprobe_bitplanenoise(
-        &self,
-        input_path: &Path,
-        duration_secs: f64,
-    ) -> CoreResult<Vec<f32>>; // Changed return type
-    /// Gets media information for a given input file.
-    fn get_media_info(&self, input_path: &Path) -> CoreResult<MediaInfo>;
-}
-
-// --- New Implementation using `ffprobe` crate (and Command for specific tasks) ---
-
-/// Concrete implementation using the `ffprobe` crate.
-#[derive(Debug, Clone, Default)] // Add derive for potential future use and consistency
-pub struct CrateFfprobeExecutor;
-
-impl CrateFfprobeExecutor {
-    pub fn new() -> Self {
-        Self
-    }
-
-    // --- Bitplane Noise Analysis Implementation ---
-    fn run_ffprobe_bitplanenoise_impl(
-        &self,
-        input_path: &Path,
-        duration_secs: f64,
-    ) -> CoreResult<Vec<f32>> {
+/// Runs ffprobe with bitplanenoise filter to analyze grain.
+pub fn run_ffprobe_bitplanenoise(
+    input_path: &Path,
+    duration_secs: f64,
+) -> CoreResult<Vec<f32>> {
         // Changed return type
         let cmd_name = "ffprobe";
         const TARGET_SAMPLES: f64 = 10.0; // Aim for roughly 10 samples
@@ -179,11 +151,10 @@ impl CrateFfprobeExecutor {
             );
         }
         Ok(results)
-    }
 }
 
-impl FfprobeExecutor for CrateFfprobeExecutor {
-    fn get_audio_channels(&self, input_path: &Path) -> CoreResult<Vec<u32>> {
+/// Gets audio channel counts for a given input file.
+pub fn get_audio_channels(input_path: &Path) -> CoreResult<Vec<u32>> {
         log::debug!(
             "Running ffprobe (via crate) for audio channels on: {}",
             input_path.display()
@@ -228,7 +199,8 @@ impl FfprobeExecutor for CrateFfprobeExecutor {
         }
     }
 
-    fn get_video_properties(&self, input_path: &Path) -> CoreResult<VideoProperties> {
+/// Gets video properties for a given input file.
+pub fn get_video_properties(input_path: &Path) -> CoreResult<VideoProperties> {
         log::debug!(
             "Running ffprobe (via crate) for video properties on: {}",
             input_path.display()
@@ -301,19 +273,8 @@ impl FfprobeExecutor for CrateFfprobeExecutor {
         }
     }
 
-    // Implement the trait method by calling the internal implementation
-    fn run_ffprobe_bitplanenoise(
-        &self,
-        input_path: &Path,
-        duration_secs: f64,
-    ) -> CoreResult<Vec<f32>> {
-        // Changed return type
-        self.run_ffprobe_bitplanenoise_impl(input_path, duration_secs)
-    }
-
-    // Implement the new get_media_info trait method
-    fn get_media_info(&self, input_path: &Path) -> CoreResult<MediaInfo> {
-        // Implement directly to avoid infinite recursion
+/// Gets media information for a given input file.
+pub fn get_media_info(input_path: &Path) -> CoreResult<MediaInfo> {
         log::debug!(
             "Running ffprobe (via crate) for media info on: {}",
             input_path.display()
@@ -351,7 +312,6 @@ impl FfprobeExecutor for CrateFfprobeExecutor {
             }
         }
     }
-}
 
 // Helper function to map ffprobe crate errors to CoreError
 fn map_ffprobe_error(err: FfProbeError, context: &str) -> CoreError {

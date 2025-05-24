@@ -29,7 +29,7 @@ use regex::Regex;
 
 // ---- Internal crate imports ----
 use crate::error::CoreResult;
-use crate::external::{FfmpegProcess, FfmpegSpawner};
+use crate::external::{spawn_ffmpeg, handle_ffmpeg_events};
 use crate::hardware_accel::add_hardware_acceleration_to_command;
 use crate::processing::detection::VideoProperties;
 
@@ -81,8 +81,7 @@ fn determine_crop_threshold(props: &VideoProperties) -> (u32, bool) {
 }
 
 /// Runs ffmpeg blackdetect on sample frames for HDR content to refine the threshold.
-fn run_hdr_blackdetect<S: FfmpegSpawner>(
-    spawner: &S,
+fn run_hdr_blackdetect(
     input_file: &Path,
     initial_threshold: u32,
 ) -> CoreResult<u32> {
@@ -105,10 +104,10 @@ fn run_hdr_blackdetect<S: FfmpegSpawner>(
     cmd.output("-");
 
     let mut stderr_output = String::new();
-    // Pass cmd by value, matching trait signature
-    let mut child = spawner.spawn(cmd)?;
+    // Spawn the command
+    let mut child = spawn_ffmpeg(cmd)?;
 
-    let process_result = child.handle_events(|event| {
+    let process_result = handle_ffmpeg_events(&mut child, |event| {
         match event {
             FfmpegEvent::Log(_, line) | FfmpegEvent::Error(line) => {
                 if line.contains("black_level") {
@@ -180,8 +179,7 @@ fn calculate_credits_skip(duration: f64) -> f64 {
 }
 
 /// Runs ffmpeg cropdetect and analyzes the results to determine the crop filter.
-fn run_cropdetect<S: FfmpegSpawner>(
-    spawner: &S,
+fn run_cropdetect(
     input_file: &Path,
     crop_threshold: u32,
     dimensions: (u32, u32),
@@ -224,10 +222,10 @@ fn run_cropdetect<S: FfmpegSpawner>(
     cmd.output("-");
 
     let mut stderr_output = String::new();
-    // Pass cmd by value, matching trait signature
-    let mut child = spawner.spawn(cmd)?;
+    // Spawn the command
+    let mut child = spawn_ffmpeg(cmd)?;
 
-    let process_result = child.handle_events(|event| {
+    let process_result = handle_ffmpeg_events(&mut child, |event| {
         match event {
             FfmpegEvent::Log(_, line) | FfmpegEvent::Error(line) => {
                 if line.contains("crop=") {
@@ -338,10 +336,8 @@ fn run_cropdetect<S: FfmpegSpawner>(
 ///
 /// ```rust,no_run
 /// use drapto_core::processing::detection::{detect_crop, VideoProperties};
-/// use drapto_core::external::SidecarSpawner;
 /// use std::path::Path;
 ///
-/// let spawner = SidecarSpawner;
 /// let input_file = Path::new("/path/to/video.mkv");
 /// let video_props = VideoProperties {
 ///     width: 1920,
@@ -350,7 +346,7 @@ fn run_cropdetect<S: FfmpegSpawner>(
 ///     color_space: Some("bt709".to_string()),
 /// };
 ///
-/// match detect_crop(&spawner, input_file, &video_props, false) {
+/// match detect_crop(input_file, &video_props, false) {
 ///     Ok((Some(crop_filter), is_hdr)) => {
 ///         println!("Crop filter: {}, HDR: {}", crop_filter, is_hdr);
 ///     },
@@ -362,8 +358,7 @@ fn run_cropdetect<S: FfmpegSpawner>(
 ///     }
 /// }
 /// ```
-pub fn detect_crop<S: FfmpegSpawner>(
-    spawner: &S,
+pub fn detect_crop(
     input_file: &Path,
     video_props: &VideoProperties,
     disable_crop: bool,
@@ -391,7 +386,7 @@ pub fn detect_crop<S: FfmpegSpawner>(
             "Running HDR black level analysis for {}...",
             input_file.display()
         );
-        crop_threshold = run_hdr_blackdetect(spawner, input_file, crop_threshold)?;
+        crop_threshold = run_hdr_blackdetect(input_file, crop_threshold)?;
     }
 
     // STEP 3: Log video properties for debugging
@@ -427,7 +422,6 @@ pub fn detect_crop<S: FfmpegSpawner>(
     // We'll implement real progress tracking later if needed
 
     let crop_filter = run_cropdetect(
-        spawner,
         input_file,
         crop_threshold,
         (video_props.width, video_props.height),

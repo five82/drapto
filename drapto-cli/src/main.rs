@@ -33,7 +33,6 @@ use drapto_cli::{Cli, Commands, run_encode};
 use anyhow::{Context, Result};
 use clap::Parser;
 use daemonize::Daemonize;
-use drapto_core::external::{CrateFfprobeExecutor, SidecarSpawner};
 use drapto_core::notifications::NtfyNotificationSender;
 
 // ---- Standard library imports ----
@@ -194,8 +193,6 @@ fn main() -> Result<()> {
 
             // STEP 4: Run the encode command
             // Initialize required dependencies with concrete implementations
-            let spawner = SidecarSpawner; // For spawning ffmpeg processes
-            let ffprobe_executor = CrateFfprobeExecutor::new(); // For executing ffprobe commands
 
             // Execute the encode command with all necessary parameters based on notification type
             // This runs in either the original process (interactive mode)
@@ -215,8 +212,6 @@ fn main() -> Result<()> {
 
             // Run the encode command with the notification sender (or None)
             run_encode(
-                &spawner,
-                &ffprobe_executor,
                 notification_sender.as_ref(),
                 args,
                 interactive_mode,

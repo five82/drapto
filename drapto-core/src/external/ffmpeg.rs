@@ -25,7 +25,7 @@
 
 // ---- Internal crate imports ----
 use crate::error::{CoreError, CoreResult, command_failed_error};
-use crate::external::{FfmpegProcess, FfmpegSpawner};
+use crate::external::{spawn_ffmpeg, handle_ffmpeg_events, wait_for_ffmpeg};
 use crate::hardware_accel::add_hardware_acceleration_to_command;
 use crate::processing::audio; // To access calculate_audio_bitrate
 use crate::processing::detection::grain_analysis::GrainLevel;
@@ -235,8 +235,7 @@ pub fn build_ffmpeg_args(
 /// # Returns
 ///
 /// * `CoreResult<()>` - Success or error with detailed information
-pub fn run_ffmpeg_encode<S: FfmpegSpawner>(
-    spawner: &S,
+pub fn run_ffmpeg_encode(
     params: &EncodeParams,
     disable_audio: bool,
     is_grain_analysis_sample: bool, // Flag to control logging verbosity
@@ -330,9 +329,8 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner>(
     }
     let start_time = Instant::now();
 
-    // Use the injected spawner
-    // Pass the owned cmd by value, matching the trait signature
-    let mut child = spawner.spawn(cmd)?;
+    // Spawn the ffmpeg command
+    let mut child = spawn_ffmpeg(cmd)?;
 
     // Initialize duration from params
     let duration_secs: Option<f64> = if params.duration > 0.0 {
@@ -359,8 +357,8 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner>(
     let mut last_log_time = Instant::now();
     let mut last_logged_percent_threshold = -1;
 
-    // Event loop using handle_events
-    child.handle_events(|event| {
+    // Event loop using handle_ffmpeg_events
+    handle_ffmpeg_events(&mut child, |event| {
         match event {
             FfmpegEvent::Progress(progress) => {
                 let current_secs = parse_ffmpeg_time(&progress.time).unwrap_or(0.0);
@@ -513,7 +511,7 @@ pub fn run_ffmpeg_encode<S: FfmpegSpawner>(
     })?;
 
     // Wait for process exit
-    let status = child.wait()?;
+    let status = wait_for_ffmpeg(&mut child)?;
 
     // Extract filename for logging
     let filename_cow = params

@@ -18,7 +18,7 @@
 
 // ---- Internal crate imports ----
 use crate::error::CoreResult;
-use crate::external::FfprobeExecutor;
+use crate::external::get_audio_channels;
 use crate::progress_reporting::{LogLevel, report_log_message};
 
 // ---- Standard library imports ----
@@ -91,16 +91,13 @@ pub(crate) fn calculate_audio_bitrate(channels: u32) -> u32 {
 ///
 /// ```rust,no_run
 /// use drapto_core::processing::audio::log_audio_info;
-/// use drapto_core::external::CrateFfprobeExecutor;
 /// use std::path::Path;
 ///
-/// let ffprobe_executor = CrateFfprobeExecutor::new();
 /// let input_path = Path::new("/path/to/video.mkv");
 ///
-/// log_audio_info(&ffprobe_executor, input_path).unwrap();
+/// log_audio_info(input_path).unwrap();
 /// ```
-pub fn log_audio_info<P: FfprobeExecutor>(
-    ffprobe_executor: &P,
+pub fn log_audio_info(
     input_path: &Path,
 ) -> CoreResult<()> {
     // Extract filename for logging purposes
@@ -110,7 +107,7 @@ pub fn log_audio_info<P: FfprobeExecutor>(
         .unwrap_or_else(|| "unknown_file".to_string());
 
     // STEP 1: Get audio channel information using ffprobe
-    let audio_channels = match ffprobe_executor.get_audio_channels(input_path) {
+    let audio_channels = match get_audio_channels(input_path) {
         Ok(channels) => channels,
         Err(e) => {
             // Log warning but don't fail the process - audio info is non-critical

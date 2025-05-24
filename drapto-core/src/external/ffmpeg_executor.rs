@@ -28,69 +28,37 @@ use ffmpeg_sidecar::event::FfmpegEvent;
 use std::path::{Path, PathBuf};
 use std::process::ExitStatus;
 
-// --- FFmpeg Execution Abstraction ---
+// --- Direct FFmpeg Functions ---
 
-/// Trait representing an active ffmpeg process instance.
-pub trait FfmpegProcess {
-    /// Processes events from the running command using a provided handler closure.
-    fn handle_events<F>(&mut self, handler: F) -> CoreResult<()>
-    where
-        F: FnMut(FfmpegEvent) -> CoreResult<()>;
-
-    /// Waits for the command to complete and returns its exit status.
-    fn wait(&mut self) -> CoreResult<ExitStatus>;
+/// Spawns an ffmpeg command and returns the child process.
+pub fn spawn_ffmpeg(mut cmd: FfmpegCommand) -> CoreResult<SidecarChild> {
+    cmd.spawn()
+        .map_err(|e| command_start_error("ffmpeg", e))
 }
 
-/// Trait representing something that can spawn an FfmpegProcess.
-pub trait FfmpegSpawner {
-    type Process: FfmpegProcess;
-    /// Spawns the ffmpeg command, consuming the command object.
-    fn spawn(&self, cmd: FfmpegCommand) -> CoreResult<Self::Process>;
+/// Processes events from an ffmpeg child process.
+pub fn handle_ffmpeg_events<F>(child: &mut SidecarChild, mut handler: F) -> CoreResult<()>
+where
+    F: FnMut(FfmpegEvent) -> CoreResult<()>,
+{
+    let iterator = child.iter().map_err(|e| {
+        log::error!("Failed to get ffmpeg event iterator: {}", e);
+        command_failed_error(
+            "ffmpeg",
+            ExitStatus::default(),
+            e.to_string(),
+        )
+    })?;
+    for event in iterator {
+        handler(event)?;
+    }
+    Ok(())
 }
 
-// --- Concrete Implementation using ffmpeg-sidecar ---
-
-/// Wrapper around `ffmpeg_sidecar::child::Child` implementing `FfmpegProcess`.
-pub struct SidecarProcess(SidecarChild); // Use the imported alias
-
-impl FfmpegProcess for SidecarProcess {
-    fn handle_events<F>(&mut self, mut handler: F) -> CoreResult<()>
-    where
-        F: FnMut(FfmpegEvent) -> CoreResult<()>,
-    {
-        let iterator = self.0.iter().map_err(|e| {
-            log::error!("Failed to get ffmpeg event iterator: {}", e);
-            command_failed_error(
-                "ffmpeg (sidecar - get iter)",
-                ExitStatus::default(), // Placeholder status
-                e.to_string(),
-            )
-        })?;
-        for event in iterator {
-            handler(event)?;
-        }
-        Ok(())
-    }
-
-    fn wait(&mut self) -> CoreResult<ExitStatus> {
-        self.0
-            .wait()
-            .map_err(|e| command_wait_error("ffmpeg (sidecar)", e))
-    }
-}
-
-/// Concrete implementation of `FfmpegSpawner` using `ffmpeg-sidecar`.
-#[derive(Debug, Clone, Default)] // Added Default derive
-pub struct SidecarSpawner;
-
-impl FfmpegSpawner for SidecarSpawner {
-    type Process = SidecarProcess;
-
-    fn spawn(&self, mut cmd: FfmpegCommand) -> CoreResult<Self::Process> {
-        cmd.spawn()
-            .map(SidecarProcess)
-            .map_err(|e| command_start_error("ffmpeg (sidecar)", e))
-    }
+/// Waits for an ffmpeg child process to complete.
+pub fn wait_for_ffmpeg(child: &mut SidecarChild) -> CoreResult<ExitStatus> {
+    child.wait()
+        .map_err(|e| command_wait_error("ffmpeg", e))
 }
 
 // --- Grain Detection Specific Functions ---
@@ -99,9 +67,7 @@ impl FfmpegSpawner for SidecarSpawner {
 ///
 /// Creates a temporary file within the specified `output_dir` using the temp_files module.
 /// The file will be cleaned up when the `output_dir` (assumed to be a TempDir) is dropped.
-pub fn extract_sample<S: FfmpegSpawner>(
-    // Added generic parameter S
-    spawner: &S, // Added spawner argument
+pub fn extract_sample(
     input_path: &Path,
     start_time_secs: f64,
     duration_secs: u32,
@@ -143,8 +109,9 @@ pub fn extract_sample<S: FfmpegSpawner>(
     // Log the debug representation of the command struct
     log::debug!("Running sample extraction command: {:?}", cmd);
 
-    // Spawn the command using the provided spawner and wait for completion
-    let status = spawner.spawn(cmd)?.wait()?; // Use spawner here
+    // Spawn the command and wait for completion
+    let mut child = spawn_ffmpeg(cmd)?;
+    let status = wait_for_ffmpeg(&mut child)?;
     if !status.success() {
         log::error!("Sample extraction failed: {}", status);
         return Err(command_failed_error(

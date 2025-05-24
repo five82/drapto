@@ -36,8 +36,7 @@ use std::path::{Path, PathBuf};
 use crate::config::CoreConfig;
 use crate::error::{CoreError, CoreResult};
 use crate::external::ffmpeg::EncodeParams;
-use crate::external::ffmpeg_executor::extract_sample;
-use crate::external::{FfmpegSpawner, FileMetadataProvider};
+use crate::external::{extract_sample, get_file_size};
 use crate::hardware_accel::is_hardware_acceleration_available;
 // Report progress functions are imported directly from the module
 use crate::temp_files;
@@ -127,7 +126,6 @@ use utils::calculate_median_level;
 /// ```rust,no_run
 /// use drapto_core::processing::detection::grain_analysis::analyze_grain;
 /// use drapto_core::processing::detection::GrainLevel;
-/// use drapto_core::external::{SidecarSpawner, StdFsMetadataProvider};
 /// use drapto_core::external::ffmpeg::EncodeParams;
 /// use drapto_core::CoreConfig;
 /// use std::path::Path;
@@ -172,15 +170,11 @@ use utils::calculate_median_level;
 /// };
 ///
 /// let duration_secs = 3600.0; // 1 hour
-/// let spawner = SidecarSpawner;
-/// let metadata_provider = StdFsMetadataProvider;
 /// match analyze_grain(
 ///     file_path,
 ///     &config,
 ///     &base_encode_params,
 ///     duration_secs,
-///     &spawner,
-///     &metadata_provider,
 /// ) {
 ///     Ok(Some(result)) => {
 ///         println!("Detected grain level: {:?}", result.detected_level);
@@ -193,13 +187,11 @@ use utils::calculate_median_level;
 ///     }
 /// }
 /// ```
-pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider>(
+pub fn analyze_grain(
     file_path: &Path,
     config: &CoreConfig,
     base_encode_params: &EncodeParams,
     duration_secs: f64,
-    spawner: &S,
-    metadata_provider: &P,
 ) -> CoreResult<Option<GrainAnalysisResult>> {
     // We're no longer using filename_cow, removed to avoid warnings
 
@@ -339,7 +331,6 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider>(
         ));
 
         let raw_sample_path = match extract_sample(
-            spawner,
             file_path,
             start_time,
             sample_duration,
@@ -382,7 +373,6 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider>(
             sample_params.duration = sample_duration_f64;
 
             if let Err(e) = crate::external::ffmpeg::run_ffmpeg_encode(
-                spawner,
                 &sample_params,
                 true,
                 true,
@@ -402,7 +392,7 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider>(
                 )));
             }
 
-            let encoded_size = match metadata_provider.get_size(&encoded_sample_path) {
+            let encoded_size = match get_file_size(&encoded_sample_path) {
                 Ok(size) => size,
                 Err(e) => {
                     log::error!(
@@ -545,7 +535,6 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider>(
                     sample_params.duration = sample_duration_f64; // Duration is still relevant for encode
 
                     if let Err(e) = crate::external::ffmpeg::run_ffmpeg_encode(
-                        spawner,
                         &sample_params,
                         true,
                         true,
@@ -565,7 +554,7 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider>(
                         )));
                     }
 
-                    let encoded_size = match metadata_provider.get_size(&sample_params.output_path)
+                    let encoded_size = match get_file_size(&sample_params.output_path)
                     {
                         Ok(size) => size,
                         Err(e) => {

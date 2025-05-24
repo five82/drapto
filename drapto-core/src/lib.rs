@@ -38,7 +38,6 @@
 //!
 //! ```rust,no_run
 //! use drapto_core::{CoreConfig, process_videos};
-//! use drapto_core::external::{SidecarSpawner, CrateFfprobeExecutor, StdFsMetadataProvider};
 //! use drapto_core::notifications::NtfyNotificationSender;
 //! use drapto_core::processing::detection::GrainLevel;
 //! use std::path::PathBuf;
@@ -65,17 +64,11 @@
 //! let files = drapto_core::find_processable_files(&config.input_dir).unwrap();
 //!
 //! // Create dependencies
-//! let spawner = SidecarSpawner;
-//! let ffprobe_executor = CrateFfprobeExecutor::new();
 //! let notification_sender = NtfyNotificationSender::new("https://ntfy.sh/my-topic").unwrap();
-//! let metadata_provider = StdFsMetadataProvider;
 //!
 //! // Process videos
 //! let results = process_videos(
-//!     &spawner,
-//!     &ffprobe_executor,
 //!     Some(&notification_sender),
-//!     &metadata_provider,
 //!     &config,
 //!     &files,
 //!     None,
@@ -147,10 +140,11 @@ pub use processing::process_videos;
 pub use utils::{format_bytes, format_duration};
 
 // ----- External Tool Interactions -----
-/// Re-export external tool traits, implementations, and platform detection
+/// Re-export external tool functions
 pub use external::{
-    CrateFfprobeExecutor, FfmpegProcess, FfmpegSpawner, FfprobeExecutor, FileMetadataProvider,
-    SidecarProcess, SidecarSpawner, StdFsMetadataProvider,
+    spawn_ffmpeg, handle_ffmpeg_events, wait_for_ffmpeg, extract_sample,
+    get_audio_channels, get_video_properties, run_ffprobe_bitplanenoise, 
+    get_media_info, get_file_size, MediaInfo
 };
 
 // ----- Progress Reporting -----
