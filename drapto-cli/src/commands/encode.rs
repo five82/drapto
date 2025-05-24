@@ -24,7 +24,6 @@
 // ---- Internal crate imports ----
 use crate::cli::EncodeArgs;
 use crate::config;
-use crate::progress::CliProgress;
 use crate::terminal;
 
 // ---- External crate imports ----
@@ -213,7 +212,10 @@ pub fn run_encode(
     // Format duration if available
     let duration_display = if let Some(info) = &file_info {
         if let Some(duration_secs) = info.duration {
-            let formatted = crate::progress::CliProgress::format_duration_seconds(duration_secs);
+            let hours = (duration_secs / 3600.0) as u64;
+            let minutes = ((duration_secs % 3600.0) / 60.0) as u64;
+            let secs = (duration_secs % 60.0) as u64;
+            let formatted = format!("{:02}:{:02}:{:02}", hours, minutes, secs);
             Some(formatted)
         } else {
             None
@@ -375,17 +377,9 @@ pub fn run_encode(
     // Build the final config
     let config = builder.build();
 
-    // --- Create Progress Tracker ---
-    // Create a progress tracker with both interactive flag and verbosity based on terminal settings
-    let progress = CliProgress::new(interactive);
-
-    // Update progress reporting in the core library to use our progress tracker
-    drapto_core::progress_reporting::set_progress_callback(Box::new(
-        move |percent, current_secs, total_secs, speed, fps, eta| {
-            // Forward progress to our CLI progress display
-            progress.process_encode_progress(percent, current_secs, total_secs, speed, fps, eta);
-        },
-    ));
+    // --- Progress Reporting ---
+    // The CLI progress reporter is already registered in main.rs via terminal::register_cli_reporter()
+    // Progress will be displayed automatically through the ProgressReporter trait implementation
 
     // NOTE: We don't need to log hardware acceleration here
     // Hardware acceleration status is logged by the core library in process_videos

@@ -152,45 +152,6 @@ fn get_progress_reporter() -> Option<&'static dyn ProgressReporter> {
     None
 }
 
-// ============================================================================
-// PROGRESS CALLBACK SYSTEM
-// ============================================================================
-
-/// Type definition for progress callback functions
-pub type ProgressCallback = Box<dyn FnMut(f32, f64, f64, f32, f32, Duration) + Send + 'static>;
-
-// Type alias for the complex callback storage type
-type CallbackStorage = Mutex<Option<ProgressCallback>>;
-
-// Global progress callback using lazily initialized static
-static PROGRESS_CALLBACK: Lazy<CallbackStorage> = Lazy::new(|| Mutex::new(None));
-
-/// Sets a callback function for progress reporting
-///
-/// This callback will be called whenever `report_encode_progress` is called,
-/// allowing clients to handle progress updates in a custom way.
-///
-/// # Arguments
-///
-/// * `callback` - A boxed function that takes progress parameters
-///   - percent: f32 - Progress percentage (0.0 to 100.0)
-///   - current_secs: f64 - Current time position in seconds
-///   - total_secs: f64 - Total duration in seconds
-///   - speed: f32 - Encoding speed (e.g., 2.5x means 2.5x realtime)
-///   - fps: f32 - Average frames per second
-///   - eta: Duration - Estimated time remaining
-pub fn set_progress_callback(callback: ProgressCallback) {
-    if let Ok(mut cb) = PROGRESS_CALLBACK.lock() {
-        *cb = Some(callback);
-    }
-}
-
-/// Clears the progress callback
-pub fn clear_progress_callback() {
-    if let Ok(mut cb) = PROGRESS_CALLBACK.lock() {
-        *cb = None;
-    }
-}
 
 // ============================================================================
 // PROGRESS REPORTING FUNCTIONS
@@ -226,27 +187,8 @@ pub fn report_encode_progress(
     fps: f32,
     eta: Duration,
 ) {
-    // Call progress callback if set
-    let use_callback = if let Ok(mut callback_opt) = PROGRESS_CALLBACK.lock() {
-        if let Some(callback) = &mut *callback_opt {
-            // Call the callback with the progress parameters
-            (callback)(percent, current_secs, total_secs, speed, fps, eta);
-            true
-        } else {
-            false
-        }
-    } else {
-        false
-    };
-
-    // Early return if callback was successfully called
-    if use_callback {
-        return;
-    }
-
-    // Otherwise, use the progress reporter for central formatting
+    // Use the progress reporter for central formatting
     if let Some(reporter) = get_progress_reporter() {
-        // Use the dedicated progress bar function
         reporter.progress_bar(
             percent,
             current_secs,

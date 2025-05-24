@@ -57,6 +57,3 @@ pub use commands::encode::run_encode;
 
 /// Platform-specific functionality
 pub use platform::{HardwareAcceleration, is_macos};
-
-/// Progress reporting utilities
-pub use progress::CliProgress;
