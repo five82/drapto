@@ -24,10 +24,10 @@
 // ---- Internal crate imports ----
 use crate::cli::EncodeArgs;
 use crate::config;
+use crate::error::{CliResult, CliErrorContext};
 use crate::terminal;
 
 // ---- External crate imports ----
-use anyhow::{Context, Result, anyhow};
 use drapto_core::notifications::NtfyNotificationSender;
 // Progress reporting is now handled through standard log levels
 use drapto_core::{CoreError, EncodeResult};
@@ -63,23 +63,23 @@ use drapto_core::format_bytes;
 /// - If the input path doesn't exist or is inaccessible
 /// - If the input is a file but not a .mkv file
 /// - If the input is neither a file nor a directory
-pub fn discover_encode_files(args: &EncodeArgs) -> Result<(Vec<PathBuf>, PathBuf)> {
+pub fn discover_encode_files(args: &EncodeArgs) -> CliResult<(Vec<PathBuf>, PathBuf)> {
     // Resolve the input path to its canonical form (absolute path with symlinks resolved)
     let input_path = args
         .input_path
         .canonicalize()
-        .with_context(|| format!("Invalid input path '{}'", args.input_path.display()))?;
+        .cli_with_context(|| format!("Invalid input path '{}'", args.input_path.display()))?;
 
     // Get metadata to determine if the input is a file or directory
     let metadata = fs::metadata(&input_path)
-        .with_context(|| format!("Failed to access input path '{}'", input_path.display()))?;
+        .cli_with_context(|| format!("Failed to access input path '{}'", input_path.display()))?;
 
     if metadata.is_dir() {
         // Directory input: Find all .mkv files in the directory
         match drapto_core::find_processable_files(&input_path) {
             Ok(files) => Ok((files, input_path.clone())),
             Err(CoreError::NoFilesFound) => Ok((Vec::new(), input_path.clone())), // Empty vector if no files found
-            Err(e) => Err(e).context("Error finding processable files"), // Add context to core errors
+            Err(e) => Err(e), // Core error already has context
         }
     } else if metadata.is_file() {
         // File input: Verify it's a .mkv file
@@ -91,25 +91,25 @@ pub fn discover_encode_files(args: &EncodeArgs) -> Result<(Vec<PathBuf>, PathBuf
             let parent_dir = input_path
                 .parent()
                 .ok_or_else(|| {
-                    anyhow!(
+                    CoreError::OperationFailed(format!(
                         "Could not determine parent directory for file '{}'",
                         input_path.display()
-                    )
+                    ))
                 })?
                 .to_path_buf();
             Ok((vec![input_path.clone()], parent_dir))
         } else {
-            Err(anyhow!(
+            Err(CoreError::OperationFailed(format!(
                 "Input file '{}' is not a .mkv file",
                 input_path.display()
-            ))
+            )))
         }
     } else {
         // Neither file nor directory
-        Err(anyhow!(
+        Err(CoreError::OperationFailed(format!(
             "Input path '{}' is neither a file nor a directory",
             input_path.display()
-        ))
+        )))
     }
 }
 
@@ -146,7 +146,7 @@ pub fn run_encode(
     interactive: bool,
     files_to_process: Vec<PathBuf>,
     effective_input_dir: PathBuf,
-) -> Result<()> {
+) -> CliResult<()> {
     let total_start_time = Instant::now();
 
     // Determine actual output directory and potential target filename
@@ -178,14 +178,14 @@ pub fn run_encode(
     // --- Create Output Dir ---
     // Note: Log dir is already created in main.rs before daemonization if in daemon mode
     // We still create it here for interactive mode or in case it was deleted
-    fs::create_dir_all(&actual_output_dir).with_context(|| {
+    fs::create_dir_all(&actual_output_dir).cli_with_context(|| {
         format!(
             "Failed to create output directory '{}'",
             actual_output_dir.display()
         )
     })?;
     fs::create_dir_all(&log_dir)
-        .with_context(|| format!("Failed to create log directory '{}'", log_dir.display()))?;
+        .cli_with_context(|| format!("Failed to create log directory '{}'", log_dir.display()))?;
 
     // --- Logging Setup (Handled by env_logger via RUST_LOG) ---
     // We still need the log path for potential PID file and user info.
@@ -405,14 +405,14 @@ pub fn run_encode(
             &files_to_process,
             target_filename_override,
         )
-        .context("Video processing failed")
+        .cli_context("Video processing failed")
     };
 
     // --- Handle Core Results ---
     let successfully_encoded: Vec<EncodeResult>;
     match processing_result {
         Ok(ref results) => {
-            successfully_encoded = results.to_vec();
+            successfully_encoded = results.clone();
             // Use warn level if no files encoded
             if successfully_encoded.is_empty() {
                 terminal::print_error(
@@ -459,7 +459,7 @@ pub fn run_encode(
     debug!("Cleaning up temporary directories");
 
     if let Err(e) = drapto_core::temp_files::cleanup_base_dirs(&config)
-        .context("Failed to clean up temporary directories")
+        .cli_context("Failed to clean up temporary directories")
     {
         // Always show errors regardless of verbosity
         terminal::print_error("Cleanup warning", &e.to_string(), None);

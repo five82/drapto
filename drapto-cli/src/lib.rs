@@ -33,6 +33,9 @@ pub mod commands;
 /// Configuration constants and default values
 pub mod config;
 
+/// Error handling utilities for the CLI
+pub mod error;
+
 /// Logging utilities and helper functions
 pub mod logging;
 

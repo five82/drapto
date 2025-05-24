@@ -39,9 +39,6 @@ env_logger = "0.11"              # Environment-based logging configuration
 log = "0.4"                      # Logging facade
 fern = "0.7"                     # Advanced logging configuration with file output
 
-# ---- Error Handling ----
-anyhow = "1.0"                   # Flexible error handling with context
-
 # ---- Terminal UI ----
 term_size = "0.3"                # Terminal size detection
 colored = "2.1"                  # ANSI color support for terminal output

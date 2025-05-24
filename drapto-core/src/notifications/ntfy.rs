@@ -19,7 +19,7 @@
 
 // ---- Internal crate imports ----
 use crate::error::{CoreError, CoreResult};
-use crate::notifications::abstraction::NotificationType;
+use crate::notifications::NotificationType;
 
 // ---- External crate imports ----
 use ntfy::DispatcherBuilder;
@@ -121,11 +121,11 @@ impl NtfyNotificationSender {
     /// # Returns
     ///
     /// * `Ok(())` - If the notification was sent successfully
-    /// * `Err(String)` - If an error occurred while sending the notification
-    pub fn send_notification(&self, notification: &NotificationType) -> Result<(), String> {
+    /// * `Err(CoreError)` - If an error occurred while sending the notification
+    pub fn send_notification(&self, notification: &NotificationType) -> CoreResult<()> {
         // Parse the URL (already validated in new())
         let parsed_url = Url::parse(&self.topic_url)
-            .map_err(|e| format!("Invalid ntfy topic URL '{}': {}", self.topic_url, e))?;
+            .map_err(|e| CoreError::NotificationError(format!("Invalid ntfy topic URL '{}': {}", self.topic_url, e)))?;
 
         // Extract the base URL and topic
         let host = parsed_url.host_str().unwrap_or("");
@@ -133,15 +133,11 @@ impl NtfyNotificationSender {
         let topic = parsed_url.path().trim_start_matches('/');
 
         // Build the ntfy dispatcher
-        let dispatcher = match DispatcherBuilder::new(&base_url).build_blocking() {
-            Ok(d) => d,
-            Err(e) => {
-                return Err(format!(
-                    "Failed to build ntfy dispatcher for {}: {}",
-                    base_url, e
-                ));
-            }
-        };
+        let dispatcher = DispatcherBuilder::new(&base_url).build_blocking()
+            .map_err(|e| CoreError::NotificationError(format!(
+                "Failed to build ntfy dispatcher for {}: {}",
+                base_url, e
+            )))?;
 
         // Build the notification payload
         // Start with the required fields (topic and message)
@@ -176,13 +172,12 @@ impl NtfyNotificationSender {
         let final_payload = payload_builder;
 
         // Send the notification
-        match dispatcher.send(&final_payload) {
-            Ok(_) => Ok(()),
-            Err(e) => Err(format!(
+        dispatcher.send(&final_payload)
+            .map_err(|e| CoreError::NotificationError(format!(
                 "Failed to send ntfy notification to {}: {}",
                 self.topic_url, e
-            )),
-        }
+            )))?;
+        Ok(())
     }
 }
 

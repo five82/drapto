@@ -25,15 +25,16 @@
 
 // ---- Internal crate imports ----
 use drapto_cli::commands::encode::discover_encode_files;
+use drapto_cli::error::{CliResult, CliErrorContext};
 use drapto_cli::logging::{get_timestamp, setup_file_logging};
 use drapto_cli::terminal;
 use drapto_cli::{Cli, Commands, run_encode};
 
 // ---- External crate imports ----
-use anyhow::{Context, Result};
 use clap::Parser;
 use daemonize::Daemonize;
 use drapto_core::notifications::NtfyNotificationSender;
+use drapto_core::CoreError;
 
 // ---- Standard library imports ----
 use std::io::{self, Write};
@@ -55,7 +56,7 @@ use log::Level;
 /// # Returns
 /// - `Ok(())` if the application completes successfully
 /// - `Err(...)` if an error occurs during execution
-fn main() -> Result<()> {
+fn main() -> CliResult<()> {
     // SECTION: Command-line Argument Parsing
     // Parse command-line arguments using clap
     let cli_args = Cli::parse();
@@ -86,7 +87,7 @@ fn main() -> Result<()> {
             // STEP 1: Discover files to encode
             // Find all .mkv files in the input directory or validate the input file
             let (discovered_files, effective_input_dir) =
-                discover_encode_files(&args).with_context(|| "Error during file discovery")?;
+                discover_encode_files(&args).cli_context("Error during file discovery")?;
 
             // STEP 2: Calculate log path (needed before daemonization for user feedback)
             // This logic mirrors the start of run_encode to predict the log path
@@ -122,7 +123,7 @@ fn main() -> Result<()> {
             if interactive_mode {
                 // For interactive mode, use fern to log to both console and file
                 setup_file_logging(&main_log_path)
-                    .with_context(|| format!("Failed to set up file logging to: {}", main_log_path.display()))?;
+                    .cli_with_context(|| format!("Failed to set up file logging to: {}", main_log_path.display()))?;
             } else {
                 // For daemon mode, use env_logger (stdout/stderr will be redirected to file)
                 env_logger::Builder::from_env(Env::default().default_filter_or("drapto=info"))
@@ -161,19 +162,19 @@ fn main() -> Result<()> {
                 }
 
                 // Create log directory if it doesn't exist
-                std::fs::create_dir_all(&log_dir).with_context(|| {
-                    format!("Failed to create log directory: {}", log_dir.display())
+                std::fs::create_dir_all(&log_dir).map_err(|e| {
+                    CoreError::OperationFailed(format!("Failed to create log directory: {}: {}", log_dir.display(), e))
                 })?;
 
                 // Create and open log file for the daemon's stdout/stderr
-                let log_file = std::fs::File::create(&main_log_path).with_context(|| {
-                    format!("Failed to create log file: {}", main_log_path.display())
+                let log_file = std::fs::File::create(&main_log_path).map_err(|e| {
+                    CoreError::OperationFailed(format!("Failed to create log file: {}: {}", main_log_path.display(), e))
                 })?;
 
                 // Clone the file handle for stderr
                 let log_file_stderr = log_file
                     .try_clone()
-                    .context("Failed to clone log file handle")?;
+                    .map_err(|e| CoreError::OperationFailed(format!("Failed to clone log file handle: {}", e)))?;
 
                 // Create daemonize configuration
                 // Note: PID file is handled in run_encode after log setup
@@ -185,7 +186,7 @@ fn main() -> Result<()> {
                 // Attempt to daemonize the process
                 daemonize
                     .start()
-                    .with_context(|| "Failed to start daemon process")?;
+                    .map_err(|e| CoreError::OperationFailed(format!("Failed to start daemon process: {}", e)))?;
                 // Parent process exits here after successful fork
                 // The daemon child process continues execution below
                 // Child process continues execution from this point

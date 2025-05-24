@@ -697,27 +697,27 @@ fn parse_hqdn3d_first_param(params: &str) -> f32 {
 ///
 /// # Returns
 ///
-/// * `Result<f64, &'static str>` - The parsed time in seconds or an error message
-fn parse_ffmpeg_time(time_str: &str) -> Result<f64, &'static str> {
+/// * `Result<f64, CoreError>` - The parsed time in seconds or an error
+fn parse_ffmpeg_time(time_str: &str) -> CoreResult<f64> {
     let parts: Vec<&str> = time_str.split(':').collect();
     if parts.len() != 3 {
-        return Err("Invalid time format: Expected HH:MM:SS.ms");
+        return Err(CoreError::OperationFailed("Invalid time format: Expected HH:MM:SS.ms".to_string()));
     }
-    let hours: f64 = parts[0].parse().map_err(|_| "Failed to parse hours")?;
-    let minutes: f64 = parts[1].parse().map_err(|_| "Failed to parse minutes")?;
+    let hours: f64 = parts[0].parse().map_err(|_| CoreError::OperationFailed("Failed to parse hours".to_string()))?;
+    let minutes: f64 = parts[1].parse().map_err(|_| CoreError::OperationFailed("Failed to parse minutes".to_string()))?;
     let sec_ms: Vec<&str> = parts[2].split('.').collect();
     if sec_ms.len() != 2 {
         if sec_ms.len() == 1 {
-            let seconds: f64 = sec_ms[0].parse().map_err(|_| "Failed to parse seconds")?;
+            let seconds: f64 = sec_ms[0].parse().map_err(|_| CoreError::OperationFailed("Failed to parse seconds".to_string()))?;
             return Ok(hours * 3600.0 + minutes * 60.0 + seconds);
         }
-        return Err("Invalid seconds/milliseconds format");
+        return Err(CoreError::OperationFailed("Invalid seconds/milliseconds format".to_string()));
     }
-    let seconds: f64 = sec_ms[0].parse().map_err(|_| "Failed to parse seconds")?;
+    let seconds: f64 = sec_ms[0].parse().map_err(|_| CoreError::OperationFailed("Failed to parse seconds".to_string()))?;
     let ms_str = format!("{:0<3}", sec_ms[1]);
     let milliseconds: f64 = ms_str[..3]
         .parse()
-        .map_err(|_| "Failed to parse milliseconds")?;
+        .map_err(|_| CoreError::OperationFailed("Failed to parse milliseconds".to_string()))?;
 
     Ok(hours * 3600.0 + minutes * 60.0 + seconds + milliseconds / 1000.0)
 }

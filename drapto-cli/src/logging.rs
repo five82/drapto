@@ -45,7 +45,8 @@ pub fn get_timestamp() -> String {
 // standardized logging levels (error, warn, info, debug, trace).
 
 use std::path::Path;
-use anyhow::Result;
+use crate::error::CliResult;
+use drapto_core::CoreError;
 
 /// Strip ANSI escape codes from a string
 fn strip_ansi_codes(s: &str) -> String {
@@ -78,7 +79,7 @@ fn strip_ansi_codes(s: &str) -> String {
 /// - Default: info level (normal output)
 /// - With --verbose flag: debug level (detailed output)
 /// - Can be overridden by setting RUST_LOG explicitly
-pub fn setup_file_logging(log_path: &Path) -> Result<()> {
+pub fn setup_file_logging(log_path: &Path) -> CliResult<()> {
     // Create parent directory if it doesn't exist
     if let Some(parent) = log_path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -152,7 +153,9 @@ pub fn setup_file_logging(log_path: &Path) -> Result<()> {
         .level_for("drapto_core", log_level)
         // Ensure progress messages are included in file output
         .level_for("drapto::progress", log_level)
-        .chain(fern::log_file(log_path)?);
+        .chain(fern::log_file(log_path).map_err(|e| {
+            CoreError::OperationFailed(format!("Failed to open log file: {}", e))
+        })?);
     
     // Combine both outputs
     fern::Dispatch::new()
@@ -162,7 +165,9 @@ pub fn setup_file_logging(log_path: &Path) -> Result<()> {
         .level_for("drapto_core", log_level)
         .chain(console_dispatch)
         .chain(file_dispatch)
-        .apply()?;
+        .apply().map_err(|e| {
+            CoreError::OperationFailed(format!("Failed to initialize logging: {}", e))
+        })?;
     
     Ok(())
 }
