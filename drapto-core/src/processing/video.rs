@@ -16,7 +16,7 @@
 // - Notification sending for encoding events
 //
 // WORKFLOW:
-// 1. Get system information (hostname, hardware acceleration capabilities)
+// 1. Initialize processing and check hardware acceleration
 // 2. For each video file:
 //    a. Determine output path and check for existing files
 //    b. Detect video properties (resolution, duration, etc.)
@@ -128,18 +128,8 @@ pub fn process_videos(
     target_filename_override: Option<PathBuf>,
 ) -> CoreResult<Vec<EncodeResult>> {
     // ========================================================================
-    // STEP 1: GET SYSTEM INFORMATION
+    // STEP 1: INITIALIZE PROCESSING
     // ========================================================================
-
-    // Get the hostname for logging and notifications
-    // This helps identify which machine is performing the encoding
-    let hostname = std::env::var("HOSTNAME")
-        .or_else(|_| std::env::var("COMPUTERNAME")) // Windows fallback
-        .unwrap_or_else(|_| "unknown-host".to_string());
-
-    // Report hostname as a status line in verbose mode
-    log::debug!("Host: {}", hostname);
-    crate::progress_reporting::report_status("Host", &hostname);
 
     // This is the ONLY place we should log hardware acceleration status
     log_hardware_acceleration_status();
@@ -213,10 +203,9 @@ pub fn process_videos(
                 let notification = NotificationType::Custom {
                     title: "Drapto Encode Skipped".to_string(),
                     message: format!(
-                        "[{hostname}]: Skipped encode for {filename}: Output file already exists at {output_display}",
-                        hostname = hostname,
-                        filename = filename,
-                        output_display = output_path.display()
+                        "Skipped encode for {}: Output file already exists at {}",
+                        filename,
+                        output_path.display()
                     ),
                     priority: 3,
                 };
@@ -231,10 +220,8 @@ pub fn process_videos(
             continue;
         }
 
-        // Report file info as status lines
+        // Report file info as status line
         crate::progress_reporting::report_status("File", &filename);
-        log::debug!("Host: {}", hostname);
-        crate::progress_reporting::report_status("Host", &hostname);
 
         // ========================================================================
         // STEP 3.3: SEND START NOTIFICATION
@@ -246,7 +233,6 @@ pub fn process_videos(
             let notification = NotificationType::EncodeStart {
                 input_path: input_path.to_path_buf(),
                 output_path: output_path.clone(),
-                hostname: hostname.clone(),
             };
 
             // Send the notification
@@ -275,7 +261,6 @@ pub fn process_videos(
                     let notification = NotificationType::EncodeError {
                         input_path: input_path.to_path_buf(),
                         message: "Failed to get video properties".to_string(),
-                        hostname: hostname.clone(),
                     };
 
                     // Send the notification
@@ -422,19 +407,20 @@ pub fn process_videos(
         // ========================================================================
 
         // Process the results of grain analysis and determine final denoising parameters
-        let final_hqdn3d_params: Option<String> = match final_hqdn3d_params_result {
+        let (final_grain_level, final_hqdn3d_params): (Option<grain_analysis::GrainLevel>, Option<String>) = match final_hqdn3d_params_result {
             // Case 1: Grain analysis completed successfully with a result
             Ok(Some(result)) => {
                 // Grain level is already reported by the grain analysis module
-                // Return the parameters (or None for Baseline videos)
-                grain_analysis::determine_hqdn3d_params(result.detected_level)
+                // Return both the level and parameters (or None for Baseline videos)
+                let params = grain_analysis::determine_hqdn3d_params(result.detected_level);
+                (Some(result.detected_level), params)
             }
             // Case 2: Grain analysis was skipped or produced no result
             Ok(None) => {
                 info!(
                     "Grain analysis skipped or did not produce a result. Proceeding without denoising."
                 );
-                None
+                (None, None)
             }
             // Case 3: Grain analysis failed with an error
             Err(e) => {
@@ -447,7 +433,6 @@ pub fn process_videos(
                     let notification = NotificationType::EncodeError {
                         input_path: input_path.to_path_buf(),
                         message: "Grain analysis failed".to_string(),
-                        hostname: hostname.clone(),
                     };
 
                     // Send the notification
@@ -479,17 +464,20 @@ pub fn process_videos(
         log::debug!("Preset: {} (SVT-AV1)", preset_value);
         log::debug!("Quality: {} (CRF)", quality);
 
-        if let Some(ref hqdn3d) = final_hqdn3d_params {
-            let grain_level_str = match hqdn3d.as_str() {
-                "hqdn3d=1.5:1.1:4:3" => "VeryLight",
-                "hqdn3d=2.8:2.1:4:3" => "Light",
-                "hqdn3d=3.5:3.5:4.5:4.5" => "Moderate",
-                "hqdn3d=8:6:12:9" => "Elevated",
-                _ => "Custom",
-            };
-            log::debug!("Grain Level: {} ({})", grain_level_str, hqdn3d);
-        } else {
-            log::debug!("Grain Level: None (no denoising)");
+        match (final_grain_level, &final_hqdn3d_params) {
+            (Some(level), Some(hqdn3d)) => {
+                let grain_level_str = match level {
+                    grain_analysis::GrainLevel::Baseline => "Baseline",
+                    grain_analysis::GrainLevel::VeryLight => "VeryLight",
+                    grain_analysis::GrainLevel::Light => "Light",
+                    grain_analysis::GrainLevel::Moderate => "Moderate",
+                    grain_analysis::GrainLevel::Elevated => "Elevated",
+                };
+                log::debug!("Grain Level: {} ({})", grain_level_str, hqdn3d);
+            }
+            _ => {
+                log::debug!("Grain Level: None (no denoising)");
+            }
         }
 
         // Hardware info
@@ -510,20 +498,23 @@ pub fn process_videos(
         );
         crate::progress_reporting::report_status("Quality", &format!("{} (CRF)", quality));
 
-        if let Some(ref hqdn3d) = final_hqdn3d_params {
-            let grain_level_str = match hqdn3d.as_str() {
-                "hqdn3d=1.5:1.1:4:3" => "VeryLight",
-                "hqdn3d=2.8:2.1:4:3" => "Light",
-                "hqdn3d=3.5:3.5:4.5:4.5" => "Moderate",
-                "hqdn3d=8:6:12:9" => "Elevated",
-                _ => "Custom",
-            };
-            crate::progress_reporting::report_status(
-                "Grain Level",
-                &format!("{} ({})", grain_level_str, hqdn3d),
-            );
-        } else {
-            crate::progress_reporting::report_status("Grain Level", "None (no denoising)");
+        match (final_grain_level, &final_hqdn3d_params) {
+            (Some(level), Some(hqdn3d)) => {
+                let grain_level_str = match level {
+                    grain_analysis::GrainLevel::Baseline => "Baseline",
+                    grain_analysis::GrainLevel::VeryLight => "VeryLight",
+                    grain_analysis::GrainLevel::Light => "Light",
+                    grain_analysis::GrainLevel::Moderate => "Moderate",
+                    grain_analysis::GrainLevel::Elevated => "Elevated",
+                };
+                crate::progress_reporting::report_status(
+                    "Grain Level",
+                    &format!("{} ({})", grain_level_str, hqdn3d),
+                );
+            }
+            _ => {
+                crate::progress_reporting::report_status("Grain Level", "None (no denoising)");
+            }
         }
 
         // Hardware info
@@ -590,7 +581,6 @@ pub fn process_videos(
                         input_size,
                         output_size,
                         duration: file_elapsed_time,
-                        hostname: hostname.clone(),
                     };
 
                     // Send the notification
@@ -620,9 +610,8 @@ pub fn process_videos(
                             let notification = NotificationType::Custom {
                                 title: "Drapto Encode Skipped".to_string(),
                                 message: format!(
-                                    "[{hostname}]: Skipped encode for {filename}: No streams found.",
-                                    hostname = hostname,
-                                    filename = filename
+                                    "Skipped encode for {}: No streams found.",
+                                    filename
                                 ),
                                 priority: 3,
                             };
@@ -646,7 +635,6 @@ pub fn process_videos(
                             let notification = NotificationType::EncodeError {
                                 input_path: input_path.to_path_buf(),
                                 message: format!("ffmpeg failed: {}", e),
-                                hostname: hostname.clone(),
                             };
 
                             // Send the notification

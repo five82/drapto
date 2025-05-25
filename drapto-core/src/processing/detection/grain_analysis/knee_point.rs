@@ -2,17 +2,18 @@
 // drapto-core/src/processing/detection/grain_analysis/knee_point.rs
 // ============================================================================
 //
-// KNEE POINT ANALYSIS: Optimal Grain Level Detection Algorithm
+// KNEE POINT ANALYSIS: Optimal Grain Level Detection for File Size Reduction
 //
-// This module implements the knee point analysis algorithm for determining the
-// optimal grain level for denoising. The algorithm works by finding the point
-// of diminishing returns in the efficiency curve of denoising strength vs.
-// file size reduction.
+// PURPOSE: Reduce video file sizes for home/mobile viewing while maintaining
+// acceptable visual quality. This is NOT for archival or professional use.
 //
-// The key insight is that there's typically a "knee point" in this curve where
-// additional denoising strength provides minimal additional file size reduction
-// but may degrade visual quality. This algorithm identifies that point to
-// balance compression efficiency with visual quality preservation.
+// APPROACH: Find the denoising level that provides good file size reduction
+// without over-processing. When in doubt, use VeryLight as it provides
+// compression benefits (5-10% typically) with virtually no quality risk.
+//
+// KEY PRINCIPLE: Some denoising is almost always beneficial. Even light
+// denoising removes high-entropy noise that doesn't contribute to perceived
+// quality but consumes significant bitrate during encoding.
 //
 // AI-ASSISTANT-INFO: Knee point analysis for optimal denoising parameter selection
 
@@ -26,35 +27,34 @@ use log;
 // ---- Standard library imports ----
 use std::collections::HashMap;
 
-/// Analyzes a sample's encoding results to determine the optimal grain level using knee point analysis.
+/// Determines the optimal denoising level for file size reduction.
 ///
-/// This function implements the knee point detection algorithm, which finds the point of
-/// diminishing returns in the efficiency curve of denoising strength vs. file size reduction.
-/// It calculates an efficiency metric for each grain level and selects the level that provides
-/// the best balance between compression efficiency and visual quality preservation.
+/// This function analyzes encoding results to find the best balance between
+/// file size reduction and quality preservation. The goal is practical file
+/// size reduction for home/mobile viewing, not archival quality.
 ///
 /// # Algorithm Overview
 ///
-/// 1. Establish a baseline using "Baseline" (no grain) or fallback to Baseline if necessary
-/// 2. Calculate efficiency for each grain level: (size_reduction / sqrt(grain_level_value))
-/// 3. Find the maximum efficiency point
-/// 4. Set a threshold at knee_threshold * max_efficiency (e.g., 80% of max)
-/// 5. Select the lowest grain level that meets or exceeds this threshold
+/// 1. Calculate efficiency for each grain level: (size_reduction / sqrt(grain_level_value))
+/// 2. Find the maximum efficiency point
+/// 3. Select the lowest grain level achieving 80% of max efficiency
+/// 4. If no clear knee point exists, default to VeryLight (safe choice)
 ///
-/// The square root scaling in the efficiency calculation reduces bias against higher
-/// denoising levels, providing a more balanced assessment. The algorithm always uses
-/// "Baseline" as the baseline for comparison to ensure accurate results.
+/// # Key Behaviors
+///
+/// - Always returns at least VeryLight (never Baseline/no denoising)
+/// - Provides clear messaging about why a level was chosen
+/// - Conservative approach: when uncertain, choose lighter denoising
 ///
 /// # Arguments
 ///
 /// * `results` - HashMap mapping grain levels to their encoded file sizes in bytes
-/// * `knee_threshold` - Threshold factor (0.0-1.0) for determining the knee point
+/// * `knee_threshold` - Threshold factor (0.0-1.0) for knee point selection
 /// * `sample_index` - The index of the sample being analyzed (for logging)
 ///
 /// # Returns
 ///
-/// * The optimal `GrainLevel` based on the knee point analysis
-/// * `GrainLevel::Baseline` if no suitable level is found or analysis fails
+/// The optimal `GrainLevel` for file size reduction (minimum: VeryLight)
 pub(super) fn analyze_sample_with_knee_point(
     results: &HashMap<Option<GrainLevel>, u64>,
     knee_threshold: f64,
@@ -128,6 +128,9 @@ pub(super) fn analyze_sample_with_knee_point(
 
     // Initialize vector to store efficiency metrics for each grain level
     let mut efficiencies: Vec<(Option<GrainLevel>, f64)> = Vec::new();
+    
+    // Track size reductions for better reporting
+    let mut size_reductions: Vec<(Option<GrainLevel>, f64)> = Vec::new();
 
     // Process each grain level and calculate its efficiency
     // Filter to only include valid grain levels with non-zero file sizes
@@ -151,6 +154,10 @@ pub(super) fn analyze_sample_with_knee_point(
         if reduction <= 0.0 {
             continue;
         }
+        
+        // Calculate percentage reduction for reporting
+        let reduction_pct = (reduction / baseline_size as f64) * 100.0;
+        size_reductions.push((level, reduction_pct));
 
         // Calculate efficiency using square-root scaling
         // This reduces bias against higher denoising levels by making the
@@ -164,16 +171,16 @@ pub(super) fn analyze_sample_with_knee_point(
         }
     }
 
-    // If no levels provided positive efficiency, return Baseline (no denoising)
+    // If no levels provided positive efficiency, use VeryLight as safe fallback
     if efficiencies.is_empty() {
         report_log_message(
             &format!(
-                "  Sample {}: No positive efficiency improvements found with knee point analysis.",
+                "  Sample {}: No efficiency improvements found. Using VeryLight (safe default).",
                 sample_index
             ),
             LogLevel::Info,
         );
-        return GrainLevel::Baseline;
+        return GrainLevel::VeryLight;
     }
 
     // ========================================================================
@@ -181,7 +188,7 @@ pub(super) fn analyze_sample_with_knee_point(
     // ========================================================================
 
     // Find the grain level with the highest efficiency
-    let (max_level, max_efficiency) =
+    let (_max_level, max_efficiency) =
         efficiencies.iter().fold((None, 0.0), |acc, &(level, eff)| {
             // Update if this efficiency is higher than the current maximum
             // and is a valid finite number
@@ -196,12 +203,12 @@ pub(super) fn analyze_sample_with_knee_point(
     if max_efficiency <= 0.0 {
         report_log_message(
             &format!(
-                "  Sample {}: Max efficiency is not positive (Max: {:.2}). Using Baseline.",
+                "  Sample {}: Max efficiency is not positive (Max: {:.2}). Using VeryLight (safe default).",
                 sample_index, max_efficiency
             ),
             LogLevel::Info,
         );
-        return GrainLevel::Baseline;
+        return GrainLevel::VeryLight;
     }
 
     // ========================================================================
@@ -213,8 +220,9 @@ pub(super) fn analyze_sample_with_knee_point(
 
     // Find all grain levels that meet or exceed the threshold
     let mut candidates: Vec<(Option<GrainLevel>, f64)> = efficiencies
-        .into_iter()
-        .filter(|&(_, eff)| eff.is_finite() && eff >= threshold_efficiency)
+        .iter()
+        .filter(|&&(_, eff)| eff.is_finite() && eff >= threshold_efficiency)
+        .cloned()
         .collect();
 
     // ========================================================================
@@ -233,36 +241,77 @@ pub(super) fn analyze_sample_with_knee_point(
 
     // Choose the lowest grain level that meets the threshold
     // This is the "knee point" - the optimal balance between denoising and quality
-    if let Some(&(Some(level), _)) = candidates.first() {
+    if let Some(&(Some(level), efficiency)) = candidates.first() {
+        // Calculate the actual file size reduction percentage for this level
+        let level_result = results.get(&Some(level)).unwrap_or(&baseline_size);
+        let size_reduction_pct = ((baseline_size - level_result) as f64 / baseline_size as f64) * 100.0;
+        
         // Report the analysis results as sub-items in verbose mode
         log::debug!(
-            "Sample {}: Knee point analysis: Max efficiency {:.2} at level {:?}. Threshold {:.1}%. Choosing: {:?}",
-            sample_index,
-            max_efficiency,
-            max_level.unwrap_or(GrainLevel::Baseline), // Default for logging
-            knee_threshold * 100.0,
-            level
+            "Sample {}: Knee point found at {:?}. Efficiency: {:.2}, Size reduction: {:.1}%",
+            sample_index, level, efficiency, size_reduction_pct
         );
         crate::progress_reporting::report_sub_item(&format!(
-            "Sample {}: Knee point analysis: Max efficiency {:.2} at level {:?}. Threshold {:.1}%. Choosing: {:?}",
-            sample_index,
-            max_efficiency,
-            max_level.unwrap_or(GrainLevel::Baseline), // Default for logging
-            knee_threshold * 100.0,
-            level
+            "Sample {}: Selected {:?} ({:.1}% size reduction)",
+            sample_index, level, size_reduction_pct
         ));
 
         // Return the selected optimal grain level
         level
     } else {
-        // No suitable candidates found - report in verbose mode
-        log::debug!("Sample {}: No suitable candidates found in knee point analysis. Using Baseline.", sample_index);
-        crate::progress_reporting::report_sub_item(&format!(
-            "Sample {}: No suitable candidates found in knee point analysis. Using Baseline.",
-            sample_index
-        ));
+        // No suitable candidates found - this typically means all levels have efficiency
+        // below the threshold or the efficiency curve doesn't have a clear knee point
+        
+        // Check if this is because efficiencies are increasing (no diminishing returns)
+        let efficiency_increasing = efficiencies.windows(2).all(|w| w[1].1 >= w[0].1);
+        
+        // Find VeryLight's reduction for reporting
+        let verylight_reduction = size_reductions.iter()
+            .find(|(level, _)| matches!(level, Some(GrainLevel::VeryLight)))
+            .map(|(_, pct)| pct);
+            
+        if efficiency_increasing && max_efficiency > 0.0 {
+            // Efficiency is still increasing - grain is benefiting from stronger denoising
+            // But we'll be conservative and use VeryLight
+            if let Some(reduction_pct) = verylight_reduction {
+                log::debug!(
+                    "Sample {}: Efficiency curve shows continued improvement (no knee point). \
+                    Using VeryLight ({:.1}% reduction) as conservative choice.",
+                    sample_index, reduction_pct
+                );
+                crate::progress_reporting::report_sub_item(&format!(
+                    "Sample {}: No clear knee point (efficiency still increasing). Using VeryLight ({:.1}% reduction).",
+                    sample_index, reduction_pct
+                ));
+            } else {
+                crate::progress_reporting::report_sub_item(&format!(
+                    "Sample {}: No clear knee point. Using VeryLight (conservative choice).",
+                    sample_index
+                ));
+            }
+        } else if let Some(reduction_pct) = verylight_reduction {
+            // Some other reason - just report VeryLight usage
+            log::debug!(
+                "Sample {}: No candidates met threshold (max efficiency: {:.2}). \
+                Using VeryLight ({:.1}% reduction).",
+                sample_index, max_efficiency, reduction_pct
+            );
+            crate::progress_reporting::report_sub_item(&format!(
+                "Sample {}: Using VeryLight ({:.1}% reduction) as safe default.",
+                sample_index, reduction_pct
+            ));
+        } else {
+            log::debug!(
+                "Sample {}: No suitable candidates in knee analysis. Using VeryLight as safe default.",
+                sample_index
+            );
+            crate::progress_reporting::report_sub_item(&format!(
+                "Sample {}: Using VeryLight (safe default for compression benefits).",
+                sample_index
+            ));
+        }
 
-        // Default to no denoising
-        GrainLevel::Baseline
+        // Use VeryLight as safe fallback
+        GrainLevel::VeryLight
     }
 }

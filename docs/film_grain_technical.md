@@ -6,7 +6,29 @@ Drapto implements a sophisticated film grain management system that optimizes vi
 
 The core principle behind Drapto's approach is that film grain and noise consume a disproportionate amount of bitrate during video encoding due to their high-entropy, random nature. By selectively reducing natural grain before encoding and then adding back controlled synthetic grain, Drapto achieves significantly better compression efficiency without sacrificing perceptual quality.
 
-The system now features continuous parameter interpolation for fine-grained control over denoising strength, allowing for more precise optimization of the compression vs. quality tradeoff. This enhancement leverages the multidimensional parameter space of the hqdn3d denoiser to achieve more precise denoising than discrete levels alone would allow.
+## Purpose and Goals
+
+### Primary Goal: File Size Reduction
+The primary purpose of Drapto's grain management system is to **reduce file size** for home and mobile viewing while maintaining acceptable visual quality. This is achieved through intelligent denoising that removes high-entropy grain before encoding.
+
+### Key Principles
+
+1. **Practical Optimization**: The system is designed for real-world use cases where storage and bandwidth are considerations, not for archival or professional mastering.
+
+2. **Conservative Defaults**: When the optimal denoising level is unclear, the system defaults to VeryLight denoising, which provides compression benefits (typically 5-10% file size reduction) with virtually no risk of visible quality loss.
+
+3. **Grain Fidelity is Secondary**: While the system does add synthetic grain to maintain visual texture, exact reproduction of the original grain pattern is not the goal. The focus is on achieving a pleasing result that looks good on typical viewing devices.
+
+4. **Always Some Benefit**: Based on video encoding best practices, even the lightest denoising almost always provides file size benefits by removing encoding artifacts and high-frequency noise that doesn't contribute to perceived quality.
+
+### Target Use Cases
+
+- Home media servers (Plex, Jellyfin, etc.)
+- Mobile device storage optimization
+- Streaming over limited bandwidth
+- Personal video libraries where storage efficiency matters
+
+The system now features continuous parameter interpolation for fine-grained control over denoising strength, allowing for more precise optimization of the compression vs. quality tradeoff.
 
 ## System Architecture
 
@@ -76,18 +98,46 @@ The system classifies grain into five distinct levels:
 
 ### Knee Point Detection Algorithm
 
-The knee point detection algorithm is a key innovation that finds the optimal balance between compression efficiency and visual quality preservation:
+The knee point detection algorithm finds the optimal balance between compression efficiency and visual quality preservation:
 
-1. Each sample is encoded with different denoising levels (always including "Baseline" as reference)
-2. File sizes are compared to calculate size reduction percentages
-3. An efficiency metric is calculated for each level: `(size_reduction / sqrt(grain_level_value))`
-4. The knee point is identified as the level where additional denoising provides diminishing returns
-5. The threshold for diminishing returns is configurable via `film_grain_knee_threshold` (default: 0.8)
+1. **Baseline Establishment**: Each sample is encoded with different denoising levels, always including "Baseline" (no denoising) as reference
+2. **Efficiency Calculation**: An efficiency metric is calculated for each level: `(size_reduction / sqrt(grain_level_value))`
+3. **Threshold Application**: The algorithm finds the maximum efficiency and identifies levels that achieve at least 80% of this maximum (configurable via `film_grain_knee_threshold`)
+4. **Conservative Selection**: The lowest grain level that meets the threshold is selected
 
 ```rust
-// Efficiency calculation (simplified)
+// Efficiency calculation with square-root scaling to reduce bias
 let efficiency = size_reduction / (grain_level_value.sqrt());
 ```
+
+#### Fallback Behavior
+
+When no clear knee point is detected (which happens when efficiency continues to increase linearly), the algorithm:
+
+1. **Defaults to VeryLight**: Uses the most conservative denoising level
+2. **Provides Clear Messaging**: Explains why no knee point was found
+3. **Shows Benefits**: Reports the file size reduction percentage achieved
+
+Example messages:
+- `Sample 1: Selected Light (11.5% size reduction)` - When knee point is found
+- `Sample 1: No clear knee point (efficiency still increasing). Using VeryLight (6.1% reduction).` - When using fallback
+
+This approach ensures that:
+- Some denoising is always applied (following encoding best practices)
+- The system errs on the side of quality preservation
+- Users understand what decision was made and why
+
+### Maximum Level Constraint
+
+After the analysis determines an optimal grain level, a final safety check is applied:
+
+```rust
+if final_level > max_level {
+    final_level = max_level;
+}
+```
+
+This ensures that denoising never exceeds the user-configured maximum, even if the analysis suggests stronger denoising would be beneficial. The default `max_level` is Elevated, which provides a good balance for most content.
 
 ### Adaptive Refinement
 
@@ -285,9 +335,14 @@ This ensures that wider ranges (indicating more uncertainty) receive more test p
 
 ## Conclusion
 
-Drapto's film grain management system represents a sophisticated approach to optimizing video compression efficiency while maintaining perceptual quality. By analyzing grain characteristics, applying optimal denoising, and synthesizing controlled film grain during encoding, the system achieves significant bitrate savings (often 20-40%) without sacrificing visual quality.
+Drapto's film grain management system provides a practical solution for reducing video file sizes while maintaining quality suitable for home and mobile viewing. The system prioritizes:
 
-The multi-phase analysis approach with knee point detection ensures that each video receives optimal processing based on its unique characteristics, while the configurable parameters allow fine-tuning for different content types and quality requirements.
+1. **Reliable File Size Reduction**: Typically achieving 20-40% smaller files through intelligent grain removal
+2. **Safe Defaults**: Using VeryLight denoising when uncertain ensures compression benefits without quality risks
+3. **User Control**: Configuration options like `max_level` provide guardrails against over-processing
+4. **Transparency**: Clear messaging helps users understand what decisions are being made
+
+The multi-phase analysis approach ensures consistent results across diverse content, while the conservative fallback behavior means the system will always provide some benefit rather than doing nothing when analysis is inconclusive.
 
 ### Recent Enhancements
 

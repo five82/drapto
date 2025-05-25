@@ -622,10 +622,10 @@ pub fn analyze_grain(
     // Final result is important - show in normal mode with meaningful description
     let level_description = match final_level {
         GrainLevel::Baseline => "None (no denoising needed)",
-        GrainLevel::VeryLight => "Very Light",
+        GrainLevel::VeryLight => "VeryLight",
         GrainLevel::Light => "Light",
         GrainLevel::Moderate => "Moderate",
-        GrainLevel::Elevated => "Heavy",
+        GrainLevel::Elevated => "Elevated",
     };
 
     // Use the centralized function for success+status formatting

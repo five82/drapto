@@ -37,8 +37,6 @@ pub enum NotificationType {
         input_path: PathBuf,
         /// Path to the output file
         output_path: PathBuf,
-        /// Hostname of the machine performing the encoding
-        hostname: String,
     },
 
     /// Encoding process has completed for a file
@@ -53,8 +51,6 @@ pub enum NotificationType {
         output_size: u64,
         /// Total encoding time
         duration: Duration,
-        /// Hostname of the machine performing the encoding
-        hostname: String,
     },
 
     /// An error occurred during encoding
@@ -63,8 +59,6 @@ pub enum NotificationType {
         input_path: PathBuf,
         /// Error message
         message: String,
-        /// Hostname of the machine performing the encoding
-        hostname: String,
     },
 
     /// A custom notification message
@@ -102,21 +96,19 @@ impl NotificationType {
         match self {
             NotificationType::EncodeStart {
                 input_path,
-                hostname,
                 ..
             } => {
                 let filename = input_path
                     .file_name()
                     .map(|name| name.to_string_lossy().to_string())
                     .unwrap_or_else(|| input_path.to_string_lossy().to_string());
-                format!("Started encoding {} on {}", filename, hostname)
+                format!("Started encoding {}", filename)
             }
             NotificationType::EncodeComplete {
                 input_path,
                 input_size,
                 output_size,
                 duration,
-                hostname,
                 ..
             } => {
                 let filename = input_path
@@ -146,20 +138,19 @@ impl NotificationType {
                 };
 
                 format!(
-                    "Completed encoding {} on {} in {}. Reduced by {}%",
-                    filename, hostname, duration_str, reduction
+                    "Completed encoding {} in {}. Reduced by {}%",
+                    filename, duration_str, reduction
                 )
             }
             NotificationType::EncodeError {
                 input_path,
                 message,
-                hostname,
             } => {
                 let filename = input_path
                     .file_name()
                     .map(|name| name.to_string_lossy().to_string())
                     .unwrap_or_else(|| input_path.to_string_lossy().to_string());
-                format!("Error encoding {} on {}: {}", filename, hostname, message)
+                format!("Error encoding {}: {}", filename, message)
             }
             NotificationType::Custom { message, .. } => message.clone(),
         }

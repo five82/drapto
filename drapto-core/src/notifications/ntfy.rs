@@ -55,7 +55,6 @@ use log;
 ///     input_size: 1000000,
 ///     output_size: 500000,
 ///     duration: Duration::from_secs(300),
-///     hostname: "my-computer".to_string(),
 /// };
 ///
 /// sender.send_notification(&notification).unwrap();
