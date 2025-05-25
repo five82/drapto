@@ -33,15 +33,15 @@ Drapto CLI uses a consistent and well-defined visual hierarchy to organize infor
 
 3. **Tertiary (Level 3)**: Individual actions or progress items
    - Formatting: Regular with progress symbol
-   - Example: `    ⧖ Processing sample 3/5`
+   - Example: `    ◆ Processing sample 3/5`
 
 4. **Quaternary (Level 4)**: Key-value pairs and primary information
    - Formatting: Regular text (bold values only for critical information)
-   - Example: `    Input file:      movie.mkv`
+   - Example: `      Input file:      movie.mkv`
 
 5. **Supporting (Level 5)**: Details, metrics, and secondary information
    - Formatting: Regular or dimmed text
-   - Example: `    Speed: 2.5x, Avg FPS: 24.5, ETA: 00:22:30`
+   - Example: `        Speed: 2.5x, Avg FPS: 24.5, ETA: 00:22:30`
 
 #### Whitespace Strategy
 
@@ -72,9 +72,9 @@ Whitespace is a critical component of visual hierarchy. Use it consistently:
 |-------|--------------|------------|-------|-------------|--------|---------|
 | 1 | Main Sections | Bold, uppercase | Cyan (title only) | None | ===== | `===== VIDEO ANALYSIS =====` |
 | 2 | Subsections/Success | Bold | White | 2 spaces | » / ✓ | `  » Analyzing grain levels` / `  ✓ Analysis complete` |
-| 3 | Operations/Progress | Regular | White | 4 spaces | ⧖ / ◆ | `    ⧖ Processing sample 3/5` |
-| 4 | Primary Info | Regular | White/Green* | 4 spaces | None | `    Reduction:      65.2%` |
-| 5 | Details | Regular | White/Gray | 4-6 spaces | None | `    Speed: 2.5x, Avg FPS: 24.5` |
+| 3 | Operations/Progress | Regular | White | 4 spaces | ⧖ / ◆ | `    ⧖ Encoding progress` / `    ◆ Sample 3/5` |
+| 4 | Primary Info | Regular | White/Green* | 6 spaces | None | `      Reduction:      65.2%` |
+| 5 | Details | Regular | White/Gray | 8 spaces | None | `        Speed: 2.5x, Avg FPS: 24.5` |
 | X | Critical Alert | Bold | Red/Yellow | Same as context | ✗ / ⚠ | `  ✗ Error: Encoding failed` |
 
 *Green for significant values (>50% reductions, optimal selections, good performance)
@@ -235,7 +235,6 @@ Use a consistent set of monochrome symbols with the same color as the text they 
 - **✓**: Success or completion
 - **⧖**: In-progress or waiting
 - **»**: Processing step or subsection
-- **◎**: Phase indicator
 - **◆**: Sample indicator
 - **✗**: Error or failure
 - **⚠**: Warning
@@ -265,14 +264,18 @@ Use for alerts, errors, and key status updates that need immediate attention.
 
 ```
 ✗ Error: Encoding failed
-  Try using a different preset or check system resources
+
+  Message:  FFmpeg process exited with code 1
+  Context:  The encoding process failed during video processing
+
+  Suggestion: Try using a different preset or check system resources
 ```
 
 ### Medium Density (For Standard Output)
 Use for most terminal output where users are actively watching.
 
 ```
-⧖ Encoding: 45.2% [##########.................]
+⧖ Encoding: 45.2% [##########.................] (00:46:23 / 01:42:35)
   Speed: 2.5x, ETA: 00:22:30
   Pass: 1/1, Frames: 66,574 / 147,285
 ```
@@ -316,12 +319,14 @@ Progress bars should:
 - Update at an appropriate frequency (not too fast, not too slow)
 
 ```
-Encoding: 45.2% [#########.......] (01:23 / 03:45), Speed: 2.5x, ETA: 02:22
+⧖ Encoding: 45.2% [#########.......] (00:01:23 / 00:03:45)
+  Speed: 2.5x, ETA: 00:02:22
 ```
 
 For constrained terminal widths, adapt appropriately:
 ```
-Encoding: 45.2% [###..]
+⧖ Encoding: 45.2% [###..]
+  ETA: 00:02:22
 ```
 
 ### Status Lines
@@ -371,7 +376,7 @@ FPS: 24.5
 ETA: 00:22:30
 
 # After: Organized grouping with visual separators
-Frame: 66,574/147,285 │ Speed: 2.5x │ FPS: 24.5 │ ETA: 00:22:30
+Frames: 66,574/147,285 │ Speed: 2.5x │ FPS: 24.5 │ ETA: 00:22:30
 ```
 
 ## Interaction Patterns
@@ -523,7 +528,7 @@ ffmpeg
   Estimated Savings:      65% vs. Baseline
 
   Grain Level Comparison:
-    Moderate (selected) 1.24 GB  #####################
+    Moderate (selected) 1.24 GB  #####################  ← "Moderate (selected)" in green
     Elevated           1.35 GB  #######################
     Light              1.42 GB  ########################
     Baseline           3.56 GB  ############################################################
@@ -554,35 +559,10 @@ ffmpeg
 
 ## Scriptability
 
-- Support machine-readable output with `--json` flag
 - Ensure all output is grep-friendly
 - Provide quiet mode with `-q` or `--quiet` flag
 - Exit with appropriate status codes
-
-### JSON Output Format
-
-```json
-{
-  "status": "in_progress",
-  "operation": "encoding",
-  "progress": {
-    "percent": 45.2,
-    "current_time": "00:46:23",
-    "total_time": "01:42:35",
-    "eta": "00:22:30",
-    "speed": 2.5,
-    "fps": 24.5
-  },
-  "details": {
-    "pass": 1,
-    "total_passes": 1,
-    "frames_processed": 66574,
-    "total_frames": 147285,
-    "bitrate": 1245,
-    "current_size_mb": 562.4
-  }
-}
-```
+- Consider machine-readable output formats for future implementation
 
 ## Accessibility Considerations
 
@@ -635,7 +615,7 @@ Document any adjustments made for specific combinations.
 ## Implementation Guidelines
 
 - Use the `terminal.rs` module for all user-facing output
-- Leverage the `styling.rs` module for consistent colors and formatting
+- Leverage the terminal module's styling functions for consistent colors and formatting
 - Follow the component-based approach for complex output
 - Test output in various terminal sizes and environments
 - Implement responsive output algorithms:
@@ -672,7 +652,6 @@ Drapto follows these conventions for command line arguments:
 | `-q` | `--quiet` | Suppress non-essential output |
 | `-o` | `--output` | Specify output file |
 | `-f` | `--force` | Force operation without confirmation |
-| | `--json` | Output in JSON format |
 | | `--no-color` | Disable colored output |
 | | `--width` | Override detected terminal width |
 | | `--screen-reader` | Enable screen reader descriptions |
@@ -705,7 +684,7 @@ $ drapto encode movie.mkv -i input_dir/ -o output_dir/
 ===== VIDEO ANALYSIS =====
 
   » Detecting black bars
-    ⧖ Progress: 100.0% [##############################] (10.0 / 10.0s)
+    ⧖ Progress: 100.0% [##############################] (00:00:10 / 00:00:10)
 
   ✓ Crop detection complete
     Detected crop:    None required
@@ -713,20 +692,20 @@ $ drapto encode movie.mkv -i input_dir/ -o output_dir/
   » Analyzing grain levels
     Extracting 5 samples for analysis...
 
-    Sample 1/5: 00:15:23
-    ⧖ Progress: 100.0% [##############################] (10.0 / 10.0s)
+    ◆ Sample 1/5: 00:15:23
+    ⧖ Progress: 100.0% [##############################] (00:00:10 / 00:00:10)
 
-    Sample 2/5: 00:32:47
-    ⧖ Progress: 100.0% [##############################] (10.0 / 10.0s)
+    ◆ Sample 2/5: 00:32:47
+    ⧖ Progress: 100.0% [##############################] (00:00:10 / 00:00:10)
 
-    Sample 3/5: 00:51:18
-    ⧖ Progress: 100.0% [##############################] (10.0 / 10.0s)
+    ◆ Sample 3/5: 00:51:18
+    ⧖ Progress: 100.0% [##############################] (00:00:10 / 00:00:10)
 
-    Sample 4/5: 01:12:05
-    ⧖ Progress: 100.0% [##############################] (10.0 / 10.0s)
+    ◆ Sample 4/5: 01:12:05
+    ⧖ Progress: 100.0% [##############################] (00:00:10 / 00:00:10)
 
-    Sample 5/5: 01:35:42
-    ⧖ Progress: 100.0% [##############################] (10.0 / 10.0s)
+    ◆ Sample 5/5: 01:35:42
+    ⧖ Progress: 100.0% [##############################] (00:00:10 / 00:00:10)
 
 ===== GRAIN ANALYSIS RESULTS =====
 
@@ -737,7 +716,7 @@ $ drapto encode movie.mkv -i input_dir/ -o output_dir/
     Estimated Savings:      65% vs. Baseline
 
     Grain Level Comparison:
-      Moderate (selected) 1.24 GB  #####################
+      Moderate (selected) 1.24 GB  #####################  ← "Moderate (selected)" in green
       Elevated           1.35 GB  #######################
       Light              1.42 GB  ########################
       Baseline           3.56 GB  ############################################################
@@ -780,7 +759,7 @@ $ drapto encode movie.mkv -i input_dir/ -o output_dir/
     Duration:          01:42:35
     Original size:     3.56 GB
     Encoded size:      1.24 GB
-    Reduction:         65.2%
+    Reduction:         65.2%  ← Value in green (significant reduction)
 
     Video stream:      AV1 (libsvtav1), 1920x1080, 1,145 kb/s
     Audio stream:      Opus, 5.1 channels, 128 kb/s
@@ -798,8 +777,8 @@ $ drapto encode movie.mkv -i input_dir/ -o output_dir/
 
   » Testing baseline grain levels on 5 samples
 
-    Sample 1/5: 00:15:23
-    ⧖ Progress: 100.0% [##############################] (10.0 / 10.0s)
+    ◆ Sample 1/5: 00:15:23
+    ⧖ Progress: 100.0% [##############################] (00:00:10 / 00:00:10)
 
     Results:
       Baseline:         15.2 MB
@@ -808,8 +787,8 @@ $ drapto encode movie.mkv -i input_dir/ -o output_dir/
       Elevated:          8.2 MB
       Heavy:             8.1 MB
 
-    Sample 2/5: 00:32:47
-    ⧖ Progress: 100.0% [##############################] (10.0 / 10.0s)
+    ◆ Sample 2/5: 00:32:47
+    ⧖ Progress: 100.0% [##############################] (00:00:10 / 00:00:10)
 
     Results:
       Baseline:         14.8 MB
@@ -825,13 +804,13 @@ $ drapto encode movie.mkv -i input_dir/ -o output_dir/
   » Testing refined grain parameters
 
     Testing interpolated level between Light and Moderate
-    ⧖ Progress: 100.0% [##############################] (10.0 / 10.0s)
+    ⧖ Progress: 100.0% [##############################] (00:00:10 / 00:00:10)
 
     Results:
       Light-Moderate:    9.2 MB
 
     Testing interpolated level between Moderate and Elevated
-    ⧖ Progress: 100.0% [##############################] (10.0 / 10.0s)
+    ⧖ Progress: 100.0% [##############################] (00:00:10 / 00:00:10)
 
     Results:
       Moderate-Elevated: 8.3 MB
@@ -845,7 +824,7 @@ $ drapto encode movie.mkv -i input_dir/ -o output_dir/
     Estimated Savings:      65% vs. Baseline
 
     Grain Level Comparison:
-      Moderate (selected) 1.24 GB  #####################
+      Moderate (selected) 1.24 GB  #####################  ← "Moderate (selected)" in green
       Light-Moderate      1.38 GB  ######################
       Elevated            1.35 GB  #######################
       Light               1.42 GB  ########################
@@ -967,7 +946,7 @@ $ drapto encode movie.mkv -i input_dir/ -o output_dir/
 » Encoding: 12% [##...............]
 
 # After 30 seconds
-» Encoding: 45.2% [##########.................]
+» Encoding: 45.2% [##########.................] (00:46:23 / 01:42:35)
   Speed: 2.5x, ETA: 00:22:30
 ```
 
@@ -985,10 +964,11 @@ $ drapto encode movie.mkv -i input_dir/ -o output_dir/
 
 ```
 # Wide terminal (120+ columns)
-⧖ Encoding: 45.2% [###########.................................] (00:46:23 / 01:42:35) Speed: 2.5x, ETA: 00:22:30
+⧖ Encoding: 45.2% [###########.................................] (00:46:23 / 01:42:35)
+  Speed: 2.5x, ETA: 00:22:30
 
 # Standard terminal (80 columns)
-⧖ Encoding: 45.2% [##########.................]
+⧖ Encoding: 45.2% [##########.................] (00:46:23 / 01:42:35)
   Speed: 2.5x, ETA: 00:22:30
 
 # Narrow terminal (60 columns or less)
