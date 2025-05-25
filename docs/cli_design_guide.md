@@ -255,43 +255,80 @@ Use these techniques to draw attention to the most important information:
   Reduction: 65.2% (3.56 GB → 1.24 GB)  ← Important metric stands out
   ```
 
-## Information Density Guidelines
+## Logging and Output Control
 
-Balance information density appropriately based on context and user needs:
+Drapto uses Rust's standard logging levels to control output verbosity, keeping the interface simple and well-understood:
 
-### Low Density (For Critical Information)
-Use for alerts, errors, and key status updates that need immediate attention.
+### Logging Levels
 
-```
-✗ Error: Encoding failed
+The application uses standard Rust log levels controlled by the `RUST_LOG` environment variable:
 
-  Message:  FFmpeg process exited with code 1
-  Context:  The encoding process failed during video processing
+- **Error**: Critical failures only
+- **Warn**: Warnings and errors
+- **Info** (default): Normal operation output
+- **Debug**: Detailed technical information (enabled with `--verbose`)
+- **Trace**: Very detailed debugging information
 
-  Suggestion: Try using a different preset or check system resources
-```
+### Command-Line Flags
 
-### Medium Density (For Standard Output)
-Use for most terminal output where users are actively watching.
+```bash
+# Default output (info level)
+drapto encode -i input.mkv -o output/
 
-```
-⧖ Encoding: 45.2% [##########.................] (00:46:23 / 01:42:35)
-  Speed: 2.5x, ETA: 00:22:30
-  Pass: 1/1, Frames: 66,574 / 147,285
-```
+# Verbose output (debug level)
+drapto encode --verbose -i input.mkv -o output/
 
-### High Density (For Detailed Analysis)
-Use when users request comprehensive information, such as with `--verbose`.
-
-```
-⧖ Encoding: 45.2% [##########.................] (00:46:23 / 01:42:35)
-  Speed: 2.5x, Avg FPS: 24.5, ETA: 00:22:30
-  Pass: 1/1, Frames: 66,574 / 147,285, Bitrate: 1,245 kb/s
-  Buffer: 256MB, Queue: 24 frames, GOP: 240, Ref frames: 4
-  CPU: 87%, Memory: 1.2GB, Temp: 75°C, Power: Medium
+# Future: Quiet mode (warn level)
+# drapto encode --quiet -i input.mkv -o output/
 ```
 
-Always allow users to control the information density with flags like `--quiet`, `--normal` (default), and `--verbose`.
+### Output Examples by Level
+
+#### Standard Output (Info Level - Default)
+Shows essential information for normal operation:
+
+```
+===== VIDEO ANALYSIS =====
+
+  » Analyzing grain levels
+    ◆ Sample 3/5: 00:51:18
+    ⧖ Progress: 45.2% [##########.................] (00:00:05 / 00:00:10)
+
+  ✓ Analysis complete
+    Detected Grain Level: Moderate
+    Estimated Size: 1.24 GB
+```
+
+#### Verbose Output (Debug Level)
+Includes technical details for troubleshooting:
+
+```
+===== VIDEO ANALYSIS =====
+
+  » Analyzing grain levels
+    ◆ Sample 3/5: 00:51:18
+    ⧖ Progress: 45.2% [##########.................] (00:00:05 / 00:00:10)
+
+[debug] Testing denoise strength: hqdn3d=3.5:3.5:4.5:4.5
+[debug] Sample encode size: 8.3 MB
+[debug] Knee point calculation: threshold=0.8, current=0.73
+
+  ✓ Analysis complete
+    Detected Grain Level: Moderate
+    Estimated Size: 1.24 GB
+    Denoise Parameters: hqdn3d=3.5:3.5:4.5:4.5
+```
+
+### Design Philosophy
+
+This approach balances simplicity with functionality:
+
+1. **Standard conventions**: Uses familiar Rust logging levels
+2. **Minimal flags**: One verbosity flag keeps the interface simple
+3. **Progressive disclosure**: Debug information is available when needed
+4. **Clean output**: Visual hierarchy and formatting remain consistent across all levels
+
+The visual design principles (hierarchy, color usage, symbols) apply regardless of the logging level, ensuring a consistent and professional appearance.
 
 ## Terminal Components
 
@@ -301,6 +338,7 @@ Sections create visual separation between different parts of the output:
 
 ```
 ===== SECTION TITLE =====
+
   Content goes here with consistent padding
   More content...
 
@@ -384,8 +422,8 @@ Frames: 66,574/147,285 │ Speed: 2.5x │ FPS: 24.5 │ ETA: 00:22:30
 ### Command Structure
 
 - Use consistent command structure: `drapto [global options] command [command options] [arguments]`
-- Group related commands under topics (e.g., `grain analyze`, `encode`)
-- Use verbs for commands and nouns for topics
+- Use clear, descriptive command names (e.g., `encode`)
+- Keep command structure simple and intuitive
 
 ### Error Handling
 
@@ -456,20 +494,23 @@ Output should adapt based on the terminal environment:
 
 ### Progressive Disclosure
 
-Implement progressive disclosure to show the most important information first:
+Use Rust's standard logging levels to progressively reveal technical details:
 
 ```
-# Basic output (default)
-✓ Encoding complete: 1.24 GB (65.2% reduction)
-
-# Detailed output (-v or --verbose)
+# Standard output (info level - default)
 ✓ Encoding complete
   Input:           movie.mkv (3.56 GB)
   Output:          movie.av1.mp4 (1.24 GB)
   Reduction:       65.2%
 
-  Video stream:    AV1 (libsvtav1), 1920x1080, 1,145 kb/s
-  Audio stream:    Opus, 5.1 channels, 128 kb/s
+# Verbose output (debug level - with --verbose)
+✓ Encoding complete
+  Input:           movie.mkv (3.56 GB)
+  Output:          movie.av1.mp4 (1.24 GB)
+  Reduction:       65.2%
+
+[debug] Filter chain:    hqdn3d=3.5:3.5:4.5:4.5
+[debug] Encoder params:  preset=6, crf=27
 ```
 
 ### Context-Aware Displays
@@ -560,7 +601,7 @@ ffmpeg
 ## Scriptability
 
 - Ensure all output is grep-friendly
-- Provide quiet mode with `-q` or `--quiet` flag
+- Future: Provide quiet mode with `-q` or `--quiet` flag
 - Exit with appropriate status codes
 - Consider machine-readable output formats for future implementation
 
@@ -571,7 +612,6 @@ ffmpeg
 - Provide verbose mode for additional context
 - Support different terminal sizes and capabilities
 - Ensure readability in both light and dark terminal themes
-- Add optional descriptions for screen readers with `--screen-reader` flag
 
 ## Terminal Testing Grid
 
@@ -596,10 +636,7 @@ To ensure consistent visual hierarchy across environments, test your CLI in the 
 - Remote shell environments (SSH sessions)
 
 ### Accessibility Scenarios
-- High contrast mode
-- Screen readers (test with descriptions)
 - No color mode (`NO_COLOR=1` environment variable)
-- Different color schemes (light/dark terminals)
 
 ### Test Case Example
 
@@ -641,26 +678,88 @@ Drapto follows these conventions for command line arguments:
 - **Short flags**: Single-letter flags prefixed with a single dash (`-v`)
 - **Long flags**: Full word flags prefixed with double dash (`--verbose`)
 - **Arguments**: Values that follow flags (`--output video.mp4`)
-- **Positional arguments**: Required values without flags (`drapto encode video.mp4`)
+- **Explicit flags preferred**: Use flags for clarity (`-i input.mkv` rather than positional arguments)
 
 ### Standard Flags
 
 | Short | Long | Description |
 |-------|------|-------------|
 | `-h` | `--help` | Show help text |
-| `-v` | `--verbose` | Show detailed output |
-| `-q` | `--quiet` | Suppress non-essential output |
+| `-v` | `--verbose` | Enable debug-level output |
+| `-V` | `--version` | Show version information |
+| `-i` | `--input` | Specify input file |
 | `-o` | `--output` | Specify output file |
-| `-f` | `--force` | Force operation without confirmation |
 | | `--no-color` | Disable colored output |
-| | `--width` | Override detected terminal width |
-| | `--screen-reader` | Enable screen reader descriptions |
+| | `--interactive` | Run in foreground instead of as daemon |
+
+Future flags that may be added:
+- `-q` / `--quiet`: Show only warnings and errors
+- `--width`: Override detected terminal width
+
+### Special Conventions
+
+- **Stdin/Stdout**: Support `-` as a filename to read from stdin or write to stdout
+  ```bash
+  # Read from stdin
+  cat video.mkv | drapto encode -i - -o output.mp4
+  
+  # Write to stdout
+  drapto encode -i input.mkv -o - | another-command
+  ```
 
 ## Help
 
 - Help should be available via `drapto --help` and `drapto command --help`
 - Each command should have a concise description, usage information, and examples
 - Help text should follow the same visual hierarchy principles
+- Include 1-2 practical example invocations in help text
+
+## Configuration (Future)
+
+When configuration support is added, follow this precedence order:
+
+1. **Command-line flags** (highest priority)
+2. **Environment variables** (e.g., `DRAPTO_OUTPUT_DIR`)
+3. **Project-level configuration** (e.g., `.drapto.toml` in project directory)
+4. **User-level configuration** (e.g., `~/.config/drapto/config.toml`)
+5. **System-wide configuration** (lowest priority)
+
+Configuration files should:
+- Use TOML format for human readability
+- Follow XDG Base Directory specification
+- Be optional - the tool should work without any configuration
+
+## Responsive Feedback
+
+Following the "responsive is more important than fast" principle:
+
+- **Show something within 100ms** - Even just "Starting..." is better than silence
+- **Use progressive detail** for long operations (see Progress Feedback section)
+- **Validate input early** and fail fast with helpful messages
+- **Print status before heavy operations** so users know the tool is working
+
+```
+# Good - Immediate feedback
+$ drapto encode -i large_file.mkv -o output/
+» Initializing encoder...  ← Appears immediately
+» Analyzing video properties...  ← Updates as work progresses
+
+# Bad - Silent delay
+$ drapto encode -i large_file.mkv -o output/
+[5 second delay with no output]
+===== INITIALIZATION =====  ← User wonders if it's working
+```
+
+## Anti-Patterns to Avoid
+
+Based on CLI best practices, avoid these patterns:
+
+1. **Don't require interactive prompts** - All functionality should be accessible via flags
+2. **Don't create time bombs** - Avoid hard dependencies on external services
+3. **Don't abbreviate subcommands** - Be explicit rather than clever
+4. **Don't output developer-centric information by default** - Use debug mode for internals
+5. **Don't ignore TTY detection** - Adapt output for piping vs. interactive use
+6. **Don't overuse color** - Use it intentionally for emphasis, not decoration
 
 ## Detailed Examples
 
@@ -671,7 +770,7 @@ This section provides comprehensive examples of proper terminal output following
 Below is an example of a complete workflow showing the proper terminal output for a video encoding process:
 
 ```
-$ drapto encode movie.mkv -i input_dir/ -o output_dir/
+$ drapto encode -i movie.mkv -o output_dir/
 
 ===== INITIALIZATION =====
 
@@ -882,24 +981,9 @@ $ drapto encode movie.mkv -i input_dir/ -o output_dir/
               Run with --verbose for more detailed FFmpeg output
 ```
 
-### Progressive Disclosure Examples
+### Logging Level Examples
 
-#### Basic Output (Default)
-
-```
-✓ Encoding complete: 1.24 GB (65.2% reduction)
-```
-
-#### Standard Output
-
-```
-✓ Encoding complete
-  Input:           movie.mkv (3.56 GB)
-  Output:          movie.av1.mp4 (1.24 GB)
-  Reduction:       65.2%
-```
-
-#### Detailed Output (--verbose)
+#### Standard Output (Info Level - Default)
 
 ```
 ✓ Encoding complete
@@ -910,11 +994,30 @@ $ drapto encode movie.mkv -i input_dir/ -o output_dir/
   Video stream:    AV1 (libsvtav1), 1920x1080, 1,145 kb/s
   Audio stream:    Opus, 5.1 channels, 128 kb/s
 
-  Processing:      00:40:12 at 2.55x speed
-  Encoder:         libsvtav1 (SVT-AV1 v1.2.1)
-  Filter chain:    hqdn3d=3.5:3.5:4.5:4.5
+  Total time:      00:40:12
+  Average speed:   2.55x
+```
 
-  The encoded file is ready at: /home/user/videos/movie.av1.mp4
+#### Verbose Output (Debug Level - with --verbose flag)
+
+```
+✓ Encoding complete
+  Input:           movie.mkv (3.56 GB)
+  Output:          movie.av1.mp4 (1.24 GB)
+  Reduction:       65.2%
+
+  Video stream:    AV1 (libsvtav1), 1920x1080, 1,145 kb/s
+  Audio stream:    Opus, 5.1 channels, 128 kb/s
+
+  Total time:      00:40:12
+  Average speed:   2.55x
+
+[debug] Encoder:         libsvtav1 (SVT-AV1 v1.2.1)
+[debug] Filter chain:    hqdn3d=3.5:3.5:4.5:4.5
+[debug] Pixel format:    yuv420p10le
+[debug] Color space:     bt709
+[debug] Peak memory:     2.3 GB
+[debug] Temp files cleaned: 5 (562.4 MB)
 ```
 
 ### Visual Alignment Examples
