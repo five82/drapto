@@ -13,11 +13,10 @@
 // - CoreResult: Type alias for Result<T, CoreError> for consistent return types
 //
 // ERROR CATEGORIES:
-// - I/O and filesystem errors (Io, Walkdir, PathError)
-// - External command errors (CommandStart, CommandWait, CommandFailed)
+// - I/O and filesystem errors (Io, PathError)
+// - External command errors (Command with CommandErrorKind)
 // - Parsing errors (FfprobeParse, JsonParseError)
-// - Video processing errors (VideoInfoError, NoFilesFound)
-// - Dependency errors (DependencyNotFound)
+// - Video processing errors (VideoInfoError, NoFilesFound, OperationFailed)
 // - Film grain analysis errors (FilmGrainEncodingFailed, FilmGrainAnalysisFailed)
 // - Notification errors (NotificationError)
 //
@@ -33,10 +32,34 @@ use thiserror::Error;
 
 // ---- Standard library imports ----
 use std::io;
+use std::process::ExitStatus;
 
 // ============================================================================
 // ERROR TYPES
 // ============================================================================
+
+/// Represents the kind of command error that occurred.
+#[derive(Debug)]
+pub enum CommandErrorKind {
+    /// Error occurred when attempting to start a command
+    Start(io::Error),
+
+    /// Error occurred when waiting for a command to complete
+    Wait(io::Error),
+
+    /// Command completed but returned a non-zero exit status
+    Failed(ExitStatus, String), // exit status and stderr output
+}
+
+/// Represents an error that occurred when executing an external command.
+#[derive(Debug)]
+pub struct CommandError {
+    /// The name of the command that failed (e.g., "ffmpeg", "ffprobe")
+    pub command: String,
+
+    /// The specific kind of error that occurred
+    pub kind: CommandErrorKind,
+}
 
 /// Comprehensive error type for the drapto-core library.
 ///
@@ -64,35 +87,21 @@ use std::io;
 #[derive(Error, Debug)]
 pub enum CoreError {
     // ---- I/O and Filesystem Errors ----
-
     /// Standard I/O errors from the std::io module
     #[error("I/O error: {0}")]
     Io(#[from] io::Error),
 
-    /// Errors that occur during directory traversal with walkdir
-    #[error("Directory traversal error: {0}")]
-    Walkdir(#[from] walkdir::Error),
 
     /// General path-related errors (invalid paths, missing files, etc.)
     #[error("Path error: {0}")]
     PathError(String),
 
     // ---- External Command Errors ----
-
-    /// Errors that occur when attempting to start an external command
-    #[error("Failed to execute {0}: {1}")]
-    CommandStart(String, io::Error), // e.g., "ffprobe", source error
-
-    /// Errors that occur when waiting for an external command to complete
-    #[error("Failed to wait for {0}: {1}")]
-    CommandWait(String, io::Error), // e.g., "ffmpeg", source error
-
-    /// Errors that occur when an external command exits with a non-zero status
-    #[error("Command {0} failed with status {1}. Stderr: {2}")]
-    CommandFailed(String, std::process::ExitStatus, String), // e.g., "ffprobe", status, stderr
+    /// Errors that occur when executing external commands
+    #[error("{}", format_command_error(.0))]
+    Command(CommandError),
 
     // ---- Parsing Errors ----
-
     /// Errors that occur when parsing ffprobe output
     #[error("ffprobe output parsing error: {0}")]
     FfprobeParse(String),
@@ -106,21 +115,15 @@ pub enum CoreError {
     VideoInfoError(String),
 
     // ---- Video Processing Errors ----
-
     /// Error indicating that no suitable video files were found
     #[error("No suitable video files found in input directory")]
     NoFilesFound,
-
-    /// Error indicating that a required external dependency is missing
-    #[error("Required external command '{0}' not found or failed to execute. Please ensure it's installed and in your PATH.")]
-    DependencyNotFound(String),
 
     /// General operation failure
     #[error("Operation failed: {0}")]
     OperationFailed(String),
 
     // ---- Film Grain Analysis Errors ----
-
     /// Errors that occur during film grain sample extraction or encoding
     #[error("Film grain sample extraction/encoding failed: {0}")]
     FilmGrainEncodingFailed(String),
@@ -134,7 +137,6 @@ pub enum CoreError {
     GrainAnalysisNoData(String),
 
     // ---- Notification Errors ----
-
     /// Errors that occur when sending notifications
     #[error("Notification error: {0}")]
     NotificationError(String),
@@ -174,3 +176,58 @@ pub enum CoreError {
 /// }
 /// ```
 pub type CoreResult<T> = Result<T, CoreError>;
+
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+/// Helper function to format command errors for display.
+/// This is used by the thiserror #[error] attribute for the Command variant.
+fn format_command_error(err: &CommandError) -> String {
+    match &err.kind {
+        CommandErrorKind::Start(io_err) => {
+            format!("Failed to execute {}: {}", err.command, io_err)
+        }
+        CommandErrorKind::Wait(io_err) => {
+            format!("Failed to wait for {}: {}", err.command, io_err)
+        }
+        CommandErrorKind::Failed(status, stderr) => {
+            format!(
+                "Command {} failed with status {}. Stderr: {}",
+                err.command, status, stderr
+            )
+        }
+    }
+}
+
+// ============================================================================
+// CONVERSION FUNCTIONS
+// ============================================================================
+
+/// Convenience function to create a CommandStart error
+pub fn command_start_error(command: impl Into<String>, error: io::Error) -> CoreError {
+    CoreError::Command(CommandError {
+        command: command.into(),
+        kind: CommandErrorKind::Start(error),
+    })
+}
+
+/// Convenience function to create a CommandWait error
+pub fn command_wait_error(command: impl Into<String>, error: io::Error) -> CoreError {
+    CoreError::Command(CommandError {
+        command: command.into(),
+        kind: CommandErrorKind::Wait(error),
+    })
+}
+
+/// Convenience function to create a CommandFailed error
+pub fn command_failed_error(
+    command: impl Into<String>,
+    status: ExitStatus,
+    stderr: impl Into<String>,
+) -> CoreError {
+    CoreError::Command(CommandError {
+        command: command.into(),
+        kind: CommandErrorKind::Failed(status, stderr.into()),
+    })
+}

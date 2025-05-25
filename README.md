@@ -76,7 +76,7 @@ drapto encode -i input.mkv -o output/ --quality-hd 24 --preset 6
 drapto encode -i input.mkv -o output/ --no-denoise
 
 # Encode with custom grain analysis settings
-drapto encode -i input.mkv -o output/ --grain-knee-threshold 0.7 --grain-max-level Visible --grain-refinement-points 7
+drapto encode -i input.mkv -o output/ --grain-knee-threshold 0.7 --grain-max-level Moderate --grain-refinement-points 7
 
 # Encode and send notifications to an ntfy.sh topic
 drapto encode -i video.mkv -o output/ --ntfy https://ntfy.sh/your_topic
@@ -121,8 +121,8 @@ Drapto can send notifications about encoding progress (start, success, error) to
 
 * `--grain-sample-duration <SECONDS>`: Sample duration for grain analysis in seconds (default: 10).
 * `--grain-knee-threshold <THRESHOLD>`: Knee point threshold (0.1-1.0) for determining optimal grain level (default: 0.8).
-* `--grain-max-level <LEVEL>`: Maximum allowed grain level (VeryClean, VeryLight, Light, Visible, Medium) (default: Medium).
-* `--grain-fallback-level <LEVEL>`: Fallback grain level if analysis fails (default: VeryClean).
+* `--grain-max-level <LEVEL>`: Maximum allowed grain level (Baseline, VeryLight, Light, Moderate, Elevated) (default: Elevated).
+* `--grain-fallback-level <LEVEL>`: Fallback grain level if analysis fails (default: Baseline).
 * `--grain-refinement-points <COUNT>`: Number of refinement points to test (0 = auto, default: 5).
 
 ## Advanced Features
@@ -136,11 +136,11 @@ Film grain and noise can consume a substantial portion of the bitrate in video e
 The system includes:
 
 1. **Multi-Sample Analysis**: Extracts multiple short samples from different parts of the video to ensure consistent results.
-2. **Baseline Comparison**: Always uses "VeryClean" (no grain) as the baseline for accurate comparison and analysis.
+2. **Baseline Comparison**: Always uses "Baseline" (no grain) as the reference for accurate comparison and analysis.
 3. **Knee Point Detection**: Uses an advanced algorithm to find the optimal denoising strength that balances file size reduction and visual quality.
 4. **Continuous Parameter Interpolation**: Provides fine-grained control over denoising strength beyond the discrete grain levels.
 5. **Adaptive Refinement**: Dynamically adjusts and tests additional denoise parameters based on initial results, with configurable refinement granularity.
-6. **Categorical Classification**: Classifies videos into grain levels (VeryClean, VeryLight, Light, Visible, Medium) and applies appropriate hqdn3d parameters.
+6. **Categorical Classification**: Classifies videos into grain levels (Baseline, VeryLight, Light, Moderate, Elevated) and applies appropriate hqdn3d parameters.
 7. **Configurable Constraints**: Allows setting maximum grain levels and fallback options for fine-tuned control.
 8. **High-Quality Denoising**: Uses FFmpeg's hqdn3d (high-quality 3D denoiser) filter with optimized parameters for each grain level. Conservative denoising settings are used to avoid excessive blurring while still improving compression.
 
@@ -158,10 +158,10 @@ Drapto not only detects and removes film grain when appropriate, but also intell
 2. **Continuous Granularity**: The system supports continuous mapping between denoising strength and film grain synthesis values for more precise control
 3. **Perceptual Quality**: Synthetic grain is added to maintain the visual character of the content while improving compression
 4. **Balanced Approach**: The system applies:
-   - No synthetic grain for very clean content
+   - No synthetic grain for baseline content
    - Light synthetic grain (level 4-8) for content with light natural grain
    - Medium synthetic grain (level 8-12) for content with moderate natural grain
-   - Stronger synthetic grain (level 12-16) for content with medium natural grain
+   - Stronger synthetic grain (level 12-16) for content with elevated natural grain
 
 This approach provides the best of both worlds:
 - Removes random, high-entropy natural grain that consumes excessive bitrate during encoding

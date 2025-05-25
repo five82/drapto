@@ -12,13 +12,13 @@
 // KEY COMPONENTS:
 // - Configurable grain analysis parameters (sample duration, knee threshold, etc.)
 // - Sample extraction and encoding with different denoising levels
-// - Knee point analysis using "VeryClean" as the baseline
+// - Knee point analysis using "Baseline" as the reference point
 // - Adaptive refinement with direct parameter testing
 // - Result aggregation with maximum level constraints
 //
 // WORKFLOW:
 // 1. Extract multiple short samples from different parts of the video
-// 2. Encode each sample with various denoising levels (always including "VeryClean")
+// 2. Encode each sample with various denoising levels (always including "Baseline")
 // 3. Analyze file size reductions to find the knee point
 // 4. Perform adaptive refinement around the initial estimates
 // 5. Determine the final optimal denoising level with constraints
@@ -26,21 +26,20 @@
 // AI-ASSISTANT-INFO: Film grain analysis for optimal denoising parameter selection
 
 // ---- External crate imports ----
-use colored::*;
-use rand::{thread_rng, Rng};
-use tempfile::Builder as TempFileBuilder;
+use rand::{Rng, thread_rng};
 
 // ---- Standard library imports ----
 use std::collections::HashMap;
-use std::fs;
 use std::path::{Path, PathBuf};
 
 // ---- Internal crate imports ----
 use crate::config::CoreConfig;
 use crate::error::{CoreError, CoreResult};
 use crate::external::ffmpeg::EncodeParams;
-use crate::external::ffmpeg_executor::extract_sample;
-use crate::external::{FileMetadataProvider, FfmpegSpawner};
+use crate::external::{extract_sample, get_file_size};
+use crate::hardware_accel::is_hardware_acceleration_available;
+// Report progress functions are imported directly from the module
+use crate::temp_files;
 
 // ============================================================================
 // SUBMODULES
@@ -66,13 +65,11 @@ mod utils;
 // ============================================================================
 
 /// Result types for grain analysis
-pub use types::{GrainAnalysisResult, GrainLevel};
+pub use types::{GrainAnalysisResult, GrainLevel, GrainLevelParseError};
 
 /// Functions to determine and generate hqdn3d parameters
 pub use utils::{
-    determine_hqdn3d_params,
-    generate_hqdn3d_params,
-    grain_level_to_strength,
+    determine_hqdn3d_params, generate_hqdn3d_params, grain_level_to_strength,
     strength_to_grain_level,
 };
 
@@ -91,7 +88,6 @@ use refinement::{calculate_refinement_range, generate_refinement_params};
 
 /// Utility function for calculating median grain level
 use utils::calculate_median_level;
-
 
 // ============================================================================
 // MAIN ANALYSIS FUNCTION
@@ -130,7 +126,6 @@ use utils::calculate_median_level;
 /// ```rust,no_run
 /// use drapto_core::processing::detection::grain_analysis::analyze_grain;
 /// use drapto_core::processing::detection::GrainLevel;
-/// use drapto_core::external::{SidecarSpawner, StdFsMetadataProvider};
 /// use drapto_core::external::ffmpeg::EncodeParams;
 /// use drapto_core::CoreConfig;
 /// use std::path::Path;
@@ -141,23 +136,24 @@ use utils::calculate_median_level;
 ///     input_dir: Path::new("/path/to/input").to_path_buf(),
 ///     output_dir: Path::new("/path/to/output").to_path_buf(),
 ///     log_dir: Path::new("/path/to/logs").to_path_buf(),
+///     temp_dir: None,
 ///     enable_denoise: true,
 ///
-///     // Grain analysis configuration
-///     film_grain_sample_duration: Some(5),
-///     film_grain_knee_threshold: Some(0.8),
-///     film_grain_fallback_level: Some(GrainLevel::VeryClean),
-///     film_grain_max_level: Some(GrainLevel::Visible),
-///     film_grain_refinement_points_count: Some(5),
+///     // Encoder settings
+///     encoder_preset: 6,
+///     quality_sd: 24,
+///     quality_hd: 26,
+///     quality_uhd: 28,
+///     crop_mode: "auto".to_string(),
 ///
-///     // Other fields...
-///     default_encoder_preset: Some(6),
-///     preset: None,
-///     quality_sd: Some(24),
-///     quality_hd: Some(26),
-///     quality_uhd: Some(28),
-///     default_crop_mode: Some("auto".to_string()),
+///     // Notification settings
 ///     ntfy_topic: None,
+///
+///     // Grain analysis configuration
+///     film_grain_sample_duration: 5,
+///     film_grain_knee_threshold: 0.8,
+///     film_grain_max_level: GrainLevel::Moderate,
+///     film_grain_refinement_points_count: 5,
 /// };
 ///
 /// // Create a complete EncodeParams instance
@@ -166,6 +162,7 @@ use utils::calculate_median_level;
 ///     output_path: Path::new("/path/to/output.mkv").to_path_buf(),
 ///     quality: 24,
 ///     preset: 6,
+///     use_hw_decode: true,
 ///     crop_filter: None,
 ///     audio_channels: vec![2],
 ///     duration: 3600.0,
@@ -173,16 +170,11 @@ use utils::calculate_median_level;
 /// };
 ///
 /// let duration_secs = 3600.0; // 1 hour
-/// let spawner = SidecarSpawner;
-/// let metadata_provider = StdFsMetadataProvider;
-///
 /// match analyze_grain(
 ///     file_path,
 ///     &config,
 ///     &base_encode_params,
 ///     duration_secs,
-///     &spawner,
-///     &metadata_provider,
 /// ) {
 ///     Ok(Some(result)) => {
 ///         println!("Detected grain level: {:?}", result.detected_level);
@@ -195,36 +187,41 @@ use utils::calculate_median_level;
 ///     }
 /// }
 /// ```
-pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider>(
+pub fn analyze_grain(
     file_path: &Path,
     config: &CoreConfig,
     base_encode_params: &EncodeParams,
     duration_secs: f64,
-    spawner: &S,
-    metadata_provider: &P,
 ) -> CoreResult<Option<GrainAnalysisResult>> {
-    let filename_cow = file_path
-        .file_name()
-        .map(|name| name.to_string_lossy())
-        .unwrap_or_else(|| file_path.to_string_lossy());
+    // We're no longer using filename_cow, removed to avoid warnings
 
-    log::info!(
-        "{} {}",
-        "Starting grain analysis (knee point + refinement) for:".cyan().bold(),
-        filename_cow.yellow()
-    );
-    log::info!(
-        "  {:<12} {}",
-        "Duration:".cyan(),
-        format!("{:.2}s", duration_secs).green()
-    );
+    // Main grain analysis start using standard processing step format
+    // (spacing is automatically added by report_processing_step)
+    crate::progress_reporting::report_processing_step("Analyzing grain levels");
+
+    // Duration is already shown in the main video analysis section, no need to repeat
+
+    // Inform user about hardware acceleration status for the main encode
+    if base_encode_params.use_hw_decode {
+        let hw_accel_available = is_hardware_acceleration_available();
+        if hw_accel_available {
+            // Report hardware acceleration status as a sub-item in verbose mode
+            log::debug!("VideoToolbox hardware decoding will be used for main encode (disabled during analysis)");
+            crate::progress_reporting::report_sub_item(
+                "VideoToolbox hardware decoding will be used for main encode (disabled during analysis)",
+            );
+        } else {
+            // Hardware acceleration info is verbose
+            crate::progress_reporting::report_debug_info(
+                "Software decoding will be used (hardware acceleration not available on this platform)",
+            );
+        }
+    }
 
     // --- Get Configuration Parameters ---
-    // Use configuration values if provided, otherwise use defaults
-    let sample_duration = config.film_grain_sample_duration.unwrap_or(DEFAULT_SAMPLE_DURATION_SECS);
-    let knee_threshold = config.film_grain_knee_threshold.unwrap_or(KNEE_THRESHOLD);
-    let fallback_level = config.film_grain_fallback_level.unwrap_or(GrainLevel::VeryClean);
-    let max_level = config.film_grain_max_level.unwrap_or(GrainLevel::Medium);
+    let sample_duration = config.film_grain_sample_duration;
+    let knee_threshold = config.film_grain_knee_threshold;
+    let max_level = config.film_grain_max_level;
 
     // --- Determine Sample Count ---
     let base_samples = (duration_secs / SECS_PER_SAMPLE_TARGET).ceil() as usize;
@@ -234,30 +231,47 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider>(
     }
     log::debug!("Calculated number of samples: {}", num_samples);
 
+    // Use sub-item format for the extraction message - include number of samples
+    crate::progress_reporting::report_sub_item(&format!(
+        "Extracting {} samples for analysis...",
+        num_samples
+    ));
+
     // --- Validate Duration for Sampling ---
     let min_required_duration = (sample_duration * num_samples as u32) as f64;
     if duration_secs < min_required_duration {
         log::warn!(
-            "{} Video duration ({:.2}s) is too short for the minimum required duration ({:.2}s) for {} samples. Skipping grain analysis.",
-            "Warning:".yellow().bold(), duration_secs, min_required_duration, num_samples
+            "Warning: Video duration ({:.2}s) is too short for the minimum required duration ({:.2}s) for {} samples. Skipping grain analysis.",
+            duration_secs,
+            min_required_duration,
+            num_samples
         );
         return Ok(None);
     }
 
     // --- Ensure we have a baseline test level (None) ---
-    // Always include VeryClean (no denoising) as the baseline for comparison
+    // Always include Baseline (no denoising) as the reference for comparison
     // This is critical for grain analysis to work correctly
-    log::debug!("Ensuring baseline 'VeryClean' (no denoising) is included for grain analysis");
+    log::debug!("Ensuring 'Baseline' (no denoising) is included for grain analysis");
 
-    // Create the initial test levels with VeryClean (no denoising) as the first test
-    let initial_test_levels: Vec<(Option<GrainLevel>, Option<&str>)> = std::iter::once((None, None))
-        .chain(HQDN3D_PARAMS.iter().map(|(level, params)| (Some(*level), Some(*params))))
-        .collect();
+    // Create the initial test levels with Baseline (no denoising) as the first test
+    let initial_test_levels: Vec<(Option<GrainLevel>, Option<&str>)> =
+        std::iter::once((None, None))
+            .chain(
+                HQDN3D_PARAMS
+                    .iter()
+                    .map(|(level, params)| (Some(*level), Some(*params))),
+            )
+            .collect();
 
     // Log the test levels for debugging
-    log::debug!("Initial test levels: {:?}", initial_test_levels.iter()
-        .map(|(level, _)| level.map_or("VeryClean".to_string(), |l| format!("{:?}", l)))
-        .collect::<Vec<_>>());
+    log::debug!(
+        "Initial test levels: {:?}",
+        initial_test_levels
+            .iter()
+            .map(|(level, _)| level.map_or("Baseline".to_string(), |l| format!("{:?}", l)))
+            .collect::<Vec<_>>()
+    );
 
     // --- Calculate Randomized Sample Positions ---
     let sample_duration_f64 = sample_duration as f64;
@@ -267,8 +281,11 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider>(
 
     if latest_possible_start <= start_boundary {
         log::warn!(
-            "{} Video duration ({:.2}s) results in an invalid sampling window ({:.2}s - {:.2}s) for sample duration {}. Skipping grain analysis.",
-            "Warning:".yellow().bold(), duration_secs, start_boundary, end_boundary, sample_duration
+            "Warning: Video duration ({:.2}s) results in an invalid sampling window ({:.2}s - {:.2}s) for sample duration {}. Skipping grain analysis.",
+            duration_secs,
+            start_boundary,
+            end_boundary,
+            sample_duration
         );
         return Ok(None);
     }
@@ -280,72 +297,54 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider>(
         sample_start_times.push(start_time);
     }
     sample_start_times.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    log::debug!("Generated random sample start times: {:?}", sample_start_times);
+    log::debug!(
+        "Generated random sample start times: {:?}",
+        sample_start_times
+    );
 
     // --- Create Temporary Directory ---
-    let samples_tmp_base_dir = config.output_dir.join("grain_samples_tmp");
-    fs::create_dir_all(&samples_tmp_base_dir).map_err(CoreError::Io)?;
-    let temp_dir = TempFileBuilder::new()
-        .prefix("analysis_grain_") // Updated prefix
-        .tempdir_in(&samples_tmp_base_dir)
-        .map_err(CoreError::Io)?;
+    let temp_dir = temp_files::create_grain_analysis_dir(config)?;
     let temp_dir_path = temp_dir.path();
-    log::debug!("Created temporary directory for samples: {}", temp_dir_path.display());
+    log::debug!(
+        "Created temporary directory for samples: {}",
+        temp_dir_path.display()
+    );
 
     // --- Phase 1: Test Initial Values ---
-    log::info!("{}", "Phase 1: Testing initial grain levels...".cyan().bold());
+    // We've removed the static mock progress bar - we'll implement real progress tracking later if needed
+
+    // Show detailed phase info as sub-items in verbose mode
+    log::debug!("Testing initial grain levels...");
+    crate::progress_reporting::report_sub_item("Testing initial grain levels...");
+
     let mut phase1_results: Vec<HashMap<Option<GrainLevel>, u64>> = Vec::with_capacity(num_samples);
     let mut raw_sample_paths: Vec<PathBuf> = Vec::with_capacity(num_samples); // Store raw sample paths
 
     for (i, &start_time) in sample_start_times.iter().enumerate() {
-        log::info!(
-            "  {} {}/{} (Start: {:.2}s, Duration: {}s)...",
-            "Processing sample".cyan(),
-            (i + 1).to_string().cyan().bold(),
-            num_samples.to_string().cyan().bold(),
-            start_time, sample_duration
-        );
+        // Sample processing details as sub-items in verbose mode
+        log::debug!("Sample {}/{} at {:.1}s:", i + 1, num_samples, start_time);
+        crate::progress_reporting::report_sub_item(&format!(
+            "Sample {}/{} at {:.1}s:",
+            i + 1,
+            num_samples,
+            start_time
+        ));
 
         let raw_sample_path = match extract_sample(
-            spawner,
             file_path,
             start_time,
             sample_duration,
             temp_dir_path,
         ) {
             Ok(path) => path,
-            Err(CoreError::NoStreamsFound(_)) => {
-                log::warn!("Sample {} extraction found no streams. Skipping grain analysis.", i + 1);
-                return Ok(Some(GrainAnalysisResult {
-                    detected_level: fallback_level,
-                }));
-            },
             Err(e) => {
+                // Log the error and propagate it
                 log::error!("Failed to extract sample {}: {}", i + 1, e);
-
-                // If this is the first sample, return an error
-                if i == 0 {
-                    return Err(CoreError::FilmGrainAnalysisFailed(format!(
-                        "Failed to extract first sample: {}", e
-                    )));
-                }
-
-                // If we already have at least one sample, we can continue with what we have
-                if !raw_sample_paths.is_empty() {
-                    log::warn!(
-                        "{} Failed to extract sample {}, but continuing with {} existing samples.",
-                        "Warning:".yellow().bold(),
-                        i + 1,
-                        raw_sample_paths.len()
-                    );
-                    break;
-                }
-
-                // Otherwise, return the fallback level
-                log::warn!("No samples could be extracted. Using fallback grain level.");
-                return Ok(Some(GrainAnalysisResult {
-                    detected_level: fallback_level,
-                }));
+                return Err(CoreError::FilmGrainEncodingFailed(format!(
+                    "Failed to extract sample {}: {}",
+                    i + 1,
+                    e
+                )));
             }
         };
         raw_sample_paths.push(raw_sample_path.clone()); // Store the path
@@ -353,8 +352,12 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider>(
         let mut results_for_this_sample = HashMap::new();
 
         for (level_opt, hqdn3d_override) in &initial_test_levels {
-            let level_desc = level_opt.map_or("VeryClean".to_string(), |l| format!("{:?}", l));
-            log::debug!("    Encoding sample {} with initial level: {}...", i + 1, level_desc);
+            let level_desc = level_opt.map_or("Baseline".to_string(), |l| format!("{:?}", l));
+            log::debug!(
+                "    Encoding sample {} with initial level: {}...",
+                i + 1,
+                level_desc
+            );
 
             let output_filename = format!(
                 "sample_{}_initial_{}.mkv",
@@ -370,163 +373,266 @@ pub fn analyze_grain<S: FfmpegSpawner, P: FileMetadataProvider>(
             sample_params.duration = sample_duration_f64;
 
             if let Err(e) = crate::external::ffmpeg::run_ffmpeg_encode(
-                spawner,
                 &sample_params,
-                true, true, *level_opt,
+                true,
+                true,
+                *level_opt,
             ) {
-                log::error!("Failed to encode sample {} with initial level {}: {}", i + 1, level_desc, e);
+                log::error!(
+                    "Failed to encode sample {} with initial level {}: {}",
+                    i + 1,
+                    level_desc,
+                    e
+                );
                 return Err(CoreError::FilmGrainAnalysisFailed(format!(
-                    "Failed to encode sample {} with initial level {}: {}", i + 1, level_desc, e
-                 )));
+                    "Failed to encode sample {} with initial level {}: {}",
+                    i + 1,
+                    level_desc,
+                    e
+                )));
             }
 
-            let encoded_size = match metadata_provider.get_size(&encoded_sample_path) {
-                 Ok(size) => size,
-                 Err(e) => {
-                    log::error!("Failed to get size for initial sample {} level {} (path: {}): {}", i + 1, level_desc, encoded_sample_path.display(), e);
+            let encoded_size = match get_file_size(&encoded_sample_path) {
+                Ok(size) => size,
+                Err(e) => {
+                    log::error!(
+                        "Failed to get size for initial sample {} level {} (path: {}): {}",
+                        i + 1,
+                        level_desc,
+                        encoded_sample_path.display(),
+                        e
+                    );
                     return Err(CoreError::FilmGrainAnalysisFailed(format!(
-                        "Failed to get size for initial sample {} level {} (path: {}): {}", i + 1, level_desc, encoded_sample_path.display(), e
-                     )));
-                 }
+                        "Failed to get size for initial sample {} level {} (path: {}): {}",
+                        i + 1,
+                        level_desc,
+                        encoded_sample_path.display(),
+                        e
+                    )));
+                }
             };
 
             let size_mb = encoded_size as f64 / (1024.0 * 1024.0);
-            log::info!("      -> {:<10} size: {}", level_desc.green(), format!("{:.2} MB", size_mb).yellow());
+            log::debug!("  {:12} {:.1} MB", format!("{}:", level_desc), size_mb);
+            crate::progress_reporting::report_sub_item(&format!(
+                "  {:12} {:.1} MB",
+                format!("{}:", level_desc),
+                size_mb
+            ));
             results_for_this_sample.insert(*level_opt, encoded_size);
         }
         phase1_results.push(results_for_this_sample);
     }
 
     // --- Phase 2: Initial Estimation with Knee Point ---
-    log::info!("{}", "Phase 2: Estimating optimal grain per sample using Knee Point...".cyan().bold());
+    // Skip phase headers for cleaner output
+
     let mut initial_estimates: Vec<GrainLevel> = Vec::with_capacity(num_samples);
 
     for (i, sample_results) in phase1_results.iter().enumerate() {
-        let estimate = analyze_sample_with_knee_point(
-            sample_results,
-            knee_threshold,
-            &mut |msg| log::info!("  Sample {}: {}", (i + 1).to_string().cyan().bold(), msg)
-        );
+        let sample_index = i + 1;
+        let estimate = analyze_sample_with_knee_point(sample_results, knee_threshold, sample_index);
         initial_estimates.push(estimate);
     }
-    log::info!("  Initial estimates per sample: {:?}", initial_estimates.iter().map(|l| format!("{:?}", l).green()).collect::<Vec<_>>());
 
+    // Skip initial estimates - will show final results only
 
     // --- Phase 3: Adaptive Refinement ---
-    log::info!("{}", "Phase 3: Adaptive Refinement...".cyan().bold());
-    let mut phase3_results: Vec<HashMap<Option<GrainLevel>, u64>> = vec![HashMap::new(); num_samples];
+    // Skip redundant status update
+    // Detailed phase headers as sub-items in verbose mode
+    log::debug!("Phase 3: Adaptive Refinement...");
+    crate::progress_reporting::report_sub_item("Phase 3: Adaptive Refinement...");
+
+    let mut phase3_results: Vec<HashMap<Option<GrainLevel>, u64>> =
+        vec![HashMap::new(); num_samples];
 
     if initial_estimates.len() < 3 {
-        log::info!("  Too few samples ({}) for reliable refinement. Skipping Phase 3.", initial_estimates.len());
+        let message = format!(
+            "  Too few samples ({}) for reliable refinement. Skipping Phase 3.",
+            initial_estimates.len()
+        );
+        crate::progress_reporting::report_debug_info(&message);
     } else {
         let (lower_bound, upper_bound) = calculate_refinement_range(&initial_estimates);
-        log::info!(
-            "  Calculated refinement range based on initial estimates: {} to {}",
-            format!("{:?}", lower_bound).yellow(), format!("{:?}", upper_bound).yellow()
-        );
+        // Show refinement phase header
+        log::debug!("Refining grain parameters...");
+        log::debug!("  Range: {:?} to {:?}", lower_bound, upper_bound);
+        crate::progress_reporting::report_sub_item("Refining grain parameters...");
+        crate::progress_reporting::report_sub_item(&format!(
+            "  Range: {:?} to {:?}",
+            lower_bound, upper_bound
+        ));
 
-        let refined_params = generate_refinement_params(
-            lower_bound, upper_bound, &initial_test_levels
-        );
+        let refined_params =
+            generate_refinement_params(lower_bound, upper_bound, &initial_test_levels);
 
         if refined_params.is_empty() {
-            log::info!("  No refinement parameters generated within the range. Skipping Phase 3 testing.");
+            let message =
+                "  No refinement parameters generated within the range. Skipping Phase 3 testing.";
+            crate::progress_reporting::report_debug_info(message);
         } else {
-            log::info!(
-                "  Testing {} refined parameter sets: {:?}",
-                refined_params.len(),
-                refined_params.iter().map(|(l, p)| format!("{:?}: '{}'", l.unwrap_or(GrainLevel::VeryClean), p)).collect::<Vec<_>>()
-            );
-            log::debug!("  (Note: Parameter validation, like ensuring non-negative values, occurs during generation/parsing)");
+            // Skip detailed parameter descriptions for cleaner output
 
-            for (level_opt, params_str) in &refined_params {
-                let level_desc = level_opt.map_or("Unknown".to_string(), |l| format!("{:?}", l));
-                log::info!("    Testing refined level {}...", level_desc.green());
+            // Show count of refined parameter sets
+            log::debug!("  Testing {} refined parameter sets", refined_params.len());
+            crate::progress_reporting::report_sub_item(&format!(
+                "  Testing {} refined parameter sets",
+                refined_params.len()
+            ));
+            log::debug!(
+                "  (Note: Parameter validation, like ensuring non-negative values, occurs during generation/parsing)"
+            );
+
+            for (idx, (level_opt, params_str)) in refined_params.iter().enumerate() {
+                // For interpolated levels (None), create a descriptive name with index and strength
+                let level_desc = level_opt.map_or_else(
+                    || {
+                        // Extract the first parameter value as a strength indicator
+                        let strength_indicator = params_str
+                            .split('=')
+                            .nth(1)
+                            .and_then(|s| s.split(':').next())
+                            .unwrap_or("?");
+
+                        // Create a unique, descriptive name with position in the refinement range
+                        format!("Interpolated-{} (strength={})", idx + 1, strength_indicator)
+                    },
+                    |l| format!("{:?}", l),
+                );
+                // Skip individual test messages for cleaner output
 
                 // Iterate through the *indices* and use stored raw paths
                 for i in 0..num_samples {
                     let raw_sample_path = &raw_sample_paths[i]; // Get stored raw path
                     let mut sample_params = base_encode_params.clone();
                     sample_params.input_path = raw_sample_path.clone(); // Use raw sample as input
-                    let output_filename = format!(
-                        "sample_{}_refined_{}.mkv",
-                        i + 1,
-                        level_desc.replace([':', '='], "_")
-                    );
+                    // Create a more descriptive filename for the refined sample
+                    let output_filename = if level_opt.is_none() {
+                        // For interpolated levels, include the index and strength indicator
+                        let param_short = params_str
+                            .split('=')
+                            .nth(1)
+                            .unwrap_or("params")
+                            .split(':')
+                            .next()
+                            .unwrap_or("params");
+                        format!(
+                            "sample_{}_refined_interpolated_{}_strength_{}.mkv",
+                            i + 1,
+                            idx + 1, // Add the index to make each filename unique
+                            param_short.replace([':', '=', ','], "_")
+                        )
+                    } else {
+                        format!(
+                            "sample_{}_refined_{}.mkv",
+                            i + 1,
+                            level_desc.replace([':', '='], "_")
+                        )
+                    };
                     sample_params.output_path = temp_dir_path.join(output_filename);
                     sample_params.hqdn3d_params = Some(params_str.clone());
                     // sample_params.start_time = Some(start_time); // REMOVED - Not needed/valid
                     sample_params.duration = sample_duration_f64; // Duration is still relevant for encode
 
                     if let Err(e) = crate::external::ffmpeg::run_ffmpeg_encode(
-                        spawner,
                         &sample_params,
-                        true, true, *level_opt,
+                        true,
+                        true,
+                        *level_opt,
                     ) {
-                        log::error!("Failed to encode refined sample {} with level {}: {}",
-                                   i + 1, level_desc, e);
-                        continue;
+                        log::error!(
+                            "Failed to encode refined sample {} with level {}: {}",
+                            i + 1,
+                            level_desc,
+                            e
+                        );
+                        return Err(CoreError::FilmGrainAnalysisFailed(format!(
+                            "Failed to encode refined sample {} with level {}: {}",
+                            i + 1,
+                            level_desc,
+                            e
+                        )));
                     }
 
-                    match metadata_provider.get_size(&sample_params.output_path) {
-                        Ok(size) => {
-                            let size_mb = size as f64 / (1024.0 * 1024.0);
-                            log::info!("      -> Refined level {:<10} (Sample {}) size: {}", level_desc.green(), i + 1, format!("{:.2} MB", size_mb).yellow());
-                            phase3_results[i].insert(*level_opt, size);
-                        },
+                    let encoded_size = match get_file_size(&sample_params.output_path)
+                    {
+                        Ok(size) => size,
                         Err(e) => {
-                            log::error!("Failed to get size for refined sample {} level {} (path: {}): {}", i + 1, level_desc, sample_params.output_path.display(), e);
+                            log::error!(
+                                "Failed to get size for refined sample {} level {} (path: {}): {}",
+                                i + 1,
+                                level_desc,
+                                sample_params.output_path.display(),
+                                e
+                            );
+                            return Err(CoreError::FilmGrainAnalysisFailed(format!(
+                                "Failed to get size for refined sample {} level {} (path: {}): {}",
+                                i + 1,
+                                level_desc,
+                                sample_params.output_path.display(),
+                                e
+                            )));
                         }
-                    }
+                    };
+
+                    // Skip individual result messages for cleaner output
+                    phase3_results[i].insert(*level_opt, encoded_size);
                 }
             }
         }
     }
 
     // --- Phase 4: Final Analysis with Combined Results ---
-    log::info!("{}", "Phase 4: Final analysis with knee point on combined results...".cyan().bold());
+    // Skip redundant phase headers
+
     let mut final_estimates: Vec<GrainLevel> = Vec::with_capacity(num_samples);
 
     for i in 0..num_samples {
+        let sample_index = i + 1;
         let mut combined_results = phase1_results[i].clone();
         combined_results.extend(phase3_results[i].iter());
 
-        let final_estimate = analyze_sample_with_knee_point(
-            &combined_results,
-            knee_threshold,
-            &mut |msg| log::info!("  Sample {}: {}", (i + 1).to_string().cyan().bold(), msg)
-        );
+        let final_estimate =
+            analyze_sample_with_knee_point(&combined_results, knee_threshold, sample_index);
         final_estimates.push(final_estimate);
     }
 
-    log::info!("  Final estimates per sample (after refinement): {:?}", final_estimates.iter().map(|l| format!("{:?}", l).green()).collect::<Vec<_>>());
+    // Skip per-sample estimates - will show final result only
 
     // --- Determine Final Result ---
     if final_estimates.is_empty() {
         log::error!("No final estimates generated after all phases. Analysis failed.");
-        return Ok(Some(GrainAnalysisResult {
-            detected_level: fallback_level,
-        }));
+        return Err(CoreError::FilmGrainAnalysisFailed(
+            "No final estimates generated after all phases".to_string(),
+        ));
     }
 
     let mut final_level = calculate_median_level(&mut final_estimates);
 
     // Apply max level constraint if configured
     if final_level > max_level {
-        log::info!(
-            "{} Detected level {:?} exceeds maximum allowed level {:?}. Using maximum level.",
-            "Note:".yellow().bold(),
-            final_level,
-            max_level
+        let message = format!(
+            "Detected level {:?} exceeds maximum allowed level {:?}. Using maximum level.",
+            final_level, max_level
         );
+        crate::progress_reporting::report_debug_info(&message);
         final_level = max_level;
     }
 
-    log::info!(
-        "{} {}: {}",
-        "Final detected grain level for".cyan().bold(),
-        filename_cow.yellow(),
-        format!("{:?}", final_level).green().bold()
+    // Final result is important - show in normal mode with meaningful description
+    let level_description = match final_level {
+        GrainLevel::Baseline => "None (no denoising needed)",
+        GrainLevel::VeryLight => "Very Light",
+        GrainLevel::Light => "Light",
+        GrainLevel::Moderate => "Moderate",
+        GrainLevel::Elevated => "Heavy",
+    };
+
+    // Use the centralized function for success+status formatting
+    crate::progress_reporting::report_completion_with_status(
+        "Grain analysis complete",
+        "Detected grain",
+        &format!("{} - applying appropriate denoising", level_description),
     );
 
     // temp_dir cleanup happens automatically on drop

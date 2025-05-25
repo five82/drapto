@@ -56,7 +56,8 @@ fn calculate_std_dev(levels: &[GrainLevel]) -> Option<f64> {
     use super::utils::grain_level_to_strength;
 
     // Step 1: Convert GrainLevel enum values to numeric values using the utility function
-    let numeric_values: Vec<f64> = levels.iter()
+    let numeric_values: Vec<f64> = levels
+        .iter()
         .map(|&level| grain_level_to_strength(level) as f64)
         .collect();
 
@@ -65,9 +66,11 @@ fn calculate_std_dev(levels: &[GrainLevel]) -> Option<f64> {
 
     // Step 3: Calculate the variance
     // Using population variance (n) rather than sample variance (n-1)
-    let variance: f64 = numeric_values.iter()
-        .map(|val| (val - mean).powi(2))  // Square of difference from mean
-        .sum::<f64>() / numeric_values.len() as f64;  // Divide by n
+    let variance: f64 = numeric_values
+        .iter()
+        .map(|val| (val - mean).powi(2)) // Square of difference from mean
+        .sum::<f64>()
+        / numeric_values.len() as f64; // Divide by n
 
     // Step 4: Calculate the standard deviation and check for valid result
     let std_dev = variance.sqrt();
@@ -105,13 +108,15 @@ fn calculate_std_dev(levels: &[GrainLevel]) -> Option<f64> {
 /// # Returns
 ///
 /// * A tuple containing (lower_bound, upper_bound) as GrainLevel values
-/// * Returns (VeryClean, VeryLight) if the input is empty
-pub(super) fn calculate_refinement_range(initial_estimates: &[GrainLevel]) -> (GrainLevel, GrainLevel) {
+/// * Returns (Baseline, VeryLight) if the input is empty
+pub(super) fn calculate_refinement_range(
+    initial_estimates: &[GrainLevel],
+) -> (GrainLevel, GrainLevel) {
     // Handle empty input case
     if initial_estimates.is_empty() {
         // This shouldn't happen if the function is called correctly
         log::warn!("calculate_refinement_range called with empty estimates. Defaulting range.");
-        return (GrainLevel::VeryClean, GrainLevel::VeryLight);
+        return (GrainLevel::Baseline, GrainLevel::VeryLight);
     }
 
     // Step 1: Find the median of the initial estimates
@@ -126,8 +131,8 @@ pub(super) fn calculate_refinement_range(initial_estimates: &[GrainLevel]) -> (G
     // Step 2: Calculate the standard deviation to determine range width
     // Step 3: Calculate the level delta (number of levels to extend in each direction)
     const ADAPTIVE_FACTOR: f64 = 1.5; // Scaling factor for standard deviation
-    const MIN_DELTA: usize = 1;       // Minimum level difference
-    const DEFAULT_DELTA: usize = 2;   // Default level difference if std_dev calculation fails
+    const MIN_DELTA: usize = 1; // Minimum level difference
+    const DEFAULT_DELTA: usize = 2; // Default level difference if std_dev calculation fails
 
     // Calculate adaptive delta based on standard deviation with improved handling
     let level_delta = match calculate_std_dev(initial_estimates) {
@@ -135,12 +140,14 @@ pub(super) fn calculate_refinement_range(initial_estimates: &[GrainLevel]) -> (G
             // Valid non-zero std dev - scale by adaptive factor
             let scaled_delta = (std_dev * ADAPTIVE_FACTOR).round() as usize;
             scaled_delta.max(MIN_DELTA) // Ensure at least MIN_DELTA
-        },
-        Some(std_dev) if std_dev == 0.0 => {
+        }
+        Some(0.0) => {
             // All estimates identical - use minimal delta
-            log::debug!("Standard deviation is zero (all estimates identical). Using minimal delta.");
+            log::debug!(
+                "Standard deviation is zero (all estimates identical). Using minimal delta."
+            );
             MIN_DELTA
-        },
+        }
         _ => {
             // Failed calculation or invalid result - use default
             log::debug!("Standard deviation calculation failed. Using default delta.");
@@ -150,20 +157,20 @@ pub(super) fn calculate_refinement_range(initial_estimates: &[GrainLevel]) -> (G
 
     // Step 4: Convert the median GrainLevel to a numeric index
     let median_index: usize = match median {
-        GrainLevel::VeryClean => 0,
+        GrainLevel::Baseline => 0,
         GrainLevel::VeryLight => 1,
         GrainLevel::Light => 2,
-        GrainLevel::Visible => 3,
-        GrainLevel::Medium => 4,
+        GrainLevel::Moderate => 3,
+        GrainLevel::Elevated => 4,
     };
 
     // Define all grain levels in order for easy indexing
     const ALL_LEVELS: [GrainLevel; 5] = [
-        GrainLevel::VeryClean,
+        GrainLevel::Baseline,
         GrainLevel::VeryLight,
         GrainLevel::Light,
-        GrainLevel::Visible,
-        GrainLevel::Medium,
+        GrainLevel::Moderate,
+        GrainLevel::Elevated,
     ];
     const MAX_INDEX: usize = ALL_LEVELS.len() - 1;
 
@@ -179,7 +186,6 @@ pub(super) fn calculate_refinement_range(initial_estimates: &[GrainLevel]) -> (G
     // Return the calculated refinement range
     (lower_level, upper_level)
 }
-
 
 // ============================================================================
 // REFINEMENT PARAMETER GENERATION
@@ -215,13 +221,13 @@ pub(super) fn calculate_refinement_range(initial_estimates: &[GrainLevel]) -> (G
 pub(super) fn generate_refinement_params(
     lower_level: GrainLevel,
     upper_level: GrainLevel,
-    initial_params: &[(Option<GrainLevel>, Option<&str>)]
+    initial_params: &[(Option<GrainLevel>, Option<&str>)],
 ) -> Vec<(Option<GrainLevel>, String)> {
     // Initialize vector to store refined parameters
     let mut refined_params = Vec::new();
 
     // Import utility functions
-    use super::utils::{grain_level_to_strength, generate_hqdn3d_params};
+    use super::utils::{generate_hqdn3d_params, grain_level_to_strength};
 
     // Convert GrainLevels to continuous strength values
     let lower_f = grain_level_to_strength(lower_level);
@@ -231,23 +237,28 @@ pub(super) fn generate_refinement_params(
     if upper_f <= lower_f + 0.1 {
         log::debug!(
             "Refinement bounds are too close ({:.2}, {:.2}). No refinement needed.",
-            lower_f, upper_f
+            lower_f,
+            upper_f
         );
         return refined_params;
     }
 
     // Generate 3-5 intermediate points based on range size
     // Larger ranges get more test points for better coverage
-    let num_points = ((upper_f - lower_f) * 2.0).round().max(3.0).min(5.0) as usize;
+    let num_points = ((upper_f - lower_f) * 2.0).round().clamp(3.0, 5.0) as usize;
     let step = (upper_f - lower_f) / (num_points as f32 + 1.0);
 
     log::debug!(
         "Generating {} intermediate test points between {:.2} and {:.2} with step {:.2}",
-        num_points, lower_f, upper_f, step
+        num_points,
+        lower_f,
+        upper_f,
+        step
     );
 
     // Extract all existing parameter strings from initial tests for comparison
-    let existing_params: Vec<String> = initial_params.iter()
+    let existing_params: Vec<String> = initial_params
+        .iter()
         .filter_map(|(_, params_opt)| params_opt.map(|p| p.to_string()))
         .collect();
 
@@ -270,7 +281,8 @@ pub(super) fn generate_refinement_params(
         // Log before we move the string
         log::debug!(
             "Added refinement point at strength {:.2} with params: {}",
-            point_f, &hqdn3d_params
+            point_f,
+            &hqdn3d_params
         );
 
         // Add the interpolated test point to refined parameters
@@ -278,11 +290,6 @@ pub(super) fn generate_refinement_params(
         // correspond to a GrainLevel enum variant
         refined_params.push((None, hqdn3d_params));
     }
-
-    log::info!(
-        "Generated {} refined parameter sets for testing",
-        refined_params.len()
-    );
 
     refined_params
 }

@@ -16,13 +16,10 @@
 //
 // AI-ASSISTANT-INFO: Audio stream analysis and bitrate calculation
 
-// ---- External crate imports ----
-use colored::*;
-use log::{info, warn};
-
 // ---- Internal crate imports ----
 use crate::error::CoreResult;
-use crate::external::FfprobeExecutor;
+use crate::external::get_audio_channels;
+use crate::progress_reporting::{LogLevel, report_log_message};
 
 // ---- Standard library imports ----
 use std::path::Path;
@@ -57,10 +54,10 @@ use std::path::Path;
 /// ```
 pub(crate) fn calculate_audio_bitrate(channels: u32) -> u32 {
     match channels {
-        1 => 64,   // Mono: 64 kbps is sufficient for voice/simple audio
-        2 => 128,  // Stereo: 128 kbps provides good quality for most content
-        6 => 256,  // 5.1 surround: 256 kbps balances quality and size
-        8 => 384,  // 7.1 surround: 384 kbps for high-quality surround
+        1 => 64,            // Mono: 64 kbps is sufficient for voice/simple audio
+        2 => 128,           // Stereo: 128 kbps provides good quality for most content
+        6 => 256,           // 5.1 surround: 256 kbps balances quality and size
+        8 => 384,           // 7.1 surround: 384 kbps for high-quality surround
         _ => channels * 48, // For non-standard configurations: ~48 kbps per channel
     }
 }
@@ -94,16 +91,13 @@ pub(crate) fn calculate_audio_bitrate(channels: u32) -> u32 {
 ///
 /// ```rust,no_run
 /// use drapto_core::processing::audio::log_audio_info;
-/// use drapto_core::external::CrateFfprobeExecutor;
 /// use std::path::Path;
 ///
-/// let ffprobe_executor = CrateFfprobeExecutor::new();
 /// let input_path = Path::new("/path/to/video.mkv");
 ///
-/// log_audio_info(&ffprobe_executor, input_path).unwrap();
+/// log_audio_info(input_path).unwrap();
 /// ```
-pub fn log_audio_info<P: FfprobeExecutor>(
-    ffprobe_executor: &P,
+pub fn log_audio_info(
     input_path: &Path,
 ) -> CoreResult<()> {
     // Extract filename for logging purposes
@@ -113,53 +107,60 @@ pub fn log_audio_info<P: FfprobeExecutor>(
         .unwrap_or_else(|| "unknown_file".to_string());
 
     // STEP 1: Get audio channel information using ffprobe
-    let audio_channels = match ffprobe_executor.get_audio_channels(input_path) {
-        Ok(channels) => {
-            info!("Detected audio channels: {}", format!("{:?}", channels).green());
-            channels
-        }
+    let audio_channels = match get_audio_channels(input_path) {
+        Ok(channels) => channels,
         Err(e) => {
             // Log warning but don't fail the process - audio info is non-critical
             // The ffmpeg builder will handle missing channel info separately
-            warn!(
-                "Error getting audio channels for {}: {}. Cannot log bitrate info.",
-                filename, e
+            report_log_message(
+                &format!(
+                    "Error getting audio channels for {}: {}. Cannot log bitrate info.",
+                    filename, e
+                ),
+                LogLevel::Warning,
             );
+
             return Ok(());
         }
     };
 
     // STEP 2: Log calculated bitrates for each audio stream
     if audio_channels.is_empty() {
-        info!("No audio channels detected; cannot calculate specific bitrates.");
+        crate::progress_reporting::report_status("Audio streams", "None detected");
         return Ok(());
     }
 
-    // Calculate and log bitrate for each audio stream
-    let mut audio_bitrate_log_parts = Vec::new();
+    // Report audio channel configuration
+    let channel_summary = if audio_channels.len() == 1 {
+        format!("{} channels", audio_channels[0])
+    } else {
+        format!("{} streams: {}", audio_channels.len(), 
+            audio_channels.iter()
+                .enumerate()
+                .map(|(i, &ch)| format!("Stream {} ({}ch)", i, ch))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    };
+    crate::progress_reporting::report_status("Audio", &channel_summary);
+
+    // Calculate and report bitrates
+    let mut bitrate_parts = Vec::new();
     for (index, &num_channels) in audio_channels.iter().enumerate() {
-        // Calculate appropriate bitrate based on channel count
         let bitrate = calculate_audio_bitrate(num_channels);
-
-        // Log detailed information for each stream
-        let log_msg = format!(
-            "Calculated bitrate for audio stream {} ({} channels): {}",
-            index,
-            num_channels.to_string().green(),
-            format!("{}kbps", bitrate).green().bold()
-        );
-        info!("{}", log_msg);
-
-        // Add to summary for combined log message
-        audio_bitrate_log_parts.push(format!(
-            "Stream {}: {}",
-            index,
-            format!("{}kbps", bitrate).green().bold()
-        ));
+        if audio_channels.len() == 1 {
+            // Single stream - just show the bitrate
+            crate::progress_reporting::report_status("Bitrate", &format!("{}kbps", bitrate));
+        } else {
+            // Multiple streams - collect for summary
+            bitrate_parts.push(format!("Stream {}: {}kbps", index, bitrate));
+        }
     }
 
-    // Log summary of all streams
-    info!("  Bitrate Breakdown: {}", audio_bitrate_log_parts.join(", "));
+    // For multiple streams, show bitrate breakdown
+    if audio_channels.len() > 1 {
+        crate::progress_reporting::report_status("Bitrates", &bitrate_parts.join(", "));
+    }
 
     Ok(())
 }

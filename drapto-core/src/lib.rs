@@ -38,45 +38,37 @@
 //!
 //! ```rust,no_run
 //! use drapto_core::{CoreConfig, process_videos};
-//! use drapto_core::external::{SidecarSpawner, CrateFfprobeExecutor, StdFsMetadataProvider};
-//! use drapto_core::notifications::NtfyNotifier;
+//! use drapto_core::notifications::NtfyNotificationSender;
 //! use drapto_core::processing::detection::GrainLevel;
 //! use std::path::PathBuf;
 //!
-//! // Create configuration
-//! let config = CoreConfig {
-//!     input_dir: PathBuf::from("/path/to/input"),
-//!     output_dir: PathBuf::from("/path/to/output"),
-//!     log_dir: PathBuf::from("/path/to/logs"),
-//!     enable_denoise: true,
-//!     default_encoder_preset: Some(6),
-//!     preset: None,
-//!     quality_sd: Some(24),
-//!     quality_hd: Some(26),
-//!     quality_uhd: Some(28),
-//!     default_crop_mode: Some("auto".to_string()),
-//!     ntfy_topic: Some("https://ntfy.sh/my-topic".to_string()),
-//!     film_grain_sample_duration: Some(5),
-//!     film_grain_knee_threshold: Some(0.8),
-//!     film_grain_fallback_level: Some(GrainLevel::VeryClean),
-//!     film_grain_max_level: Some(GrainLevel::Visible),
-//!     film_grain_refinement_points_count: Some(5),
-//! };
+//! // Create configuration using the builder pattern
+//! let config = drapto_core::config::CoreConfigBuilder::new()
+//!     .input_dir(PathBuf::from("/path/to/input"))
+//!     .output_dir(PathBuf::from("/path/to/output"))
+//!     .log_dir(PathBuf::from("/path/to/logs"))
+//!     .enable_denoise(true)
+//!     .encoder_preset(6)
+//!     .quality_sd(24)
+//!     .quality_hd(26)
+//!     .quality_uhd(28)
+//!     .crop_mode("auto")
+//!     .ntfy_topic("https://ntfy.sh/my-topic")
+//!     .film_grain_sample_duration(5)
+//!     .film_grain_knee_threshold(0.8)
+//!     .film_grain_max_level(GrainLevel::Moderate)
+//!     .film_grain_refinement_points_count(5)
+//!     .build();
 //!
 //! // Find files to process
 //! let files = drapto_core::find_processable_files(&config.input_dir).unwrap();
 //!
-//! // Process videos
-//! let spawner = SidecarSpawner;
-//! let ffprobe_executor = CrateFfprobeExecutor::new();
-//! let notifier = NtfyNotifier::new().unwrap();
-//! let metadata_provider = StdFsMetadataProvider;
+//! // Create dependencies
+//! let notification_sender = NtfyNotificationSender::new("https://ntfy.sh/my-topic").unwrap();
 //!
+//! // Process videos
 //! let results = process_videos(
-//!     &spawner,
-//!     &ffprobe_executor,
-//!     &notifier,
-//!     &metadata_provider,
+//!     Some(&notification_sender),
 //!     &config,
 //!     &files,
 //!     None,
@@ -112,6 +104,15 @@ pub mod utils;
 /// Notification services for encoding progress updates
 pub mod notifications;
 
+/// Progress reporting functions
+pub mod progress_reporting;
+
+/// Temporary file management utilities
+pub mod temp_files;
+
+/// Hardware acceleration detection and configuration
+pub mod hardware_accel;
+
 // ============================================================================
 // PUBLIC API RE-EXPORTS
 // ============================================================================
@@ -120,7 +121,7 @@ pub mod notifications;
 
 // ----- Configuration Types -----
 /// Main configuration structure for the core library
-pub use config::{CoreConfig, FilmGrainMetricType};
+pub use config::CoreConfig;
 
 // ----- File Discovery -----
 /// Function to find processable video files in a directory
@@ -137,6 +138,44 @@ pub use processing::process_videos;
 // ----- Utility Functions -----
 /// Helper functions for formatting bytes and durations
 pub use utils::{format_bytes, format_duration};
+
+// ----- External Tool Interactions -----
+/// Re-export external tool functions
+pub use external::{
+    extract_sample,
+    get_audio_channels, get_video_properties, run_ffprobe_bitplanenoise, 
+    get_media_info, get_file_size, MediaInfo
+};
+
+// ----- Progress Reporting -----
+/// Progress reporting functions
+pub use progress_reporting::{
+    LogLevel, report_encode_complete, report_encode_error, report_encode_progress,
+    report_encode_start, report_log_message,
+};
+
+// ----- Notification Services -----
+/// Notification system types and implementations
+pub use notifications::{NotificationType, NtfyNotificationSender};
+
+// ----- Temporary File Management -----
+/// Temporary file management utilities
+pub use temp_files::{
+    cleanup_base_dirs,
+    create_analysis_dir,
+    // Convenience functions
+    create_grain_analysis_dir,
+    create_temp_dir,
+    create_temp_file,
+    create_temp_file_path,
+};
+
+// ----- Hardware Acceleration -----
+/// Hardware acceleration detection and configuration
+pub use hardware_accel::{
+    HardwareAcceleration, add_hardware_acceleration_to_command, is_hardware_acceleration_available,
+    is_macos, log_hardware_acceleration_status,
+};
 
 // ============================================================================
 // PUBLIC STRUCTS
@@ -190,4 +229,3 @@ pub struct EncodeResult {
     /// Size of the encoded output file in bytes
     pub output_size: u64,
 }
-

@@ -38,5 +38,5 @@ dmypy.json
 # Rust
 target/
 
-# Encoding
-.ab-av1*
+# Output doc
+docs/drapto_output

@@ -33,8 +33,17 @@ pub mod commands;
 /// Configuration constants and default values
 pub mod config;
 
+/// Error handling utilities for the CLI
+pub mod error;
+
 /// Logging utilities and helper functions
 pub mod logging;
+
+/// Platform-specific functionality and detection
+pub mod platform;
+
+/// Terminal UI components and styling
+pub mod terminal;
 
 // ---- Public re-exports ----
 // These items are re-exported to make them directly accessible to the binary crate
@@ -45,3 +54,6 @@ pub use cli::{Cli, Commands, EncodeArgs};
 
 /// Command implementation functions
 pub use commands::encode::run_encode;
+
+/// Platform-specific functionality
+pub use platform::{HardwareAcceleration, is_macos};

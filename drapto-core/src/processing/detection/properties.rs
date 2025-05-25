@@ -57,7 +57,6 @@ pub struct VideoProperties {
 
     /// Color space of the video (e.g., "bt709", "bt2020nc")
     pub color_space: Option<String>,
-
     // Note: color_transfer and color_primaries were removed as they are not
     // available in the ffprobe crate v0.3.3 that is currently being used
 }

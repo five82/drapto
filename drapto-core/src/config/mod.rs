@@ -1,5 +1,5 @@
 // ============================================================================
-// drapto-core/src/config.rs
+// drapto-core/src/config/mod.rs
 // ============================================================================
 //
 // CONFIGURATION: Core Configuration Structures and Constants
@@ -11,6 +11,7 @@
 //
 // KEY COMPONENTS:
 // - CoreConfig: Main configuration structure for the library
+// - CoreConfigBuilder: Builder pattern for creating CoreConfig instances
 // - FilmGrainMetricType: Enum for different grain analysis strategies
 // - Default constants: Predefined values for common settings
 //
@@ -25,44 +26,18 @@
 //
 // AI-ASSISTANT-INFO: Configuration structures and constants for the drapto-core library
 
+// ---- Module declarations ----
+mod builder;
+
 // ---- Standard library imports ----
 use std::path::PathBuf;
 
 // ---- Internal module imports ----
 use crate::processing::detection::grain_analysis::GrainLevel;
 
-// ============================================================================
-// FILM GRAIN ANALYSIS TYPES
-// ============================================================================
+// ---- Re-exports ----
+pub use builder::CoreConfigBuilder;
 
-/// Strategy for determining the optimal film grain value during analysis.
-///
-/// This enum defines different algorithms that can be used to analyze
-/// film grain in a video and determine the optimal denoising parameters.
-///
-/// # Variants
-///
-/// * `KneePoint` - Uses knee point detection to find the optimal balance
-///   between file size reduction and visual quality preservation.
-///
-/// # Examples
-///
-/// ```rust,no_run
-/// use drapto_core::config::FilmGrainMetricType;
-///
-/// // Configure grain analysis to use knee point detection
-/// let metric_type = FilmGrainMetricType::KneePoint;
-/// ```
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum FilmGrainMetricType {
-    /// Knee point detection algorithm that finds the point of diminishing returns
-    /// in the denoising curve, balancing file size reduction and quality preservation.
-    KneePoint,
-
-    // Future strategies (currently disabled):
-    // PercentMaxReduction - Uses a percentage of maximum reduction
-    // OriginalEfficiency - Uses the original efficiency algorithm
-}
 
 // ============================================================================
 // DEFAULT CONSTANTS
@@ -81,6 +56,26 @@ pub const DEFAULT_CORE_QUALITY_HD: u8 = 27;
 /// Same as HD by default, but can be overridden separately.
 pub const DEFAULT_CORE_QUALITY_UHD: u8 = 27;
 
+/// Default encoder preset (0-13, lower is slower/better quality)
+/// Value 6 provides a good balance between speed and quality.
+pub const DEFAULT_ENCODER_PRESET: u8 = 6;
+
+/// Default crop mode for the main encode.
+pub const DEFAULT_CROP_MODE: &str = "auto";
+
+/// Default sample duration for grain analysis in seconds.
+pub const DEFAULT_GRAIN_SAMPLE_DURATION: u32 = 10;
+
+/// Default knee point threshold for grain analysis (0.0-1.0).
+/// This represents the point of diminishing returns in denoising strength.
+pub const DEFAULT_GRAIN_KNEE_THRESHOLD: f64 = 0.8;
+
+/// Default maximum allowed grain level for any analysis result.
+pub const DEFAULT_GRAIN_MAX_LEVEL: GrainLevel = GrainLevel::Elevated;
+
+/// Default number of refinement points to test during adaptive refinement.
+pub const DEFAULT_GRAIN_REFINEMENT_POINTS: usize = 5;
+
 // ============================================================================
 // CORE CONFIGURATION
 // ============================================================================
@@ -92,36 +87,33 @@ pub const DEFAULT_CORE_QUALITY_UHD: u8 = 27;
 /// created by the consumer of the library (e.g., drapto-cli) and passed to
 /// the process_videos function.
 ///
+/// All fields have sensible defaults, so only the required path fields need to be set.
+/// The builder pattern provides a convenient way to create and configure instances.
+///
 /// # Examples
 ///
 /// ```rust,no_run
-/// use drapto_core::CoreConfig;
-/// use drapto_core::processing::detection::GrainLevel;
+/// use drapto_core::config::CoreConfigBuilder;
+/// use drapto_core::processing::detection::grain_analysis::GrainLevel;
 /// use std::path::PathBuf;
 ///
-/// let config = CoreConfig {
-///     input_dir: PathBuf::from("/path/to/input"),
-///     output_dir: PathBuf::from("/path/to/output"),
-///     log_dir: PathBuf::from("/path/to/logs"),
-///     default_encoder_preset: Some(6),
-///     preset: None,
-///     quality_sd: Some(24),
-///     quality_hd: Some(26),
-///     quality_uhd: Some(28),
-///     default_crop_mode: Some("auto".to_string()),
-///     ntfy_topic: Some("https://ntfy.sh/my-topic".to_string()),
-///     enable_denoise: true,
-///     film_grain_sample_duration: Some(5),
-///     film_grain_knee_threshold: Some(0.8),
-///     film_grain_fallback_level: Some(GrainLevel::VeryClean),
-///     film_grain_max_level: Some(GrainLevel::Visible),
-///     film_grain_refinement_points_count: Some(5),
-/// };
+/// let config = CoreConfigBuilder::new()
+///     .input_dir(PathBuf::from("/path/to/input"))
+///     .output_dir(PathBuf::from("/path/to/output"))
+///     .log_dir(PathBuf::from("/path/to/logs"))
+///     .enable_denoise(true)
+///     .encoder_preset(6)
+///     .quality_sd(24)
+///     .quality_hd(26)
+///     .quality_uhd(28)
+///     .crop_mode("auto")
+///     .ntfy_topic("https://ntfy.sh/my-topic")
+///     .film_grain_max_level(GrainLevel::Moderate)
+///     .build();
 /// ```
 #[derive(Debug, Clone)]
 pub struct CoreConfig {
     // ---- Path Configuration ----
-
     /// Directory containing input video files to process
     pub input_dir: PathBuf,
 
@@ -131,62 +123,83 @@ pub struct CoreConfig {
     /// Directory for log files and temporary files
     pub log_dir: PathBuf,
 
+    /// Optional directory for temporary files (defaults to output_dir)
+    pub temp_dir: Option<PathBuf>,
+
     // ---- Encoder Settings ----
-
-    /// Default encoder preset (0-13, lower is slower/better quality)
-    /// This is the primary way to set the default preset
-    pub default_encoder_preset: Option<u8>,
-
-    /// Override for encoder preset (takes precedence over default_encoder_preset)
-    pub preset: Option<u8>,
+    /// Encoder preset (0-13, lower is slower/better quality)
+    /// Default value is 6, which provides a good balance between speed and quality
+    pub encoder_preset: u8,
 
     /// CRF quality for Standard Definition videos (<1920 width)
     /// Lower values produce higher quality but larger files
-    pub quality_sd: Option<u8>,
+    pub quality_sd: u8,
 
     /// CRF quality for High Definition videos (>=1920 width, <3840 width)
-    pub quality_hd: Option<u8>,
+    pub quality_hd: u8,
 
     /// CRF quality for Ultra High Definition videos (>=3840 width)
-    pub quality_uhd: Option<u8>,
+    pub quality_uhd: u8,
 
     /// Crop mode for the main encode ("auto", "none", etc.)
-    pub default_crop_mode: Option<String>,
+    pub crop_mode: String,
 
     // ---- Notification Settings ----
-
     /// Optional ntfy.sh topic URL for sending notifications
     pub ntfy_topic: Option<String>,
 
     // ---- Processing Options ----
-
     /// Whether to enable light video denoising (hqdn3d)
     /// When true, grain analysis will be performed to determine optimal parameters
     pub enable_denoise: bool,
 
-    // Note: Hardware acceleration field was removed as it's no longer supported
-
     // ---- Grain Analysis Configuration ----
-
     /// Sample duration for grain analysis in seconds
     /// Shorter samples process faster but may be less representative
-    pub film_grain_sample_duration: Option<u32>,
+    pub film_grain_sample_duration: u32,
 
     /// Knee point threshold for grain analysis (0.0-1.0)
     /// This represents the point of diminishing returns in denoising strength
     /// A value of 0.8 means we look for the point where we achieve 80% of the
     /// maximum possible file size reduction
-    pub film_grain_knee_threshold: Option<f64>,
-
-    /// Fallback grain level if analysis fails
-    /// This is used when grain analysis cannot be performed or fails
-    pub film_grain_fallback_level: Option<GrainLevel>,
+    pub film_grain_knee_threshold: f64,
 
     /// Maximum allowed grain level for any analysis result
     /// This prevents excessive denoising even if analysis suggests it
-    pub film_grain_max_level: Option<GrainLevel>,
+    pub film_grain_max_level: GrainLevel,
 
     /// Number of refinement points to test during adaptive refinement
     /// More points provide more accurate results but increase processing time
-    pub film_grain_refinement_points_count: Option<usize>,
+    pub film_grain_refinement_points_count: usize,
+}
+
+impl Default for CoreConfig {
+    fn default() -> Self {
+        Self {
+            // Path Configuration
+            input_dir: PathBuf::from("."),
+            output_dir: PathBuf::from("."),
+            log_dir: PathBuf::from("."),
+            temp_dir: None,
+
+            // Encoder Settings
+            encoder_preset: DEFAULT_ENCODER_PRESET,
+            quality_sd: DEFAULT_CORE_QUALITY_SD,
+            quality_hd: DEFAULT_CORE_QUALITY_HD,
+            quality_uhd: DEFAULT_CORE_QUALITY_UHD,
+            crop_mode: DEFAULT_CROP_MODE.to_string(),
+
+            // Notification Settings
+            ntfy_topic: None,
+
+            // Processing Options
+            enable_denoise: true,
+
+            // Grain Analysis Configuration
+            film_grain_sample_duration: DEFAULT_GRAIN_SAMPLE_DURATION,
+            film_grain_knee_threshold: DEFAULT_GRAIN_KNEE_THRESHOLD,
+            film_grain_max_level: DEFAULT_GRAIN_MAX_LEVEL,
+            film_grain_refinement_points_count: DEFAULT_GRAIN_REFINEMENT_POINTS,
+        }
+    }
 }

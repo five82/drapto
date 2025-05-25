@@ -24,21 +24,25 @@
 // ---- Internal crate imports ----
 use crate::cli::EncodeArgs;
 use crate::config;
+use crate::error::{CliResult, CliErrorContext};
+use crate::terminal;
 
 // ---- External crate imports ----
-use drapto_core::{CoreConfig, CoreError, EncodeResult};
-use drapto_core::external::{FfmpegSpawner, FfprobeExecutor};
-use drapto_core::external::StdFsMetadataProvider;
-use drapto_core::notifications::Notifier;
-use colored::*;
+use drapto_core::notifications::NtfyNotificationSender;
+// Progress reporting is now handled through standard log levels
+use drapto_core::{CoreError, EncodeResult};
 
 // ---- Standard library imports ----
 use std::fs;
-use std::time::Instant;
 use std::path::PathBuf;
+use std::str::FromStr;
+use std::time::Instant;
 
 // ---- Logging imports ----
-use log::{info, warn, error};
+use log::{debug, info, warn};
+
+// Use the format_bytes function from drapto_core::utils
+use drapto_core::format_bytes;
 
 /// Discovers .mkv files to encode based on the provided arguments.
 ///
@@ -59,36 +63,53 @@ use log::{info, warn, error};
 /// - If the input path doesn't exist or is inaccessible
 /// - If the input is a file but not a .mkv file
 /// - If the input is neither a file nor a directory
-pub fn discover_encode_files(args: &EncodeArgs) -> Result<(Vec<PathBuf>, PathBuf), Box<dyn std::error::Error>> {
+pub fn discover_encode_files(args: &EncodeArgs) -> CliResult<(Vec<PathBuf>, PathBuf)> {
     // Resolve the input path to its canonical form (absolute path with symlinks resolved)
-    let input_path = args.input_path.canonicalize()
-        .map_err(|e| format!("Invalid input path '{}': {}", args.input_path.display(), e))?;
+    let input_path = args
+        .input_path
+        .canonicalize()
+        .cli_with_context(|| format!("Invalid input path '{}'", args.input_path.display()))?;
 
     // Get metadata to determine if the input is a file or directory
     let metadata = fs::metadata(&input_path)
-        .map_err(|e| format!("Failed to access input path '{}': {}", input_path.display(), e))?;
+        .cli_with_context(|| format!("Failed to access input path '{}'", input_path.display()))?;
 
     if metadata.is_dir() {
         // Directory input: Find all .mkv files in the directory
         match drapto_core::find_processable_files(&input_path) {
-             Ok(files) => Ok((files, input_path.clone())),
-             Err(CoreError::NoFilesFound) => Ok((Vec::new(), input_path.clone())), // Empty vector if no files found
-             Err(e) => Err(e.into()), // Propagate other core errors
+            Ok(files) => Ok((files, input_path.clone())),
+            Err(CoreError::NoFilesFound) => Ok((Vec::new(), input_path.clone())), // Empty vector if no files found
+            Err(e) => Err(e), // Core error already has context
         }
     } else if metadata.is_file() {
         // File input: Verify it's a .mkv file
-        if input_path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("mkv")) {
+        if input_path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("mkv"))
+        {
             // Get the parent directory to use as the effective input directory
-            let parent_dir = input_path.parent().ok_or_else(|| {
-                CoreError::PathError(format!("Could not determine parent directory for file '{}'", input_path.display()))
-            })?.to_path_buf();
+            let parent_dir = input_path
+                .parent()
+                .ok_or_else(|| {
+                    CoreError::OperationFailed(format!(
+                        "Could not determine parent directory for file '{}'",
+                        input_path.display()
+                    ))
+                })?
+                .to_path_buf();
             Ok((vec![input_path.clone()], parent_dir))
         } else {
-            Err(format!("Input file '{}' is not a .mkv file.", input_path.display()).into())
+            Err(CoreError::OperationFailed(format!(
+                "Input file '{}' is not a .mkv file",
+                input_path.display()
+            )))
         }
     } else {
         // Neither file nor directory
-        Err(format!("Input path '{}' is neither a file nor a directory.", input_path.display()).into())
+        Err(CoreError::OperationFailed(format!(
+            "Input path '{}' is neither a file nor a directory",
+            input_path.display()
+        )))
     }
 }
 
@@ -103,14 +124,14 @@ pub fn discover_encode_files(args: &EncodeArgs) -> Result<(Vec<PathBuf>, PathBuf
 /// The function is generic over the types that implement the required traits:
 /// - `S`: FfmpegSpawner - For spawning ffmpeg processes
 /// - `P`: FfprobeExecutor - For executing ffprobe commands
-/// - `N`: Notifier - For sending notifications
+/// - `N`: NotificationSender - For sending notifications
 ///
 /// This design allows for dependency injection and easier testing.
 ///
 /// # Arguments
 /// * `spawner` - Implementation of FfmpegSpawner for executing ffmpeg
 /// * `ffprobe_executor` - Implementation of FfprobeExecutor for executing ffprobe
-/// * `notifier` - Implementation of Notifier for sending notifications
+/// * `notification_sender` - Implementation of NotificationSender for sending notifications
 /// * `args` - The encode command arguments
 /// * `interactive` - Whether the application is running in interactive mode
 /// * `files_to_process` - Vector of paths to the files to encode
@@ -119,15 +140,13 @@ pub fn discover_encode_files(args: &EncodeArgs) -> Result<(Vec<PathBuf>, PathBuf
 /// # Returns
 /// * `Ok(())` - If the encoding process completes successfully
 /// * `Err(...)` - If an error occurs during the encoding process
-pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor, N: Notifier>(
-    spawner: &S,
-    ffprobe_executor: &P,
-    notifier: &N,
+pub fn run_encode(
+    notification_sender: Option<&NtfyNotificationSender>,
     args: EncodeArgs,
     interactive: bool,
     files_to_process: Vec<PathBuf>,
     effective_input_dir: PathBuf,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> CliResult<()> {
     let total_start_time = Instant::now();
 
     // Determine actual output directory and potential target filename
@@ -135,7 +154,8 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor, N: Notifier>(
         if files_to_process.len() == 1 && args.output_dir.extension().is_some() {
             // Input is single file and output looks like a file path
             let target_file = args.output_dir.clone();
-            let parent_dir = target_file.parent()
+            let parent_dir = target_file
+                .parent()
                 .map(|p| p.to_path_buf())
                 .filter(|p| !p.as_os_str().is_empty()) // Handle cases where parent might be empty (e.g., root)
                 .unwrap_or_else(|| PathBuf::from(".")); // Default to current dir if no parent
@@ -150,195 +170,349 @@ pub fn run_encode<S: FfmpegSpawner, P: FfprobeExecutor, N: Notifier>(
     // Convert Option<OsString> to Option<PathBuf> for the core function call
     let target_filename_override = target_filename_override_os.map(PathBuf::from);
 
-
     // Use the determined actual_output_dir for logs unless a specific log_dir is given
-    let log_dir = args.log_dir.unwrap_or_else(|| actual_output_dir.join("logs"));
+    let log_dir = args
+        .log_dir
+        .unwrap_or_else(|| actual_output_dir.join("logs"));
 
-
-    // --- Create Output/Log Dirs ---
-    fs::create_dir_all(&actual_output_dir)?;
-    fs::create_dir_all(&log_dir)?;
+    // --- Create Output Dir ---
+    // Note: Log dir is already created in main.rs before daemonization if in daemon mode
+    // We still create it here for interactive mode or in case it was deleted
+    fs::create_dir_all(&actual_output_dir).cli_with_context(|| {
+        format!(
+            "Failed to create output directory '{}'",
+            actual_output_dir.display()
+        )
+    })?;
+    fs::create_dir_all(&log_dir)
+        .cli_with_context(|| format!("Failed to create log directory '{}'", log_dir.display()))?;
 
     // --- Logging Setup (Handled by env_logger via RUST_LOG) ---
     // We still need the log path for potential PID file and user info.
     let main_log_filename = format!("drapto_encode_run_{}.log", crate::logging::get_timestamp()); // Keep get_timestamp usage
     let main_log_path = log_dir.join(&main_log_filename); // Use reference
 
-    // --- Log Initial Info using standard log macros with color ---
-    info!("{}", "========================================".cyan().bold());
-    info!("{} {}", "Drapto Encode Run Started:".green().bold(), chrono::Local::now().to_string().green());
-    info!("  {:<25} {}", "Original Input arg:".cyan(), args.input_path.display().to_string().yellow());
-    info!("  {:<25} {}", "Original Output arg:".cyan(), args.output_dir.display().to_string().yellow());
-    info!("  {:<25} {}", "Effective Output directory:".cyan(), actual_output_dir.display().to_string().green());
-    if let Some(fname) = &target_filename_override {
-        info!("  {:<25} {}", "Effective Output filename:".cyan(), fname.display().to_string().green());
+    // --- Log Initial Info using our new terminal module ---
+
+    // Get file information from ffprobe for more useful user info
+    let file_info = if !files_to_process.is_empty() {
+        drapto_core::get_media_info(&files_to_process[0]).ok()
+    } else {
+        None
+    };
+
+    // Simplify the display path for better readability
+    let input_path_display = args.input_path.display().to_string();
+    let output_display = if let Some(fname) = &target_filename_override {
+        fname.display().to_string()
+    } else {
+        actual_output_dir.display().to_string()
+    };
+
+    // Format duration if available
+    let duration_display = if let Some(info) = &file_info {
+        if let Some(duration_secs) = info.duration {
+            let hours = (duration_secs / 3600.0) as u64;
+            let minutes = ((duration_secs % 3600.0) / 60.0) as u64;
+            let secs = (duration_secs % 60.0) as u64;
+            let formatted = format!("{:02}:{:02}:{:02}", hours, minutes, secs);
+            Some(formatted)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    // Format resolution if available
+    let resolution_display = if let Some(info) = &file_info {
+        if let (Some(width), Some(height)) = (info.width, info.height) {
+            if width > 0 && height > 0 {
+                let resolution_type = if width >= 3840 {
+                    "(UHD)"
+                } else if width >= 1280 {
+                    // Combines both 1080p and 720p into HD
+                    "(HD)"
+                } else {
+                    "(SD)"
+                };
+
+                Some(format!("{}x{} {}", width, height, resolution_type))
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    // Print initialization section
+    terminal::print_section("INITIALIZATION");
+
+    // Show only the most essential information
+    terminal::print_status("Input file", &input_path_display, false);
+    terminal::print_status("Output file", &output_display, false);
+
+    if let Some(duration) = duration_display {
+        terminal::print_status("Duration", &duration, false);
     }
-    info!("  {:<25} {}", "Log directory:".cyan(), log_dir.display().to_string().green());
-    info!("  {:<25} {}", "Main log file (info):".cyan(), main_log_path.display().to_string().green());
-    info!("  {:<25} {}", "Interactive mode:".cyan(), interactive.to_string().green());
-    // Hardware acceleration has been removed. Software decoding is always used.
-    info!("{}", "========================================".cyan().bold());
+
+    if let Some(resolution) = resolution_display {
+        terminal::print_status("Resolution", &resolution, false);
+    }
+
+    // Show hardware acceleration info
+    let hw_accel_info = drapto_core::hardware_accel::get_hardware_accel_info();
+    let hw_display = match hw_accel_info {
+        Some(info) => format!("{} (decode only)", info),
+        None => "None available".to_string(),
+    };
+    terminal::print_status("Hardware", &hw_display, false);
+
+    // Debug information
+    debug!("Log file: {}", main_log_path.display());
+    debug!("Interactive: {}", interactive);
+    debug!("Run started: {}", chrono::Local::now());
+
+    // No divider here - we'll rely on section spacing
+    // Note: Terminal module already sets verbosity in progress_reporting when initialized
 
     // --- PID File Handling (Daemon Mode Only) ---
     if !interactive {
         let pid_path = log_dir.join("drapto.pid");
-        // Use std::fs::write to create/overwrite the PID file with the current process ID.
-        // Note: This happens *after* daemonization and log setup.
-        match std::fs::write(&pid_path, std::process::id().to_string()) {
-            Ok(_) => info!("{} {}", "PID file created at:".green(), pid_path.display().to_string().yellow()),
-            Err(e) => warn!("{} Failed to create PID file at {}: {}", "Warning:".yellow().bold(), pid_path.display(), e),
-            // Consider adding cleanup for the PID file on exit (e.g., using signal handling or atexit crate),
-            // but that adds complexity. For now, manual cleanup is assumed.
+        // Create PID file with current process ID after daemonization
+        if let Err(e) = std::fs::write(&pid_path, std::process::id().to_string()) {
+            warn!(
+                "Warning: Failed to create PID file at {}: {}",
+                pid_path.display(),
+                e
+            );
+        } else {
+            info!("PID file created at: {}", pid_path.display());
         }
     }
 
     // --- Prepare Core Configuration ---
 
-    // Parse grain level strings to GrainLevel enum values
-    let grain_max_level = args.grain_max_level.as_deref().map(|level_str| {
-        match level_str.to_lowercase().as_str() {
-            "veryclean" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::VeryClean),
-            "verylight" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::VeryLight),
-            "light" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::Light),
-            "visible" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::Visible),
-            "medium" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::Medium),
-            _ => {
-                warn!("{} Invalid grain_max_level '{}'. Using default.", "Warning:".yellow().bold(), level_str);
-                Err(())
+    // Parse grain level strings to GrainLevel enum values using FromStr implementation
+    let grain_max_level = args.grain_max_level.as_deref().and_then(|level_str| {
+        match drapto_core::processing::detection::grain_analysis::GrainLevel::from_str(level_str) {
+            Ok(level) => Some(level),
+            Err(_) => {
+                // Log warning for invalid grain level
+                debug!("Warning: Invalid grain_max_level '{}'. Using default.", level_str);
+                None
             }
         }
-    }).and_then(|res| res.ok());
+    });
 
-    let grain_fallback_level = args.grain_fallback_level.as_deref().map(|level_str| {
-        match level_str.to_lowercase().as_str() {
-            "veryclean" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::VeryClean),
-            "verylight" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::VeryLight),
-            "light" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::Light),
-            "visible" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::Visible),
-            "medium" => Ok(drapto_core::processing::detection::grain_analysis::GrainLevel::Medium),
-            _ => {
-                warn!("{} Invalid grain_fallback_level '{}'. Using default.", "Warning:".yellow().bold(), level_str);
-                Err(())
-            }
-        }
-    }).and_then(|res| res.ok());
+    // grain_fallback_level is deprecated and no longer used
 
     // Validate knee threshold is within valid range (0.1 to 1.0)
-    let grain_knee_threshold = args.grain_knee_threshold.map(|threshold| {
-        if threshold < 0.1 || threshold > 1.0 {
-            warn!("{} Knee threshold {} is outside valid range (0.1-1.0). Using default.",
-                "Warning:".yellow().bold(), threshold);
+    let grain_knee_threshold = args.grain_knee_threshold.and_then(|threshold| {
+        if !(0.1..=1.0).contains(&threshold) {
+            // Log warning for invalid knee threshold
+            debug!("Warning: Knee threshold {} is outside valid range (0.1-1.0). Using default.", threshold);
             None
         } else {
             Some(threshold)
         }
-    }).flatten();
+    });
 
-    let config = CoreConfig {
-        input_dir: effective_input_dir,
-        output_dir: actual_output_dir.clone(),
-        log_dir: log_dir.clone(),
-        default_encoder_preset: Some(config::DEFAULT_ENCODER_PRESET as u8),
-        quality_sd: args.quality_sd,
-        quality_hd: args.quality_hd,
-        quality_uhd: args.quality_uhd,
-        default_crop_mode: Some(if args.disable_autocrop {
-            "none".to_string() // Use "none" for main encode if flag is set
-        } else {
-            config::DEFAULT_CROP_MODE.to_string() // Use default otherwise
-        }),
-        ntfy_topic: args.ntfy,
-        preset: args.preset,
-        // hw_accel field removed from CoreConfig
-        enable_denoise: !args.no_denoise, // Invert the flag: no_denoise=true means enable_denoise=false
+    // Use the builder pattern to create the CoreConfig
+    let mut builder = drapto_core::config::CoreConfigBuilder::new()
+        .input_dir(effective_input_dir)
+        .output_dir(actual_output_dir.clone())
+        .log_dir(log_dir.clone())
+        .enable_denoise(!args.no_denoise); // Invert the flag: no_denoise=true means enable_denoise=false
 
-        // Grain analysis configuration
-        film_grain_sample_duration: args.grain_sample_duration,
-        film_grain_knee_threshold: grain_knee_threshold,
-        film_grain_max_level: grain_max_level,
-        film_grain_fallback_level: grain_fallback_level,
-        film_grain_refinement_points_count: None, // Use default
+    // Add optional parameters if they are provided
+    if let Some(quality) = args.quality_sd {
+        builder = builder.quality_sd(quality);
+    }
+
+    if let Some(quality) = args.quality_hd {
+        builder = builder.quality_hd(quality);
+    }
+
+    if let Some(quality) = args.quality_uhd {
+        builder = builder.quality_uhd(quality);
+    }
+
+    // Set crop mode based on disable_autocrop flag
+    let crop_mode = if args.disable_autocrop {
+        "none" // Use "none" for main encode if flag is set
+    } else {
+        config::DEFAULT_CROP_MODE // Use default otherwise
     };
+    builder = builder.crop_mode(crop_mode);
+
+    // Add ntfy topic if provided
+    if let Some(topic) = args.ntfy {
+        builder = builder.ntfy_topic(&topic);
+    }
+
+    // Add preset if provided
+    if let Some(preset) = args.preset {
+        builder = builder.encoder_preset(preset);
+    }
+
+    // Add grain analysis configuration if provided
+    if let Some(duration) = args.grain_sample_duration {
+        builder = builder.film_grain_sample_duration(duration);
+    }
+
+    if let Some(threshold) = grain_knee_threshold {
+        builder = builder.film_grain_knee_threshold(threshold);
+    }
+
+    if let Some(level) = grain_max_level {
+        builder = builder.film_grain_max_level(level);
+    }
+
+    // grain_fallback_level is deprecated and no longer used
+
+    // Build the final config
+    let config = builder.build();
+
+    // --- Progress Reporting ---
+    // The CLI progress reporter is already registered in main.rs via terminal::register_cli_reporter()
+    // Progress will be displayed automatically through the ProgressReporter trait implementation
+
+    // NOTE: We don't need to log hardware acceleration here
+    // Hardware acceleration status is logged by the core library in process_videos
 
     // --- Execute Core Logic ---
-    info!("{} {} file(s).", "Processing".green(), files_to_process.len().to_string().green().bold());
-    let processing_result = if files_to_process.is_empty() {
-         warn!("{} No processable .mkv files found in the specified input path.", "Warning:".yellow().bold()); // Use warn level
-         Ok(Vec::new())
-    } else {
-         // Pass the Option<PathBuf> target_filename_override
-         // Spawner is now passed in as an argument
-         // Notifier is now passed in as an argument
+    // Only print section if we have files to process
+    if !files_to_process.is_empty() {
+        terminal::print_section("VIDEO ANALYSIS");
+        terminal::print_processing_no_spacing(&format!(
+            "Analyzing {} file(s)",
+            files_to_process.len()
+        ));
+    }
 
-         // Call drapto_core::process_videos WITHOUT the log_callback
-         drapto_core::process_videos(
-             spawner, // Pass the injected spawner instance (S)
-             ffprobe_executor, // Pass the injected ffprobe executor instance (P)
-             notifier, // Pass the injected notifier instance (N)
-             &StdFsMetadataProvider, // Pass the standard metadata provider
-             &config, // Pass config (&CoreConfig)
-             &files_to_process,
-             target_filename_override
-             // Removed log_callback argument
-         )
+    let processing_result = if files_to_process.is_empty() {
+        warn!("Warning: No processable .mkv files found in the specified input path."); // Use warn level
+        Ok(Vec::new())
+    } else {
+        // Call drapto_core::process_videos
+        drapto_core::process_videos(
+            notification_sender,
+            &config,
+            &files_to_process,
+            target_filename_override,
+        )
+        .cli_context("Video processing failed")
     };
 
     // --- Handle Core Results ---
     let successfully_encoded: Vec<EncodeResult>;
     match processing_result {
         Ok(ref results) => {
-            successfully_encoded = results.to_vec();
-            // Use warn level if no files encoded (unless it was expected due to no files found)
-            if successfully_encoded.is_empty() && !matches!(processing_result, Err(CoreError::NoFilesFound)) {
-                 warn!("{} No files were successfully encoded.", "Warning:".yellow().bold());
-            } else if !successfully_encoded.is_empty() {
-                 info!("{} {} file(s).", "Successfully encoded".green(), successfully_encoded.len().to_string().green().bold());
+            successfully_encoded = results.clone();
+            // Use warn level if no files encoded
+            if successfully_encoded.is_empty() {
+                terminal::print_error(
+                    "No files encoded",
+                    "No files were successfully encoded",
+                    Some("Check that your input files are valid .mkv files"),
+                );
+            } else {
+                // Print complete section
+                terminal::print_section("ENCODING COMPLETE");
+                terminal::print_success(&format!(
+                    "Successfully encoded {} file(s)",
+                    successfully_encoded.len()
+                ));
+
+                // Show summary for each file
+                for result in &successfully_encoded {
+                    let reduction = if result.input_size > 0 {
+                        100.0 - ((result.output_size as f64 / result.input_size as f64) * 100.0)
+                    } else {
+                        0.0
+                    };
+
+                    terminal::print_subsection(&result.filename);
+                    terminal::print_status(
+                        "Encode time",
+                        &drapto_core::utils::format_duration(result.duration),
+                        false,
+                    );
+                    terminal::print_status("Input size", &format_bytes(result.input_size), false);
+                    terminal::print_status("Output size", &format_bytes(result.output_size), false);
+                    terminal::print_status("Reduced by", &format!("{:.1}%", reduction), true);
+                }
             }
         }
         Err(e) => {
             // Use error level for fatal errors
-            error!("{} {}", "FATAL CORE ERROR during processing:".red().bold(), e);
-            return Err(e.into());
+            terminal::print_error("Fatal error during processing", &e.to_string(), None);
+            return Err(e);
         }
     }
 
-    // --- Clean up temporary directory ---
-    let grain_tmp_dir = actual_output_dir.join("grain_samples_tmp");
-    if grain_tmp_dir.exists() { // Check if it exists before trying to remove
-        info!("{} {}", "Cleaning up temporary directory:".cyan(), grain_tmp_dir.display().to_string().yellow());
-        match fs::remove_dir_all(&grain_tmp_dir) {
-            Ok(_) => info!("{} {}", "Successfully removed temporary directory:".green(), grain_tmp_dir.display().to_string().yellow()),
-            Err(e) => warn!("{} Failed to remove temporary directory {}: {}", "Warning:".yellow().bold(), grain_tmp_dir.display(), e),
-        }
-    }
+    // --- Clean up temporary directories ---
+    debug!("Cleaning up temporary directories");
 
+    if let Err(e) = drapto_core::temp_files::cleanup_base_dirs(&config)
+        .cli_context("Failed to clean up temporary directories")
+    {
+        // Always show errors regardless of verbosity
+        terminal::print_error("Cleanup warning", &e.to_string(), None);
+    }
 
     // --- Print Summary ---
     if !successfully_encoded.is_empty() {
-        info!("{}", "========================================".cyan().bold());
-        info!("{}", "Encoding Summary:".green().bold());
-        info!("{}", "========================================".cyan().bold());
+        terminal::print_section("Summary");
+
         for result in &successfully_encoded {
             let reduction = if result.input_size > 0 {
                 100u64.saturating_sub(result.output_size.saturating_mul(100) / result.input_size)
             } else {
                 0
             };
-            info!("{}", result.filename.to_string().yellow().bold()); // Log filename directly, bold yellow
-            info!("  {:<13} {}", "Encode time:".cyan(), drapto_core::format_duration(result.duration).green());
-            info!("  {:<13} {}", "Input size:".cyan(), drapto_core::format_bytes(result.input_size).green());
-            info!("  {:<13} {}", "Output size:".cyan(), drapto_core::format_bytes(result.output_size).green());
-            info!("  {:<13} {}", "Reduced by:".cyan(), format!("{}%", reduction).green());
-            info!("{}", "----------------------------------------".cyan());
+
+            // Only print filename if multiple files
+            if successfully_encoded.len() > 1 {
+                terminal::print_subsection(&result.filename);
+            }
+
+            // Print file statistics with shorter labels
+            terminal::print_status(
+                "Time",
+                &drapto_core::format_duration(result.duration),
+                false,
+            );
+            terminal::print_status(
+                "Input",
+                &drapto_core::format_bytes(result.input_size),
+                false,
+            );
+            terminal::print_status(
+                "Output",
+                &drapto_core::format_bytes(result.output_size),
+                true,
+            );
+            terminal::print_status("Reduction", &format!("{}%", reduction), true);
         }
     }
 
     // --- Final Timing ---
     let total_elapsed_time = total_start_time.elapsed();
-    info!("{}", "========================================".cyan().bold());
-    info!("{} {}", "Total encode execution time:".green().bold(), drapto_core::format_duration(total_elapsed_time).green());
-    info!("{} {}", "Drapto Encode Run Finished:".green().bold(), chrono::Local::now().to_string().green());
-    info!("{}", "========================================".cyan().bold());
+
+    // Show completion information
+    debug!("Finished at: {}", chrono::Local::now());
+    
+    // Always show total time regardless of verbosity
+    terminal::print_status(
+        "Total time",
+        &drapto_core::format_duration(total_elapsed_time),
+        true,
+    );
 
     // env_logger handles flushing automatically.
 

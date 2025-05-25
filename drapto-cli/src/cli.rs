@@ -61,6 +61,22 @@ pub struct Cli {
     /// and logs directly to the console instead of running as a daemon.
     #[arg(long, global = true, default_value_t = false)]
     pub interactive: bool,
+
+    /// Enable verbose output with detailed information.
+    /// Shows additional technical details for troubleshooting.
+    #[arg(short, long, global = true, default_value_t = false)]
+    pub verbose: bool,
+
+    /// Disable colored output.
+    /// Useful for log files or terminals that don't support ANSI colors.
+    /// Can also be controlled via the NO_COLOR environment variable.
+    #[arg(
+        long = "no-color",
+        global = true,
+        env = "NO_COLOR",
+        default_value_t = false
+    )]
+    pub no_color: bool,
 }
 
 /// Enum of available subcommands for the Drapto CLI application.
@@ -77,7 +93,6 @@ pub enum Commands {
     /// This command converts video files (typically .mkv) to AV1 format
     /// with configurable quality settings and processing options.
     Encode(EncodeArgs),
-
     // Future subcommands will be added here as the application evolves
     // Examples:
     // - Analyze: Analyze video files without encoding
@@ -141,17 +156,26 @@ pub enum Commands {
 #[derive(Parser, Debug)]
 pub struct EncodeArgs {
     // ---- Required Arguments ----
-
     /// Input file or directory containing .mkv files.
     /// This can be either a single .mkv file or a directory containing multiple .mkv files.
     /// If a directory is provided, all .mkv files in the directory will be processed.
-    #[arg(short = 'i', long = "input", required = true, value_name = "INPUT_PATH")]
+    #[arg(
+        short = 'i',
+        long = "input",
+        required = true,
+        value_name = "INPUT_PATH"
+    )]
     pub input_path: PathBuf,
 
     /// Directory where encoded files will be saved.
     /// If a single input file is provided and this argument has a file extension,
     /// it will be treated as the output filename instead of a directory.
-    #[arg(short = 'o', long = "output", required = true, value_name = "OUTPUT_DIR")]
+    #[arg(
+        short = 'o',
+        long = "output",
+        required = true,
+        value_name = "OUTPUT_DIR"
+    )]
     pub output_dir: PathBuf,
 
     /// Optional: Directory for log files (defaults to OUTPUT_DIR/logs).
@@ -160,7 +184,6 @@ pub struct EncodeArgs {
     pub log_dir: Option<PathBuf>,
 
     // ---- Quality Settings ----
-
     /// Optional: Override CRF quality for SD videos (<1920 width).
     /// Lower values produce higher quality but larger files.
     /// Typical range: 18-30 (default is determined by resolution).
@@ -186,7 +209,6 @@ pub struct EncodeArgs {
     pub preset: Option<u8>,
 
     // ---- Processing Options ----
-
     /// Disable automatic crop detection (uses ffmpeg's cropdetect).
     /// By default, black bars are automatically detected and cropped.
     #[arg(long)]
@@ -198,7 +220,6 @@ pub struct EncodeArgs {
     pub no_denoise: bool,
 
     // ---- Grain Analysis Options ----
-
     /// Sample duration for grain analysis in seconds.
     /// Shorter samples process faster but may be less representative.
     #[arg(long, value_name = "SECONDS")]
@@ -213,22 +234,19 @@ pub struct EncodeArgs {
 
     /// Maximum allowed grain level for any analysis result.
     /// This prevents excessive denoising even if analysis suggests it.
-    /// Options: VeryClean, VeryLight, Light, Visible, Medium
+    /// Options: Baseline, VeryLight, Light, Moderate, Elevated
     #[arg(long, value_name = "LEVEL")]
     pub grain_max_level: Option<String>,
 
     /// Fallback grain level if analysis fails.
-    /// This is used when grain analysis cannot be performed or fails.
-    /// Options: VeryClean, VeryLight, Light, Visible, Medium
-    #[arg(long, value_name = "LEVEL")]
+    /// DEPRECATED: This option is no longer used and will be removed in a future version.
+    #[arg(long, value_name = "LEVEL", hide = true)]
     pub grain_fallback_level: Option<String>,
 
     // ---- Notification Options ----
-
     /// Optional: ntfy.sh topic URL for sending notifications.
     /// Format: https://ntfy.sh/your_topic
     /// Can also be set via the DRAPTO_NTFY_TOPIC environment variable.
     #[arg(long, value_name = "TOPIC_URL", env = "DRAPTO_NTFY_TOPIC")]
     pub ntfy: Option<String>,
 }
-

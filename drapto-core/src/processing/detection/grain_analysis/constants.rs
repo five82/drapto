@@ -27,28 +27,23 @@ use super::types::GrainLevel;
 /// - strength: Temporal chroma strength
 ///
 /// The array is ordered by increasing strength for iteration in analysis logic.
-/// Note: GrainLevel::VeryClean is not included as it corresponds to no denoising.
+/// Note: GrainLevel::Baseline is not included as it corresponds to no denoising.
 pub(super) const HQDN3D_PARAMS: [(GrainLevel, &str); 4] = [
     // Very light denoising for barely noticeable grain
     (GrainLevel::VeryLight, "hqdn3d=0.5:0.3:3:3"),
-
     // Light denoising for light grain
     (GrainLevel::Light, "hqdn3d=1:0.7:4:4"),
-
     // Spatially-focused denoising for noticeable grain (higher spatial values)
-    (GrainLevel::Visible, "hqdn3d=1.5:1.0:6:6"),
-
+    (GrainLevel::Moderate, "hqdn3d=1.5:1.0:6:6"),
     // Temporally-focused denoising for medium grain (higher temporal values)
-    (GrainLevel::Medium, "hqdn3d=2:1.3:8:8"),
+    (GrainLevel::Elevated, "hqdn3d=2:1.3:8:8"),
 ];
 
 // ============================================================================
 // SAMPLING PARAMETERS
 // ============================================================================
 
-/// Default duration in seconds for each video sample extracted for analysis.
-/// Shorter samples process faster but may be less representative.
-pub(super) const DEFAULT_SAMPLE_DURATION_SECS: u32 = 10;
+// Default sample duration is now defined in config/mod.rs as DEFAULT_GRAIN_SAMPLE_DURATION
 
 /// Minimum number of samples to extract from a video for reliable analysis.
 /// At least 3 samples are needed for robust median calculation.
@@ -67,8 +62,4 @@ pub(super) const SECS_PER_SAMPLE_TARGET: f64 = 600.0;
 // ANALYSIS PARAMETERS
 // ============================================================================
 
-/// Threshold for knee point detection in the efficiency curve.
-/// This represents the point of diminishing returns in denoising strength.
-/// A value of 0.8 means we look for the point where we achieve 80% of the
-/// maximum possible file size reduction.
-pub(super) const KNEE_THRESHOLD: f64 = 0.8;
+// Knee threshold is now defined in config/mod.rs as DEFAULT_GRAIN_KNEE_THRESHOLD
