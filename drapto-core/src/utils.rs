@@ -27,11 +27,12 @@ use std::time::Duration;
 // FORMATTING FUNCTIONS
 // ============================================================================
 
-/// Formats a Duration into a human-readable string in the format "Xh Ym Zs".
+/// Formats a Duration into a human-readable string in HH:MM:SS format.
 ///
 /// This function converts a Duration into hours, minutes, and seconds and
-/// formats it as a string. It's useful for displaying encoding times and
-/// other durations in a user-friendly way.
+/// formats it as a string in the standard HH:MM:SS format. This format is
+/// consistent with the CLI design guide and provides a uniform way to display
+/// durations throughout the application.
 ///
 /// # Arguments
 ///
@@ -39,7 +40,7 @@ use std::time::Duration;
 ///
 /// # Returns
 ///
-/// * A String in the format "Xh Ym Zs" (e.g., "1h 30m 45s")
+/// * A String in the format "HH:MM:SS" (e.g., "01:30:45")
 ///
 /// # Examples
 ///
@@ -49,19 +50,46 @@ use std::time::Duration;
 ///
 /// let duration = Duration::from_secs(3725); // 1 hour, 2 minutes, 5 seconds
 /// let formatted = format_duration(duration);
-/// assert_eq!(formatted, "1h 2m 5s");
+/// assert_eq!(formatted, "01:02:05");
 /// ```
 pub fn format_duration(duration: Duration) -> String {
-    // Convert the duration to total seconds
-    let total_seconds = duration.as_secs();
+    format_duration_seconds(duration.as_secs_f64())
+}
 
-    // Calculate hours, minutes, and seconds
+/// Formats a duration in seconds as HH:MM:SS.
+///
+/// This function converts a floating-point number of seconds into a
+/// formatted string in HH:MM:SS format. It's useful when working with
+/// duration values that come from external sources (like FFmpeg) as
+/// floating-point seconds.
+///
+/// # Arguments
+///
+/// * `seconds` - The duration in seconds
+///
+/// # Returns
+///
+/// * A String in the format "HH:MM:SS"
+///
+/// # Examples
+///
+/// ```rust
+/// use drapto_core::utils::format_duration_seconds;
+///
+/// let formatted = format_duration_seconds(3725.0);
+/// assert_eq!(formatted, "01:02:05");
+/// ```
+pub fn format_duration_seconds(seconds: f64) -> String {
+    // Handle invalid values
+    if seconds < 0.0 || !seconds.is_finite() {
+        return "??:??:??".to_string();
+    }
+    
+    let total_seconds = seconds as u64;
     let hours = total_seconds / 3600;
     let minutes = (total_seconds % 3600) / 60;
-    let seconds = total_seconds % 60;
-
-    // Format as "Xh Ym Zs"
-    format!("{}h {}m {}s", hours, minutes, seconds)
+    let secs = total_seconds % 60;
+    format!("{:02}:{:02}:{:02}", hours, minutes, secs)
 }
 
 /// Formats a byte count into a human-readable string with appropriate units.

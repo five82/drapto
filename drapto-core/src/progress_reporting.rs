@@ -27,6 +27,9 @@
 //
 // AI-ASSISTANT-INFO: Core progress reporting API with consistent formatting
 
+// ---- Submodules ----
+pub mod ffmpeg_handler;
+
 // ---- External crate imports ----
 use log::debug;
 use once_cell::sync::Lazy;

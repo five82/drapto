@@ -28,8 +28,8 @@ use std::path::Path;
 /// Contains ffmpeg argument building logic and encoding parameter structures
 pub mod ffmpeg;
 
-/// Contains traits and implementations for executing ffmpeg commands
-pub mod ffmpeg_executor;
+/// Contains builder utilities for FFmpeg commands
+pub mod ffmpeg_builder;
 
 /// Contains traits and implementations for executing ffprobe commands
 pub mod ffprobe_executor;
@@ -40,9 +40,13 @@ pub mod ffprobe_executor;
 // These items are re-exported to make them directly accessible to consumers
 // without requiring explicit imports from submodules
 
-// ----- FFmpeg Execution -----
-/// Functions for spawning and interacting with ffmpeg processes
-pub use ffmpeg_executor::{spawn_ffmpeg, handle_ffmpeg_events, wait_for_ffmpeg, extract_sample};
+// ----- FFmpeg Sample Extraction -----
+/// Function for extracting video samples
+pub use ffmpeg::extract_sample;
+
+// ----- FFmpeg Command Building -----
+/// Builder utilities for FFmpeg commands
+pub use ffmpeg_builder::{FfmpegCommandBuilder, VideoFilterChain, SvtAv1ParamsBuilder};
 
 // ----- FFprobe Execution -----
 /// Functions for executing ffprobe commands

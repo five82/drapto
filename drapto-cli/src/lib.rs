@@ -42,8 +42,6 @@ pub mod logging;
 /// Platform-specific functionality and detection
 pub mod platform;
 
-/// CLI-specific progress reporting implementation
-
 /// Terminal UI components and styling
 pub mod terminal;
 

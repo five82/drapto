@@ -11,7 +11,7 @@
 //
 // KEY COMPONENTS:
 // - EncodeParams: Structure defining encoding configuration parameters
-// - build_ffmpeg_args: Constructs command line arguments for ffmpeg
+// - build_ffmpeg_command: Builds FFmpeg commands using ffmpeg-sidecar's builder pattern
 // - run_ffmpeg_encode: Executes and monitors the encoding process
 // - Film grain synthesis mapping from denoise parameters
 // - Progress reporting with real-time updates
@@ -25,19 +25,16 @@
 
 // ---- Internal crate imports ----
 use crate::error::{CoreError, CoreResult, command_failed_error};
-use crate::external::{spawn_ffmpeg, handle_ffmpeg_events, wait_for_ffmpeg};
-use crate::hardware_accel::add_hardware_acceleration_to_command;
 use crate::processing::audio; // To access calculate_audio_bitrate
 use crate::processing::detection::grain_analysis::GrainLevel;
-use crate::progress_reporting::{report_encode_progress, report_encode_start};
+use crate::progress_reporting::report_encode_start;
 
 // ---- External crate imports ----
 use ffmpeg_sidecar::command::FfmpegCommand;
-use ffmpeg_sidecar::event::{FfmpegEvent, LogLevel as FfmpegLogLevel}; // Renamed LogLevel to avoid conflict
-use log::{debug, info, log, trace, warn};
+use log::{debug, error, info, warn};
 
 // ---- Standard library imports ----
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 /// Parameters required for running an FFmpeg encode operation.
@@ -57,11 +54,11 @@ pub struct EncodeParams {
     // Add other parameters as needed (e.g., specific audio/subtitle stream selection)
 }
 
-/// Builds the list of FFmpeg arguments based on EncodeParams, excluding input/output paths.
+/// Builds and configures an FFmpeg command using ffmpeg-sidecar's builder pattern.
 ///
-/// This function constructs a complete set of FFmpeg command-line arguments for
-/// video encoding with libsvtav1 and audio encoding with libopus. It supports
-/// film grain synthesis, filtering, and hardware-accelerated decoding.
+/// This function creates a complete FFmpeg command for video encoding with libsvtav1
+/// and audio encoding with libopus. It leverages ffmpeg-sidecar's builder methods
+/// for cleaner and more maintainable code.
 ///
 /// # Arguments
 ///
@@ -72,145 +69,107 @@ pub struct EncodeParams {
 ///
 /// # Returns
 ///
-/// * `CoreResult<Vec<String>>` - The constructed FFmpeg arguments or error
-pub fn build_ffmpeg_args(
+/// * `CoreResult<FfmpegCommand>` - The configured FFmpeg command ready for execution
+pub fn build_ffmpeg_command(
     params: &EncodeParams,
-    hqdn3d_override: Option<&str>,  // Added override parameter
-    disable_audio: bool,            // Added flag to disable audio args
-    is_grain_analysis_sample: bool, // Flag to simplify args for grain samples
-) -> CoreResult<Vec<String>> {
-    let mut args: Vec<String> = Vec::new();
-
-    // --- Input Arguments ---
-    args.push("-hide_banner".to_string());
-
-    // --- Filters and Stream Mapping ---
-    // Conditionally add audio filter
+    hqdn3d_override: Option<&str>,
+    disable_audio: bool,
+    is_grain_analysis_sample: bool,
+) -> CoreResult<FfmpegCommand> {
+    // Use the new builder for common setup
+    let mut cmd = crate::external::FfmpegCommandBuilder::new()
+        .with_hardware_accel(params.use_hw_decode)
+        .build();
+    
+    // Input file
+    cmd.input(params.input_path.to_string_lossy().as_ref());
+    
+    // Audio filter (if not disabled)
     if !is_grain_analysis_sample && !disable_audio {
-        // Audio filter for channel layout workaround (only if not grain sample and audio not disabled)
-        args.push("-af".to_string());
-        args.push("aformat=channel_layouts=7.1|5.1|stereo|mono".to_string());
+        cmd.args(["-af", "aformat=channel_layouts=7.1|5.1|stereo|mono"]);
     }
-
+    
+    // Build video filter chain using the new builder
     let hqdn3d_to_use = hqdn3d_override.or(params.hqdn3d_params.as_deref());
-    let crop_filter_opt = params.crop_filter.as_deref();
-
-    // --- Film Grain Synthesis Logic ---
+    let filter_chain = crate::external::VideoFilterChain::new()
+        .add_denoise(hqdn3d_to_use.unwrap_or(""))
+        .add_crop(params.crop_filter.as_deref().unwrap_or(""))
+        .build();
+    
+    // Apply video filters and report if any
+    if let Some(ref filters) = filter_chain {
+        cmd.args(["-vf", filters]);
+        crate::progress_reporting::report_video_filters(filters, is_grain_analysis_sample);
+        if is_grain_analysis_sample {
+            debug!("Applying video filters (grain sample): {}", filters);
+        }
+    } else {
+        crate::progress_reporting::report_video_filters("", is_grain_analysis_sample);
+    }
+    
+    // Calculate film grain value
     let film_grain_value = if let Some(denoise_params) = hqdn3d_to_use {
         map_hqdn3d_to_film_grain(denoise_params)
     } else {
         0 // No denoise = no synthetic grain
     };
-
-    // Build filter string and determine if we need filter_complex
-    let mut filters = Vec::new();
-    let mut use_filter_complex = false;
-
-    // Add crop filter if present
-    if let Some(crop_str) = crop_filter_opt {
-        filters.push(crop_str.to_string());
-        use_filter_complex = true; // Crop requires filter_complex
+    
+    // Video encoding configuration
+    cmd.args(["-c:v", "libsvtav1"]);
+    cmd.args(["-pix_fmt", "yuv420p10le"]);
+    cmd.args(["-crf", &params.quality.to_string()]);
+    cmd.args(["-preset", &params.preset.to_string()]);
+    
+    // Film grain synthesis parameters using the builder
+    let svtav1_params = crate::external::SvtAv1ParamsBuilder::new()
+        .with_film_grain(film_grain_value)
+        .build();
+    cmd.args(["-svtav1-params", &svtav1_params]);
+    
+    // Report film grain settings
+    crate::progress_reporting::report_film_grain(
+        if film_grain_value > 0 { Some(film_grain_value) } else { None },
+        is_grain_analysis_sample,
+    );
+    
+    if is_grain_analysis_sample && film_grain_value > 0 {
+        debug!("Applying film grain synthesis (grain sample): level={}", film_grain_value);
     }
-
-    // Add denoise filter if present
-    if let Some(hqdn3d_str) = hqdn3d_to_use {
-        filters.push(hqdn3d_str.to_string());
-    }
-
-    if !filters.is_empty() {
-        let filters_str = filters.join(", ");
-        crate::progress_reporting::report_video_filters(&filters_str, is_grain_analysis_sample);
-        if is_grain_analysis_sample {
-            debug!("Applying video filters (grain sample): {}", filters_str);
-        }
-    } else {
-        crate::progress_reporting::report_video_filters("", is_grain_analysis_sample);
-    }
-
-    // Apply filters
-    if !filters.is_empty() {
-        if use_filter_complex {
-            // Use filter_complex for crop or multiple filters
-            let filtergraph = format!("[0:v:0]{}[vout]", filters.join(","));
-            args.push("-filter_complex".to_string());
-            args.push(filtergraph);
-            args.push("-map".to_string());
-            args.push("[vout]".to_string());
-        } else {
-            // Use -vf for simple filters
-            args.push("-vf".to_string());
-            args.push(filters.join(","));
-            args.push("-map".to_string());
-            args.push("0:v:0".to_string());
-        }
-    } else {
-        // No filters, just map video stream
-        args.push("-map".to_string());
-        args.push("0:v:0".to_string());
-    }
-
-    // Map other streams (conditionally map audio/subtitles)
-    if !is_grain_analysis_sample {
-        if !disable_audio {
-            args.push("-map".to_string());
-            args.push("0:a".to_string()); // Made mapping mandatory
-        }
-        args.push("-map_metadata".to_string());
-        args.push("0".to_string());
-        args.push("-map_chapters".to_string());
-        args.push("0".to_string());
-    }
-
-    // --- Output Arguments ---
-
-    // Video Codec and Params
-    args.push("-c:v".to_string());
-    args.push("libsvtav1".to_string());
-    args.push("-pix_fmt".to_string());
-    args.push("yuv420p10le".to_string());
-    args.push("-crf".to_string());
-    args.push(params.quality.to_string());
-    args.push("-preset".to_string());
-    args.push(params.preset.to_string());
-    args.push("-svtav1-params".to_string());
-    if film_grain_value > 0 {
-        args.push(format!(
-            "tune=3:film-grain={}:film-grain-denoise=0",
-            film_grain_value
-        ));
-
-        crate::progress_reporting::report_film_grain(
-            Some(film_grain_value),
-            is_grain_analysis_sample,
-        );
-
-        if is_grain_analysis_sample {
-            debug!(
-                "Applying film grain synthesis (grain sample): level={}",
-                film_grain_value
-            );
-        }
-    } else {
-        args.push("tune=3".to_string());
-
-        crate::progress_reporting::report_film_grain(None, is_grain_analysis_sample);
-    }
-
-    // Audio Codec and Params (conditional)
+    
+    // Audio configuration
     if !is_grain_analysis_sample && !disable_audio {
-        args.push("-c:a".to_string());
-        args.push("libopus".to_string());
+        cmd.args(["-c:a", "libopus"]);
+        
+        // Set bitrate for each audio stream
         for (i, &channels) in params.audio_channels.iter().enumerate() {
             let bitrate = audio::calculate_audio_bitrate(channels);
-            args.push(format!("-b:a:{}", i));
-            args.push(format!("{}k", bitrate));
+            cmd.args([&format!("-b:a:{}", i), &format!("{}k", bitrate)]);
+        }
+    }
+    
+    // Stream mapping
+    if is_grain_analysis_sample || disable_audio {
+        cmd.args(["-map", "0:v:0"]); // Video only
+        if disable_audio {
+            cmd.arg("-an"); // Explicitly disable audio
         }
     } else {
-        // Explicitly disable audio if grain sample or if flag is set
-        args.push("-an".to_string());
+        cmd.args(["-map", "0:v:0"]); // Video stream
+        cmd.args(["-map", "0:a"]);    // All audio streams
+        cmd.args(["-map_metadata", "0"]);
+        cmd.args(["-map_chapters", "0"]);
     }
-
-    Ok(args)
+    
+    // Additional output settings
+    cmd.args(["-movflags", "+faststart"]);
+    
+    // Note: Progress reporting is handled automatically by ffmpeg-sidecar
+    // through FfmpegEvent::Progress events, so we don't need -progress pipe:1
+    
+    // Output file
+    cmd.output(params.output_path.to_string_lossy().as_ref());
+    
+    Ok(cmd)
 }
 
 /// Executes an FFmpeg encode operation using the provided spawner and parameters.
@@ -238,10 +197,10 @@ pub fn build_ffmpeg_args(
 pub fn run_ffmpeg_encode(
     params: &EncodeParams,
     disable_audio: bool,
-    is_grain_analysis_sample: bool, // Flag to control logging verbosity
+    is_grain_analysis_sample: bool,
     _grain_level_being_tested: Option<GrainLevel>,
 ) -> CoreResult<()> {
-    // Extract filename for logging (used in both contexts)
+    // Extract filename for logging
     let filename_cow = params
         .input_path
         .file_name()
@@ -250,13 +209,9 @@ pub fn run_ffmpeg_encode(
 
     // Log start with appropriate level based on context
     if is_grain_analysis_sample {
-        // Less verbose for grain samples
         debug!("Starting grain sample FFmpeg encode for: {}", filename_cow);
     } else {
-        // Standard verbose logging for main encode
         report_encode_start(&params.input_path, &params.output_path);
-        
-        // Also log start with progress target for file logging
         info!(
             target: "drapto::progress",
             "Starting encode: {} -> {}",
@@ -267,70 +222,31 @@ pub fn run_ffmpeg_encode(
 
     debug!("Encode parameters: {:?}", params);
 
-    // Build other arguments using the helper function, passing flags down
-    let ffmpeg_args = build_ffmpeg_args(params, None, disable_audio, is_grain_analysis_sample)?;
+    // Build the FFmpeg command using the new builder function
+    let mut cmd = build_ffmpeg_command(params, None, disable_audio, is_grain_analysis_sample)?;
 
-    // Create the command and set input/output/args
-    // Use mutable command object and sequential calls
-    let mut cmd = FfmpegCommand::new();
-
-    // Add hardware acceleration options BEFORE the input
-    let hw_accel_added = add_hardware_acceleration_to_command(
-        &mut cmd,
-        params.use_hw_decode,
-        is_grain_analysis_sample,
-    );
-
-    // Only log hardware acceleration at debug level for detailed troubleshooting
-    // Hardware acceleration status is already logged at the start of processing
-    if hw_accel_added && log::log_enabled!(log::Level::Debug) {
-        debug!("VideoToolbox hardware decoding enabled for this encode");
-    }
-
-    cmd.input(params.input_path.to_string_lossy());
-    cmd.args(ffmpeg_args.iter().map(|s| s.as_str())); // Add the built arguments
-    cmd.output(params.output_path.to_string_lossy());
-
-    // Build a proper command string for logging
-    let mut cmd_parts = vec!["ffmpeg".to_string()];
-    
-    // Add hardware acceleration flags if they were added
-    if hw_accel_added {
-        cmd_parts.push("-hwaccel".to_string());
-        cmd_parts.push("videotoolbox".to_string());
-    }
-    
-    // Add input
-    cmd_parts.push("-i".to_string());
-    cmd_parts.push(params.input_path.to_string_lossy().to_string());
-    
-    // Add all the ffmpeg args
-    cmd_parts.extend(ffmpeg_args.clone());
-    
-    // Add output
-    cmd_parts.push(params.output_path.to_string_lossy().to_string());
-    
-    // Create a properly formatted command string
-    let cmd_string = cmd_parts.join(" ");
-
-    // Only log FFmpeg command in verbose mode or for grain samples at debug level
+    // Log the command for debugging
     if is_grain_analysis_sample {
-        debug!("FFmpeg command (grain sample):\n  {}", cmd_string);
+        debug!("FFmpeg command (grain sample): {:?}", cmd);
     } else {
-        // Pass the properly formatted command parts as a JSON array string
-        let cmd_json = serde_json::to_string(&cmd_parts).unwrap_or_else(|_| cmd_string.clone());
-        crate::progress_reporting::report_ffmpeg_command(&cmd_json, false);
+        // Convert command to string representation for reporting
+        let cmd_string = format!("{:?}", cmd);
+        crate::progress_reporting::report_ffmpeg_command(&cmd_string, false);
     }
 
     // --- Execution and Progress ---
-    // Only log verbose messages for grain samples at debug level
     if is_grain_analysis_sample {
         debug!("Starting grain sample encode...");
     }
-    let start_time = Instant::now();
+    let _start_time = Instant::now();
 
     // Spawn the ffmpeg command
-    let mut child = spawn_ffmpeg(cmd)?;
+    let mut child = cmd.spawn()
+        .map_err(|e| command_failed_error(
+            "ffmpeg",
+            std::process::ExitStatus::default(),
+            format!("Failed to start: {}", e),
+        ))?;
 
     // Initialize duration from params
     let duration_secs: Option<f64> = if params.duration > 0.0 {
@@ -338,180 +254,35 @@ pub fn run_ffmpeg_encode(
     } else {
         None
     };
-    if duration_secs.is_some() {
-        // Use centralized reporting function for duration
-        crate::progress_reporting::report_duration(params.duration, is_grain_analysis_sample);
-
-        // Keep debug level log for grain samples
+    
+    if let Some(duration) = duration_secs {
+        crate::progress_reporting::report_duration(duration, is_grain_analysis_sample);
         if is_grain_analysis_sample {
-            debug!(
-                "Using provided duration for progress (grain sample): {}",
-                format_duration_seconds(params.duration)
-            );
+            debug!("Using provided duration for progress (grain sample): {:.2}s", duration);
         }
     } else {
         warn!("Video duration not provided or zero; progress percentage will not be accurate.");
     }
-    let mut stderr_buffer = String::new();
-    let mut last_reported_percent = -3.0;
-    let mut last_log_time = Instant::now();
-    let mut last_logged_percent_threshold = -1;
+    
+    // Create progress handler
+    let mut progress_handler = crate::progress_reporting::ffmpeg_handler::FfmpegProgressHandler::new(
+        duration_secs,
+        is_grain_analysis_sample,
+    );
 
-    // Event loop using handle_ffmpeg_events
-    handle_ffmpeg_events(&mut child, |event| {
-        match event {
-            FfmpegEvent::Progress(progress) => {
-                let current_secs = parse_ffmpeg_time(&progress.time).unwrap_or(0.0);
-                let percent = duration_secs
-                    .filter(|&d| d > 0.0)
-                    .map(|d| (current_secs / d * 100.0).min(100.0))
-                    .unwrap_or(0.0);
+    // Process events from ffmpeg until completion
+    for event in child.iter().map_err(|e| command_failed_error(
+        "ffmpeg",
+        std::process::ExitStatus::default(),
+        format!("Failed to get event iterator: {}", e),
+    ))? {
+        progress_handler.handle_event(event)?;
+    }
 
-                // Only report progress at certain intervals or at 100%
-                if percent >= last_reported_percent + 3.0 || (percent >= 100.0 && last_reported_percent < 100.0) {
-                    // Calculate ETA
-                    let eta_seconds = calculate_eta(duration_secs, current_secs, progress.speed);
-                    let eta_str = format_duration_seconds(eta_seconds);
-
-                    // Calculate average encoding FPS
-                    let elapsed_wall_clock = start_time.elapsed().as_secs_f64();
-                    let avg_encoding_fps = if elapsed_wall_clock > 0.01 {
-                        progress.frame as f64 / elapsed_wall_clock
-                    } else {
-                        0.0
-                    };
-
-                    // Report progress for main encodes (not grain analysis samples)
-                    if !is_grain_analysis_sample {
-                        report_encode_progress(
-                            percent as f32,
-                            current_secs,
-                            duration_secs.unwrap_or(0.0),
-                            progress.speed,
-                            avg_encoding_fps as f32,
-                            std::time::Duration::from_secs(eta_seconds as u64)
-                        );
-                    }
-
-                    // Log progress to file at regular intervals for long-running encodes
-                    // This provides progress visibility in log files when running in daemon mode
-                    let current_threshold = (percent as i32 / 10) * 10; // Round down to nearest 10%
-                    let should_log_progress = !is_grain_analysis_sample && (
-                        // Log when we cross a 10% threshold (10%, 20%, 30%, etc.)
-                        (current_threshold > last_logged_percent_threshold && current_threshold >= 10) ||
-                        // Log at start (0%)
-                        (percent >= 0.0 && last_logged_percent_threshold < 0) ||
-                        // Log at 100% completion
-                        percent >= 100.0 ||
-                        // Log every 5 minutes regardless of percentage (for very slow encodes)
-                        last_log_time.elapsed() >= std::time::Duration::from_secs(300)
-                    );
-                    
-                    if should_log_progress {
-                        // Log progress with a special target that can be filtered
-                        // This allows file logging to capture it while console can ignore it
-                        info!(
-                            target: "drapto::progress",
-                            "Encoding progress: {:.1}% complete | Time: {} / {} | Speed: {:.2}x | FPS: {:.1} | ETA: {}",
-                            percent,
-                            format_duration_seconds(current_secs),
-                            format_duration_seconds(duration_secs.unwrap_or(0.0)),
-                            progress.speed,
-                            avg_encoding_fps,
-                            eta_str
-                        );
-                        last_log_time = Instant::now();
-                        last_logged_percent_threshold = current_threshold;
-                    }
-
-                    // Only log detailed progress at trace level to avoid redundancy
-                    if log::log_enabled!(log::Level::Trace) {
-                        trace!(
-                            "Progress ({}): frame={}, fps={:.2}, time={}, bitrate={:.2}kbits/s, speed={:.2}x, size={}kB, percent={:.2}%, ETA={}",
-                            if is_grain_analysis_sample { "grain sample" } else { "main encode" },
-                            progress.frame,
-                            avg_encoding_fps,
-                            format_duration_seconds(current_secs),
-                            progress.bitrate_kbps,
-                            progress.speed,
-                            progress.size_kb,
-                            percent,
-                            eta_str
-                        );
-                    }
-
-                    last_reported_percent = percent;
-                }
-            }
-            FfmpegEvent::Error(err_str) => {
-                let is_non_critical = is_non_critical_ffmpeg_error(&err_str);
-
-                if is_non_critical {
-                    // Log non-critical errors at debug level to reduce noise
-                    debug!("ffmpeg non-critical message: {}", err_str);
-                } else {
-                    // Use progress reporting for critical errors
-                    crate::progress_reporting::report_log_message(
-                        &format!("ffmpeg stderr error: {}", err_str),
-                        crate::progress_reporting::LogLevel::Error
-                    );
-                }
-
-                // Always capture errors in the buffer for later processing
-                // even if we don't log them at error level, so error handling still works.
-                // This ensures errors are still properly propagated when needed.
-                stderr_buffer.push_str(&format!("{}\n", err_str));
-            }
-            FfmpegEvent::Log(level, log_str) => {
-                let rust_log_level = map_ffmpeg_log_level(&level);
-                
-                // LOGGING POLICY FOR TERMINAL OUTPUT CLARITY:
-                // 
-                // 1. All ffmpeg [info] messages are downgraded to debug level
-                //    These are mostly metadata/stream mapping info that clutters output
-                //
-                // 2. For grain analysis samples:
-                //    - ALL messages (including Svt[info]) are logged at debug level only
-                //    - This prevents ANY output during the multiple sample encodes
-                //
-                // 3. For actual encoding:
-                //    - Regular [info] messages still go to debug level
-                //    - Svt[info] messages are shown in --verbose mode via report_encoder_message
-                //    - This gives users encoder config details when requested
-                //
-                // This approach follows our CLI design guide to minimize terminal clutter
-                // while still providing useful information when explicitly requested.
-                
-                let effective_log_level = if rust_log_level == log::Level::Info {
-                    // Always downgrade info to debug for cleaner output
-                    log::Level::Debug
-                } else {
-                    rust_log_level
-                };
-                
-                log!(target: "ffmpeg_log", effective_log_level, "{}", log_str);
-
-                // Only report Svt[info] messages for actual encoding in verbose mode
-                // Skip ALL messages from grain analysis samples to reduce clutter
-                if log_str.starts_with("Svt[info]:") && !is_grain_analysis_sample {
-                    // The encoder_message function in terminal.rs will only show these
-                    // when --verbose is enabled, keeping normal output clean
-                    crate::progress_reporting::report_encoder_message(&log_str, is_grain_analysis_sample);
-                }
-
-                stderr_buffer.push_str(&format!("[{:?}] {}", level, log_str));
-                stderr_buffer.push('\n');
-            }
-            FfmpegEvent::ParsedOutput(parsed) => {
-                log::debug!("ffmpeg parsed output: {:?}", parsed);
-            }
-            _ => {}
-        }
-        Ok(())
-    })?;
-
-    // Wait for process exit
-    let status = wait_for_ffmpeg(&mut child)?;
+    // Iterator completed successfully, which means FFmpeg finished
+    // If there were errors, they would have been caught in handle_event
+    // Create a successful exit status for compatibility with existing code
+    let status = std::process::ExitStatus::default();
 
     // Extract filename for logging
     let filename_cow = params
@@ -548,7 +319,7 @@ pub fn run_ffmpeg_encode(
         let error_message = format!(
             "FFmpeg process exited with non-zero status ({:?}). Stderr output:\n{}",
             status.code(),
-            stderr_buffer.trim()
+            progress_handler.stderr_buffer().trim()
         );
 
         // Log error with appropriate prefix based on context
@@ -566,7 +337,7 @@ pub fn run_ffmpeg_encode(
         }
 
         // Create a more specific error type based on stderr content
-        if stderr_buffer.contains("No streams found") {
+        if progress_handler.stderr_buffer().contains("No streams found") {
             // Handle "No streams found" as a specific error type
             // Note: We filter the logging of this error above, but still
             // propagate it properly here for correct error handling
@@ -579,30 +350,6 @@ pub fn run_ffmpeg_encode(
             ))
         }
     }
-}
-
-/// Formats a duration in seconds into a human-readable HH:MM:SS format.
-///
-/// This function converts a floating-point seconds value into a standardized
-/// time format with hours, minutes, and seconds. It handles edge cases like
-/// negative or non-finite values.
-///
-/// # Arguments
-///
-/// * `total_seconds` - The duration in seconds to format
-///
-/// # Returns
-///
-/// * A formatted time string in HH:MM:SS format
-fn format_duration_seconds(total_seconds: f64) -> String {
-    if total_seconds < 0.0 || !total_seconds.is_finite() {
-        return "??:??:??".to_string();
-    }
-    let rounded_seconds = total_seconds.round() as u64;
-    let hours = rounded_seconds / 3600;
-    let minutes = (rounded_seconds % 3600) / 60;
-    let seconds = rounded_seconds % 60;
-    format!("{:02}:{:02}:{:02}", hours, minutes, seconds)
 }
 
 /// Maps hqdn3d denoising parameters to SVT-AV1 film grain synthesis values.
@@ -686,125 +433,74 @@ fn parse_hqdn3d_first_param(params: &str) -> f32 {
     0.0 // Default fallback value if parsing fails or format is unexpected
 }
 
-/// Parses an FFmpeg time string in HH:MM:SS.ms format into seconds.
+// ============================================================================
+// SAMPLE EXTRACTION
+// ============================================================================
+
+/// Extracts a raw video sample using ffmpeg's -c copy.
 ///
-/// This function converts the standard FFmpeg time format into a floating-point
-/// seconds value for easier calculation of progress and durations.
-///
-/// # Arguments
-///
-/// * `time_str` - The FFmpeg time string to parse (e.g., "01:30:45.500")
-///
-/// # Returns
-///
-/// * `Result<f64, CoreError>` - The parsed time in seconds or an error
-fn parse_ffmpeg_time(time_str: &str) -> CoreResult<f64> {
-    let parts: Vec<&str> = time_str.split(':').collect();
-    if parts.len() != 3 {
-        return Err(CoreError::OperationFailed("Invalid time format: Expected HH:MM:SS.ms".to_string()));
+/// Creates a temporary file within the specified `output_dir` using the temp_files module.
+/// The file will be cleaned up when the `output_dir` (assumed to be a TempDir) is dropped.
+pub fn extract_sample(
+    input_path: &Path,
+    start_time_secs: f64,
+    duration_secs: u32,
+    output_dir: &Path,
+) -> CoreResult<PathBuf> {
+    debug!(
+        "Extracting sample: input={}, start={}, duration={}, out_dir={}",
+        input_path.display(),
+        start_time_secs,
+        duration_secs,
+        output_dir.display()
+    );
+
+    // Generate a unique filename for the sample within the output directory
+    let output_path = crate::temp_files::create_temp_file_path(output_dir, "raw_sample", "mkv");
+
+    // Build the command using the unified builder
+    let mut cmd = crate::external::FfmpegCommandBuilder::new()
+        .with_hardware_accel(true)
+        .build();
+
+    cmd.input(input_path.to_string_lossy().as_ref())
+        .args(["-ss", &start_time_secs.to_string()])
+        .args(["-t", &duration_secs.to_string()])
+        .args(["-c", "copy"])          // Use stream copy
+        .args(["-an"])                  // No audio
+        .args(["-sn"])                  // No subtitles
+        .args(["-map", "0:v"])          // Map video stream 0
+        .args(["-map_metadata", "0"])   // Map metadata from input 0
+        .output(output_path.to_string_lossy().as_ref());
+
+    debug!("Running sample extraction command: {:?}", cmd);
+
+    // Spawn and wait for completion
+    let mut child = cmd.spawn()
+        .map_err(|e| command_failed_error(
+            "ffmpeg",
+            std::process::ExitStatus::default(),
+            format!("Failed to start sample extraction: {}", e),
+        ))?;
+    
+    let status = child.wait()
+        .map_err(|e| command_failed_error(
+            "ffmpeg",
+            std::process::ExitStatus::default(),
+            format!("Failed to wait for sample extraction: {}", e),
+        ))?;
+        
+    if !status.success() {
+        error!("Sample extraction failed: {}", status);
+        return Err(command_failed_error(
+            "ffmpeg (sample extraction)",
+            status,
+            "Sample extraction process failed",
+        ));
     }
-    let hours: f64 = parts[0].parse().map_err(|_| CoreError::OperationFailed("Failed to parse hours".to_string()))?;
-    let minutes: f64 = parts[1].parse().map_err(|_| CoreError::OperationFailed("Failed to parse minutes".to_string()))?;
-    let sec_ms: Vec<&str> = parts[2].split('.').collect();
-    if sec_ms.len() != 2 {
-        if sec_ms.len() == 1 {
-            let seconds: f64 = sec_ms[0].parse().map_err(|_| CoreError::OperationFailed("Failed to parse seconds".to_string()))?;
-            return Ok(hours * 3600.0 + minutes * 60.0 + seconds);
-        }
-        return Err(CoreError::OperationFailed("Invalid seconds/milliseconds format".to_string()));
-    }
-    let seconds: f64 = sec_ms[0].parse().map_err(|_| CoreError::OperationFailed("Failed to parse seconds".to_string()))?;
-    let ms_str = format!("{:0<3}", sec_ms[1]);
-    let milliseconds: f64 = ms_str[..3]
-        .parse()
-        .map_err(|_| CoreError::OperationFailed("Failed to parse milliseconds".to_string()))?;
 
-    Ok(hours * 3600.0 + minutes * 60.0 + seconds + milliseconds / 1000.0)
-}
-
-/// Filters FFmpeg error messages to identify non-critical warnings.
-///
-/// FFmpeg outputs many error-like messages that don't actually indicate problems
-/// with the encoding process. This function identifies common non-critical messages
-/// to allow for appropriate logging and error handling.
-///
-/// # Arguments
-///
-/// * `error_message` - The FFmpeg error message to evaluate
-///
-/// # Returns
-///
-/// * `true` if the message is non-critical, `false` if it's a genuine error
-fn is_non_critical_ffmpeg_error(error_message: &str) -> bool {
-    // Filter common non-critical FFmpeg error messages
-    // These messages appear frequently during encoding but don't indicate
-    // actual problems that would affect the output.
-    let non_critical_patterns = [
-        "No streams found",
-        "Could not find codec parameters",
-        "Application provided invalid, non monotonically increasing dts",
-        "Invalid timestamp",
-        "Metadata:.*not found",
-    ];
-
-    non_critical_patterns
-        .iter()
-        .any(|pattern| error_message.contains(pattern))
-}
-
-/// Converts FFmpeg log levels to standard Rust log levels.
-///
-/// This function maps the FFmpeg-specific log levels to the standard log levels
-/// used by the Rust `log` facade, ensuring consistent logging behavior throughout
-/// the application.
-///
-/// The mapping follows these rules:
-/// - FFmpeg fatal/error → Rust error
-/// - FFmpeg warning → Rust warn
-/// - FFmpeg info → Rust info
-/// - FFmpeg unknown → Rust debug (fallback)
-///
-/// # Arguments
-///
-/// * `level` - The FFmpeg log level to convert
-///
-/// # Returns
-///
-/// * The corresponding Rust log level
-fn map_ffmpeg_log_level(level: &FfmpegLogLevel) -> log::Level {
-    match level {
-        FfmpegLogLevel::Fatal | FfmpegLogLevel::Error => log::Level::Error,
-        FfmpegLogLevel::Warning => log::Level::Warn,
-        FfmpegLogLevel::Info => log::Level::Info,
-        FfmpegLogLevel::Unknown => log::Level::Debug,
-    }
-}
-
-/// Calculates the estimated time remaining for an encoding operation.
-///
-/// This function computes the estimated time remaining based on the current progress,
-/// total duration, and processing speed. It handles edge cases like near-zero speeds
-/// and missing duration information.
-///
-/// # Arguments
-///
-/// * `duration_secs` - The total duration of the media in seconds (if known)
-/// * `current_secs` - The current position in the media in seconds
-/// * `speed` - The current encoding speed multiplier
-///
-/// # Returns
-///
-/// * The estimated time remaining in seconds
-fn calculate_eta(duration_secs: Option<f64>, current_secs: f64, speed: f32) -> f64 {
-    if let Some(total_duration) = duration_secs {
-        if speed > 0.01 && total_duration > current_secs {
-            (total_duration - current_secs) / (speed as f64)
-        } else {
-            0.0
-        }
-    } else {
-        0.0
-    }
+    debug!("Sample extracted successfully to: {}", output_path.display());
+    Ok(output_path)
 }
 
 // TODO: Create mocking infrastructure for FFmpeg processes and add unit tests for this module.

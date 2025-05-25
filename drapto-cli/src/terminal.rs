@@ -1055,104 +1055,6 @@ impl drapto_core::progress_reporting::ProgressReporter for CliProgressReporter {
 // TESTS
 // ============================================================================
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    
-    #[test]
-    fn test_extract_ffmpeg_args_from_json() {
-        // Test parsing JSON array format (what should be sent from core)
-        let json_cmd = r#"["ffmpeg", "-loglevel", "level+info", "-hwaccel", "videotoolbox", "-i", "/path/to/input.mkv", "-c:v", "libsvtav1", "-crf", "27", "/path/to/output.mkv"]"#;
-        
-        let args = extract_ffmpeg_args(json_cmd);
-        assert!(args.is_some());
-        let args = args.unwrap();
-        println!("Extracted {} args from JSON: {:?}", args.len(), args);
-        assert_eq!(args.len(), 12); // Fixed count
-        assert_eq!(args[0], "ffmpeg");
-        assert_eq!(args[6], "/path/to/input.mkv");
-    }
-    
-    #[test]
-    fn test_parse_quoted_command() {
-        // Test parsing the quoted string format we're seeing in output
-        let quoted_cmd = r#""ffmpeg" "-loglevel" "level+info" "-hwaccel" "videotoolbox" "-i" "/path/to/input.mkv" "-c:v" "libsvtav1" "-crf" "27" "/path/to/output.mkv""#;
-        
-        let args = parse_quoted_command(quoted_cmd);
-        println!("Parsed {} args from quoted: {:?}", args.len(), args);
-        assert_eq!(args.len(), 12); // Fixed count
-        assert_eq!(args[0], "ffmpeg");
-        assert_eq!(args[6], "/path/to/input.mkv");
-        assert_eq!(args[8], "libsvtav1");
-    }
-    
-    #[test]
-    fn test_format_ffmpeg_command_pretty() {
-        let args = vec![
-            "ffmpeg".to_string(),
-            "-loglevel".to_string(),
-            "level+info".to_string(),
-            "-hwaccel".to_string(),
-            "videotoolbox".to_string(),
-            "-i".to_string(),
-            "/path/to/input.mkv".to_string(),
-            "-filter_complex".to_string(),
-            "[0:v:0]crop=1920:1036:0:22,hqdn3d=2:1.3:8:8[vout]".to_string(),
-            "-map".to_string(),
-            "[vout]".to_string(),
-            "-map".to_string(),
-            "0:a".to_string(),
-            "-c:v".to_string(),
-            "libsvtav1".to_string(),
-            "-crf".to_string(),
-            "27".to_string(),
-            "-preset".to_string(),
-            "6".to_string(),
-            "-svtav1-params".to_string(),
-            "tune=3:film-grain=16".to_string(),
-            "-c:a".to_string(),
-            "libopus".to_string(),
-            "-b:a:0".to_string(),
-            "256k".to_string(),
-            "/path/to/output.mkv".to_string(),
-        ];
-        
-        let formatted = format_ffmpeg_command_pretty(&args);
-        println!("Formatted command:\n{}", formatted);
-        
-        // Check that it's multi-line
-        let lines: Vec<&str> = formatted.lines().collect();
-        assert!(lines.len() > 5, "Command should be formatted on multiple lines");
-        
-        // Check first line is ffmpeg
-        assert_eq!(lines[0].trim(), "ffmpeg");
-        
-        // Check indentation
-        assert!(lines[1].starts_with("  "), "Subsequent lines should be indented");
-        
-        // Check that related args are grouped
-        let formatted_str = formatted.to_string();
-        assert!(formatted_str.contains("-hwaccel videotoolbox"));
-        assert!(formatted_str.contains("-c:v libsvtav1"));
-    }
-    
-    #[test]
-    fn test_real_world_command() {
-        // Test with the actual command from the user's output
-        let real_cmd = r#""ffmpeg" "-loglevel" "level+info" "-hwaccel" "videotoolbox" "-i" "/Users/ken/Videos/input/Adventures in Babysitting_clip1_821s.mkv" "-hide_banner" "-af" "aformat=channel_layouts=7.1|5.1|stereo|mono" "-filter_complex" "[0:v:0]crop=1920:1036:0:22,hqdn3d=2:1.3:8:8[vout]" "-map" "[vout]" "-map" "0:a" "-map_metadata" "0" "-map_chapters" "0" "-c:v" "libsvtav1" "-pix_fmt" "yuv420p10le" "-crf" "27" "-preset" "6" "-svtav1-params" "tune=3:film-grain=16:film-grain-denoise=0" "-c:a" "libopus" "-b:a:0" "256k" "/Users/ken/Videos/output/Adventures in Babysitting_clip1_821s.mkv""#;
-        
-        let args = parse_quoted_command(real_cmd);
-        assert!(args.len() > 20, "Should parse all arguments");
-        
-        let formatted = format_ffmpeg_command_pretty(&args);
-        println!("\nReal command formatted:\n{}", formatted);
-        
-        // Verify it contains key elements properly formatted
-        assert!(formatted.contains("ffmpeg\n"));
-        assert!(formatted.contains("  -hwaccel videotoolbox"));
-        assert!(formatted.contains("  -i \"/Users/ken/Videos/input/Adventures in Babysitting_clip1_821s.mkv\""));
-    }
-}
 
 // ============================================================================
 // PRE-DAEMONIZATION OUTPUT
@@ -1340,5 +1242,103 @@ pub fn print_encoding_summary_table(summaries: &[EncodingSummaryRow]) {
             summary.reduction,
             summary.time
         );
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[test]
+    fn test_extract_ffmpeg_args_from_json() {
+        // Test parsing JSON array format (what should be sent from core)
+        let json_cmd = r#"["ffmpeg", "-loglevel", "level+info", "-hwaccel", "videotoolbox", "-i", "/path/to/input.mkv", "-c:v", "libsvtav1", "-crf", "27", "/path/to/output.mkv"]"#;
+        
+        let args = extract_ffmpeg_args(json_cmd);
+        assert!(args.is_some());
+        let args = args.unwrap();
+        println!("Extracted {} args from JSON: {:?}", args.len(), args);
+        assert_eq!(args.len(), 12); // Fixed count
+        assert_eq!(args[0], "ffmpeg");
+        assert_eq!(args[6], "/path/to/input.mkv");
+    }
+    
+    #[test]
+    fn test_parse_quoted_command() {
+        // Test parsing the quoted string format we're seeing in output
+        let quoted_cmd = r#""ffmpeg" "-loglevel" "level+info" "-hwaccel" "videotoolbox" "-i" "/path/to/input.mkv" "-c:v" "libsvtav1" "-crf" "27" "/path/to/output.mkv""#;
+        
+        let args = parse_quoted_command(quoted_cmd);
+        println!("Parsed {} args from quoted: {:?}", args.len(), args);
+        assert_eq!(args.len(), 12); // Fixed count
+        assert_eq!(args[0], "ffmpeg");
+        assert_eq!(args[6], "/path/to/input.mkv");
+        assert_eq!(args[8], "libsvtav1");
+    }
+    
+    #[test]
+    fn test_format_ffmpeg_command_pretty() {
+        let args = vec![
+            "ffmpeg".to_string(),
+            "-loglevel".to_string(),
+            "level+info".to_string(),
+            "-hwaccel".to_string(),
+            "videotoolbox".to_string(),
+            "-i".to_string(),
+            "/path/to/input.mkv".to_string(),
+            "-filter_complex".to_string(),
+            "[0:v:0]crop=1920:1036:0:22,hqdn3d=2:1.3:8:8[vout]".to_string(),
+            "-map".to_string(),
+            "[vout]".to_string(),
+            "-map".to_string(),
+            "0:a".to_string(),
+            "-c:v".to_string(),
+            "libsvtav1".to_string(),
+            "-crf".to_string(),
+            "27".to_string(),
+            "-preset".to_string(),
+            "6".to_string(),
+            "-svtav1-params".to_string(),
+            "tune=3:film-grain=16".to_string(),
+            "-c:a".to_string(),
+            "libopus".to_string(),
+            "-b:a:0".to_string(),
+            "256k".to_string(),
+            "/path/to/output.mkv".to_string(),
+        ];
+        
+        let formatted = format_ffmpeg_command_pretty(&args);
+        println!("Formatted command:\n{}", formatted);
+        
+        // Check that it's multi-line
+        let lines: Vec<&str> = formatted.lines().collect();
+        assert!(lines.len() > 5, "Command should be formatted on multiple lines");
+        
+        // Check first line is ffmpeg
+        assert_eq!(lines[0].trim(), "ffmpeg");
+        
+        // Check indentation
+        assert!(lines[1].starts_with("  "), "Subsequent lines should be indented");
+        
+        // Check that related args are grouped
+        let formatted_str = formatted.to_string();
+        assert!(formatted_str.contains("-hwaccel videotoolbox"));
+        assert!(formatted_str.contains("-c:v libsvtav1"));
+    }
+    
+    #[test]
+    fn test_real_world_command() {
+        // Test with the actual command from the user's output
+        let real_cmd = r#""ffmpeg" "-loglevel" "level+info" "-hwaccel" "videotoolbox" "-i" "/Users/ken/Videos/input/Adventures in Babysitting_clip1_821s.mkv" "-hide_banner" "-af" "aformat=channel_layouts=7.1|5.1|stereo|mono" "-filter_complex" "[0:v:0]crop=1920:1036:0:22,hqdn3d=2:1.3:8:8[vout]" "-map" "[vout]" "-map" "0:a" "-map_metadata" "0" "-map_chapters" "0" "-c:v" "libsvtav1" "-pix_fmt" "yuv420p10le" "-crf" "27" "-preset" "6" "-svtav1-params" "tune=3:film-grain=16:film-grain-denoise=0" "-c:a" "libopus" "-b:a:0" "256k" "/Users/ken/Videos/output/Adventures in Babysitting_clip1_821s.mkv""#;
+        
+        let args = parse_quoted_command(real_cmd);
+        assert!(args.len() > 20, "Should parse all arguments");
+        
+        let formatted = format_ffmpeg_command_pretty(&args);
+        println!("\nReal command formatted:\n{}", formatted);
+        
+        // Verify it contains key elements properly formatted
+        assert!(formatted.contains("ffmpeg\n"));
+        assert!(formatted.contains("  -hwaccel videotoolbox"));
+        assert!(formatted.contains("  -i \"/Users/ken/Videos/input/Adventures in Babysitting_clip1_821s.mkv\""));
     }
 }

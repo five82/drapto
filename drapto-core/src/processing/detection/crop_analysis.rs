@@ -23,13 +23,10 @@
 // AI-ASSISTANT-INFO: Black bar detection and crop parameter generation
 
 // ---- External crate imports ----
-use ffmpeg_sidecar::command::FfmpegCommand;
 use ffmpeg_sidecar::event::FfmpegEvent;
 
 // ---- Internal crate imports ----
 use crate::error::CoreResult;
-use crate::external::{spawn_ffmpeg, handle_ffmpeg_events};
-use crate::hardware_accel::add_hardware_acceleration_to_command;
 use crate::processing::detection::VideoProperties;
 
 // ---- Standard library imports ----
@@ -91,33 +88,39 @@ fn run_hdr_blackdetect(
 
     let filter = "select='eq(n,0)+eq(n,100)+eq(n,200)',blackdetect=d=0:pic_th=0.1";
 
-    let mut cmd = FfmpegCommand::new();
-    cmd.hide_banner();
+    let mut cmd = crate::external::FfmpegCommandBuilder::new()
+        .with_hardware_accel(true)
+        .build();
 
-    // Add hardware acceleration options BEFORE the input
-    add_hardware_acceleration_to_command(&mut cmd, true, false); // Don't need to check return value
-
-    cmd.input(input_file.to_string_lossy()); // Use reference
-    cmd.filter_complex(filter);
-    cmd.format("null");
-    cmd.output("-");
+    cmd.input(input_file.to_string_lossy())
+        .filter_complex(filter)
+        .format("null")
+        .output("-");
 
     let mut stderr_output = String::new();
     // Spawn the command
-    let mut child = spawn_ffmpeg(cmd)?;
+    let mut child = cmd.spawn()
+        .map_err(|e| crate::error::command_start_error("ffmpeg", e))?;
 
-    let process_result = handle_ffmpeg_events(&mut child, |event| {
-        match event {
-            FfmpegEvent::Log(_, line) | FfmpegEvent::Error(line) => {
-                if line.contains("black_level") {
-                    stderr_output.push_str(&line);
-                    stderr_output.push('\n');
+    // Process events
+    let process_result: CoreResult<()> = (|| {
+        for event in child.iter().map_err(|e| crate::error::command_failed_error(
+            "ffmpeg",
+            std::process::ExitStatus::default(),
+            e.to_string(),
+        ))? {
+            match event {
+                FfmpegEvent::Log(_, line) | FfmpegEvent::Error(line) => {
+                    if line.contains("black_level") {
+                        stderr_output.push_str(&line);
+                        stderr_output.push('\n');
+                    }
                 }
+                _ => {}
             }
-            _ => {}
         }
         Ok(())
-    });
+    })();
 
     if let Err(e) = process_result {
         log::error!(
@@ -144,7 +147,7 @@ fn run_hdr_blackdetect(
         .filter_map(|line| {
             if let Some(pos) = line.find("black_level:") {
                 let after_colon = &line[pos + "black_level:".len()..];
-                let value_str = after_colon.trim().split_whitespace().next()?;
+                let value_str = after_colon.split_whitespace().next()?;
                 value_str.parse::<f64>().ok()
             } else {
                 None
@@ -216,34 +219,40 @@ fn run_cropdetect(
         input_file.display()
     );
 
-    let mut cmd = FfmpegCommand::new();
-    cmd.hide_banner();
+    let mut cmd = crate::external::FfmpegCommandBuilder::new()
+        .with_hardware_accel(true)
+        .build();
 
-    // Add hardware acceleration options BEFORE the input - no need to log status
-    add_hardware_acceleration_to_command(&mut cmd, true, false);
-
-    cmd.input(input_file.to_string_lossy()); // Use reference
-    cmd.filter_complex(&cropdetect_filter);
-    cmd.frames(frames_to_scan);
-    cmd.format("null");
-    cmd.output("-");
+    cmd.input(input_file.to_string_lossy())
+        .filter_complex(&cropdetect_filter)
+        .frames(frames_to_scan)
+        .format("null")
+        .output("-");
 
     let mut stderr_output = String::new();
     // Spawn the command
-    let mut child = spawn_ffmpeg(cmd)?;
+    let mut child = cmd.spawn()
+        .map_err(|e| crate::error::command_start_error("ffmpeg", e))?;
 
-    let process_result = handle_ffmpeg_events(&mut child, |event| {
-        match event {
-            FfmpegEvent::Log(_, line) | FfmpegEvent::Error(line) => {
-                if line.contains("crop=") {
-                    stderr_output.push_str(&line);
-                    stderr_output.push('\n');
+    // Process events
+    let process_result: CoreResult<()> = (|| {
+        for event in child.iter().map_err(|e| crate::error::command_failed_error(
+            "ffmpeg",
+            std::process::ExitStatus::default(),
+            e.to_string(),
+        ))? {
+            match event {
+                FfmpegEvent::Log(_, line) | FfmpegEvent::Error(line) => {
+                    if line.contains("crop=") {
+                        stderr_output.push_str(&line);
+                        stderr_output.push('\n');
+                    }
                 }
+                _ => {}
             }
-            _ => {}
         }
         Ok(())
-    });
+    })();
 
     if let Err(e) = process_result {
         log::error!(

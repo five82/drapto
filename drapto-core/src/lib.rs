@@ -142,7 +142,7 @@ pub use utils::{format_bytes, format_duration};
 // ----- External Tool Interactions -----
 /// Re-export external tool functions
 pub use external::{
-    spawn_ffmpeg, handle_ffmpeg_events, wait_for_ffmpeg, extract_sample,
+    extract_sample,
     get_audio_channels, get_video_properties, run_ffprobe_bitplanenoise, 
     get_media_info, get_file_size, MediaInfo
 };
