@@ -40,8 +40,11 @@ log = "0.4"                      # Logging facade
 fern = "0.7"                     # Advanced logging configuration with file output
 
 # ---- Terminal UI ----
-term_size = "0.3"                # Terminal size detection
-colored = "2.1"                  # ANSI color support for terminal output
+console = "0.15"                 # Terminal utilities and color detection
+owo-colors = "4.1"               # Zero-allocation terminal colors
 indicatif = { version = "0.17", features = ["improved_unicode"] }  # Progress bars and spinners
 once_cell = "1.20"               # Lazy static values
 serde_json = "1.0"               # JSON parsing for FFmpeg command formatting
+strip-ansi-escapes = "0.2"       # Remove ANSI codes for log output
+supports-color = "3.0"           # Detect terminal color support
+unicode-width = "0.2"            # Accurate text width calculations

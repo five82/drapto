@@ -47,32 +47,31 @@ Drapto CLI uses a consistent and well-defined visual hierarchy to organize infor
 
 Whitespace is a critical component of visual hierarchy. Use it consistently:
 
-- **Between major sections**: Single line break
-- **Between subsections**: Single line break
+- **Between all sections and subsections**: Single line break (standardized)
 - **Between related items**: No line break
 - **Indentation**: 2 spaces per level of hierarchy
-- **Logical grouping**: Use blank lines to separate logical groups of information
+- **Logical grouping**: Single blank line to separate logical groups
 
 ```
 ===== SECTION =====
 
   » Subsection One
-    ⧖ Operation in progress
+    Operation in progress...
     ✓ Operation complete
       Key:              Value
       Another key:      Value
 
   » Subsection Two
-    ⧖ Another operation
+    Another operation...
 ```
 
 #### Visual Hierarchy Implementation Matrix
 
-| Level | Element Type | Formatting | Color | Indentation | Symbol | Example |
-|-------|--------------|------------|-------|-------------|--------|---------|
+| Level | Element Type | Formatting | Color | Indentation | Symbol/Prefix | Example |
+|-------|--------------|------------|-------|-------------|---------------|---------|
 | 1 | Main Sections | Bold, uppercase | Cyan (title only) | None | ===== | `===== VIDEO ANALYSIS =====` |
 | 2 | Subsections/Success | Bold | White | 2 spaces | » / ✓ | `  » Analyzing grain levels` / `  ✓ Analysis complete` |
-| 3 | Operations/Progress | Regular | White | 4 spaces | ⧖ / ◆ | `    ⧖ Encoding progress` / `    ◆ Sample 3/5` |
+| 3 | Operations/Progress | Regular | White | 4 spaces | Text prefix | `    Sample 3/5: Processing...` / `    Progress: 45%` |
 | 4 | Primary Info | Regular | White/Green* | 6 spaces | None | `      Reduction:      65.2%` |
 | 5 | Details | Regular | White/Gray | 8 spaces | None | `        Speed: 2.5x, Avg FPS: 24.5` |
 | X | Critical Alert | Bold | Red/Yellow | Same as context | ✗ / ⚠ | `  ✗ Error: Encoding failed` |
@@ -230,17 +229,16 @@ Icons should maintain the same color as their accompanying text to create a clea
 
 ### Icons and Symbols
 
-Use a consistent set of monochrome symbols with the same color as the text they accompany:
+Use a minimal, consistent set of monochrome symbols with the same color as the text they accompany:
 
 - **✓**: Success or completion
-- **⧖**: In-progress or waiting
-- **»**: Processing step or subsection
-- **◆**: Sample indicator
+- **»**: Processing step or subsection  
 - **✗**: Error or failure
 - **⚠**: Warning
-- **ℹ**: Information
 
 Icons should not be colored differently than their accompanying text to maintain a clean, consistent appearance. This creates a more professional look and reduces visual distraction.
+
+Note: Progress indicators and sample markers can use simple text formatting (e.g., "Sample 3/5:", "Progress:") instead of dedicated symbols to reduce visual complexity.
 
 ### Focus Techniques
 
@@ -291,8 +289,8 @@ Shows essential information for normal operation:
 ===== VIDEO ANALYSIS =====
 
   » Analyzing grain levels
-    ◆ Sample 3/5: 00:51:18
-    ⧖ Progress: 45.2% [##########.................] (00:00:05 / 00:00:10)
+    Sample 3/5: 00:51:18
+    Progress: 45.2% [##########.................] (00:00:05 / 00:00:10)
 
   ✓ Analysis complete
     Detected Grain Level: Moderate
@@ -306,8 +304,8 @@ Includes technical details for troubleshooting:
 ===== VIDEO ANALYSIS =====
 
   » Analyzing grain levels
-    ◆ Sample 3/5: 00:51:18
-    ⧖ Progress: 45.2% [##########.................] (00:00:05 / 00:00:10)
+    Sample 3/5: 00:51:18
+    Progress: 45.2% [##########.................] (00:00:05 / 00:00:10)
 
 [debug] Testing denoise strength: hqdn3d=3.5:3.5:4.5:4.5
 [debug] Sample encode size: 8.3 MB
@@ -357,13 +355,13 @@ Progress bars should:
 - Update at an appropriate frequency (not too fast, not too slow)
 
 ```
-⧖ Encoding: 45.2% [#########.......] (00:01:23 / 00:03:45)
+Encoding: 45.2% [#########.......] (00:01:23 / 00:03:45)
   Speed: 2.5x, ETA: 00:02:22
 ```
 
 For constrained terminal widths, adapt appropriately:
 ```
-⧖ Encoding: 45.2% [###..]
+Encoding: 45.2% [###..]
   ETA: 00:02:22
 ```
 
