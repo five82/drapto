@@ -56,4 +56,4 @@ pub use cli::{Cli, Commands, EncodeArgs};
 pub use commands::encode::run_encode;
 
 /// Platform-specific functionality
-pub use platform::{HardwareAcceleration, is_macos};
+pub use platform::{HardwareDecoding, is_macos};

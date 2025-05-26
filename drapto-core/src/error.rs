@@ -91,7 +91,6 @@ pub enum CoreError {
     #[error("I/O error: {0}")]
     Io(#[from] io::Error),
 
-
     /// General path-related errors (invalid paths, missing files, etc.)
     #[error("Path error: {0}")]
     PathError(String),

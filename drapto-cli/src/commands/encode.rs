@@ -24,7 +24,7 @@
 // ---- Internal crate imports ----
 use crate::cli::EncodeArgs;
 use crate::config;
-use crate::error::{CliResult, CliErrorContext};
+use crate::error::{CliErrorContext, CliResult};
 use crate::terminal;
 
 // ---- External crate imports ----
@@ -263,9 +263,9 @@ pub fn run_encode(
         terminal::print_status("Resolution", &resolution, false);
     }
 
-    // Show hardware acceleration info
-    let hw_accel_info = drapto_core::hardware_accel::get_hardware_accel_info();
-    let hw_display = match hw_accel_info {
+    // Show hardware decoding info
+    let hw_decode_info = drapto_core::hardware_decode::get_hardware_decoding_info();
+    let hw_display = match hw_decode_info {
         Some(info) => format!("{} (decode only)", info),
         None => "No hardware decoder available".to_string(),
     };
@@ -302,7 +302,10 @@ pub fn run_encode(
             Ok(level) => Some(level),
             Err(_) => {
                 // Log warning for invalid grain level
-                debug!("Warning: Invalid grain_max_level '{}'. Using default.", level_str);
+                debug!(
+                    "Warning: Invalid grain_max_level '{}'. Using default.",
+                    level_str
+                );
                 None
             }
         }
@@ -314,7 +317,10 @@ pub fn run_encode(
     let grain_knee_threshold = args.grain_knee_threshold.and_then(|threshold| {
         if !(0.1..=1.0).contains(&threshold) {
             // Log warning for invalid knee threshold
-            debug!("Warning: Knee threshold {} is outside valid range (0.1-1.0). Using default.", threshold);
+            debug!(
+                "Warning: Knee threshold {} is outside valid range (0.1-1.0). Using default.",
+                threshold
+            );
             None
         } else {
             Some(threshold)
@@ -381,9 +387,6 @@ pub fn run_encode(
     // The CLI progress reporter is already registered in main.rs via terminal::register_cli_reporter()
     // Progress will be displayed automatically through the ProgressReporter trait implementation
 
-    // NOTE: We don't need to log hardware acceleration here
-    // Hardware acceleration status is logged by the core library in process_videos
-
     // --- Execute Core Logic ---
     // Only print section if we have files to process
     if !files_to_process.is_empty() {
@@ -392,6 +395,14 @@ pub fn run_encode(
             "Analyzing {} file(s)",
             files_to_process.len()
         ));
+
+        // Display decoding status
+        let decode_status = if drapto_core::hardware_decode::is_hardware_decoding_available() {
+            "Hardware (VideoToolbox)"
+        } else {
+            "Software"
+        };
+        terminal::print_status("Decoding", decode_status, false);
     }
 
     let processing_result = if files_to_process.is_empty() {
@@ -506,7 +517,7 @@ pub fn run_encode(
 
     // Show completion information
     debug!("Finished at: {}", chrono::Local::now());
-    
+
     // Always show total time regardless of verbosity
     terminal::print_status(
         "Total time",

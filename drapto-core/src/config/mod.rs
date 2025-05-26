@@ -38,7 +38,6 @@ use crate::processing::detection::grain_analysis::GrainLevel;
 // ---- Re-exports ----
 pub use builder::CoreConfigBuilder;
 
-
 // ============================================================================
 // DEFAULT CONSTANTS
 // ============================================================================

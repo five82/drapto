@@ -12,9 +12,9 @@
 // quality loss remains acceptable. When in doubt, use VeryLight as it provides
 // compression benefits (5-10% typically) with virtually no quality risk.
 //
-// KEY PRINCIPLES: 
-// - Some denoising is almost always beneficial. Even light denoising removes 
-//   high-entropy noise that doesn't contribute to perceived quality but 
+// KEY PRINCIPLES:
+// - Some denoising is almost always beneficial. Even light denoising removes
+//   high-entropy noise that doesn't contribute to perceived quality but
 //   consumes significant bitrate during encoding.
 // - XPSNR measurements help ensure denoising doesn't degrade quality too much
 // - Quality factors are applied to efficiency calculations to penalize levels
@@ -24,7 +24,7 @@
 
 // ---- Internal module imports ----
 use super::types::{GrainLevel, GrainLevelTestResult};
-use crate::progress_reporting::{LogLevel, report_log_message};
+// Progress reporting is now done via direct function calls
 
 // ---- External crate imports ----
 use log;
@@ -76,46 +76,46 @@ pub(super) fn analyze_sample_with_knee_point(
 
     // Get the baseline (no denoising) for informational display
     let baseline_result = match results.get(&None) {
-        Some(result) if result.file_size > 0 => {
-            Some(result)
-        }
+        Some(result) if result.file_size > 0 => Some(result),
         _ => {
             // If None is missing, try Baseline as fallback
-            results.get(&Some(GrainLevel::Baseline)).filter(|r| r.file_size > 0)
+            results
+                .get(&Some(GrainLevel::Baseline))
+                .filter(|r| r.file_size > 0)
         }
     };
-    
+
     // Get VeryLight result as our reference point for comparisons
     let verylight_result = match results.get(&Some(GrainLevel::VeryLight)) {
         Some(result) if result.file_size > 0 => {
-            log::debug!("Sample {}: Using VeryLight as reference for comparisons.", sample_index);
+            log::debug!(
+                "Sample {}: Using VeryLight as reference for comparisons.",
+                sample_index
+            );
             result
         }
         _ => {
-            report_log_message(
-                &format!(
-                    "  Sample {}: ERROR: VeryLight reference is missing. Cannot analyze.",
-                    sample_index
-                ),
-                LogLevel::Error,
-            );
+            crate::progress_reporting::error(&format!(
+                "  Sample {}: ERROR: VeryLight reference is missing. Cannot analyze.",
+                sample_index
+            ));
             return GrainLevel::VeryLight; // Return default value
         }
     };
-    
+
     let verylight_size = verylight_result.file_size;
     let verylight_xpsnr = verylight_result.xpsnr;
-    
+
     // Report baseline information if available
     if let Some(baseline) = baseline_result {
         let baseline_size_mb = baseline.file_size as f64 / (1024.0 * 1024.0);
         if let Some(baseline_xpsnr_val) = baseline.xpsnr {
-            crate::progress_reporting::report_sub_item(&format!(
+            crate::progress_reporting::info(&format!(
                 "Sample {}: Baseline reference - {:.1} MB, XPSNR: {:.1} dB",
                 sample_index, baseline_size_mb, baseline_xpsnr_val
             ));
         } else {
-            crate::progress_reporting::report_sub_item(&format!(
+            crate::progress_reporting::info(&format!(
                 "Sample {}: Baseline reference - {:.1} MB",
                 sample_index, baseline_size_mb
             ));
@@ -146,7 +146,7 @@ pub(super) fn analyze_sample_with_knee_point(
 
     // Initialize vector to store efficiency metrics for each grain level
     let mut efficiencies: Vec<(Option<GrainLevel>, f64)> = Vec::new();
-    
+
     // Track size reductions and quality metrics for better reporting
     let mut size_reductions: Vec<(Option<GrainLevel>, f64)> = Vec::new();
     let mut quality_metrics: Vec<(Option<GrainLevel>, f64)> = Vec::new();
@@ -174,7 +174,7 @@ pub(super) fn analyze_sample_with_knee_point(
         if reduction <= 0.0 {
             continue;
         }
-        
+
         // Calculate percentage reduction for reporting (still relative to VeryLight)
         let reduction_pct = (reduction / verylight_size as f64) * 100.0;
         size_reductions.push((level, reduction_pct));
@@ -190,7 +190,7 @@ pub(super) fn analyze_sample_with_knee_point(
                 log::debug!("No VeryLight XPSNR available for delta calculation");
                 1.0 // Assume 1 dB loss as conservative estimate
             };
-            
+
             // Quality factor based on XPSNR delta from VeryLight:
             // Goal: Maximize compression while staying below perceptible quality loss
             // Based on research consensus for XPSNR JND thresholds:
@@ -199,11 +199,9 @@ pub(super) fn analyze_sample_with_knee_point(
             // - 0.5-1.0 dB: Reliably noticeable, still acceptable for streaming
             // - 1.0-3.0 dB: Clearly visible to most viewers
             // - > 3.0 dB: Significant quality degradation
-            
-            let quality_factor = if xpsnr_delta < 0.25 {
-                1.0 // Virtually imperceptible - no penalty
-            } else if xpsnr_delta < 0.45 {
-                1.0 // Borderline JND - still no penalty for home viewing
+
+            let quality_factor = if xpsnr_delta < 0.45 {
+                1.0 // Virtually imperceptible to borderline JND - no penalty
             } else if xpsnr_delta < 1.0 {
                 1.0 - (xpsnr_delta - 0.45) * 0.091 // Linear from 1.0 to 0.95
             } else if xpsnr_delta < 3.0 {
@@ -212,7 +210,7 @@ pub(super) fn analyze_sample_with_knee_point(
                 // More than 3 dB loss - apply heavy penalty
                 (0.7 - (xpsnr_delta - 3.0) * 0.15).max(0.2)
             };
-            
+
             quality_metrics.push((level, xpsnr));
             quality_factor
         } else {
@@ -235,13 +233,10 @@ pub(super) fn analyze_sample_with_knee_point(
 
     // If no levels provided positive efficiency, use VeryLight as safe fallback
     if efficiencies.is_empty() {
-        report_log_message(
-            &format!(
-                "  Sample {}: No efficiency improvements found. Using VeryLight (safe default).",
-                sample_index
-            ),
-            LogLevel::Info,
-        );
+        crate::progress_reporting::info(&format!(
+            "  Sample {}: No efficiency improvements found. Using VeryLight (safe default).",
+            sample_index
+        ));
         return GrainLevel::VeryLight;
     }
 
@@ -261,7 +256,7 @@ pub(super) fn analyze_sample_with_knee_point(
 
     // Find the point of diminishing returns
     let mut selected_level: Option<(Option<GrainLevel>, f64)> = None;
-    
+
     // If we only have one efficiency, use it
     if sorted_efficiencies.len() == 1 {
         selected_level = sorted_efficiencies.first().cloned();
@@ -272,10 +267,10 @@ pub(super) fn analyze_sample_with_knee_point(
                 // First level always has good improvement over baseline
                 continue;
             }
-            
+
             let (curr_level, curr_eff) = sorted_efficiencies[i];
             let (prev_level, prev_eff) = sorted_efficiencies[i - 1];
-            
+
             // Calculate the improvement rate
             let improvement = curr_eff - prev_eff;
             let improvement_rate = if prev_eff > 0.0 {
@@ -285,7 +280,7 @@ pub(super) fn analyze_sample_with_knee_point(
             } else {
                 0.0
             };
-            
+
             log::debug!(
                 "Sample {}: {:?} to {:?}: improvement={:.2}, rate={:.1}%",
                 sample_index,
@@ -294,7 +289,7 @@ pub(super) fn analyze_sample_with_knee_point(
                 improvement,
                 improvement_rate * 100.0
             );
-            
+
             // If improvement rate drops below 25%, we've hit diminishing returns
             if improvement_rate < 0.25 {
                 // Use the previous level (before diminishing returns)
@@ -308,14 +303,13 @@ pub(super) fn analyze_sample_with_knee_point(
                 break;
             }
         }
-        
-        // If no diminishing returns found (efficiency keeps improving), 
+
+        // If no diminishing returns found (efficiency keeps improving),
         // check if this is a continuous improvement pattern
         if selected_level.is_none() && !sorted_efficiencies.is_empty() {
             // Check if efficiency is continuously increasing
-            let continuously_improving = sorted_efficiencies.windows(2)
-                .all(|w| w[1].1 > w[0].1);
-                
+            let continuously_improving = sorted_efficiencies.windows(2).all(|w| w[1].1 > w[0].1);
+
             if continuously_improving && sorted_efficiencies.len() >= 3 {
                 // Efficiency keeps improving - use Light as balanced choice
                 // Light provides good compression while staying conservative
@@ -323,20 +317,20 @@ pub(super) fn analyze_sample_with_knee_point(
                     "Sample {}: Efficiency continuously improving. Selecting Light as balanced choice.",
                     sample_index
                 );
-                
+
                 // Find Light level in the sorted efficiencies
                 selected_level = sorted_efficiencies
                     .iter()
                     .find(|(level, _)| matches!(level, Some(GrainLevel::Light)))
                     .cloned();
-                    
+
                 // If Light wasn't tested (shouldn't happen), fall back to 70% threshold
                 if selected_level.is_none() {
                     let max_efficiency = sorted_efficiencies
                         .iter()
                         .map(|(_, eff)| *eff)
                         .fold(0.0, f64::max);
-                        
+
                     let threshold = 0.7 * max_efficiency;
                     selected_level = sorted_efficiencies
                         .iter()
@@ -360,8 +354,9 @@ pub(super) fn analyze_sample_with_knee_point(
         // Calculate the actual file size reduction percentage for this level
         let level_result = results.get(&Some(level)).unwrap();
         // Size reduction from VeryLight (for decision display)
-        let size_reduction_from_verylight = ((verylight_size - level_result.file_size) as f64 / verylight_size as f64) * 100.0;
-        
+        let size_reduction_from_verylight =
+            ((verylight_size - level_result.file_size) as f64 / verylight_size as f64) * 100.0;
+
         // Get quality metric for reporting (show delta from VeryLight)
         let quality_info = if let Some(xpsnr) = level_result.xpsnr {
             if let Some(verylight_xpsnr_val) = verylight_xpsnr {
@@ -377,27 +372,33 @@ pub(super) fn analyze_sample_with_knee_point(
         } else {
             String::new()
         };
-        
+
         // Check if this was selected due to continuous improvement
-        let is_continuous_improvement = sorted_efficiencies.windows(2)
-            .all(|w| w[1].1 > w[0].1) && level == GrainLevel::Light;
-            
+        let is_continuous_improvement =
+            sorted_efficiencies.windows(2).all(|w| w[1].1 > w[0].1) && level == GrainLevel::Light;
+
         // Report the analysis results as sub-items in verbose mode
         if is_continuous_improvement {
             log::debug!(
                 "Sample {}: Continuous improvement detected. Selected {:?} as balanced choice. Efficiency: {:.2}, Size reduction: {:.1}% beyond VeryLight",
-                sample_index, level, efficiency, size_reduction_from_verylight
+                sample_index,
+                level,
+                efficiency,
+                size_reduction_from_verylight
             );
-            crate::progress_reporting::report_sub_item(&format!(
+            crate::progress_reporting::info(&format!(
                 "Sample {}: Selected {:?} ({:.1}% additional reduction{}) - continuous improvement",
                 sample_index, level, size_reduction_from_verylight, quality_info
             ));
         } else {
             log::debug!(
                 "Sample {}: Knee point found at {:?}. Efficiency: {:.2}, Size reduction: {:.1}% beyond VeryLight",
-                sample_index, level, efficiency, size_reduction_from_verylight
+                sample_index,
+                level,
+                efficiency,
+                size_reduction_from_verylight
             );
-            crate::progress_reporting::report_sub_item(&format!(
+            crate::progress_reporting::info(&format!(
                 "Sample {}: Selected {:?} ({:.1}% additional reduction{})",
                 sample_index, level, size_reduction_from_verylight, quality_info
             ));
@@ -411,7 +412,7 @@ pub(super) fn analyze_sample_with_knee_point(
             "Sample {}: No improvements beyond VeryLight found. Using VeryLight as optimal choice.",
             sample_index
         );
-        crate::progress_reporting::report_sub_item(&format!(
+        crate::progress_reporting::info(&format!(
             "Sample {}: Using VeryLight (no better alternatives found).",
             sample_index
         ));

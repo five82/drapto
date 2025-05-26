@@ -50,11 +50,13 @@ pub use ffmpeg::calculate_xpsnr;
 
 // ----- FFmpeg Command Building -----
 /// Builder utilities for FFmpeg commands
-pub use ffmpeg_builder::{FfmpegCommandBuilder, VideoFilterChain, SvtAv1ParamsBuilder};
+pub use ffmpeg_builder::{FfmpegCommandBuilder, SvtAv1ParamsBuilder, VideoFilterChain};
 
 // ----- FFprobe Execution -----
 /// Functions for executing ffprobe commands
-pub use ffprobe_executor::{get_audio_channels, get_video_properties, run_ffprobe_bitplanenoise, get_media_info, MediaInfo};
+pub use ffprobe_executor::{
+    MediaInfo, get_audio_channels, get_media_info, get_video_properties, run_ffprobe_bitplanenoise,
+};
 
 // ============================================================================
 // FILE METADATA ACCESS
@@ -78,6 +80,6 @@ pub fn get_file_size(path: &Path) -> CoreResult<u64> {
 // PLATFORM DETECTION
 // ============================================================================
 
-// Platform detection has been moved to the hardware_accel module
+// Platform detection has been moved to the hardware_decode module
 // Re-export the is_macos function for backward compatibility
-pub use crate::hardware_accel::is_macos;
+pub use crate::hardware_decode::is_macos;

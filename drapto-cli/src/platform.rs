@@ -6,11 +6,11 @@
 //
 // This module provides platform-specific functionality and abstractions for
 // the drapto-cli application. It encapsulates platform detection, hardware
-// acceleration capabilities, and other OS-specific features.
+// decoding capabilities, and other OS-specific features.
 //
 // KEY COMPONENTS:
 // - Platform detection functions
-// - Hardware acceleration capability detection
+// - Hardware decoding capability detection
 // - Platform-specific formatting and output
 //
 // DESIGN PHILOSOPHY:
@@ -27,11 +27,11 @@
 // ============================================================================
 
 /// Re-export is_macos from hardware_accel module
-pub use drapto_core::hardware_accel::is_macos;
+pub use drapto_core::hardware_decode::is_macos;
 
 // ============================================================================
-// HARDWARE ACCELERATION
+// HARDWARE DECODING
 // ============================================================================
 
 /// Re-export HardwareAcceleration from hardware_accel module
-pub use drapto_core::hardware_accel::HardwareAcceleration;
+pub use drapto_core::hardware_decode::HardwareDecoding;

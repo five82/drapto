@@ -36,8 +36,8 @@ use std::path::Path;
 use crate::config::CoreConfig;
 use crate::error::{CoreError, CoreResult};
 use crate::external::ffmpeg::EncodeParams;
-use crate::external::{extract_sample, get_file_size, calculate_xpsnr};
-use crate::hardware_accel::is_hardware_acceleration_available;
+use crate::external::{calculate_xpsnr, extract_sample, get_file_size};
+use crate::hardware_decode::is_hardware_decoding_available;
 // Report progress functions are imported directly from the module
 use crate::temp_files;
 
@@ -82,7 +82,6 @@ use constants::*;
 
 /// Knee point analysis function
 use knee_point::analyze_sample_with_knee_point;
-
 
 /// Utility function for calculating median grain level
 use utils::calculate_median_level;
@@ -194,23 +193,25 @@ pub fn analyze_grain(
 
     // Main grain analysis start using standard processing step format
     // (spacing is automatically added by report_processing_step)
-    crate::progress_reporting::report_processing_step("Analyzing grain levels");
+    crate::progress_reporting::processing("Analyzing grain levels");
 
     // Duration is already shown in the main video analysis section, no need to repeat
 
-    // Inform user about hardware acceleration status for the main encode
+    // Inform user about hardware decoding status for the main encode
     if base_encode_params.use_hw_decode {
-        let hw_accel_available = is_hardware_acceleration_available();
-        if hw_accel_available {
-            // Report hardware acceleration status as a sub-item in verbose mode
-            log::debug!("VideoToolbox hardware decoding will be used for main encode (disabled during analysis)");
-            crate::progress_reporting::report_sub_item(
+        let hw_decode_available = is_hardware_decoding_available();
+        if hw_decode_available {
+            // Report hardware decoding status as a sub-item in verbose mode
+            log::debug!(
+                "VideoToolbox hardware decoding will be used for main encode (disabled during analysis)"
+            );
+            crate::progress_reporting::info(
                 "VideoToolbox hardware decoding will be used for main encode (disabled during analysis)",
             );
         } else {
-            // Hardware acceleration info is verbose
-            crate::progress_reporting::report_debug_info(
-                "Software decoding will be used (hardware acceleration not available on this platform)",
+            // Hardware decoding info is verbose
+            crate::progress_reporting::debug(
+                "Software decoding will be used (hardware decoding not available on this platform)",
             );
         }
     }
@@ -229,7 +230,7 @@ pub fn analyze_grain(
     log::debug!("Calculated number of samples: {}", num_samples);
 
     // Use sub-item format for the extraction message - include number of samples
-    crate::progress_reporting::report_sub_item(&format!(
+    crate::progress_reporting::info(&format!(
         "Extracting {} samples for analysis...",
         num_samples
     ));
@@ -310,38 +311,35 @@ pub fn analyze_grain(
     // --- Test Grain Levels ---
     // Show detailed phase info as sub-items in verbose mode
     log::debug!("Testing grain levels...");
-    crate::progress_reporting::report_sub_item("Testing grain levels...");
+    crate::progress_reporting::info("Testing grain levels...");
 
-    let mut phase1_results: Vec<HashMap<Option<GrainLevel>, GrainLevelTestResult>> = Vec::with_capacity(num_samples);
+    let mut phase1_results: Vec<HashMap<Option<GrainLevel>, GrainLevelTestResult>> =
+        Vec::with_capacity(num_samples);
     let mut early_estimates: Vec<GrainLevel> = Vec::with_capacity(num_samples);
 
     for (i, &start_time) in sample_start_times.iter().enumerate() {
         // Sample processing details as sub-items in verbose mode
         log::debug!("Sample {}/{} at {:.1}s:", i + 1, num_samples, start_time);
-        crate::progress_reporting::report_sub_item(&format!(
+        crate::progress_reporting::info(&format!(
             "Sample {}/{} at {:.1}s:",
             i + 1,
             num_samples,
             start_time
         ));
 
-        let raw_sample_path = match extract_sample(
-            file_path,
-            start_time,
-            sample_duration,
-            temp_dir_path,
-        ) {
-            Ok(path) => path,
-            Err(e) => {
-                // Log the error and propagate it
-                log::error!("Failed to extract sample {}: {}", i + 1, e);
-                return Err(CoreError::FilmGrainEncodingFailed(format!(
-                    "Failed to extract sample {}: {}",
-                    i + 1,
-                    e
-                )));
-            }
-        };
+        let raw_sample_path =
+            match extract_sample(file_path, start_time, sample_duration, temp_dir_path) {
+                Ok(path) => path,
+                Err(e) => {
+                    // Log the error and propagate it
+                    log::error!("Failed to extract sample {}: {}", i + 1, e);
+                    return Err(CoreError::FilmGrainEncodingFailed(format!(
+                        "Failed to extract sample {}: {}",
+                        i + 1,
+                        e
+                    )));
+                }
+            };
 
         let mut results_for_this_sample = HashMap::new();
 
@@ -374,12 +372,9 @@ pub fn analyze_grain(
             sample_params.hqdn3d_params = hqdn3d_override.map(|s| s.to_string());
             sample_params.duration = sample_duration_f64;
 
-            if let Err(e) = crate::external::ffmpeg::run_ffmpeg_encode(
-                &sample_params,
-                true,
-                true,
-                *level_opt,
-            ) {
+            if let Err(e) =
+                crate::external::ffmpeg::run_ffmpeg_encode(&sample_params, true, true, *level_opt)
+            {
                 log::error!(
                     "Failed to encode sample {} with initial level {}: {}",
                     i + 1,
@@ -415,10 +410,14 @@ pub fn analyze_grain(
             };
 
             let size_mb = encoded_size as f64 / (1024.0 * 1024.0);
-            
+
             // Calculate XPSNR against raw sample for all levels including baseline
             // Apply the same crop filter used in encoding to ensure dimensions match
-            let xpsnr = match calculate_xpsnr(&raw_sample_path, &encoded_sample_path, sample_params.crop_filter.as_deref()) {
+            let xpsnr = match calculate_xpsnr(
+                &raw_sample_path,
+                &encoded_sample_path,
+                sample_params.crop_filter.as_deref(),
+            ) {
                 Ok(xpsnr_value) => {
                     log::debug!("    XPSNR for {}: {:.2} dB", level_desc, xpsnr_value);
                     Some(xpsnr_value)
@@ -428,10 +427,15 @@ pub fn analyze_grain(
                     None
                 }
             };
-            
+
             if let Some(xpsnr_value) = xpsnr {
-                log::debug!("  {:12} {:.1} MB, XPSNR: {:.1} dB", format!("{}:", level_desc), size_mb, xpsnr_value);
-                crate::progress_reporting::report_sub_item(&format!(
+                log::debug!(
+                    "  {:12} {:.1} MB, XPSNR: {:.1} dB",
+                    format!("{}:", level_desc),
+                    size_mb,
+                    xpsnr_value
+                );
+                crate::progress_reporting::info(&format!(
                     "  {:12} {:.1} MB, XPSNR: {:.1} dB",
                     format!("{}:", level_desc),
                     size_mb,
@@ -439,24 +443,28 @@ pub fn analyze_grain(
                 ));
             } else {
                 log::debug!("  {:12} {:.1} MB", format!("{}:", level_desc), size_mb);
-                crate::progress_reporting::report_sub_item(&format!(
+                crate::progress_reporting::info(&format!(
                     "  {:12} {:.1} MB",
                     format!("{}:", level_desc),
                     size_mb
                 ));
             }
-            
-            results_for_this_sample.insert(*level_opt, GrainLevelTestResult {
-                file_size: encoded_size,
-                xpsnr,
-            });
+
+            results_for_this_sample.insert(
+                *level_opt,
+                GrainLevelTestResult {
+                    file_size: encoded_size,
+                    xpsnr,
+                },
+            );
         }
         phase1_results.push(results_for_this_sample.clone());
-        
+
         // Analyze this sample immediately for early exit check
-        let sample_estimate = analyze_sample_with_knee_point(&results_for_this_sample, knee_threshold, i + 1);
+        let sample_estimate =
+            analyze_sample_with_knee_point(&results_for_this_sample, knee_threshold, i + 1);
         early_estimates.push(sample_estimate);
-        
+
         // Early exit optimization: Check if we have consistent results after at least 3 samples
         if early_estimates.len() >= 3 {
             // Check if all estimates are the same
@@ -464,27 +472,30 @@ pub fn analyze_grain(
             if early_estimates.iter().all(|&e| e == first_estimate) {
                 log::info!(
                     "Early exit: All {} samples consistently show {:?} grain level",
-                    early_estimates.len(), first_estimate
+                    early_estimates.len(),
+                    first_estimate
                 );
-                crate::progress_reporting::report_sub_item(&format!(
+                crate::progress_reporting::info(&format!(
                     "Early exit: Consistent results detected ({:?})",
                     first_estimate
                 ));
                 break; // Exit early with consistent results
             }
-            
+
             // Check if estimates are within one level of each other
             let min_level = early_estimates.iter().min().unwrap();
             let max_level = early_estimates.iter().max().unwrap();
             let level_distance = (*max_level as u8).saturating_sub(*min_level as u8);
-            
+
             if level_distance <= 1 && early_estimates.len() >= 4 {
                 // Estimates are very close (adjacent levels) and we have enough samples
                 log::info!(
                     "Early exit: {} samples show consistent range ({:?} to {:?})",
-                    early_estimates.len(), min_level, max_level
+                    early_estimates.len(),
+                    min_level,
+                    max_level
                 );
-                crate::progress_reporting::report_sub_item(&format!(
+                crate::progress_reporting::info(&format!(
                     "Early exit: Consistent range detected ({:?} to {:?})",
                     min_level, max_level
                 ));
@@ -511,7 +522,7 @@ pub fn analyze_grain(
             "Detected level {:?} exceeds maximum allowed level {:?}. Using maximum level.",
             final_level, max_level
         );
-        crate::progress_reporting::report_debug_info(&message);
+        crate::progress_reporting::debug(&message);
         final_level = max_level;
     }
 
@@ -526,10 +537,11 @@ pub fn analyze_grain(
     };
 
     // Use the centralized function for success+status formatting
-    crate::progress_reporting::report_completion_with_status(
-        "Grain analysis complete",
+    crate::progress_reporting::success("Grain analysis complete");
+    crate::progress_reporting::status(
         "Detected grain",
         &format!("{} - applying appropriate denoising", level_description),
+        true,
     );
 
     // temp_dir cleanup happens automatically on drop

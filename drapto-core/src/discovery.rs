@@ -26,7 +26,6 @@
 // ---- Internal crate imports ----
 use crate::error::{CoreError, CoreResult};
 
-
 // ---- Standard library imports ----
 use std::path::{Path, PathBuf};
 
@@ -69,18 +68,18 @@ use std::path::{Path, PathBuf};
 pub fn find_processable_files(input_dir: &Path) -> CoreResult<Vec<PathBuf>> {
     // Read directory entries using standard library
     let read_dir = std::fs::read_dir(input_dir)?;
-    
+
     // Filter the entries to find only .mkv files
     let files: Vec<PathBuf> = read_dir
         .filter_map(|entry| {
             let entry = entry.ok()?;
             let path = entry.path();
-            
+
             // Only include files (not directories)
             if !path.is_file() {
                 return None;
             }
-            
+
             // Check for .mkv extension (case-insensitive)
             path.extension()
                 .and_then(|ext| ext.to_str())

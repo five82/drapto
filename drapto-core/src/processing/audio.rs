@@ -19,7 +19,7 @@
 // ---- Internal crate imports ----
 use crate::error::CoreResult;
 use crate::external::get_audio_channels;
-use crate::progress_reporting::{LogLevel, report_log_message};
+// Progress reporting is done via direct function calls
 
 // ---- Standard library imports ----
 use std::path::Path;
@@ -97,9 +97,7 @@ pub(crate) fn calculate_audio_bitrate(channels: u32) -> u32 {
 ///
 /// log_audio_info(input_path).unwrap();
 /// ```
-pub fn log_audio_info(
-    input_path: &Path,
-) -> CoreResult<()> {
+pub fn log_audio_info(input_path: &Path) -> CoreResult<()> {
     // Extract filename for logging purposes
     let filename = input_path
         .file_name()
@@ -112,13 +110,10 @@ pub fn log_audio_info(
         Err(e) => {
             // Log warning but don't fail the process - audio info is non-critical
             // The ffmpeg builder will handle missing channel info separately
-            report_log_message(
-                &format!(
-                    "Error getting audio channels for {}: {}. Cannot log bitrate info.",
-                    filename, e
-                ),
-                LogLevel::Warning,
-            );
+            crate::progress_reporting::warning(&format!(
+                "Error getting audio channels for {}: {}. Cannot log bitrate info.",
+                filename, e
+            ));
 
             return Ok(());
         }
@@ -126,7 +121,7 @@ pub fn log_audio_info(
 
     // STEP 2: Log calculated bitrates for each audio stream
     if audio_channels.is_empty() {
-        crate::progress_reporting::report_status("Audio streams", "None detected");
+        crate::progress_reporting::status("Audio streams", "None detected", false);
         return Ok(());
     }
 
@@ -134,15 +129,18 @@ pub fn log_audio_info(
     let channel_summary = if audio_channels.len() == 1 {
         format!("{} channels", audio_channels[0])
     } else {
-        format!("{} streams: {}", audio_channels.len(), 
-            audio_channels.iter()
+        format!(
+            "{} streams: {}",
+            audio_channels.len(),
+            audio_channels
+                .iter()
                 .enumerate()
                 .map(|(i, &ch)| format!("Stream {} ({}ch)", i, ch))
                 .collect::<Vec<_>>()
                 .join(", ")
         )
     };
-    crate::progress_reporting::report_status("Audio", &channel_summary);
+    crate::progress_reporting::status("Audio", &channel_summary, false);
 
     // Calculate and report bitrates
     let mut bitrate_parts = Vec::new();
@@ -150,7 +148,7 @@ pub fn log_audio_info(
         let bitrate = calculate_audio_bitrate(num_channels);
         if audio_channels.len() == 1 {
             // Single stream - just show the bitrate
-            crate::progress_reporting::report_status("Bitrate", &format!("{}kbps", bitrate));
+            crate::progress_reporting::status("Bitrate", &format!("{}kbps", bitrate), false);
         } else {
             // Multiple streams - collect for summary
             bitrate_parts.push(format!("Stream {}: {}kbps", index, bitrate));
@@ -159,7 +157,7 @@ pub fn log_audio_info(
 
     // For multiple streams, show bitrate breakdown
     if audio_channels.len() > 1 {
-        crate::progress_reporting::report_status("Bitrates", &bitrate_parts.join(", "));
+        crate::progress_reporting::status("Bitrates", &bitrate_parts.join(", "), false);
     }
 
     Ok(())

@@ -27,7 +27,7 @@
 use crate::error::{CoreError, CoreResult, command_failed_error};
 use crate::processing::audio; // To access calculate_audio_bitrate
 use crate::processing::detection::grain_analysis::GrainLevel;
-use crate::progress_reporting::report_encode_start;
+use crate::progress_reporting;
 
 // ---- External crate imports ----
 use ffmpeg_sidecar::command::FfmpegCommand;
@@ -44,7 +44,7 @@ pub struct EncodeParams {
     pub output_path: PathBuf,
     pub quality: u32, // CRF value
     pub preset: u8,   // SVT-AV1 preset
-    /// Whether to use hardware acceleration for decoding (when available)
+    /// Whether to use hardware decoding (when available)
     pub use_hw_decode: bool,
     pub crop_filter: Option<String>, // Optional crop filter string "crop=W:H:X:Y"
     pub audio_channels: Vec<u32>,    // Detected audio channels for bitrate mapping
@@ -80,73 +80,85 @@ pub fn build_ffmpeg_command(
     let mut cmd = crate::external::FfmpegCommandBuilder::new()
         .with_hardware_accel(params.use_hw_decode)
         .build();
-    
+
     // Input file
     cmd.input(params.input_path.to_string_lossy().as_ref());
-    
+
     // Audio filter (if not disabled)
     if !is_grain_analysis_sample && !disable_audio {
         cmd.args(["-af", "aformat=channel_layouts=7.1|5.1|stereo|mono"]);
     }
-    
+
     // Build video filter chain using the new builder
     let hqdn3d_to_use = hqdn3d_override.or(params.hqdn3d_params.as_deref());
     let filter_chain = crate::external::VideoFilterChain::new()
         .add_denoise(hqdn3d_to_use.unwrap_or(""))
         .add_crop(params.crop_filter.as_deref().unwrap_or(""))
         .build();
-    
+
     // Apply video filters and report if any
     if let Some(ref filters) = filter_chain {
         cmd.args(["-vf", filters]);
-        crate::progress_reporting::report_video_filters(filters, is_grain_analysis_sample);
-        if is_grain_analysis_sample {
+        if !is_grain_analysis_sample {
+            crate::progress_reporting::info(&format!("Applying video filters: {}", filters));
+        } else {
             debug!("Applying video filters (grain sample): {}", filters);
         }
-    } else {
-        crate::progress_reporting::report_video_filters("", is_grain_analysis_sample);
+    } else if !is_grain_analysis_sample {
+        crate::progress_reporting::info("No video filters applied.");
     }
-    
+
     // Calculate film grain value
     let film_grain_value = if let Some(denoise_params) = hqdn3d_to_use {
         map_hqdn3d_to_film_grain(denoise_params)
     } else {
         0 // No denoise = no synthetic grain
     };
-    
+
     // Video encoding configuration
+    // NOTE: We exclusively use software encoding (libsvtav1) for output
+    // Hardware is only used for decoding the input when available
     cmd.args(["-c:v", "libsvtav1"]);
     cmd.args(["-pix_fmt", "yuv420p10le"]);
     cmd.args(["-crf", &params.quality.to_string()]);
     cmd.args(["-preset", &params.preset.to_string()]);
-    
+
     // Film grain synthesis parameters using the builder
     let svtav1_params = crate::external::SvtAv1ParamsBuilder::new()
         .with_film_grain(film_grain_value)
         .build();
     cmd.args(["-svtav1-params", &svtav1_params]);
-    
+
     // Report film grain settings
-    crate::progress_reporting::report_film_grain(
-        if film_grain_value > 0 { Some(film_grain_value) } else { None },
-        is_grain_analysis_sample,
-    );
-    
-    if is_grain_analysis_sample && film_grain_value > 0 {
-        debug!("Applying film grain synthesis (grain sample): level={}", film_grain_value);
+    if !is_grain_analysis_sample {
+        if film_grain_value > 0 {
+            crate::progress_reporting::info(&format!(
+                "Applying film grain synthesis: level={}",
+                film_grain_value
+            ));
+        } else {
+            crate::progress_reporting::info(
+                "No film grain synthesis applied (denoise level is None or 0).",
+            );
+        }
+    } else if film_grain_value > 0 {
+        debug!(
+            "Applying film grain synthesis (grain sample): level={}",
+            film_grain_value
+        );
     }
-    
+
     // Audio configuration
     if !is_grain_analysis_sample && !disable_audio {
         cmd.args(["-c:a", "libopus"]);
-        
+
         // Set bitrate for each audio stream
         for (i, &channels) in params.audio_channels.iter().enumerate() {
             let bitrate = audio::calculate_audio_bitrate(channels);
             cmd.args([&format!("-b:a:{}", i), &format!("{}k", bitrate)]);
         }
     }
-    
+
     // Stream mapping
     if is_grain_analysis_sample || disable_audio {
         cmd.args(["-map", "0:v:0"]); // Video only
@@ -155,20 +167,20 @@ pub fn build_ffmpeg_command(
         }
     } else {
         cmd.args(["-map", "0:v:0"]); // Video stream
-        cmd.args(["-map", "0:a"]);    // All audio streams
+        cmd.args(["-map", "0:a"]); // All audio streams
         cmd.args(["-map_metadata", "0"]);
         cmd.args(["-map_chapters", "0"]);
     }
-    
+
     // Additional output settings
     cmd.args(["-movflags", "+faststart"]);
-    
+
     // Note: Progress reporting is handled automatically by ffmpeg-sidecar
     // through FfmpegEvent::Progress events, so we don't need -progress pipe:1
-    
+
     // Output file
     cmd.output(params.output_path.to_string_lossy().as_ref());
-    
+
     Ok(cmd)
 }
 
@@ -211,7 +223,7 @@ pub fn run_ffmpeg_encode(
     if is_grain_analysis_sample {
         debug!("Starting grain sample FFmpeg encode for: {}", filename_cow);
     } else {
-        report_encode_start(&params.input_path, &params.output_path);
+        progress_reporting::encode_start(&params.input_path, &params.output_path);
         info!(
             target: "drapto::progress",
             "Starting encode: {} -> {}",
@@ -231,7 +243,7 @@ pub fn run_ffmpeg_encode(
     } else {
         // Convert command to string representation for reporting
         let cmd_string = format!("{:?}", cmd);
-        crate::progress_reporting::report_ffmpeg_command(&cmd_string, false);
+        crate::progress_reporting::ffmpeg_command(&cmd_string, false);
     }
 
     // --- Execution and Progress ---
@@ -241,12 +253,13 @@ pub fn run_ffmpeg_encode(
     let _start_time = Instant::now();
 
     // Spawn the ffmpeg command
-    let mut child = cmd.spawn()
-        .map_err(|e| command_failed_error(
+    let mut child = cmd.spawn().map_err(|e| {
+        command_failed_error(
             "ffmpeg",
             std::process::ExitStatus::default(),
             format!("Failed to start: {}", e),
-        ))?;
+        )
+    })?;
 
     // Initialize duration from params
     let duration_secs: Option<f64> = if params.duration > 0.0 {
@@ -254,28 +267,39 @@ pub fn run_ffmpeg_encode(
     } else {
         None
     };
-    
+
     if let Some(duration) = duration_secs {
-        crate::progress_reporting::report_duration(duration, is_grain_analysis_sample);
-        if is_grain_analysis_sample {
-            debug!("Using provided duration for progress (grain sample): {:.2}s", duration);
+        if !is_grain_analysis_sample {
+            crate::progress_reporting::status(
+                "Progress duration",
+                &crate::utils::format_duration_seconds(duration),
+                false,
+            );
+        } else {
+            debug!(
+                "Using provided duration for progress (grain sample): {:.2}s",
+                duration
+            );
         }
     } else {
         warn!("Video duration not provided or zero; progress percentage will not be accurate.");
     }
-    
+
     // Create progress handler
-    let mut progress_handler = crate::progress_reporting::ffmpeg_handler::FfmpegProgressHandler::new(
-        duration_secs,
-        is_grain_analysis_sample,
-    );
+    let mut progress_handler =
+        crate::progress_reporting::ffmpeg_handler::FfmpegProgressHandler::new(
+            duration_secs,
+            is_grain_analysis_sample,
+        );
 
     // Process events from ffmpeg until completion
-    for event in child.iter().map_err(|e| command_failed_error(
-        "ffmpeg",
-        std::process::ExitStatus::default(),
-        format!("Failed to get event iterator: {}", e),
-    ))? {
+    for event in child.iter().map_err(|e| {
+        command_failed_error(
+            "ffmpeg",
+            std::process::ExitStatus::default(),
+            format!("Failed to get event iterator: {}", e),
+        )
+    })? {
         progress_handler.handle_event(event)?;
     }
 
@@ -294,7 +318,7 @@ pub fn run_ffmpeg_encode(
     if status.success() {
         // Clear any active progress bar before printing success messages
         if !is_grain_analysis_sample {
-            crate::progress_reporting::clear_progress_bar();
+            crate::progress_reporting::clear_progress();
         }
 
         // Log success at appropriate level based on context
@@ -309,7 +333,7 @@ pub fn run_ffmpeg_encode(
             log::debug!("{} finished successfully for {}", prefix, filename_cow);
         } else {
             // Use sub-item formatting for main encodes to properly indent
-            crate::progress_reporting::report_sub_item(&format!(
+            crate::progress_reporting::info(&format!(
                 "{} finished successfully for {}",
                 prefix, filename_cow
             ));
@@ -330,14 +354,17 @@ pub fn run_ffmpeg_encode(
         };
         // Use progress reporting for error messages
         if !is_grain_analysis_sample {
-            crate::progress_reporting::report_encode_error(&params.input_path, &error_message);
+            crate::progress_reporting::encode_error(&params.input_path, &error_message);
         } else {
             // For grain samples, just log at debug level
             debug!("{} failed for {}: {}", prefix, filename_cow, error_message);
         }
 
         // Create a more specific error type based on stderr content
-        if progress_handler.stderr_buffer().contains("No streams found") {
+        if progress_handler
+            .stderr_buffer()
+            .contains("No streams found")
+        {
             // Handle "No streams found" as a specific error type
             // Note: We filter the logging of this error above, but still
             // propagate it properly here for correct error handling
@@ -378,11 +405,11 @@ fn map_hqdn3d_to_film_grain(hqdn3d_params: &str) -> u8 {
 
     // Fixed mapping for standard levels (for optimization)
     for (params, film_grain) in &[
-        ("hqdn3d=0.5:0.4:3:3", 4),       // VeryLight
-        ("hqdn3d=0.9:0.7:4:4", 7),       // Light
-        ("hqdn3d=1.2:0.85:5:5", 10),     // LightModerate
-        ("hqdn3d=1.5:1.0:6:6", 13),      // Moderate
-        ("hqdn3d=2:1.3:8:8", 16),        // Elevated
+        ("hqdn3d=0.5:0.4:3:3", 4),   // VeryLight
+        ("hqdn3d=0.9:0.7:4:4", 7),   // Light
+        ("hqdn3d=1.2:0.85:5:5", 10), // LightModerate
+        ("hqdn3d=1.5:1.0:6:6", 13),  // Moderate
+        ("hqdn3d=2:1.3:8:8", 16),    // Elevated
     ] {
         // Exact match for standard levels
         if hqdn3d_params == *params {
@@ -467,30 +494,32 @@ pub fn extract_sample(
     cmd.input(input_path.to_string_lossy().as_ref())
         .args(["-ss", &start_time_secs.to_string()])
         .args(["-t", &duration_secs.to_string()])
-        .args(["-c", "copy"])          // Use stream copy
-        .args(["-an"])                  // No audio
-        .args(["-sn"])                  // No subtitles
-        .args(["-map", "0:v"])          // Map video stream 0
-        .args(["-map_metadata", "0"])   // Map metadata from input 0
+        .args(["-c", "copy"]) // Use stream copy
+        .args(["-an"]) // No audio
+        .args(["-sn"]) // No subtitles
+        .args(["-map", "0:v"]) // Map video stream 0
+        .args(["-map_metadata", "0"]) // Map metadata from input 0
         .output(output_path.to_string_lossy().as_ref());
 
     debug!("Running sample extraction command: {:?}", cmd);
 
     // Spawn and wait for completion
-    let mut child = cmd.spawn()
-        .map_err(|e| command_failed_error(
+    let mut child = cmd.spawn().map_err(|e| {
+        command_failed_error(
             "ffmpeg",
             std::process::ExitStatus::default(),
             format!("Failed to start sample extraction: {}", e),
-        ))?;
-    
-    let status = child.wait()
-        .map_err(|e| command_failed_error(
+        )
+    })?;
+
+    let status = child.wait().map_err(|e| {
+        command_failed_error(
             "ffmpeg",
             std::process::ExitStatus::default(),
             format!("Failed to wait for sample extraction: {}", e),
-        ))?;
-        
+        )
+    })?;
+
     if !status.success() {
         error!("Sample extraction failed: {}", status);
         return Err(command_failed_error(
@@ -500,7 +529,10 @@ pub fn extract_sample(
         ));
     }
 
-    debug!("Sample extracted successfully to: {}", output_path.display());
+    debug!(
+        "Sample extracted successfully to: {}",
+        output_path.display()
+    );
     Ok(output_path)
 }
 
@@ -522,26 +554,30 @@ pub fn extract_sample(
 /// # Returns
 ///
 /// * `CoreResult<f64>` - Average XPSNR value in dB
-pub fn calculate_xpsnr(reference_path: &Path, encoded_path: &Path, crop_filter: Option<&str>) -> CoreResult<f64> {
+pub fn calculate_xpsnr(
+    reference_path: &Path,
+    encoded_path: &Path,
+    crop_filter: Option<&str>,
+) -> CoreResult<f64> {
     debug!(
         "Calculating XPSNR: reference={}, encoded={}",
         reference_path.display(),
         encoded_path.display()
     );
-    
+
     // Build ffmpeg command with xpsnr filter
     let mut cmd = crate::external::FfmpegCommandBuilder::new()
         .with_hide_banner(true)
-        .with_hardware_accel(false) // Explicitly disable hardware acceleration
+        .with_hardware_accel(false) // Explicitly disable hardware decoding
         .build();
-    
-    // Force software decoding for both inputs to avoid hardware issues
+
+    // Force software decoding for both inputs to avoid hardware decoding issues
     // Don't specify decoder - let FFmpeg choose the appropriate one for each file
     cmd.args(["-hwaccel", "none"])
         .input(reference_path.to_string_lossy().as_ref())
         .args(["-hwaccel", "none"])
         .input(encoded_path.to_string_lossy().as_ref());
-    
+
     // Build filter chain - apply crop to reference if needed, then XPSNR
     let filter_complex = if let Some(crop) = crop_filter {
         if !crop.is_empty() {
@@ -552,33 +588,36 @@ pub fn calculate_xpsnr(reference_path: &Path, encoded_path: &Path, crop_filter: 
     } else {
         "[0:v][1:v]xpsnr=stats_file=-".to_string()
     };
-    
+
     cmd.args(["-filter_complex", &filter_complex])
         // Output format for parsing
         .args(["-f", "null", "-"])
         // Log level to get filter output
         .args(["-loglevel", "info"]);
-    
+
     debug!("Running XPSNR calculation command: {:?}", cmd);
-    
+
     // Spawn the process
-    let mut child = cmd.spawn()
-        .map_err(|e| command_failed_error(
+    let mut child = cmd.spawn().map_err(|e| {
+        command_failed_error(
             "ffmpeg",
             std::process::ExitStatus::default(),
             format!("Failed to start XPSNR calculation: {}", e),
-        ))?;
-    
+        )
+    })?;
+
     // Collect stderr output for parsing
     let mut stderr = String::new();
     let process_success = true;
-    
+
     // Process events from ffmpeg
-    for event in child.iter().map_err(|e| command_failed_error(
-        "ffmpeg",
-        std::process::ExitStatus::default(),
-        format!("Failed to get event iterator: {}", e),
-    ))? {
+    for event in child.iter().map_err(|e| {
+        command_failed_error(
+            "ffmpeg",
+            std::process::ExitStatus::default(),
+            format!("Failed to get event iterator: {}", e),
+        )
+    })? {
         use ffmpeg_sidecar::event::FfmpegEvent;
         match event {
             FfmpegEvent::Log(_, line) | FfmpegEvent::Error(line) => {
@@ -593,7 +632,7 @@ pub fn calculate_xpsnr(reference_path: &Path, encoded_path: &Path, crop_filter: 
             _ => {} // Ignore other events
         }
     }
-    
+
     if !process_success {
         error!("XPSNR calculation failed: {}", stderr);
         return Err(command_failed_error(
@@ -602,7 +641,7 @@ pub fn calculate_xpsnr(reference_path: &Path, encoded_path: &Path, crop_filter: 
             format!("XPSNR calculation failed: {}", stderr),
         ));
     }
-    
+
     // Look for the XPSNR line in the output
     // Format: "[Parsed_xpsnr_0 @ ...] XPSNR  y: XX.XX  u: XX.XX  v: XX.XX  (minimum: XX.XX)"
     // Use the Y (luma) component as recommended for XPSNR assessment
@@ -621,7 +660,7 @@ pub fn calculate_xpsnr(reference_path: &Path, encoded_path: &Path, crop_filter: 
             }
         }
     }
-    
+
     match luma_xpsnr {
         Some(value) => {
             debug!("XPSNR (luma) calculation successful: {:.2} dB", value);
@@ -630,7 +669,7 @@ pub fn calculate_xpsnr(reference_path: &Path, encoded_path: &Path, crop_filter: 
         None => {
             error!("Failed to parse XPSNR luma value from output:\n{}", stderr);
             Err(CoreError::FilmGrainAnalysisFailed(
-                "Failed to parse XPSNR luma value from ffmpeg output".to_string()
+                "Failed to parse XPSNR luma value from ffmpeg output".to_string(),
             ))
         }
     }

@@ -76,10 +76,7 @@ fn determine_crop_threshold(props: &VideoProperties) -> (u32, bool) {
 }
 
 /// Runs ffmpeg with signalstats to analyze HDR black levels and refine the threshold.
-fn run_hdr_blackdetect(
-    input_file: &Path,
-    initial_threshold: u32,
-) -> CoreResult<u32> {
+fn run_hdr_blackdetect(input_file: &Path, initial_threshold: u32) -> CoreResult<u32> {
     log::debug!(
         "Running ffmpeg (sidecar) for HDR black level analysis on {}",
         input_file.display()
@@ -87,7 +84,8 @@ fn run_hdr_blackdetect(
 
     // Use signalstats to analyze luminance values at key frames
     // The metadata filter prints the signalstats values to stderr using file=/dev/stderr
-    let filter = "select='eq(n,0)+eq(n,100)+eq(n,200)',signalstats,metadata=mode=print:file=/dev/stderr";
+    let filter =
+        "select='eq(n,0)+eq(n,100)+eq(n,200)',signalstats,metadata=mode=print:file=/dev/stderr";
 
     let mut cmd = crate::external::FfmpegCommandBuilder::new()
         .with_hardware_accel(true)
@@ -100,18 +98,22 @@ fn run_hdr_blackdetect(
 
     let mut metadata_output = String::new();
     // Spawn the command
-    let mut child = cmd.spawn()
+    let mut child = cmd
+        .spawn()
         .map_err(|e| crate::error::command_start_error("ffmpeg", e))?;
 
     // Process events
     let process_result: CoreResult<()> = (|| {
-        for event in child.iter().map_err(|e| crate::error::command_failed_error(
-            "ffmpeg",
-            std::process::ExitStatus::default(),
-            e.to_string(),
-        ))? {
+        for event in child.iter().map_err(|e| {
+            crate::error::command_failed_error(
+                "ffmpeg",
+                std::process::ExitStatus::default(),
+                e.to_string(),
+            )
+        })? {
             match event {
-                ffmpeg_sidecar::event::FfmpegEvent::Log(_, line) | ffmpeg_sidecar::event::FfmpegEvent::Error(line) => {
+                ffmpeg_sidecar::event::FfmpegEvent::Log(_, line)
+                | ffmpeg_sidecar::event::FfmpegEvent::Error(line) => {
                     // Capture signalstats metadata output lines
                     if line.contains("lavfi.signalstats.") {
                         metadata_output.push_str(&line);
@@ -171,13 +173,13 @@ fn run_hdr_blackdetect(
         // For HDR content, YMIN represents the minimum luminance
         // We adjust the threshold based on the minimum values found
         let avg_ymin: f64 = matches.iter().sum::<f64>() / matches.len() as f64;
-        
+
         // For HDR content, we need a higher threshold than the minimum black level
         // The signalstats values are already in 8-bit range (0-255)
         // We use a multiplier to set the threshold well above the black level
-        let refined_threshold = (avg_ymin * 2.5).round() as u32;  // 2.5x multiplier for HDR
-        let clamped_threshold = refined_threshold.clamp(64, 256);  // Higher minimum for HDR
-        
+        let refined_threshold = (avg_ymin * 2.5).round() as u32; // 2.5x multiplier for HDR
+        let clamped_threshold = refined_threshold.clamp(64, 256); // Higher minimum for HDR
+
         log::debug!(
             "HDR black level analysis: Avg YMIN={:.2}, Refined Threshold={}, Final={}",
             avg_ymin,
@@ -244,18 +246,22 @@ fn run_cropdetect(
 
     let mut stderr_output = String::new();
     // Spawn the command
-    let mut child = cmd.spawn()
+    let mut child = cmd
+        .spawn()
         .map_err(|e| crate::error::command_start_error("ffmpeg", e))?;
 
     // Process events
     let process_result: CoreResult<()> = (|| {
-        for event in child.iter().map_err(|e| crate::error::command_failed_error(
-            "ffmpeg",
-            std::process::ExitStatus::default(),
-            e.to_string(),
-        ))? {
+        for event in child.iter().map_err(|e| {
+            crate::error::command_failed_error(
+                "ffmpeg",
+                std::process::ExitStatus::default(),
+                e.to_string(),
+            )
+        })? {
             match event {
-                ffmpeg_sidecar::event::FfmpegEvent::Log(_, line) | ffmpeg_sidecar::event::FfmpegEvent::Error(line) => {
+                ffmpeg_sidecar::event::FfmpegEvent::Log(_, line)
+                | ffmpeg_sidecar::event::FfmpegEvent::Error(line) => {
                     if line.contains("crop=") {
                         stderr_output.push_str(&line);
                         stderr_output.push('\n');
@@ -293,7 +299,7 @@ fn run_cropdetect(
             let crop_part = &line[crop_start + 5..]; // Skip "crop="
             let crop_end = crop_part.find(']').unwrap_or(crop_part.len());
             let crop_values = &crop_part[..crop_end];
-            
+
             let parts: Vec<&str> = crop_values.split(':').collect();
             if parts.len() == 4 {
                 if let (Ok(w), Ok(h), Ok(x), Ok(y)) = (
@@ -406,11 +412,8 @@ pub fn detect_crop(
 ) -> CoreResult<(Option<String>, bool)> {
     // Check if crop detection is disabled by user preference
     if disable_crop {
-        crate::progress_reporting::report_completion_with_status(
-            "Crop detection complete",
-            "Detected crop",
-            "Disabled",
-        );
+        crate::progress_reporting::success("Crop detection complete");
+        crate::progress_reporting::status("Detected crop", "Disabled", false);
         return Ok((None, false));
     }
 
@@ -469,18 +472,16 @@ pub fn detect_crop(
     // STEP 6: Report results using the centralized formatting function
     if crop_filter.is_none() {
         // Use the centralized function for success+status formatting
-        crate::progress_reporting::report_completion_with_status(
-            "Crop detection complete",
-            "Detected crop",
-            "None required",
-        );
+        crate::progress_reporting::success("Crop detection complete");
+        crate::progress_reporting::status("Detected crop", "None required", false);
         log::debug!("No cropping needed for {}", input_file.display());
     } else {
         // Use the centralized function for success+status formatting
-        crate::progress_reporting::report_completion_with_status(
-            "Crop detection complete",
+        crate::progress_reporting::success("Crop detection complete");
+        crate::progress_reporting::status(
             "Detected crop",
             crop_filter.as_deref().unwrap_or(""),
+            false,
         );
         log::debug!(
             "Applied crop filter: {}",

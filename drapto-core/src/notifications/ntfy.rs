@@ -89,7 +89,7 @@ impl NtfyNotificationSender {
         let after_scheme = &topic_url[8..]; // Skip "https://"
         let host_end = after_scheme.find('/').unwrap_or(after_scheme.len());
         let host = &after_scheme[..host_end];
-        
+
         // Ensure the host is not empty
         if host.is_empty() {
             return Err(CoreError::NotificationError(format!(
@@ -141,11 +141,14 @@ impl NtfyNotificationSender {
         };
 
         // Build the ntfy dispatcher
-        let dispatcher = DispatcherBuilder::new(&base_url).build_blocking()
-            .map_err(|e| CoreError::NotificationError(format!(
-                "Failed to build ntfy dispatcher for {}: {}",
-                base_url, e
-            )))?;
+        let dispatcher = DispatcherBuilder::new(&base_url)
+            .build_blocking()
+            .map_err(|e| {
+                CoreError::NotificationError(format!(
+                    "Failed to build ntfy dispatcher for {}: {}",
+                    base_url, e
+                ))
+            })?;
 
         // Build the notification payload
         // Start with the required fields (topic and message)
@@ -180,11 +183,12 @@ impl NtfyNotificationSender {
         let final_payload = payload_builder;
 
         // Send the notification
-        dispatcher.send(&final_payload)
-            .map_err(|e| CoreError::NotificationError(format!(
+        dispatcher.send(&final_payload).map_err(|e| {
+            CoreError::NotificationError(format!(
                 "Failed to send ntfy notification to {}: {}",
                 self.topic_url, e
-            )))?;
+            ))
+        })?;
         Ok(())
     }
 }

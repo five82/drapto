@@ -94,10 +94,7 @@ impl NotificationType {
     /// * A string representing the message body for this notification
     pub fn get_message(&self) -> String {
         match self {
-            NotificationType::EncodeStart {
-                input_path,
-                ..
-            } => {
+            NotificationType::EncodeStart { input_path, .. } => {
                 let filename = input_path
                     .file_name()
                     .map(|name| name.to_string_lossy().to_string())

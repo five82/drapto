@@ -200,7 +200,6 @@ impl CoreConfigBuilder {
         self
     }
 
-
     /// Sets the CRF quality for Standard Definition videos.
     ///
     /// # Arguments
@@ -256,7 +255,6 @@ impl CoreConfigBuilder {
         self.crop_mode = mode.to_string();
         self
     }
-
 
     /// Sets the ntfy.sh topic URL for sending notifications.
     ///
@@ -327,7 +325,6 @@ impl CoreConfigBuilder {
         self.film_grain_refinement_points_count = count;
         self
     }
-
 
     /// Builds a CoreConfig instance from the builder.
     ///

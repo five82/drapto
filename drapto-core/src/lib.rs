@@ -110,8 +110,8 @@ pub mod progress_reporting;
 /// Temporary file management utilities
 pub mod temp_files;
 
-/// Hardware acceleration detection and configuration
-pub mod hardware_accel;
+/// Hardware decoding detection and configuration
+pub mod hardware_decode;
 
 // ============================================================================
 // PUBLIC API RE-EXPORTS
@@ -142,17 +142,13 @@ pub use utils::{format_bytes, format_duration};
 // ----- External Tool Interactions -----
 /// Re-export external tool functions
 pub use external::{
-    extract_sample,
-    get_audio_channels, get_video_properties, run_ffprobe_bitplanenoise, 
-    get_media_info, get_file_size, MediaInfo
+    MediaInfo, extract_sample, get_audio_channels, get_file_size, get_media_info,
+    get_video_properties, run_ffprobe_bitplanenoise,
 };
 
 // ----- Progress Reporting -----
 /// Progress reporting functions
-pub use progress_reporting::{
-    LogLevel, report_encode_complete, report_encode_error, report_encode_progress,
-    report_encode_start, report_log_message,
-};
+pub use progress_reporting::{LogLevel, OutputLevel, ProgressReporter};
 
 // ----- Notification Services -----
 /// Notification system types and implementations
@@ -170,11 +166,10 @@ pub use temp_files::{
     create_temp_file_path,
 };
 
-// ----- Hardware Acceleration -----
-/// Hardware acceleration detection and configuration
-pub use hardware_accel::{
-    HardwareAcceleration, add_hardware_acceleration_to_command, is_hardware_acceleration_available,
-    is_macos, log_hardware_acceleration_status,
+// ----- Hardware Decoding -----
+/// Hardware decoding detection and configuration
+pub use hardware_decode::{
+    HardwareDecoding, add_hardware_decoding_to_command, is_hardware_decoding_available, is_macos,
 };
 
 // ============================================================================

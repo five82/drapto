@@ -176,12 +176,12 @@ pub fn generate_hqdn3d_params(strength_value: f32) -> String {
     // Define the anchor points for interpolation
     // Format: (strength, luma_spatial, chroma_spatial, temp_luma, temp_chroma)
     let anchor_points = [
-        (0.0, 0.0, 0.0, 0.0, 0.0),       // Baseline (no denoising)
-        (1.0, 0.5, 0.4, 3.0, 3.0),       // VeryLight (increased chroma)
-        (2.0, 0.9, 0.7, 4.0, 4.0),       // Light (reduced luma)
-        (2.5, 1.2, 0.85, 5.0, 5.0),      // LightModerate
-        (3.0, 1.5, 1.0, 6.0, 6.0),       // Moderate
-        (4.0, 2.0, 1.3, 8.0, 8.0),       // Elevated
+        (0.0, 0.0, 0.0, 0.0, 0.0),  // Baseline (no denoising)
+        (1.0, 0.5, 0.4, 3.0, 3.0),  // VeryLight (increased chroma)
+        (2.0, 0.9, 0.7, 4.0, 4.0),  // Light (reduced luma)
+        (2.5, 1.2, 0.85, 5.0, 5.0), // LightModerate
+        (3.0, 1.5, 1.0, 6.0, 6.0),  // Moderate
+        (4.0, 2.0, 1.3, 8.0, 8.0),  // Elevated
     ];
 
     // Find the two anchor points to interpolate between

@@ -84,7 +84,7 @@ pub fn format_duration_seconds(seconds: f64) -> String {
     if seconds < 0.0 || !seconds.is_finite() {
         return "??:??:??".to_string();
     }
-    
+
     let total_seconds = seconds as u64;
     let hours = total_seconds / 3600;
     let minutes = (total_seconds % 3600) / 60;

@@ -7,10 +7,13 @@
 // This module provides a builder pattern for constructing FFmpeg commands
 // with common options and configurations used throughout the application.
 //
+// IMPORTANT: Hardware acceleration in this module refers ONLY to hardware
+// DECODING. We exclusively use software encoding (libsvtav1) for output.
+//
 // AI-ASSISTANT-INFO: Unified FFmpeg command builder utilities
 
+use crate::hardware_decode::add_hardware_decoding_to_command;
 use ffmpeg_sidecar::command::FfmpegCommand;
-use crate::hardware_accel::add_hardware_acceleration_to_command;
 
 /// Builder for creating FFmpeg commands with common configurations
 pub struct FfmpegCommandBuilder {
@@ -34,31 +37,32 @@ impl FfmpegCommandBuilder {
             hide_banner: true,
         }
     }
-    
-    /// Enables hardware acceleration for decoding
+
+    /// Enables hardware decoding (VideoToolbox on macOS)
+    /// Note: This is ONLY for decoding input video, not encoding
     pub fn with_hardware_accel(mut self, enabled: bool) -> Self {
         self.use_hw_decode = enabled;
         self
     }
-    
+
     /// Sets whether to hide the FFmpeg banner
     pub fn with_hide_banner(mut self, hide: bool) -> Self {
         self.hide_banner = hide;
         self
     }
-    
+
     /// Builds the FFmpeg command with all configured options
     pub fn build(mut self) -> FfmpegCommand {
         // Apply common options
         if self.hide_banner {
             self.cmd.arg("-hide_banner");
         }
-        
-        // Apply hardware acceleration if enabled
+
+        // Apply hardware decoding if enabled (only affects input decoding)
         if self.use_hw_decode {
-            add_hardware_acceleration_to_command(&mut self.cmd, true, false);
+            add_hardware_decoding_to_command(&mut self.cmd, true, false);
         }
-        
+
         self.cmd
     }
 }
@@ -74,7 +78,7 @@ impl VideoFilterChain {
     pub fn new() -> Self {
         Self::default()
     }
-    
+
     /// Adds a denoising filter to the chain
     pub fn add_denoise(mut self, params: &str) -> Self {
         if !params.is_empty() {
@@ -87,7 +91,7 @@ impl VideoFilterChain {
         }
         self
     }
-    
+
     /// Adds a crop filter to the chain
     pub fn add_crop(mut self, crop: &str) -> Self {
         if !crop.is_empty() {
@@ -95,7 +99,7 @@ impl VideoFilterChain {
         }
         self
     }
-    
+
     /// Adds a custom filter to the chain
     pub fn add_filter(mut self, filter: String) -> Self {
         if !filter.is_empty() {
@@ -103,7 +107,7 @@ impl VideoFilterChain {
         }
         self
     }
-    
+
     /// Builds the filter chain into a single filter string
     pub fn build(self) -> Option<String> {
         if self.filters.is_empty() {
@@ -126,22 +130,24 @@ impl SvtAv1ParamsBuilder {
             params: vec![("tune".to_string(), "3".to_string())],
         }
     }
-    
+
     /// Sets the film grain synthesis level
     pub fn with_film_grain(mut self, level: u8) -> Self {
         if level > 0 {
-            self.params.push(("film-grain".to_string(), level.to_string()));
-            self.params.push(("film-grain-denoise".to_string(), "0".to_string()));
+            self.params
+                .push(("film-grain".to_string(), level.to_string()));
+            self.params
+                .push(("film-grain-denoise".to_string(), "0".to_string()));
         }
         self
     }
-    
+
     /// Adds a custom parameter
     pub fn add_param(mut self, key: &str, value: &str) -> Self {
         self.params.push((key.to_string(), value.to_string()));
         self
     }
-    
+
     /// Builds the parameters into a colon-separated string
     pub fn build(self) -> String {
         self.params

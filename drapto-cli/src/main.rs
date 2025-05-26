@@ -25,7 +25,7 @@
 
 // ---- Internal crate imports ----
 use drapto_cli::commands::encode::discover_encode_files;
-use drapto_cli::error::{CliResult, CliErrorContext};
+use drapto_cli::error::{CliErrorContext, CliResult};
 use drapto_cli::logging::{get_timestamp, setup_file_logging};
 use drapto_cli::terminal;
 use drapto_cli::{Cli, Commands, run_encode};
@@ -33,8 +33,8 @@ use drapto_cli::{Cli, Commands, run_encode};
 // ---- External crate imports ----
 use clap::Parser;
 use daemonize::Daemonize;
-use drapto_core::notifications::NtfyNotificationSender;
 use drapto_core::CoreError;
+use drapto_core::notifications::NtfyNotificationSender;
 
 // ---- Standard library imports ----
 use std::io::{self, Write};
@@ -122,8 +122,12 @@ fn main() -> CliResult<()> {
             // Set up logging based on mode
             if interactive_mode {
                 // For interactive mode, use fern to log to both console and file
-                setup_file_logging(&main_log_path)
-                    .cli_with_context(|| format!("Failed to set up file logging to: {}", main_log_path.display()))?;
+                setup_file_logging(&main_log_path).cli_with_context(|| {
+                    format!(
+                        "Failed to set up file logging to: {}",
+                        main_log_path.display()
+                    )
+                })?;
             } else {
                 // For daemon mode, use env_logger (stdout/stderr will be redirected to file)
                 env_logger::Builder::from_env(Env::default().default_filter_or("drapto=info"))
@@ -163,18 +167,26 @@ fn main() -> CliResult<()> {
 
                 // Create log directory if it doesn't exist
                 std::fs::create_dir_all(&log_dir).map_err(|e| {
-                    CoreError::OperationFailed(format!("Failed to create log directory: {}: {}", log_dir.display(), e))
+                    CoreError::OperationFailed(format!(
+                        "Failed to create log directory: {}: {}",
+                        log_dir.display(),
+                        e
+                    ))
                 })?;
 
                 // Create and open log file for the daemon's stdout/stderr
                 let log_file = std::fs::File::create(&main_log_path).map_err(|e| {
-                    CoreError::OperationFailed(format!("Failed to create log file: {}: {}", main_log_path.display(), e))
+                    CoreError::OperationFailed(format!(
+                        "Failed to create log file: {}: {}",
+                        main_log_path.display(),
+                        e
+                    ))
                 })?;
 
                 // Clone the file handle for stderr
-                let log_file_stderr = log_file
-                    .try_clone()
-                    .map_err(|e| CoreError::OperationFailed(format!("Failed to clone log file handle: {}", e)))?;
+                let log_file_stderr = log_file.try_clone().map_err(|e| {
+                    CoreError::OperationFailed(format!("Failed to clone log file handle: {}", e))
+                })?;
 
                 // Create daemonize configuration
                 // Note: PID file is handled in run_encode after log setup
@@ -184,9 +196,9 @@ fn main() -> CliResult<()> {
                     .stderr(log_file_stderr); // Redirect stderr to our log file
 
                 // Attempt to daemonize the process
-                daemonize
-                    .start()
-                    .map_err(|e| CoreError::OperationFailed(format!("Failed to start daemon process: {}", e)))?;
+                daemonize.start().map_err(|e| {
+                    CoreError::OperationFailed(format!("Failed to start daemon process: {}", e))
+                })?;
                 // Parent process exits here after successful fork
                 // The daemon child process continues execution below
                 // Child process continues execution from this point
