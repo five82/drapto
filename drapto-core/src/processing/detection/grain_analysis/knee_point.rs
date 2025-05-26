@@ -2,23 +2,28 @@
 // drapto-core/src/processing/detection/grain_analysis/knee_point.rs
 // ============================================================================
 //
-// KNEE POINT ANALYSIS: Optimal Grain Level Detection for File Size Reduction
+// KNEE POINT ANALYSIS: Optimal Grain Level Detection with Quality Awareness
 //
 // PURPOSE: Reduce video file sizes for home/mobile viewing while maintaining
 // acceptable visual quality. This is NOT for archival or professional use.
 //
 // APPROACH: Find the denoising level that provides good file size reduction
-// without over-processing. When in doubt, use VeryLight as it provides
+// without over-processing, now incorporating XPSNR quality metrics to ensure
+// quality loss remains acceptable. When in doubt, use VeryLight as it provides
 // compression benefits (5-10% typically) with virtually no quality risk.
 //
-// KEY PRINCIPLE: Some denoising is almost always beneficial. Even light
-// denoising removes high-entropy noise that doesn't contribute to perceived
-// quality but consumes significant bitrate during encoding.
+// KEY PRINCIPLES: 
+// - Some denoising is almost always beneficial. Even light denoising removes 
+//   high-entropy noise that doesn't contribute to perceived quality but 
+//   consumes significant bitrate during encoding.
+// - XPSNR measurements help ensure denoising doesn't degrade quality too much
+// - Quality factors are applied to efficiency calculations to penalize levels
+//   that cause significant quality loss (XPSNR < 35 dB)
 //
-// AI-ASSISTANT-INFO: Knee point analysis for optimal denoising parameter selection
+// AI-ASSISTANT-INFO: Knee point analysis with XPSNR quality metrics
 
 // ---- Internal module imports ----
-use super::types::GrainLevel;
+use super::types::{GrainLevel, GrainLevelTestResult};
 use crate::progress_reporting::{LogLevel, report_log_message};
 
 // ---- External crate imports ----
@@ -27,7 +32,7 @@ use log;
 // ---- Standard library imports ----
 use std::collections::HashMap;
 
-/// Determines the optimal denoising level for file size reduction.
+/// Determines the optimal denoising level for file size reduction with quality awareness.
 ///
 /// This function analyzes encoding results to find the best balance between
 /// file size reduction and quality preservation. The goal is practical file
@@ -35,9 +40,13 @@ use std::collections::HashMap;
 ///
 /// # Algorithm Overview
 ///
-/// 1. Calculate efficiency for each grain level: (size_reduction / sqrt(grain_level_value))
-/// 2. Find the maximum efficiency point
-/// 3. Select the lowest grain level achieving 80% of max efficiency
+/// 1. Calculate efficiency for each grain level: (size_reduction * quality_factor / sqrt(grain_level_value))
+/// 2. Quality factor is derived from XPSNR measurements:
+///    - XPSNR > 45 dB: factor = 1.0 (virtually no quality loss)
+///    - XPSNR 40-45 dB: factor = 0.9-1.0 (minimal quality loss)
+///    - XPSNR 35-40 dB: factor = 0.7-0.9 (moderate quality loss)
+///    - XPSNR < 35 dB: factor < 0.7 (significant quality loss)
+/// 3. Find diminishing returns point where improvement rate drops below 25%
 /// 4. If no clear knee point exists, default to VeryLight (safe choice)
 ///
 /// # Key Behaviors
@@ -45,65 +54,73 @@ use std::collections::HashMap;
 /// - Always returns at least VeryLight (never Baseline/no denoising)
 /// - Provides clear messaging about why a level was chosen
 /// - Conservative approach: when uncertain, choose lighter denoising
+/// - Penalizes levels that cause significant quality degradation
 ///
 /// # Arguments
 ///
-/// * `results` - HashMap mapping grain levels to their encoded file sizes in bytes
-/// * `knee_threshold` - Threshold factor (0.0-1.0) for knee point selection
+/// * `results` - HashMap mapping grain levels to their test results (size and XPSNR)
+/// * `knee_threshold` - Threshold factor (0.0-1.0) for knee point selection (currently unused)
 /// * `sample_index` - The index of the sample being analyzed (for logging)
 ///
 /// # Returns
 ///
 /// The optimal `GrainLevel` for file size reduction (minimum: VeryLight)
 pub(super) fn analyze_sample_with_knee_point(
-    results: &HashMap<Option<GrainLevel>, u64>,
+    results: &HashMap<Option<GrainLevel>, GrainLevelTestResult>,
     _knee_threshold: f64,
     sample_index: usize,
 ) -> GrainLevel {
     // ========================================================================
-    // STEP 1: GET BASELINE SIZE (NO DENOISING)
+    // STEP 1: GET BASELINE AND VERYLIGHT RESULTS
     // ========================================================================
 
-    // Get the baseline file size (with no denoising applied)
-    // This is used as the reference point for calculating size reductions
-    // First try None (no denoising), then fall back to Baseline if None is missing
-    let baseline_size = match results.get(&None) {
-        Some(&size) if size > 0 => {
-            // Report baseline usage in verbose mode
-            log::debug!("Sample {}: Using 'Baseline' (no denoising) for knee point analysis.", sample_index);
-            crate::progress_reporting::report_sub_item(&format!(
-                "Sample {}: Using 'Baseline' (no denoising) for knee point analysis.",
-                sample_index
-            ));
-            size
+    // Get the baseline (no denoising) for informational display
+    let baseline_result = match results.get(&None) {
+        Some(result) if result.file_size > 0 => {
+            Some(result)
         }
         _ => {
-            // If None is missing or zero, try Baseline as fallback
-            match results.get(&Some(GrainLevel::Baseline)) {
-                Some(&size) if size > 0 => {
-                    report_log_message(
-                        &format!(
-                            "  Sample {}: Baseline 'None' missing or zero. Using 'Baseline' as fallback.",
-                            sample_index
-                        ),
-                        LogLevel::Info,
-                    );
-                    size
-                }
-                _ => {
-                    // If both None and Baseline are missing or zero, we can't perform the analysis
-                    report_log_message(
-                        &format!(
-                            "  Sample {}: ERROR: 'Baseline' reference is missing or zero. Cannot analyze with knee point.",
-                            sample_index
-                        ),
-                        LogLevel::Error,
-                    );
-                    return GrainLevel::Baseline; // Return default value
-                }
-            }
+            // If None is missing, try Baseline as fallback
+            results.get(&Some(GrainLevel::Baseline)).filter(|r| r.file_size > 0)
         }
     };
+    
+    // Get VeryLight result as our reference point for comparisons
+    let verylight_result = match results.get(&Some(GrainLevel::VeryLight)) {
+        Some(result) if result.file_size > 0 => {
+            log::debug!("Sample {}: Using VeryLight as reference for comparisons.", sample_index);
+            result
+        }
+        _ => {
+            report_log_message(
+                &format!(
+                    "  Sample {}: ERROR: VeryLight reference is missing. Cannot analyze.",
+                    sample_index
+                ),
+                LogLevel::Error,
+            );
+            return GrainLevel::VeryLight; // Return default value
+        }
+    };
+    
+    let verylight_size = verylight_result.file_size;
+    let verylight_xpsnr = verylight_result.xpsnr;
+    
+    // Report baseline information if available
+    if let Some(baseline) = baseline_result {
+        let baseline_size_mb = baseline.file_size as f64 / (1024.0 * 1024.0);
+        if let Some(baseline_xpsnr_val) = baseline.xpsnr {
+            crate::progress_reporting::report_sub_item(&format!(
+                "Sample {}: Baseline reference - {:.1} MB, XPSNR: {:.1} dB",
+                sample_index, baseline_size_mb, baseline_xpsnr_val
+            ));
+        } else {
+            crate::progress_reporting::report_sub_item(&format!(
+                "Sample {}: Baseline reference - {:.1} MB",
+                sample_index, baseline_size_mb
+            ));
+        }
+    }
 
     // ========================================================================
     // STEP 2: DEFINE GRAIN LEVEL MAPPING FUNCTION
@@ -130,41 +147,86 @@ pub(super) fn analyze_sample_with_knee_point(
     // Initialize vector to store efficiency metrics for each grain level
     let mut efficiencies: Vec<(Option<GrainLevel>, f64)> = Vec::new();
     
-    // Track size reductions for better reporting
+    // Track size reductions and quality metrics for better reporting
     let mut size_reductions: Vec<(Option<GrainLevel>, f64)> = Vec::new();
+    let mut quality_metrics: Vec<(Option<GrainLevel>, f64)> = Vec::new();
 
     // Process each grain level and calculate its efficiency
     // Filter to only include valid grain levels with non-zero file sizes
     // Note: We include all levels (including None and Baseline) in the iteration
     // but will filter appropriately below
-    for (&level, &size) in results.iter().filter(|&(_, &v)| v > 0) {
+    for (&level, result) in results.iter().filter(|&(_, r)| r.file_size > 0) {
+        let size = result.file_size;
         // Convert grain level to numeric value
         let grain_numeric = to_numeric(level);
 
-        // Skip Baseline level as it represents no denoising
-        // These are our reference points, not candidates for selection
-        if grain_numeric <= 0.0 {
+        // Skip Baseline and VeryLight levels
+        // Baseline is not a candidate, VeryLight is our reference
+        if grain_numeric <= 1.0 {
             continue;
         }
 
-        // Calculate size reduction compared to baseline
-        // Use saturating_sub to avoid underflow if size > baseline_size
-        let reduction = baseline_size.saturating_sub(size) as f64;
+        // Calculate size reduction compared to VeryLight
+        // Use saturating_sub to avoid underflow if size > verylight_size
+        let reduction = verylight_size.saturating_sub(size) as f64;
 
-        // Skip levels that don't reduce file size
+        // Skip levels that don't reduce file size beyond VeryLight
         if reduction <= 0.0 {
             continue;
         }
         
-        // Calculate percentage reduction for reporting
-        let reduction_pct = (reduction / baseline_size as f64) * 100.0;
+        // Calculate percentage reduction for reporting (still relative to VeryLight)
+        let reduction_pct = (reduction / verylight_size as f64) * 100.0;
         size_reductions.push((level, reduction_pct));
 
-        // Calculate efficiency using square-root scaling
+        // Calculate quality loss if XPSNR is available
+        let quality_factor = if let Some(xpsnr) = result.xpsnr {
+            // Calculate delta from VeryLight XPSNR
+            let xpsnr_delta = if let Some(verylight_xpsnr_val) = verylight_xpsnr {
+                verylight_xpsnr_val - xpsnr
+            } else {
+                // If no VeryLight XPSNR, we can't calculate a proper delta
+                // Be conservative and assume some quality loss
+                log::debug!("No VeryLight XPSNR available for delta calculation");
+                1.0 // Assume 1 dB loss as conservative estimate
+            };
+            
+            // Quality factor based on XPSNR delta from baseline:
+            // - Less than 0.5 dB loss: virtually no perceptible difference (factor = 1.0)
+            // - 0.5-1 dB loss: minimal quality loss (factor = 0.95-1.0)
+            // - 1-2 dB loss: slight quality loss (factor = 0.85-0.95)
+            // - 2-3 dB loss: moderate quality loss (factor = 0.7-0.85)
+            // - 3-5 dB loss: significant quality loss (factor = 0.5-0.7)
+            // - More than 5 dB loss: severe quality loss (factor < 0.5)
+            
+            let quality_factor = if xpsnr_delta < 0.5 {
+                1.0 // Virtually no quality loss
+            } else if xpsnr_delta < 1.0 {
+                1.0 - (xpsnr_delta - 0.5) * 0.1 // Linear from 1.0 to 0.95
+            } else if xpsnr_delta < 2.0 {
+                0.95 - (xpsnr_delta - 1.0) * 0.1 // Linear from 0.95 to 0.85
+            } else if xpsnr_delta < 3.0 {
+                0.85 - (xpsnr_delta - 2.0) * 0.15 // Linear from 0.85 to 0.7
+            } else if xpsnr_delta < 5.0 {
+                0.7 - (xpsnr_delta - 3.0) * 0.1 // Linear from 0.7 to 0.5
+            } else {
+                // More than 5 dB loss - apply heavy penalty
+                (0.5 - (xpsnr_delta - 5.0) * 0.05).max(0.2)
+            };
+            
+            quality_metrics.push((level, xpsnr));
+            quality_factor
+        } else {
+            // If no XPSNR data, be conservative and apply a small penalty
+            // This encourages using levels with quality measurements
+            0.85
+        };
+
+        // Calculate efficiency using square-root scaling with quality factor
         // This reduces bias against higher denoising levels by making the
         // denominator grow more slowly than the level value
         let adjusted_denom = grain_numeric.sqrt();
-        let efficiency = reduction / adjusted_denom;
+        let efficiency = (reduction * quality_factor) / adjusted_denom;
 
         // Only include positive, finite efficiency values
         if efficiency > 0.0 && efficiency.is_finite() {
@@ -297,8 +359,25 @@ pub(super) fn analyze_sample_with_knee_point(
     // Process the selected level
     if let Some((Some(level), efficiency)) = selected_level {
         // Calculate the actual file size reduction percentage for this level
-        let level_result = results.get(&Some(level)).unwrap_or(&baseline_size);
-        let size_reduction_pct = ((baseline_size - level_result) as f64 / baseline_size as f64) * 100.0;
+        let level_result = results.get(&Some(level)).unwrap();
+        // Size reduction from VeryLight (for decision display)
+        let size_reduction_from_verylight = ((verylight_size - level_result.file_size) as f64 / verylight_size as f64) * 100.0;
+        
+        // Get quality metric for reporting (show delta from VeryLight)
+        let quality_info = if let Some(xpsnr) = level_result.xpsnr {
+            if let Some(verylight_xpsnr_val) = verylight_xpsnr {
+                let delta = verylight_xpsnr_val - xpsnr;
+                if delta > 0.1 {
+                    format!(" (XPSNR: {:.1} dB, -{:.1} dB from VeryLight)", xpsnr, delta)
+                } else {
+                    format!(" (XPSNR: {:.1} dB, same as VeryLight)", xpsnr)
+                }
+            } else {
+                format!(" (XPSNR: {:.1} dB)", xpsnr)
+            }
+        } else {
+            String::new()
+        };
         
         // Check if this was selected due to continuous improvement
         let is_continuous_improvement = sorted_efficiencies.windows(2)
@@ -307,57 +386,38 @@ pub(super) fn analyze_sample_with_knee_point(
         // Report the analysis results as sub-items in verbose mode
         if is_continuous_improvement {
             log::debug!(
-                "Sample {}: Continuous improvement detected. Selected {:?} as balanced choice. Efficiency: {:.2}, Size reduction: {:.1}%",
-                sample_index, level, efficiency, size_reduction_pct
+                "Sample {}: Continuous improvement detected. Selected {:?} as balanced choice. Efficiency: {:.2}, Size reduction: {:.1}% beyond VeryLight",
+                sample_index, level, efficiency, size_reduction_from_verylight
             );
             crate::progress_reporting::report_sub_item(&format!(
-                "Sample {}: Selected {:?} ({:.1}% reduction) - continuous improvement",
-                sample_index, level, size_reduction_pct
+                "Sample {}: Selected {:?} ({:.1}% additional reduction{}) - continuous improvement",
+                sample_index, level, size_reduction_from_verylight, quality_info
             ));
         } else {
             log::debug!(
-                "Sample {}: Knee point found at {:?}. Efficiency: {:.2}, Size reduction: {:.1}%",
-                sample_index, level, efficiency, size_reduction_pct
+                "Sample {}: Knee point found at {:?}. Efficiency: {:.2}, Size reduction: {:.1}% beyond VeryLight",
+                sample_index, level, efficiency, size_reduction_from_verylight
             );
             crate::progress_reporting::report_sub_item(&format!(
-                "Sample {}: Selected {:?} ({:.1}% size reduction)",
-                sample_index, level, size_reduction_pct
+                "Sample {}: Selected {:?} ({:.1}% additional reduction{})",
+                sample_index, level, size_reduction_from_verylight, quality_info
             ));
         }
 
         // Return the selected optimal grain level
         level
     } else {
-        // No suitable level found - this should rarely happen with improved logic
-        // Use VeryLight as ultimate safe default
-        
-        // Find VeryLight's reduction for reporting
-        let verylight_reduction = size_reductions.iter()
-            .find(|(level, _)| matches!(level, Some(GrainLevel::VeryLight)))
-            .map(|(_, pct)| pct);
-            
-        if let Some(reduction_pct) = verylight_reduction {
-            log::debug!(
-                "Sample {}: No clear pattern detected. \
-                Using VeryLight ({:.1}% reduction) as conservative choice.",
-                sample_index, reduction_pct
-            );
-            crate::progress_reporting::report_sub_item(&format!(
-                "Sample {}: Using VeryLight ({:.1}% reduction) as safe default.",
-                sample_index, reduction_pct
-            ));
-        } else {
-            log::debug!(
-                "Sample {}: No suitable level found. Using VeryLight as safe default.",
-                sample_index
-            );
-            crate::progress_reporting::report_sub_item(&format!(
-                "Sample {}: Using VeryLight (safe default for compression benefits).",
-                sample_index
-            ));
-        }
+        // No suitable level found - return VeryLight
+        log::debug!(
+            "Sample {}: No improvements beyond VeryLight found. Using VeryLight as optimal choice.",
+            sample_index
+        );
+        crate::progress_reporting::report_sub_item(&format!(
+            "Sample {}: Using VeryLight (no better alternatives found).",
+            sample_index
+        ));
 
-        // Use VeryLight as safe fallback
+        // Use VeryLight as the result
         GrainLevel::VeryLight
     }
 }

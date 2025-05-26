@@ -504,4 +504,136 @@ pub fn extract_sample(
     Ok(output_path)
 }
 
+// ============================================================================
+// QUALITY METRICS
+// ============================================================================
+
+/// Calculates XPSNR (eXtended Peak Signal-to-Noise Ratio) between reference and encoded videos.
+///
+/// XPSNR is a more advanced quality metric that considers perceptual quality better than PSNR.
+/// Higher values indicate better quality (less distortion).
+///
+/// # Arguments
+///
+/// * `reference_path` - Path to the reference (original) video
+/// * `encoded_path` - Path to the encoded video to compare
+/// * `crop_filter` - Optional crop filter to apply to the reference video to match encoded dimensions
+///
+/// # Returns
+///
+/// * `CoreResult<f64>` - Average XPSNR value in dB
+pub fn calculate_xpsnr(reference_path: &Path, encoded_path: &Path, crop_filter: Option<&str>) -> CoreResult<f64> {
+    debug!(
+        "Calculating XPSNR: reference={}, encoded={}",
+        reference_path.display(),
+        encoded_path.display()
+    );
+    
+    // Build ffmpeg command with xpsnr filter
+    let mut cmd = crate::external::FfmpegCommandBuilder::new()
+        .with_hide_banner(true)
+        .with_hardware_accel(false) // Explicitly disable hardware acceleration
+        .build();
+    
+    // Force software decoding for both inputs to avoid hardware issues
+    // Don't specify decoder - let FFmpeg choose the appropriate one for each file
+    cmd.args(["-hwaccel", "none"])
+        .input(reference_path.to_string_lossy().as_ref())
+        .args(["-hwaccel", "none"])
+        .input(encoded_path.to_string_lossy().as_ref());
+    
+    // Build filter chain - apply crop to reference if needed, then XPSNR
+    let filter_complex = if let Some(crop) = crop_filter {
+        if !crop.is_empty() {
+            format!("[0:v]{}[ref];[ref][1:v]xpsnr=stats_file=-", crop)
+        } else {
+            "[0:v][1:v]xpsnr=stats_file=-".to_string()
+        }
+    } else {
+        "[0:v][1:v]xpsnr=stats_file=-".to_string()
+    };
+    
+    cmd.args(["-filter_complex", &filter_complex])
+        // Output format for parsing
+        .args(["-f", "null", "-"])
+        // Log level to get filter output
+        .args(["-loglevel", "info"]);
+    
+    debug!("Running XPSNR calculation command: {:?}", cmd);
+    
+    // Spawn the process
+    let mut child = cmd.spawn()
+        .map_err(|e| command_failed_error(
+            "ffmpeg",
+            std::process::ExitStatus::default(),
+            format!("Failed to start XPSNR calculation: {}", e),
+        ))?;
+    
+    // Collect stderr output for parsing
+    let mut stderr = String::new();
+    let process_success = true;
+    
+    // Process events from ffmpeg
+    for event in child.iter().map_err(|e| command_failed_error(
+        "ffmpeg",
+        std::process::ExitStatus::default(),
+        format!("Failed to get event iterator: {}", e),
+    ))? {
+        use ffmpeg_sidecar::event::FfmpegEvent;
+        match event {
+            FfmpegEvent::Log(_, line) | FfmpegEvent::Error(line) => {
+                // Collect all log lines for XPSNR parsing
+                stderr.push_str(&line);
+                stderr.push('\n');
+            }
+            FfmpegEvent::Done => {
+                // Process completed successfully
+                break;
+            }
+            _ => {} // Ignore other events
+        }
+    }
+    
+    if !process_success {
+        error!("XPSNR calculation failed: {}", stderr);
+        return Err(command_failed_error(
+            "ffmpeg (xpsnr)",
+            std::process::ExitStatus::default(),
+            format!("XPSNR calculation failed: {}", stderr),
+        ));
+    }
+    
+    // Look for the XPSNR line in the output
+    // Format: "[Parsed_xpsnr_0 @ ...] XPSNR  y: XX.XX  u: XX.XX  v: XX.XX  (minimum: XX.XX)"
+    // Use the Y (luma) component as recommended for XPSNR assessment
+    let mut luma_xpsnr = None;
+    for line in stderr.lines() {
+        if line.contains("XPSNR") && line.contains("y:") {
+            // Extract the Y (luma) value which is the recommended metric for XPSNR
+            if let Some(y_pos) = line.find("y:") {
+                let after_y = &line[y_pos + 2..];
+                // Extract value up to the next space
+                let value_str = after_y.split_whitespace().next().unwrap_or("").trim();
+                if let Ok(value) = value_str.parse::<f64>() {
+                    luma_xpsnr = Some(value);
+                    break;
+                }
+            }
+        }
+    }
+    
+    match luma_xpsnr {
+        Some(value) => {
+            debug!("XPSNR (luma) calculation successful: {:.2} dB", value);
+            Ok(value)
+        }
+        None => {
+            error!("Failed to parse XPSNR luma value from output:\n{}", stderr);
+            Err(CoreError::FilmGrainAnalysisFailed(
+                "Failed to parse XPSNR luma value from ffmpeg output".to_string()
+            ))
+        }
+    }
+}
+
 // TODO: Create mocking infrastructure for FFmpeg processes and add unit tests for this module.

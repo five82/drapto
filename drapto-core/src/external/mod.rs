@@ -44,6 +44,10 @@ pub mod ffprobe_executor;
 /// Function for extracting video samples
 pub use ffmpeg::extract_sample;
 
+// ----- FFmpeg Quality Metrics -----
+/// Function for calculating XPSNR between videos
+pub use ffmpeg::calculate_xpsnr;
+
 // ----- FFmpeg Command Building -----
 /// Builder utilities for FFmpeg commands
 pub use ffmpeg_builder::{FfmpegCommandBuilder, VideoFilterChain, SvtAv1ParamsBuilder};

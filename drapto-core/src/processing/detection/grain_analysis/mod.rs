@@ -36,7 +36,7 @@ use std::path::Path;
 use crate::config::CoreConfig;
 use crate::error::{CoreError, CoreResult};
 use crate::external::ffmpeg::EncodeParams;
-use crate::external::{extract_sample, get_file_size};
+use crate::external::{extract_sample, get_file_size, calculate_xpsnr};
 use crate::hardware_accel::is_hardware_acceleration_available;
 // Report progress functions are imported directly from the module
 use crate::temp_files;
@@ -65,7 +65,7 @@ mod utils;
 // ============================================================================
 
 /// Result types for grain analysis
-pub use types::{GrainAnalysisResult, GrainLevel, GrainLevelParseError};
+pub use types::{GrainAnalysisResult, GrainLevel, GrainLevelParseError, GrainLevelTestResult};
 
 /// Functions to determine and generate hqdn3d parameters
 pub use utils::{
@@ -312,7 +312,7 @@ pub fn analyze_grain(
     log::debug!("Testing grain levels...");
     crate::progress_reporting::report_sub_item("Testing grain levels...");
 
-    let mut phase1_results: Vec<HashMap<Option<GrainLevel>, u64>> = Vec::with_capacity(num_samples);
+    let mut phase1_results: Vec<HashMap<Option<GrainLevel>, GrainLevelTestResult>> = Vec::with_capacity(num_samples);
     let mut early_estimates: Vec<GrainLevel> = Vec::with_capacity(num_samples);
 
     for (i, &start_time) in sample_start_times.iter().enumerate() {
@@ -416,13 +416,40 @@ pub fn analyze_grain(
 
             let size_mb = encoded_size as f64 / (1024.0 * 1024.0);
             
-            log::debug!("  {:12} {:.1} MB", format!("{}:", level_desc), size_mb);
-            crate::progress_reporting::report_sub_item(&format!(
-                "  {:12} {:.1} MB",
-                format!("{}:", level_desc),
-                size_mb
-            ));
-            results_for_this_sample.insert(*level_opt, encoded_size);
+            // Calculate XPSNR against raw sample for all levels including baseline
+            // Apply the same crop filter used in encoding to ensure dimensions match
+            let xpsnr = match calculate_xpsnr(&raw_sample_path, &encoded_sample_path, sample_params.crop_filter.as_deref()) {
+                Ok(xpsnr_value) => {
+                    log::debug!("    XPSNR for {}: {:.2} dB", level_desc, xpsnr_value);
+                    Some(xpsnr_value)
+                }
+                Err(e) => {
+                    log::warn!("    Failed to calculate XPSNR for {}: {}", level_desc, e);
+                    None
+                }
+            };
+            
+            if let Some(xpsnr_value) = xpsnr {
+                log::debug!("  {:12} {:.1} MB, XPSNR: {:.1} dB", format!("{}:", level_desc), size_mb, xpsnr_value);
+                crate::progress_reporting::report_sub_item(&format!(
+                    "  {:12} {:.1} MB, XPSNR: {:.1} dB",
+                    format!("{}:", level_desc),
+                    size_mb,
+                    xpsnr_value
+                ));
+            } else {
+                log::debug!("  {:12} {:.1} MB", format!("{}:", level_desc), size_mb);
+                crate::progress_reporting::report_sub_item(&format!(
+                    "  {:12} {:.1} MB",
+                    format!("{}:", level_desc),
+                    size_mb
+                ));
+            }
+            
+            results_for_this_sample.insert(*level_opt, GrainLevelTestResult {
+                file_size: encoded_size,
+                xpsnr,
+            });
         }
         phase1_results.push(results_for_this_sample.clone());
         

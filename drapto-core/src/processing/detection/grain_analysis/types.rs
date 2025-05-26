@@ -150,3 +150,12 @@ pub struct GrainAnalysisResult {
     /// This represents the consensus grain level across multiple samples.
     pub detected_level: GrainLevel,
 }
+
+/// Holds encoding results for a single grain level test
+#[derive(Debug, Clone)]
+pub struct GrainLevelTestResult {
+    /// The encoded file size in bytes
+    pub file_size: u64,
+    /// XPSNR quality metric compared to baseline (higher is better)
+    pub xpsnr: Option<f64>,
+}

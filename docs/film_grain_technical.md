@@ -47,9 +47,10 @@ This approach creates a balanced solution that preserves the visual character of
 The grain analysis module implements a streamlined approach to determine the optimal denoising parameters:
 
 1. **Sample Extraction**: Multiple short samples are extracted from different parts of the video
-2. **Comprehensive Testing**: Each sample is encoded with all six denoising levels
-3. **Knee Point Analysis**: File size reductions are analyzed using diminishing returns detection
-4. **Result Aggregation**: The final optimal denoising level is determined using the median
+2. **Comprehensive Testing**: Each sample is encoded with all six denoising levels plus baseline
+3. **Quality Measurement**: XPSNR (eXtended Peak Signal-to-Noise Ratio) is calculated against the raw sample for all levels including baseline
+4. **Knee Point Analysis**: File size reductions and quality metrics are analyzed using diminishing returns detection with delta-based quality factors
+5. **Result Aggregation**: The final optimal denoising level is determined using the median
 
 ### Sample Extraction Logic
 
@@ -75,10 +76,11 @@ During analysis, the system outputs the results of each sample test. Here's an e
 Phase 1: Testing initial grain levels...
   Processing sample 1/3 (Start: 35.26s, Duration: 10s)...
       -> Baseline   size: 26.25 MB
-      -> VeryLight  size: 20.05 MB
-      -> Light      size: 17.73 MB
-      -> Moderate   size: 14.64 MB
-      -> Elevated   size: 12.40 MB
+      -> VeryLight  size: 20.05 MB, XPSNR: 42.3 dB
+      -> Light      size: 17.73 MB, XPSNR: 40.8 dB
+      -> LightModerate size: 15.91 MB, XPSNR: 39.2 dB
+      -> Moderate   size: 14.64 MB, XPSNR: 37.5 dB
+      -> Elevated   size: 12.40 MB, XPSNR: 35.1 dB
 ```
 
 Note: The output logs consistently use "Baseline" when referring to videos with no grain or when no denoising is applied.
@@ -96,19 +98,28 @@ The system classifies grain into six distinct levels:
 | Moderate    | Noticeable grain with spatial patterns | Spatially-focused denoising |
 | Elevated    | Medium grain with temporal fluctuations | Temporally-focused denoising |
 
-### Knee Point Detection Algorithm
+### Knee Point Detection Algorithm with Quality Awareness
 
-The knee point detection algorithm finds the optimal balance between compression efficiency and visual quality preservation using a diminishing returns approach:
+The knee point detection algorithm finds the optimal balance between compression efficiency and visual quality preservation using a diminishing returns approach with XPSNR quality metrics:
 
-1. **Baseline Establishment**: Each sample is encoded with different denoising levels, always including "Baseline" (no denoising) as reference
-2. **Efficiency Calculation**: An efficiency metric is calculated for each level: `(size_reduction / sqrt(grain_level_value))`
-3. **Diminishing Returns Detection**: The algorithm calculates improvement rates between consecutive levels and stops when the rate drops below 25%
-4. **Continuous Improvement Handling**: When efficiency continuously improves without diminishing returns, the algorithm selects Light as a balanced compromise
-5. **Conservative Selection**: The algorithm prioritizes quality preservation while ensuring meaningful compression benefits
+1. **Reference Points**: Each sample is encoded with all denoising levels including baseline. Baseline metrics are displayed for transparency, while VeryLight serves as the reference for comparisons
+2. **Quality-Adjusted Efficiency Calculation**: An efficiency metric is calculated for levels beyond VeryLight: `(size_reduction_from_verylight * quality_factor / sqrt(grain_level_value))`
+3. **Delta-Based Quality Factor**: Based on XPSNR loss from VeryLight (our minimum denoise level):
+   - Less than 0.5 dB loss: factor = 1.0 (virtually no perceptible difference)
+   - 0.5-1 dB loss: factor = 0.95-1.0 (minimal quality loss)
+   - 1-2 dB loss: factor = 0.85-0.95 (slight quality loss)
+   - 2-3 dB loss: factor = 0.7-0.85 (moderate quality loss)
+   - 3-5 dB loss: factor = 0.5-0.7 (significant quality loss)
+   - More than 5 dB loss: factor < 0.5 (severe quality loss)
+4. **Diminishing Returns Detection**: The algorithm calculates improvement rates between consecutive levels and stops when the rate drops below 25%
+5. **Continuous Improvement Handling**: When efficiency continuously improves without diminishing returns, the algorithm selects Light as a balanced compromise
+6. **Conservative Selection**: The algorithm prioritizes quality preservation while ensuring meaningful compression benefits
 
 ```rust
-// Efficiency calculation with square-root scaling to reduce bias
-let efficiency = size_reduction / (grain_level_value.sqrt());
+// Quality-adjusted efficiency calculation with delta-based quality factor
+let xpsnr_delta = verylight_xpsnr - xpsnr;  // Quality loss from VeryLight in dB
+let quality_factor = calculate_quality_factor_from_delta(xpsnr_delta);
+let efficiency = (size_reduction_from_verylight * quality_factor) / (grain_level_value.sqrt());
 ```
 
 #### Fallback Behavior
@@ -120,9 +131,10 @@ The algorithm handles different patterns intelligently:
 3. **No Clear Pattern**: Defaults to VeryLight as the ultimate safe fallback
 
 Example messages:
-- `Sample 1: Selected Light (11.5% size reduction)` - When diminishing returns detected
-- `Sample 1: Selected Light (12.8% reduction) - continuous improvement` - When efficiency keeps improving
-- `Sample 1: Using VeryLight (6.1% reduction) as safe default.` - When no clear pattern
+- `Sample 1: Baseline reference - 26.3 MB, XPSNR: 45.2 dB` - Shows baseline metrics for transparency
+- `Sample 1: Selected Light (3.5% additional reduction, XPSNR: 42.8 dB, -0.8 dB from VeryLight)` - When diminishing returns detected
+- `Sample 1: Selected Light (4.2% additional reduction, XPSNR: 42.5 dB, -1.1 dB from VeryLight) - continuous improvement` - When efficiency keeps improving
+- `Sample 1: Using VeryLight (no better alternatives found)` - When no levels improve beyond VeryLight
 
 This approach ensures that:
 - Some denoising is always applied (following encoding best practices)
@@ -359,5 +371,7 @@ The recent enhancements to the grain analysis system provide several key improve
 5. **Early Exit Optimization**: Added intelligent early exit when samples show consistent results, reducing analysis time by 20-40% without sacrificing accuracy.
 
 6. **Simplified Architecture**: Removed the adaptive refinement phase, reducing complexity while maintaining accuracy through better initial level coverage.
+
+7. **XPSNR Quality Metrics**: Integrated XPSNR calculations to measure quality for all encoding levels. Baseline metrics are displayed for transparency, while quality factors are calculated using delta from VeryLight XPSNR. This approach aligns with the system's design where VeryLight is the minimum denoising level, focusing decisions on whether additional denoising beyond VeryLight provides worthwhile benefits. The system adapts to any CRF value by using relative measurements rather than absolute quality thresholds.
 
 These improvements make the grain analysis system faster, more predictable, and better aligned with the goal of practical file size reduction for home viewing.
