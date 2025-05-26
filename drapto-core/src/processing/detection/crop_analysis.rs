@@ -23,7 +23,6 @@
 // AI-ASSISTANT-INFO: Black bar detection and crop parameter generation
 
 // ---- External crate imports ----
-use ffmpeg_sidecar::event::FfmpegEvent;
 
 // ---- Internal crate imports ----
 use crate::error::CoreResult;
@@ -65,7 +64,7 @@ fn determine_crop_threshold(props: &VideoProperties) -> (u32, bool) {
 
     if is_hdr_cs {
         // For HDR content, use a higher initial threshold
-        log::info!(
+        log::debug!(
             "HDR content potentially detected via color space ({}), adjusting detection sensitivity.",
             cs
         );
@@ -76,7 +75,7 @@ fn determine_crop_threshold(props: &VideoProperties) -> (u32, bool) {
     }
 }
 
-/// Runs ffmpeg blackdetect on sample frames for HDR content to refine the threshold.
+/// Runs ffmpeg with signalstats to analyze HDR black levels and refine the threshold.
 fn run_hdr_blackdetect(
     input_file: &Path,
     initial_threshold: u32,
@@ -86,7 +85,9 @@ fn run_hdr_blackdetect(
         input_file.display()
     );
 
-    let filter = "select='eq(n,0)+eq(n,100)+eq(n,200)',blackdetect=d=0:pic_th=0.1";
+    // Use signalstats to analyze luminance values at key frames
+    // The metadata filter prints the signalstats values to stderr using file=/dev/stderr
+    let filter = "select='eq(n,0)+eq(n,100)+eq(n,200)',signalstats,metadata=mode=print:file=/dev/stderr";
 
     let mut cmd = crate::external::FfmpegCommandBuilder::new()
         .with_hardware_accel(true)
@@ -97,7 +98,7 @@ fn run_hdr_blackdetect(
         .format("null")
         .output("-");
 
-    let mut stderr_output = String::new();
+    let mut metadata_output = String::new();
     // Spawn the command
     let mut child = cmd.spawn()
         .map_err(|e| crate::error::command_start_error("ffmpeg", e))?;
@@ -110,10 +111,11 @@ fn run_hdr_blackdetect(
             e.to_string(),
         ))? {
             match event {
-                FfmpegEvent::Log(_, line) | FfmpegEvent::Error(line) => {
-                    if line.contains("black_level") {
-                        stderr_output.push_str(&line);
-                        stderr_output.push('\n');
+                ffmpeg_sidecar::event::FfmpegEvent::Log(_, line) | ffmpeg_sidecar::event::FfmpegEvent::Error(line) => {
+                    // Capture signalstats metadata output lines
+                    if line.contains("lavfi.signalstats.") {
+                        metadata_output.push_str(&line);
+                        metadata_output.push('\n');
                     }
                 }
                 _ => {}
@@ -124,31 +126,35 @@ fn run_hdr_blackdetect(
 
     if let Err(e) = process_result {
         log::error!(
-            "ffmpeg (sidecar) failed during HDR blackdetect on {}: {}",
+            "ffmpeg (sidecar) failed during HDR black level analysis on {}: {}",
             input_file.display(),
             e
         );
         log::warn!(
-            "HDR blackdetect failed, using initial threshold: {}",
+            "HDR black level analysis failed, using initial threshold: {}",
             initial_threshold
         );
         return Ok(initial_threshold);
     }
 
     log::trace!(
-        "ffmpeg HDR blackdetect stderr output for {}: {}",
+        "ffmpeg HDR signalstats output for {}: {}",
         input_file.display(),
-        stderr_output
+        metadata_output
     );
 
-    // Parse black_level values from stderr output
-    let matches: Vec<f64> = stderr_output
+    // Parse YMIN values from signalstats metadata output
+    let matches: Vec<f64> = metadata_output
         .lines()
         .filter_map(|line| {
-            if let Some(pos) = line.find("black_level:") {
-                let after_colon = &line[pos + "black_level:".len()..];
-                let value_str = after_colon.split_whitespace().next()?;
-                value_str.parse::<f64>().ok()
+            // Look for lavfi.signalstats.YMIN=value pattern
+            if line.contains("lavfi.signalstats.YMIN=") {
+                let parts: Vec<&str> = line.split('=').collect();
+                if parts.len() >= 2 {
+                    parts[1].parse::<f64>().ok()
+                } else {
+                    None
+                }
             } else {
                 None
             }
@@ -157,17 +163,24 @@ fn run_hdr_blackdetect(
 
     if matches.is_empty() {
         log::warn!(
-            "Could not parse black_level from ffmpeg output for {}. Using initial threshold.",
+            "Could not parse YMIN values from signalstats output for {}. Using initial threshold.",
             input_file.display()
         );
         Ok(initial_threshold)
     } else {
-        let avg_black_level: f64 = matches.iter().sum::<f64>() / matches.len() as f64;
-        let refined_threshold = (avg_black_level * 1.5).round() as u32;
-        let clamped_threshold = refined_threshold.clamp(16, 256); // Use clamp()
-        log::info!(
-            "HDR black level analysis: Avg={}, Refined Threshold={}, Clamped={}",
-            avg_black_level,
+        // For HDR content, YMIN represents the minimum luminance
+        // We adjust the threshold based on the minimum values found
+        let avg_ymin: f64 = matches.iter().sum::<f64>() / matches.len() as f64;
+        
+        // For HDR content, we need a higher threshold than the minimum black level
+        // The signalstats values are already in 8-bit range (0-255)
+        // We use a multiplier to set the threshold well above the black level
+        let refined_threshold = (avg_ymin * 2.5).round() as u32;  // 2.5x multiplier for HDR
+        let clamped_threshold = refined_threshold.clamp(64, 256);  // Higher minimum for HDR
+        
+        log::debug!(
+            "HDR black level analysis: Avg YMIN={:.2}, Refined Threshold={}, Final={}",
+            avg_ymin,
             refined_threshold,
             clamped_threshold
         );
@@ -242,7 +255,7 @@ fn run_cropdetect(
             e.to_string(),
         ))? {
             match event {
-                FfmpegEvent::Log(_, line) | FfmpegEvent::Error(line) => {
+                ffmpeg_sidecar::event::FfmpegEvent::Log(_, line) | ffmpeg_sidecar::event::FfmpegEvent::Error(line) => {
                     if line.contains("crop=") {
                         stderr_output.push_str(&line);
                         stderr_output.push('\n');
@@ -393,9 +406,10 @@ pub fn detect_crop(
 ) -> CoreResult<(Option<String>, bool)> {
     // Check if crop detection is disabled by user preference
     if disable_crop {
-        log::info!(
-            "Crop detection disabled via parameter for {}",
-            input_file.display()
+        crate::progress_reporting::report_completion_with_status(
+            "Crop detection complete",
+            "Detected crop",
+            "Disabled",
         );
         return Ok((None, false));
     }
@@ -405,11 +419,7 @@ pub fn detect_crop(
 
     // STEP 2: For HDR content, refine the threshold using black level analysis
     if is_hdr {
-        // Use the centralized function for analysis step reporting
-        crate::progress_reporting::report_analysis_step(
-            "🔬",
-            "Performing HDR black level analysis...",
-        );
+        log::debug!("Performing HDR black level analysis...");
         log::debug!(
             "Running HDR black level analysis for {}...",
             input_file.display()

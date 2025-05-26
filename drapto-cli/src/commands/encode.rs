@@ -267,7 +267,7 @@ pub fn run_encode(
     let hw_accel_info = drapto_core::hardware_accel::get_hardware_accel_info();
     let hw_display = match hw_accel_info {
         Some(info) => format!("{} (decode only)", info),
-        None => "None available".to_string(),
+        None => "No hardware decoder available".to_string(),
     };
     terminal::print_status("Hardware", &hw_display, false);
 

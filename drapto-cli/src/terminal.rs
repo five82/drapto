@@ -63,7 +63,7 @@ pub mod styling {
     pub const SECTION_SUFFIX: &str = " =====";
 
     // Indentation
-    pub const STATUS_INDENT: &str = "    "; // Level 4: 4 spaces for status lines
+    pub const STATUS_INDENT: &str = "      "; // Level 4: 6 spaces for status lines
     pub const SUBSECTION_INDENT: &str = "  "; // Level 2: 2 spaces for subsections
     pub const SUB_ITEM_INDENT: &str = "    "; // Level 3-4: 4 spaces for sub-items
 
@@ -854,9 +854,6 @@ impl drapto_core::progress_reporting::ProgressReporter for CliProgressReporter {
         print_completion_with_status(success_message, status_label, status_value);
     }
 
-    fn analysis_step(&self, emoji: &str, message: &str) {
-        print_analysis_step(emoji, message);
-    }
 
     fn encoding_summary(
         &self,
@@ -1093,17 +1090,6 @@ pub fn print_daemon_starting() {
     eprintln!("Starting Drapto daemon in the background...");
 }
 
-/// Print a specialized analysis status message with emoji
-///
-/// # Arguments
-///
-/// * `emoji` - The emoji character to use (e.g., "🔬")
-/// * `message` - The message to display
-pub fn print_analysis_step(emoji: &str, message: &str) {
-    // Emoji should not have special formatting - keep it simple
-    // This is typically used for verbose mode analysis steps
-    info!("{} {}", emoji, message);
-}
 
 /// Print a file list with consistent formatting
 ///

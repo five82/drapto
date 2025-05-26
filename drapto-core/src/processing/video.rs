@@ -315,12 +315,19 @@ pub fn process_videos(
             &format!("{} ({}) - CRF {}", video_width, category, quality),
         );
         crate::progress_reporting::report_status("Duration", &format!("{:.2}s", duration_secs));
-        log::debug!("Crop Threshold: 16");
-        crate::progress_reporting::report_status("Crop Threshold", "16");
+        
+        // Detect and report HDR/SDR status based on color space
+        let color_space = video_props.color_space.as_deref().unwrap_or("");
+        let is_hdr = color_space == "bt2020nc" || color_space == "bt2020c";
+        let dynamic_range = if is_hdr { "HDR" } else { "SDR" };
+        crate::progress_reporting::report_status("Dynamic range", dynamic_range);
 
         // ========================================================================
         // STEP 3.6: PERFORM CROP DETECTION
         // ========================================================================
+
+        // Add a subsection for crop detection
+        crate::progress_reporting::report_processing_step("Detecting black bars");
 
         // Check if crop detection is disabled in the configuration
         let disable_crop = config.crop_mode == "off";
@@ -524,7 +531,7 @@ pub fn process_videos(
         let hw_info = crate::hardware_accel::get_hardware_accel_info();
         let hw_display = match hw_info {
             Some(info) => format!("{} (decode only)", info),
-            None => "None available".to_string(),
+            None => "No hardware decoder available".to_string(),
         };
         crate::progress_reporting::report_status("Acceleration", &hw_display);
 

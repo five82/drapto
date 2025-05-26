@@ -103,6 +103,11 @@ impl FfmpegProgressHandler {
     
     /// Handles log events
     fn handle_log(&mut self, level: FfmpegLogLevel, message: &str) {
+        // Filter out noisy NAL unit messages
+        if message.contains("Skipping NAL unit") {
+            return;
+        }
+        
         // Map FFmpeg log level
         let log_level = map_ffmpeg_log_level(&level);
         

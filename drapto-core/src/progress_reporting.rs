@@ -67,9 +67,6 @@ pub trait ProgressReporter: Send + Sync {
     /// Report a completion with associated status (Success + Status line)
     fn completion_with_status(&self, success_message: &str, status_label: &str, status_value: &str);
 
-    /// Report an analysis step with emoji
-    fn analysis_step(&self, emoji: &str, message: &str);
-
     /// Report an encoding summary with formatted details
     fn encoding_summary(
         &self,
@@ -364,17 +361,6 @@ pub fn report_completion_with_status(
     }
 }
 
-/// Reports a specialized analysis step with emoji
-///
-/// # Arguments
-///
-/// * `emoji` - The emoji character to use
-/// * `message` - The message to display
-pub fn report_analysis_step(emoji: &str, message: &str) {
-    if let Some(reporter) = get_progress_reporter() {
-        reporter.analysis_step(emoji, message);
-    }
-}
 
 /// Reports an encoding summary with consistent formatting
 ///
