@@ -470,6 +470,7 @@ pub fn process_videos(
                     grain_analysis::GrainLevel::Baseline => "Baseline",
                     grain_analysis::GrainLevel::VeryLight => "VeryLight",
                     grain_analysis::GrainLevel::Light => "Light",
+                    grain_analysis::GrainLevel::LightModerate => "LightModerate",
                     grain_analysis::GrainLevel::Moderate => "Moderate",
                     grain_analysis::GrainLevel::Elevated => "Elevated",
                 };
@@ -504,6 +505,7 @@ pub fn process_videos(
                     grain_analysis::GrainLevel::Baseline => "Baseline",
                     grain_analysis::GrainLevel::VeryLight => "VeryLight",
                     grain_analysis::GrainLevel::Light => "Light",
+                    grain_analysis::GrainLevel::LightModerate => "LightModerate",
                     grain_analysis::GrainLevel::Moderate => "Moderate",
                     grain_analysis::GrainLevel::Elevated => "Elevated",
                 };

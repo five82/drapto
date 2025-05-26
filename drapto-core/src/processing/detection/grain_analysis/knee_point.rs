@@ -57,7 +57,7 @@ use std::collections::HashMap;
 /// The optimal `GrainLevel` for file size reduction (minimum: VeryLight)
 pub(super) fn analyze_sample_with_knee_point(
     results: &HashMap<Option<GrainLevel>, u64>,
-    knee_threshold: f64,
+    _knee_threshold: f64,
     sample_index: usize,
 ) -> GrainLevel {
     // ========================================================================
@@ -113,12 +113,13 @@ pub(super) fn analyze_sample_with_knee_point(
     // This allows us to quantify the "strength" of each denoising level
     let to_numeric = |level: Option<GrainLevel>| -> f64 {
         match level {
-            None => 0.0,                        // No denoising
-            Some(GrainLevel::Baseline) => 0.0,  // Equivalent to no denoising
-            Some(GrainLevel::VeryLight) => 1.0, // Very light denoising
-            Some(GrainLevel::Light) => 2.0,     // Light denoising
-            Some(GrainLevel::Moderate) => 3.0,  // Moderate denoising
-            Some(GrainLevel::Elevated) => 4.0,  // Elevated denoising
+            None => 0.0,                            // Baseline (no denoising)
+            Some(GrainLevel::Baseline) => 0.0,      // Equivalent to no denoising
+            Some(GrainLevel::VeryLight) => 1.0,     // Very light denoising
+            Some(GrainLevel::Light) => 2.0,         // Light denoising
+            Some(GrainLevel::LightModerate) => 3.0, // Light to moderate denoising
+            Some(GrainLevel::Moderate) => 4.0,      // Moderate denoising
+            Some(GrainLevel::Elevated) => 5.0,      // Elevated denoising
         }
     };
 
@@ -184,54 +185,12 @@ pub(super) fn analyze_sample_with_knee_point(
     }
 
     // ========================================================================
-    // STEP 4: FIND MAXIMUM EFFICIENCY POINT
+    // STEP 4: FIND DIMINISHING RETURNS POINT
     // ========================================================================
 
-    // Find the grain level with the highest efficiency
-    let (_max_level, max_efficiency) =
-        efficiencies.iter().fold((None, 0.0), |acc, &(level, eff)| {
-            // Update if this efficiency is higher than the current maximum
-            // and is a valid finite number
-            if eff > acc.1 && eff.is_finite() {
-                (level, eff)
-            } else {
-                acc
-            }
-        });
-
-    // Safety check: ensure maximum efficiency is positive
-    if max_efficiency <= 0.0 {
-        report_log_message(
-            &format!(
-                "  Sample {}: Max efficiency is not positive (Max: {:.2}). Using VeryLight (safe default).",
-                sample_index, max_efficiency
-            ),
-            LogLevel::Info,
-        );
-        return GrainLevel::VeryLight;
-    }
-
-    // ========================================================================
-    // STEP 5: APPLY KNEE THRESHOLD
-    // ========================================================================
-
-    // Calculate the threshold efficiency (e.g., 80% of maximum)
-    let threshold_efficiency = knee_threshold * max_efficiency;
-
-    // Find all grain levels that meet or exceed the threshold
-    let mut candidates: Vec<(Option<GrainLevel>, f64)> = efficiencies
-        .iter()
-        .filter(|&&(_, eff)| eff.is_finite() && eff >= threshold_efficiency)
-        .cloned()
-        .collect();
-
-    // ========================================================================
-    // STEP 6: SORT AND SELECT OPTIMAL LEVEL
-    // ========================================================================
-
-    // Sort candidates by grain level value (lowest first)
-    // This prioritizes lighter denoising levels that still meet the threshold
-    candidates.sort_by(|a, b| {
+    // Sort efficiencies by grain level (lowest to highest)
+    let mut sorted_efficiencies = efficiencies.clone();
+    sorted_efficiencies.sort_by(|a, b| {
         let a_val = to_numeric(a.0);
         let b_val = to_numeric(b.0);
         a_val
@@ -239,62 +198,149 @@ pub(super) fn analyze_sample_with_knee_point(
             .unwrap_or(std::cmp::Ordering::Equal)
     });
 
-    // Choose the lowest grain level that meets the threshold
-    // This is the "knee point" - the optimal balance between denoising and quality
-    if let Some(&(Some(level), efficiency)) = candidates.first() {
+    // Find the point of diminishing returns
+    let mut selected_level: Option<(Option<GrainLevel>, f64)> = None;
+    
+    // If we only have one efficiency, use it
+    if sorted_efficiencies.len() == 1 {
+        selected_level = sorted_efficiencies.first().cloned();
+    } else {
+        // Calculate improvement rates between consecutive levels
+        for i in 0..sorted_efficiencies.len() {
+            if i == 0 {
+                // First level always has good improvement over baseline
+                continue;
+            }
+            
+            let (curr_level, curr_eff) = sorted_efficiencies[i];
+            let (prev_level, prev_eff) = sorted_efficiencies[i - 1];
+            
+            // Calculate the improvement rate
+            let improvement = curr_eff - prev_eff;
+            let improvement_rate = if prev_eff > 0.0 {
+                improvement / prev_eff
+            } else if improvement > 0.0 {
+                1.0 // 100% improvement from zero
+            } else {
+                0.0
+            };
+            
+            log::debug!(
+                "Sample {}: {:?} to {:?}: improvement={:.2}, rate={:.1}%",
+                sample_index,
+                prev_level.unwrap_or(GrainLevel::Baseline),
+                curr_level.unwrap_or(GrainLevel::Baseline),
+                improvement,
+                improvement_rate * 100.0
+            );
+            
+            // If improvement rate drops below 25%, we've hit diminishing returns
+            if improvement_rate < 0.25 {
+                // Use the previous level (before diminishing returns)
+                selected_level = Some(sorted_efficiencies[i - 1]);
+                log::debug!(
+                    "Sample {}: Diminishing returns detected at {:?}, selecting {:?}",
+                    sample_index,
+                    curr_level.unwrap_or(GrainLevel::Baseline),
+                    prev_level.unwrap_or(GrainLevel::Baseline)
+                );
+                break;
+            }
+        }
+        
+        // If no diminishing returns found (efficiency keeps improving), 
+        // check if this is a continuous improvement pattern
+        if selected_level.is_none() && !sorted_efficiencies.is_empty() {
+            // Check if efficiency is continuously increasing
+            let continuously_improving = sorted_efficiencies.windows(2)
+                .all(|w| w[1].1 > w[0].1);
+                
+            if continuously_improving && sorted_efficiencies.len() >= 3 {
+                // Efficiency keeps improving - use Light as balanced choice
+                // Light provides good compression while staying conservative
+                log::debug!(
+                    "Sample {}: Efficiency continuously improving. Selecting Light as balanced choice.",
+                    sample_index
+                );
+                
+                // Find Light level in the sorted efficiencies
+                selected_level = sorted_efficiencies
+                    .iter()
+                    .find(|(level, _)| matches!(level, Some(GrainLevel::Light)))
+                    .cloned();
+                    
+                // If Light wasn't tested (shouldn't happen), fall back to 70% threshold
+                if selected_level.is_none() {
+                    let max_efficiency = sorted_efficiencies
+                        .iter()
+                        .map(|(_, eff)| *eff)
+                        .fold(0.0, f64::max);
+                        
+                    let threshold = 0.7 * max_efficiency;
+                    selected_level = sorted_efficiencies
+                        .iter()
+                        .find(|(_, eff)| *eff >= threshold)
+                        .cloned();
+                }
+            } else {
+                // Not continuously improving or too few data points
+                // Use the first level that achieves reasonable efficiency
+                selected_level = sorted_efficiencies.first().cloned();
+            }
+        }
+    }
+
+    // ========================================================================
+    // STEP 5: APPLY SELECTION
+    // ========================================================================
+
+    // Process the selected level
+    if let Some((Some(level), efficiency)) = selected_level {
         // Calculate the actual file size reduction percentage for this level
         let level_result = results.get(&Some(level)).unwrap_or(&baseline_size);
         let size_reduction_pct = ((baseline_size - level_result) as f64 / baseline_size as f64) * 100.0;
         
+        // Check if this was selected due to continuous improvement
+        let is_continuous_improvement = sorted_efficiencies.windows(2)
+            .all(|w| w[1].1 > w[0].1) && level == GrainLevel::Light;
+            
         // Report the analysis results as sub-items in verbose mode
-        log::debug!(
-            "Sample {}: Knee point found at {:?}. Efficiency: {:.2}, Size reduction: {:.1}%",
-            sample_index, level, efficiency, size_reduction_pct
-        );
-        crate::progress_reporting::report_sub_item(&format!(
-            "Sample {}: Selected {:?} ({:.1}% size reduction)",
-            sample_index, level, size_reduction_pct
-        ));
+        if is_continuous_improvement {
+            log::debug!(
+                "Sample {}: Continuous improvement detected. Selected {:?} as balanced choice. Efficiency: {:.2}, Size reduction: {:.1}%",
+                sample_index, level, efficiency, size_reduction_pct
+            );
+            crate::progress_reporting::report_sub_item(&format!(
+                "Sample {}: Selected {:?} ({:.1}% reduction) - continuous improvement",
+                sample_index, level, size_reduction_pct
+            ));
+        } else {
+            log::debug!(
+                "Sample {}: Knee point found at {:?}. Efficiency: {:.2}, Size reduction: {:.1}%",
+                sample_index, level, efficiency, size_reduction_pct
+            );
+            crate::progress_reporting::report_sub_item(&format!(
+                "Sample {}: Selected {:?} ({:.1}% size reduction)",
+                sample_index, level, size_reduction_pct
+            ));
+        }
 
         // Return the selected optimal grain level
         level
     } else {
-        // No suitable candidates found - this typically means all levels have efficiency
-        // below the threshold or the efficiency curve doesn't have a clear knee point
-        
-        // Check if this is because efficiencies are increasing (no diminishing returns)
-        let efficiency_increasing = efficiencies.windows(2).all(|w| w[1].1 >= w[0].1);
+        // No suitable level found - this should rarely happen with improved logic
+        // Use VeryLight as ultimate safe default
         
         // Find VeryLight's reduction for reporting
         let verylight_reduction = size_reductions.iter()
             .find(|(level, _)| matches!(level, Some(GrainLevel::VeryLight)))
             .map(|(_, pct)| pct);
             
-        if efficiency_increasing && max_efficiency > 0.0 {
-            // Efficiency is still increasing - grain is benefiting from stronger denoising
-            // But we'll be conservative and use VeryLight
-            if let Some(reduction_pct) = verylight_reduction {
-                log::debug!(
-                    "Sample {}: Efficiency curve shows continued improvement (no knee point). \
-                    Using VeryLight ({:.1}% reduction) as conservative choice.",
-                    sample_index, reduction_pct
-                );
-                crate::progress_reporting::report_sub_item(&format!(
-                    "Sample {}: No clear knee point (efficiency still increasing). Using VeryLight ({:.1}% reduction).",
-                    sample_index, reduction_pct
-                ));
-            } else {
-                crate::progress_reporting::report_sub_item(&format!(
-                    "Sample {}: No clear knee point. Using VeryLight (conservative choice).",
-                    sample_index
-                ));
-            }
-        } else if let Some(reduction_pct) = verylight_reduction {
-            // Some other reason - just report VeryLight usage
+        if let Some(reduction_pct) = verylight_reduction {
             log::debug!(
-                "Sample {}: No candidates met threshold (max efficiency: {:.2}). \
-                Using VeryLight ({:.1}% reduction).",
-                sample_index, max_efficiency, reduction_pct
+                "Sample {}: No clear pattern detected. \
+                Using VeryLight ({:.1}% reduction) as conservative choice.",
+                sample_index, reduction_pct
             );
             crate::progress_reporting::report_sub_item(&format!(
                 "Sample {}: Using VeryLight ({:.1}% reduction) as safe default.",
@@ -302,7 +348,7 @@ pub(super) fn analyze_sample_with_knee_point(
             ));
         } else {
             log::debug!(
-                "Sample {}: No suitable candidates in knee analysis. Using VeryLight as safe default.",
+                "Sample {}: No suitable level found. Using VeryLight as safe default.",
                 sample_index
             );
             crate::progress_reporting::report_sub_item(&format!(

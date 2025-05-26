@@ -98,6 +98,7 @@ pub fn grain_level_to_strength(level: GrainLevel) -> f32 {
         GrainLevel::Baseline => 0.0,
         GrainLevel::VeryLight => 1.0,
         GrainLevel::Light => 2.0,
+        GrainLevel::LightModerate => 2.5,
         GrainLevel::Moderate => 3.0,
         GrainLevel::Elevated => 4.0,
     }
@@ -119,7 +120,8 @@ pub fn strength_to_grain_level(strength: f32) -> GrainLevel {
     match strength {
         s if s <= 0.5 => GrainLevel::Baseline,
         s if s <= 1.5 => GrainLevel::VeryLight,
-        s if s <= 2.5 => GrainLevel::Light,
+        s if s <= 2.25 => GrainLevel::Light,
+        s if s <= 2.75 => GrainLevel::LightModerate,
         s if s <= 3.5 => GrainLevel::Moderate,
         _ => GrainLevel::Elevated,
     }
@@ -174,11 +176,12 @@ pub fn generate_hqdn3d_params(strength_value: f32) -> String {
     // Define the anchor points for interpolation
     // Format: (strength, luma_spatial, chroma_spatial, temp_luma, temp_chroma)
     let anchor_points = [
-        (0.0, 0.0, 0.0, 0.0, 0.0), // Baseline (no denoising)
-        (1.0, 0.5, 0.3, 3.0, 3.0), // VeryLight
-        (2.0, 1.0, 0.7, 4.0, 4.0), // Light
-        (3.0, 1.5, 1.0, 6.0, 6.0), // Moderate
-        (4.0, 2.0, 1.3, 8.0, 8.0), // Elevated
+        (0.0, 0.0, 0.0, 0.0, 0.0),       // Baseline (no denoising)
+        (1.0, 0.5, 0.4, 3.0, 3.0),       // VeryLight (increased chroma)
+        (2.0, 0.9, 0.7, 4.0, 4.0),       // Light (reduced luma)
+        (2.5, 1.2, 0.85, 5.0, 5.0),      // LightModerate
+        (3.0, 1.5, 1.0, 6.0, 6.0),       // Moderate
+        (4.0, 2.0, 1.3, 8.0, 8.0),       // Elevated
     ];
 
     // Find the two anchor points to interpolate between

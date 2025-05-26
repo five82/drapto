@@ -378,10 +378,11 @@ fn map_hqdn3d_to_film_grain(hqdn3d_params: &str) -> u8 {
 
     // Fixed mapping for standard levels (for optimization)
     for (params, film_grain) in &[
-        ("hqdn3d=0.5:0.3:3:3", 4),  // VeryLight
-        ("hqdn3d=1:0.7:4:4", 8),    // Light
-        ("hqdn3d=1.5:1.0:6:6", 12), // Moderate
-        ("hqdn3d=2:1.3:8:8", 16),   // Elevated
+        ("hqdn3d=0.5:0.4:3:3", 4),       // VeryLight
+        ("hqdn3d=0.9:0.7:4:4", 7),       // Light
+        ("hqdn3d=1.2:0.85:5:5", 10),     // LightModerate
+        ("hqdn3d=1.5:1.0:6:6", 13),      // Moderate
+        ("hqdn3d=2:1.3:8:8", 16),        // Elevated
     ] {
         // Exact match for standard levels
         if hqdn3d_params == *params {

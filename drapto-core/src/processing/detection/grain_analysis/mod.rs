@@ -30,7 +30,7 @@ use rand::{Rng, thread_rng};
 
 // ---- Standard library imports ----
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 // ---- Internal crate imports ----
 use crate::config::CoreConfig;
@@ -51,8 +51,8 @@ mod constants;
 /// Knee point detection algorithm for finding optimal denoising level
 mod knee_point;
 
-/// Adaptive refinement for improving accuracy of grain analysis
-mod refinement;
+// Refinement module is not currently used after simplification
+// mod refinement;
 
 /// Type definitions for grain analysis results
 mod types;
@@ -83,8 +83,6 @@ use constants::*;
 /// Knee point analysis function
 use knee_point::analyze_sample_with_knee_point;
 
-/// Refinement functions
-use refinement::{calculate_refinement_range, generate_refinement_params};
 
 /// Utility function for calculating median grain level
 use utils::calculate_median_level;
@@ -95,12 +93,11 @@ use utils::calculate_median_level;
 
 /// Analyzes the grain/noise in a video file to determine optimal denoising parameters.
 ///
-/// This function implements a multi-phase approach to grain analysis:
+/// This function implements a streamlined approach to grain analysis:
 /// 1. Extract multiple short samples from different parts of the video
-/// 2. Encode each sample with various denoising levels (Phase 1)
-/// 3. Analyze file size reductions to find the knee point (Phase 2)
-/// 4. Perform adaptive refinement around the initial estimates (Phase 3)
-/// 5. Determine the final optimal denoising level (Phase 4)
+/// 2. Encode each sample with various denoising levels
+/// 3. Analyze file size reductions using knee point detection
+/// 4. Determine the final optimal denoising level using median
 ///
 /// The analysis is based on the principle that there's a point of diminishing returns
 /// in denoising, where additional strength provides minimal file size reduction but
@@ -310,15 +307,13 @@ pub fn analyze_grain(
         temp_dir_path.display()
     );
 
-    // --- Phase 1: Test Initial Values ---
-    // We've removed the static mock progress bar - we'll implement real progress tracking later if needed
-
+    // --- Test Grain Levels ---
     // Show detailed phase info as sub-items in verbose mode
-    log::debug!("Testing initial grain levels...");
-    crate::progress_reporting::report_sub_item("Testing initial grain levels...");
+    log::debug!("Testing grain levels...");
+    crate::progress_reporting::report_sub_item("Testing grain levels...");
 
     let mut phase1_results: Vec<HashMap<Option<GrainLevel>, u64>> = Vec::with_capacity(num_samples);
-    let mut raw_sample_paths: Vec<PathBuf> = Vec::with_capacity(num_samples); // Store raw sample paths
+    let mut early_estimates: Vec<GrainLevel> = Vec::with_capacity(num_samples);
 
     for (i, &start_time) in sample_start_times.iter().enumerate() {
         // Sample processing details as sub-items in verbose mode
@@ -347,12 +342,19 @@ pub fn analyze_grain(
                 )));
             }
         };
-        raw_sample_paths.push(raw_sample_path.clone()); // Store the path
 
         let mut results_for_this_sample = HashMap::new();
 
         for (level_opt, hqdn3d_override) in &initial_test_levels {
-            let level_desc = level_opt.map_or("Baseline".to_string(), |l| format!("{:?}", l));
+            let level_desc = match level_opt {
+                None => "Baseline",
+                Some(GrainLevel::Baseline) => "Baseline",
+                Some(GrainLevel::VeryLight) => "VeryLight",
+                Some(GrainLevel::Light) => "Light",
+                Some(GrainLevel::LightModerate) => "Light-Mod",
+                Some(GrainLevel::Moderate) => "Moderate",
+                Some(GrainLevel::Elevated) => "Elevated",
+            };
             log::debug!(
                 "    Encoding sample {} with initial level: {}...",
                 i + 1,
@@ -362,7 +364,7 @@ pub fn analyze_grain(
             let output_filename = format!(
                 "sample_{}_initial_{}.mkv",
                 i + 1,
-                level_desc.replace([':', '='], "_")
+                level_desc.replace(['-'], "_")
             );
             let encoded_sample_path = temp_dir_path.join(&output_filename);
 
@@ -413,6 +415,7 @@ pub fn analyze_grain(
             };
 
             let size_mb = encoded_size as f64 / (1024.0 * 1024.0);
+            
             log::debug!("  {:12} {:.1} MB", format!("{}:", level_desc), size_mb);
             crate::progress_reporting::report_sub_item(&format!(
                 "  {:12} {:.1} MB",
@@ -421,185 +424,51 @@ pub fn analyze_grain(
             ));
             results_for_this_sample.insert(*level_opt, encoded_size);
         }
-        phase1_results.push(results_for_this_sample);
-    }
-
-    // --- Phase 2: Initial Estimation with Knee Point ---
-    // Skip phase headers for cleaner output
-
-    let mut initial_estimates: Vec<GrainLevel> = Vec::with_capacity(num_samples);
-
-    for (i, sample_results) in phase1_results.iter().enumerate() {
-        let sample_index = i + 1;
-        let estimate = analyze_sample_with_knee_point(sample_results, knee_threshold, sample_index);
-        initial_estimates.push(estimate);
-    }
-
-    // Skip initial estimates - will show final results only
-
-    // --- Phase 3: Adaptive Refinement ---
-    // Skip redundant status update
-    // Detailed phase headers as sub-items in verbose mode
-    log::debug!("Phase 3: Adaptive Refinement...");
-    crate::progress_reporting::report_sub_item("Phase 3: Adaptive Refinement...");
-
-    let mut phase3_results: Vec<HashMap<Option<GrainLevel>, u64>> =
-        vec![HashMap::new(); num_samples];
-
-    if initial_estimates.len() < 3 {
-        let message = format!(
-            "  Too few samples ({}) for reliable refinement. Skipping Phase 3.",
-            initial_estimates.len()
-        );
-        crate::progress_reporting::report_debug_info(&message);
-    } else {
-        let (lower_bound, upper_bound) = calculate_refinement_range(&initial_estimates);
-        // Show refinement phase header
-        log::debug!("Refining grain parameters...");
-        log::debug!("  Range: {:?} to {:?}", lower_bound, upper_bound);
-        crate::progress_reporting::report_sub_item("Refining grain parameters...");
-        crate::progress_reporting::report_sub_item(&format!(
-            "  Range: {:?} to {:?}",
-            lower_bound, upper_bound
-        ));
-
-        let refined_params =
-            generate_refinement_params(lower_bound, upper_bound, &initial_test_levels);
-
-        if refined_params.is_empty() {
-            let message =
-                "  No refinement parameters generated within the range. Skipping Phase 3 testing.";
-            crate::progress_reporting::report_debug_info(message);
-        } else {
-            // Skip detailed parameter descriptions for cleaner output
-
-            // Show count of refined parameter sets
-            log::debug!("  Testing {} refined parameter sets", refined_params.len());
-            crate::progress_reporting::report_sub_item(&format!(
-                "  Testing {} refined parameter sets",
-                refined_params.len()
-            ));
-            log::debug!(
-                "  (Note: Parameter validation, like ensuring non-negative values, occurs during generation/parsing)"
-            );
-
-            for (idx, (level_opt, params_str)) in refined_params.iter().enumerate() {
-                // For interpolated levels (None), create a descriptive name with index and strength
-                let level_desc = level_opt.map_or_else(
-                    || {
-                        // Extract the first parameter value as a strength indicator
-                        let strength_indicator = params_str
-                            .split('=')
-                            .nth(1)
-                            .and_then(|s| s.split(':').next())
-                            .unwrap_or("?");
-
-                        // Create a unique, descriptive name with position in the refinement range
-                        format!("Interpolated-{} (strength={})", idx + 1, strength_indicator)
-                    },
-                    |l| format!("{:?}", l),
+        phase1_results.push(results_for_this_sample.clone());
+        
+        // Analyze this sample immediately for early exit check
+        let sample_estimate = analyze_sample_with_knee_point(&results_for_this_sample, knee_threshold, i + 1);
+        early_estimates.push(sample_estimate);
+        
+        // Early exit optimization: Check if we have consistent results after at least 3 samples
+        if early_estimates.len() >= 3 {
+            // Check if all estimates are the same
+            let first_estimate = early_estimates[0];
+            if early_estimates.iter().all(|&e| e == first_estimate) {
+                log::info!(
+                    "Early exit: All {} samples consistently show {:?} grain level",
+                    early_estimates.len(), first_estimate
                 );
-                // Skip individual test messages for cleaner output
-
-                // Iterate through the *indices* and use stored raw paths
-                for i in 0..num_samples {
-                    let raw_sample_path = &raw_sample_paths[i]; // Get stored raw path
-                    let mut sample_params = base_encode_params.clone();
-                    sample_params.input_path = raw_sample_path.clone(); // Use raw sample as input
-                    // Create a more descriptive filename for the refined sample
-                    let output_filename = if level_opt.is_none() {
-                        // For interpolated levels, include the index and strength indicator
-                        let param_short = params_str
-                            .split('=')
-                            .nth(1)
-                            .unwrap_or("params")
-                            .split(':')
-                            .next()
-                            .unwrap_or("params");
-                        format!(
-                            "sample_{}_refined_interpolated_{}_strength_{}.mkv",
-                            i + 1,
-                            idx + 1, // Add the index to make each filename unique
-                            param_short.replace([':', '=', ','], "_")
-                        )
-                    } else {
-                        format!(
-                            "sample_{}_refined_{}.mkv",
-                            i + 1,
-                            level_desc.replace([':', '='], "_")
-                        )
-                    };
-                    sample_params.output_path = temp_dir_path.join(output_filename);
-                    sample_params.hqdn3d_params = Some(params_str.clone());
-                    // sample_params.start_time = Some(start_time); // REMOVED - Not needed/valid
-                    sample_params.duration = sample_duration_f64; // Duration is still relevant for encode
-
-                    if let Err(e) = crate::external::ffmpeg::run_ffmpeg_encode(
-                        &sample_params,
-                        true,
-                        true,
-                        *level_opt,
-                    ) {
-                        log::error!(
-                            "Failed to encode refined sample {} with level {}: {}",
-                            i + 1,
-                            level_desc,
-                            e
-                        );
-                        return Err(CoreError::FilmGrainAnalysisFailed(format!(
-                            "Failed to encode refined sample {} with level {}: {}",
-                            i + 1,
-                            level_desc,
-                            e
-                        )));
-                    }
-
-                    let encoded_size = match get_file_size(&sample_params.output_path)
-                    {
-                        Ok(size) => size,
-                        Err(e) => {
-                            log::error!(
-                                "Failed to get size for refined sample {} level {} (path: {}): {}",
-                                i + 1,
-                                level_desc,
-                                sample_params.output_path.display(),
-                                e
-                            );
-                            return Err(CoreError::FilmGrainAnalysisFailed(format!(
-                                "Failed to get size for refined sample {} level {} (path: {}): {}",
-                                i + 1,
-                                level_desc,
-                                sample_params.output_path.display(),
-                                e
-                            )));
-                        }
-                    };
-
-                    // Skip individual result messages for cleaner output
-                    phase3_results[i].insert(*level_opt, encoded_size);
-                }
+                crate::progress_reporting::report_sub_item(&format!(
+                    "Early exit: Consistent results detected ({:?})",
+                    first_estimate
+                ));
+                break; // Exit early with consistent results
+            }
+            
+            // Check if estimates are within one level of each other
+            let min_level = early_estimates.iter().min().unwrap();
+            let max_level = early_estimates.iter().max().unwrap();
+            let level_distance = (*max_level as u8).saturating_sub(*min_level as u8);
+            
+            if level_distance <= 1 && early_estimates.len() >= 4 {
+                // Estimates are very close (adjacent levels) and we have enough samples
+                log::info!(
+                    "Early exit: {} samples show consistent range ({:?} to {:?})",
+                    early_estimates.len(), min_level, max_level
+                );
+                crate::progress_reporting::report_sub_item(&format!(
+                    "Early exit: Consistent range detected ({:?} to {:?})",
+                    min_level, max_level
+                ));
+                break;
             }
         }
     }
 
-    // --- Phase 4: Final Analysis with Combined Results ---
-    // Skip redundant phase headers
-
-    let mut final_estimates: Vec<GrainLevel> = Vec::with_capacity(num_samples);
-
-    for i in 0..num_samples {
-        let sample_index = i + 1;
-        let mut combined_results = phase1_results[i].clone();
-        combined_results.extend(phase3_results[i].iter());
-
-        let final_estimate =
-            analyze_sample_with_knee_point(&combined_results, knee_threshold, sample_index);
-        final_estimates.push(final_estimate);
-    }
-
-    // Skip per-sample estimates - will show final result only
-
     // --- Determine Final Result ---
+    // Use early_estimates which already contains the analyzed results
+    let mut final_estimates = early_estimates;
     if final_estimates.is_empty() {
         log::error!("No final estimates generated after all phases. Analysis failed.");
         return Err(CoreError::FilmGrainAnalysisFailed(
@@ -624,6 +493,7 @@ pub fn analyze_grain(
         GrainLevel::Baseline => "None (no denoising needed)",
         GrainLevel::VeryLight => "VeryLight",
         GrainLevel::Light => "Light",
+        GrainLevel::LightModerate => "LightModerate",
         GrainLevel::Moderate => "Moderate",
         GrainLevel::Elevated => "Elevated",
     };

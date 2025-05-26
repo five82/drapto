@@ -38,6 +38,7 @@ use std::str::FromStr;
 ///     GrainLevel::Baseline => "No visible grain",
 ///     GrainLevel::VeryLight => "Barely noticeable grain",
 ///     GrainLevel::Light => "Light grain",
+///     GrainLevel::LightModerate => "Light to moderate grain",
 ///     GrainLevel::Moderate => "Noticeable grain with spatial patterns",
 ///     GrainLevel::Elevated => "Medium grain with temporal fluctuations",
 /// };
@@ -52,6 +53,9 @@ pub enum GrainLevel {
 
     /// Light grain - benefits from light denoising
     Light,
+
+    /// Light to moderate grain - benefits from balanced denoising
+    LightModerate,
 
     /// Noticeable grain - benefits from spatially-focused denoising (higher luma/chroma spatial strength)
     Moderate,
@@ -104,6 +108,7 @@ impl FromStr for GrainLevel {
             "baseline" => Ok(GrainLevel::Baseline),
             "verylight" => Ok(GrainLevel::VeryLight),
             "light" => Ok(GrainLevel::Light),
+            "lightmoderate" => Ok(GrainLevel::LightModerate),
             "moderate" => Ok(GrainLevel::Moderate),
             "elevated" => Ok(GrainLevel::Elevated),
             _ => Err(GrainLevelParseError {
@@ -129,13 +134,14 @@ impl FromStr for GrainLevel {
 ///     detected_level: GrainLevel::Light,
 /// };
 ///
-/// // Use the result to determine denoising parameters
+/// // Use the result to determine denoising parameters (example values)
 /// let denoising_params = match result.detected_level {
 ///     GrainLevel::Baseline => "0:0:0:0", // No denoising
-///     GrainLevel::VeryLight => "1.5:1.5:1.0:1.0", // Very light denoising
-///     GrainLevel::Light => "3.0:2.5:2.0:1.5", // Light denoising
-///     GrainLevel::Moderate => "6.0:4.5:3.0:2.5", // Spatially-focused denoising (higher spatial values)
-///     GrainLevel::Elevated => "2.0:1.3:8:8", // Temporally-focused denoising (higher temporal values)
+///     GrainLevel::VeryLight => "0.5:0.4:3:3", // Very light denoising
+///     GrainLevel::Light => "0.9:0.7:4:4", // Light denoising
+///     GrainLevel::LightModerate => "1.2:0.85:5:5", // Light to moderate denoising
+///     GrainLevel::Moderate => "1.5:1.0:6:6", // Moderate denoising
+///     GrainLevel::Elevated => "2.0:1.3:8:8", // Elevated denoising
 /// };
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
