@@ -191,27 +191,26 @@ pub(super) fn analyze_sample_with_knee_point(
                 1.0 // Assume 1 dB loss as conservative estimate
             };
             
-            // Quality factor based on XPSNR delta from baseline:
-            // - Less than 0.5 dB loss: virtually no perceptible difference (factor = 1.0)
-            // - 0.5-1 dB loss: minimal quality loss (factor = 0.95-1.0)
-            // - 1-2 dB loss: slight quality loss (factor = 0.85-0.95)
-            // - 2-3 dB loss: moderate quality loss (factor = 0.7-0.85)
-            // - 3-5 dB loss: significant quality loss (factor = 0.5-0.7)
-            // - More than 5 dB loss: severe quality loss (factor < 0.5)
+            // Quality factor based on XPSNR delta from VeryLight:
+            // Goal: Maximize compression while staying below perceptible quality loss
+            // Based on research consensus for XPSNR JND thresholds:
+            // - < 0.25 dB: Virtually imperceptible (no penalty)
+            // - 0.25-0.45 dB: Borderline JND, maybe noticeable on side-by-side
+            // - 0.5-1.0 dB: Reliably noticeable, still acceptable for streaming
+            // - 1.0-3.0 dB: Clearly visible to most viewers
+            // - > 3.0 dB: Significant quality degradation
             
-            let quality_factor = if xpsnr_delta < 0.5 {
-                1.0 // Virtually no quality loss
+            let quality_factor = if xpsnr_delta < 0.25 {
+                1.0 // Virtually imperceptible - no penalty
+            } else if xpsnr_delta < 0.45 {
+                1.0 // Borderline JND - still no penalty for home viewing
             } else if xpsnr_delta < 1.0 {
-                1.0 - (xpsnr_delta - 0.5) * 0.1 // Linear from 1.0 to 0.95
-            } else if xpsnr_delta < 2.0 {
-                0.95 - (xpsnr_delta - 1.0) * 0.1 // Linear from 0.95 to 0.85
+                1.0 - (xpsnr_delta - 0.45) * 0.091 // Linear from 1.0 to 0.95
             } else if xpsnr_delta < 3.0 {
-                0.85 - (xpsnr_delta - 2.0) * 0.15 // Linear from 0.85 to 0.7
-            } else if xpsnr_delta < 5.0 {
-                0.7 - (xpsnr_delta - 3.0) * 0.1 // Linear from 0.7 to 0.5
+                0.95 - (xpsnr_delta - 1.0) * 0.125 // Linear from 0.95 to 0.7
             } else {
-                // More than 5 dB loss - apply heavy penalty
-                (0.5 - (xpsnr_delta - 5.0) * 0.05).max(0.2)
+                // More than 3 dB loss - apply heavy penalty
+                (0.7 - (xpsnr_delta - 3.0) * 0.15).max(0.2)
             };
             
             quality_metrics.push((level, xpsnr));
