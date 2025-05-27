@@ -137,7 +137,7 @@ pub use processing::process_videos;
 
 // ----- Utility Functions -----
 /// Helper functions for formatting bytes and durations
-pub use utils::{format_bytes, format_duration};
+pub use utils::{format_bytes, format_duration, format_duration_seconds, parse_ffmpeg_time};
 
 // ----- External Tool Interactions -----
 /// Re-export external tool functions

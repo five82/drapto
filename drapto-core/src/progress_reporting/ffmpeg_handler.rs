@@ -10,6 +10,7 @@
 // AI-ASSISTANT-INFO: FFmpeg-specific progress handling implementation
 
 use crate::error::CoreResult;
+use crate::parse_ffmpeg_time;
 use crate::progress_reporting::LogLevel;
 use ffmpeg_sidecar::event::{FfmpegEvent, FfmpegProgress, LogLevel as FfmpegLogLevel};
 use std::time::{Duration, Instant};
@@ -222,15 +223,3 @@ fn is_non_critical_ffmpeg_error(error: &str) -> bool {
         || error.contains("No streams found") // hqdn3d filter spurious error
 }
 
-/// Parses FFmpeg time string (HH:MM:SS.MS format) to seconds
-fn parse_ffmpeg_time(time: &str) -> Option<f64> {
-    let parts: Vec<&str> = time.split(':').collect();
-    if parts.len() == 3 {
-        let hours = parts[0].parse::<f64>().ok()?;
-        let minutes = parts[1].parse::<f64>().ok()?;
-        let seconds = parts[2].parse::<f64>().ok()?;
-        Some(hours * 3600.0 + minutes * 60.0 + seconds)
-    } else {
-        None
-    }
-}

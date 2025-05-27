@@ -144,3 +144,42 @@ pub fn format_bytes(bytes: u64) -> String {
         format!("{} B", bytes)
     }
 }
+
+/// Parses FFmpeg time string (HH:MM:SS.MS format) to seconds.
+///
+/// This function parses time strings in the format used by FFmpeg progress
+/// output (e.g., "01:23:45.67") and converts them to a floating-point number
+/// of seconds. This is useful for parsing FFmpeg progress reports and
+/// calculating encoding progress.
+///
+/// # Arguments
+///
+/// * `time` - A time string in HH:MM:SS.MS format
+///
+/// # Returns
+///
+/// * `Some(f64)` containing the time in seconds if parsing succeeds
+/// * `None` if the string format is invalid or parsing fails
+///
+/// # Examples
+///
+/// ```rust
+/// use drapto_core::parse_ffmpeg_time;
+///
+/// let time = parse_ffmpeg_time("01:23:45.67");
+/// assert_eq!(time, Some(5025.67));
+///
+/// let invalid = parse_ffmpeg_time("invalid");
+/// assert_eq!(invalid, None);
+/// ```
+pub fn parse_ffmpeg_time(time: &str) -> Option<f64> {
+    let parts: Vec<&str> = time.split(':').collect();
+    if parts.len() == 3 {
+        let hours = parts[0].parse::<f64>().ok()?;
+        let minutes = parts[1].parse::<f64>().ok()?;
+        let seconds = parts[2].parse::<f64>().ok()?;
+        Some(hours * 3600.0 + minutes * 60.0 + seconds)
+    } else {
+        None
+    }
+}

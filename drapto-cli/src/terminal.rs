@@ -27,8 +27,8 @@ use std::time::Duration;
 use supports_color::Stream;
 use unicode_width::UnicodeWidthStr;
 
-// Import format_bytes from drapto_core
-use drapto_core::format_bytes;
+// Import format_bytes and format_duration_seconds from drapto_core
+use drapto_core::{format_bytes, format_duration_seconds};
 
 // ============================================================================
 // OUTPUT HIERARCHY
@@ -396,17 +396,6 @@ pub fn clear_progress_bar() {
     }
 }
 
-// ============================================================================
-// HELPER FUNCTIONS
-// ============================================================================
-
-/// Format time in seconds as HH:MM:SS
-fn format_time_hms(seconds: f64) -> String {
-    let hours = (seconds / 3600.0) as u64;
-    let minutes = ((seconds % 3600.0) / 60.0) as u64;
-    let secs = (seconds % 60.0) as u64;
-    format!("{:02}:{:02}:{:02}", hours, minutes, secs)
-}
 
 // ============================================================================
 // CLI PROGRESS REPORTER IMPLEMENTATION
@@ -571,7 +560,7 @@ pub fn print_encoding_summary(
     info!(
         "  {:<13} {}",
         "Encode time:",
-        format_time_hms(duration.as_secs_f64())
+        format_duration_seconds(duration.as_secs_f64())
     );
     info!("  {:<13} {}", "Input size:", format_bytes(input_size));
     info!("  {:<13} {}", "Output size:", format_bytes(output_size));
