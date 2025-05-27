@@ -1,37 +1,13 @@
-// ============================================================================
-// drapto-core/src/discovery.rs
-// ============================================================================
-//
-// FILE DISCOVERY: Finding Video Files for Processing
-//
-// This module handles the discovery of video files eligible for processing.
-// It provides functions to scan directories and identify files that match
-// specific criteria for video encoding.
-//
-// KEY COMPONENTS:
-// - find_processable_files: Main function to find .mkv files in a directory
-//
-// DESIGN NOTES:
-// - Currently only searches for .mkv files (case-insensitive)
-// - Only searches the top level of the provided directory (no recursion)
-// - Returns a CoreError::NoFilesFound if no matching files are found
-//
-// FUTURE ENHANCEMENTS:
-// - Support for additional video formats (e.g., .mp4, .avi)
-// - Optional recursive directory scanning
-// - Filtering based on file size or other criteria
-//
-// AI-ASSISTANT-INFO: File discovery module for finding video files to process
+//! File discovery module for finding video files to process.
+//!
+//! This module handles the discovery of video files eligible for processing.
+//! Currently only searches for .mkv files (case-insensitive) in the top level
+//! of the provided directory.
 
-// ---- Internal crate imports ----
+
 use crate::error::{CoreError, CoreResult};
 
-// ---- Standard library imports ----
 use std::path::{Path, PathBuf};
-
-// ============================================================================
-// PUBLIC FUNCTIONS
-// ============================================================================
 
 /// Finds video files eligible for processing in the specified directory.
 ///
@@ -66,21 +42,16 @@ use std::path::{Path, PathBuf};
 /// }
 /// ```
 pub fn find_processable_files(input_dir: &Path) -> CoreResult<Vec<PathBuf>> {
-    // Read directory entries using standard library
     let read_dir = std::fs::read_dir(input_dir)?;
-
-    // Filter the entries to find only .mkv files
     let files: Vec<PathBuf> = read_dir
         .filter_map(|entry| {
             let entry = entry.ok()?;
             let path = entry.path();
 
-            // Only include files (not directories)
             if !path.is_file() {
                 return None;
             }
 
-            // Check for .mkv extension (case-insensitive)
             path.extension()
                 .and_then(|ext| ext.to_str())
                 .filter(|ext_str| ext_str.eq_ignore_ascii_case("mkv"))
@@ -88,7 +59,6 @@ pub fn find_processable_files(input_dir: &Path) -> CoreResult<Vec<PathBuf>> {
         })
         .collect();
 
-    // Return an error if no files were found, otherwise return the files
     if files.is_empty() {
         Err(CoreError::NoFilesFound)
     } else {

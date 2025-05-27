@@ -1,26 +1,11 @@
-// ============================================================================
-// drapto-core/src/hardware_decode.rs
-// ============================================================================
-//
-// HARDWARE DECODING: Centralized hardware decoding detection and configuration
-//
-// This module provides a centralized place for all hardware decoding related
-// functionality. Currently, it only supports VideoToolbox hardware decoding on macOS.
-//
-// IMPORTANT: This module is ONLY for hardware DECODING, not encoding. We use
-// software encoding (libsvtav1) exclusively for output.
-//
-// KEY COMPONENTS:
-// - Hardware decoding detection
-// - FFmpeg command configuration for hardware decoding
-// - Reporting of hardware decoding capabilities
-//
-// DESIGN PHILOSOPHY:
-// This module follows a minimalist approach, focusing only on VideoToolbox hardware
-// decoding on macOS. It provides a simple API for detecting and configuring hardware
-// decoding.
+//! Hardware decoding detection and configuration.
+//!
+//! This module provides centralized hardware decoding functionality.
+//! Currently only supports `VideoToolbox` hardware decoding on macOS.
+//!
+//! **Important**: This module is ONLY for hardware DECODING, not encoding.
+//! We use software encoding (libsvtav1) exclusively for output.
 
-// Hardware decoding reporting is now done inline
 use ffmpeg_sidecar::command::FfmpegCommand;
 use log;
 use std::env;
@@ -28,7 +13,7 @@ use std::env;
 /// Represents hardware decoding capabilities for the current platform.
 #[derive(Debug, Clone, Copy)]
 pub struct HardwareDecoding {
-    /// Whether VideoToolbox hardware decoding is available (macOS only)
+    /// Whether `VideoToolbox` hardware decoding is available (macOS only)
     pub videotoolbox_decode_available: bool,
 }
 
@@ -44,8 +29,7 @@ impl HardwareDecoding {
     /// # Returns
     ///
     /// * `HardwareDecoding` - The detected hardware decoding capabilities
-    pub fn detect() -> Self {
-        // Currently, we only support VideoToolbox on macOS
+    #[must_use] pub fn detect() -> Self {
         let videotoolbox_decode_available = is_macos();
 
         Self {
@@ -65,12 +49,12 @@ impl HardwareDecoding {
         }
     }
 
-    /// Gets FFmpeg hardware decoding arguments for the current platform.
+    /// Gets `FFmpeg` hardware decoding arguments for the current platform.
     ///
     /// # Returns
     ///
-    /// * `Vec<String>` - The FFmpeg hardware decoding arguments
-    pub fn get_ffmpeg_hwdecode_args(&self) -> Vec<String> {
+    /// * `Vec<String>` - The `FFmpeg` hardware decoding arguments
+    #[must_use] pub fn get_ffmpeg_hwdecode_args(&self) -> Vec<String> {
         let mut args = Vec::new();
 
         if self.videotoolbox_decode_available {
@@ -84,36 +68,33 @@ impl HardwareDecoding {
 
 /// Checks if the current platform is macOS.
 ///
-/// This function uses the `std::env::consts::OS` constant to determine
-/// if the current operating system is macOS.
-///
 /// # Returns
 ///
 /// * `true` - If the current platform is macOS
 /// * `false` - Otherwise
-pub fn is_macos() -> bool {
+#[must_use] pub fn is_macos() -> bool {
     env::consts::OS == "macos"
 }
 
 /// Checks if hardware decoding is available on the current platform.
 ///
-/// Currently, this only checks for VideoToolbox on macOS.
+/// Currently, this only checks for `VideoToolbox` on macOS.
 ///
 /// # Returns
 ///
 /// * `true` - If hardware decoding is available
 /// * `false` - Otherwise
-pub fn is_hardware_decoding_available() -> bool {
+#[must_use] pub fn is_hardware_decoding_available() -> bool {
     is_macos()
 }
 
-/// Adds hardware decoding options to an FFmpeg command.
+/// Adds hardware decoding options to an `FFmpeg` command.
 ///
 /// IMPORTANT: This must be called BEFORE adding the input file to the command.
 ///
 /// # Arguments
 ///
-/// * `cmd` - The FFmpeg command to add hardware decoding options to
+/// * `cmd` - The `FFmpeg` command to add hardware decoding options to
 /// * `use_hw_decode` - Whether to use hardware decoding
 /// * `is_grain_analysis_sample` - Whether this is a grain analysis sample (hardware decoding is disabled for grain analysis)
 ///
@@ -128,14 +109,8 @@ pub fn add_hardware_decoding_to_command(
     let hw_decode_available = is_hardware_decoding_available();
 
     if use_hw_decode && hw_decode_available && !is_grain_analysis_sample {
-        // IMPORTANT: This call is adding hw decoding options to the command
-        // but is NOT logging anything. The hardware decoding status message
-        // is logged separately by log_hardware_decoding_status().
         cmd.arg("-hwaccel");
         cmd.arg("videotoolbox");
-
-        // Note: This function doesn't directly log anything.
-        // When it returns true, the caller usually logs a message.
         return true;
     }
 
@@ -165,7 +140,7 @@ pub fn log_hardware_decoding_status() {
 ///
 /// * `Option<String>` - A string describing the hardware decoding capabilities,
 ///   or None if no hardware decoding is available
-pub fn get_hardware_decoding_info() -> Option<String> {
+#[must_use] pub fn get_hardware_decoding_info() -> Option<String> {
     let hw_decode_available = is_hardware_decoding_available();
 
     if hw_decode_available {

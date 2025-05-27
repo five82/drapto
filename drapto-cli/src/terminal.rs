@@ -1,25 +1,13 @@
-// ============================================================================
-// drapto-cli/src/terminal.rs
-// ============================================================================
-//
-// TERMINAL OUTPUT: Simplified UI Components and Styling
-//
-// This module provides a consistent terminal output styling system according
-// to the Drapto CLI Design Guide. It uses a hierarchical system with minimal
-// symbols and consistent spacing.
-//
-// KEY COMPONENTS:
-// - Hierarchical output levels (Section, Subsection, Progress, Status, Detail)
-// - Unified styling system with owo-colors
-// - Progress bar integration with indicatif
-// - Automatic color detection and NO_COLOR support
-//
-// AI-ASSISTANT-INFO: Simplified terminal UI components for the CLI
+//! Terminal UI components and styling.
+//!
+//! This module provides consistent terminal output styling according to the
+//! Drapto CLI Design Guide, using a hierarchical system with minimal symbols
+//! and consistent spacing.
 
 use console::{Term, style};
 use indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
 use log::{debug, error, info, warn};
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
 use owo_colors::OwoColorize;
 use std::io::IsTerminal;
 use std::sync::Mutex;
@@ -27,12 +15,7 @@ use std::time::Duration;
 use supports_color::Stream;
 use unicode_width::UnicodeWidthStr;
 
-// Import format_bytes and format_duration_seconds from drapto_core
 use drapto_core::{format_bytes, format_duration_seconds};
-
-// ============================================================================
-// OUTPUT HIERARCHY
-// ============================================================================
 
 /// Represents the visual hierarchy levels in the CLI output
 #[derive(Debug, Clone, Copy)]
@@ -62,10 +45,6 @@ impl OutputLevel {
     }
 }
 
-// ============================================================================
-// TERMINAL STATE
-// ============================================================================
-
 /// Terminal state management
 struct TerminalState {
     /// Whether we've printed the encoding section
@@ -93,12 +72,7 @@ impl TerminalState {
     }
 }
 
-// Global terminal state
-static TERMINAL_STATE: Lazy<Mutex<TerminalState>> = Lazy::new(|| Mutex::new(TerminalState::new()));
-
-// ============================================================================
-// COLOR CONTROL
-// ============================================================================
+static TERMINAL_STATE: LazyLock<Mutex<TerminalState>> = LazyLock::new(|| Mutex::new(TerminalState::new()));
 
 /// Set whether to use color in terminal output
 pub fn set_color(enable: bool) {
@@ -115,25 +89,16 @@ fn should_use_color() -> bool {
         .unwrap_or(false)
 }
 
-// ============================================================================
-// CORE OUTPUT FUNCTIONS
-// ============================================================================
-
 /// Print a section header for major workflow phases
 pub fn print_section(title: &str) {
     let header = format!("===== {} =====", title.to_uppercase());
 
-    // Add spacing before section
     info!("");
-
-    // Print header with optional color
     if should_use_color() {
         info!("===== {} =====", title.to_uppercase().cyan().bold());
     } else {
-        info!("{}", header);
+        info!("{header}");
     }
-
-    // Add spacing after section
     info!("");
 }
 
@@ -141,24 +106,22 @@ pub fn print_section(title: &str) {
 pub fn print_item(level: OutputLevel, symbol: Option<&str>, text: &str, bold: bool) {
     let indent = level.indent();
     let formatted = if let Some(sym) = symbol {
-        format!("{}{} {}", indent, sym, text)
+        format!("{indent}{sym} {text}")
     } else {
-        format!("{}{}", indent, text)
+        format!("{indent}{text}")
     };
 
-    // Apply formatting
     let output = if should_use_color() && bold {
         format!("{}{} {}", indent, symbol.unwrap_or(""), style(text).bold())
     } else {
         formatted
     };
 
-    info!("{}", output);
+    info!("{output}");
 }
 
 /// Print a subsection or processing step
 pub fn print_processing(message: &str) {
-    // Add spacing before processing steps
     info!("");
     print_item(OutputLevel::Subsection, Some("»"), message, true);
 }
@@ -179,13 +142,12 @@ pub fn print_success(message: &str) {
     if should_use_color() {
         info!("  ✓ {}", message.green());
     } else {
-        info!("  ✓ {}", message);
+        info!("  ✓ {message}");
     }
 }
 
 /// Print a status line (key-value pair)
 pub fn print_status(label: &str, value: &str, highlight: bool) {
-    // Calculate padding for alignment
     let label_width = 15;
     let padding = if label.width() < label_width {
         label_width - label.width()
@@ -201,10 +163,9 @@ pub fn print_status(label: &str, value: &str, highlight: bool) {
         value
     );
 
-    // Apply value formatting based on content
     if should_use_color() {
         let colored_value = match () {
-            _ if label.contains("Speed") && value.ends_with('x') => {
+            () if label.contains("Speed") && value.ends_with('x') => {
                 if let Some(speed_str) = value.strip_suffix('x') {
                     if let Ok(speed) = speed_str.trim().parse::<f32>() {
                         if speed >= 2.0 {
@@ -221,11 +182,11 @@ pub fn print_status(label: &str, value: &str, highlight: bool) {
                     value.to_string()
                 }
             }
-            _ if label.contains("Acceleration") && value.contains("None available") => {
+            () if label.contains("Acceleration") && value.contains("None available") => {
                 value.yellow().to_string()
             }
-            _ if highlight => value.bold().to_string(),
-            _ => value.to_string(),
+            () if highlight => value.bold().to_string(),
+            () => value.to_string(),
         };
 
         info!(
@@ -236,7 +197,7 @@ pub fn print_status(label: &str, value: &str, highlight: bool) {
             colored_value
         );
     } else {
-        info!("{}", formatted);
+        info!("{formatted}");
     }
 }
 
@@ -244,7 +205,6 @@ pub fn print_status(label: &str, value: &str, highlight: bool) {
 pub fn print_completion_with_status(success_message: &str, status_label: &str, status_value: &str) {
     print_success(success_message);
 
-    // Special handling for grain detection results
     if should_use_color() && status_label.contains("grain") && status_value.contains(" - applying")
     {
         if let Some(dash_pos) = status_value.find(" - applying") {
@@ -265,15 +225,15 @@ pub fn print_error(title: &str, message: &str, suggestion: Option<&str>) {
     if should_use_color() {
         info!("✗ {}", title.red().bold());
     } else {
-        info!("✗ {}", title);
+        info!("✗ {title}");
     }
 
     info!("");
-    info!("  Message:  {}", message);
+    info!("  Message:  {message}");
 
     if let Some(suggestion_text) = suggestion {
         info!("");
-        info!("  Suggestion: {}", suggestion_text);
+        info!("  Suggestion: {suggestion_text}");
     }
 
     info!("");
@@ -284,7 +244,7 @@ pub fn print_warning(message: &str) {
     if should_use_color() {
         info!("  ⚠ {}", message.yellow());
     } else {
-        info!("  ⚠ {}", message);
+        info!("  ⚠ {message}");
     }
 }
 
@@ -298,7 +258,7 @@ pub fn print_progress_indicator(message: &str) {
     print_item(
         OutputLevel::Progress,
         None,
-        &format!("Progress: {}", message),
+        &format!("Progress: {message}"),
         false,
     );
 }
@@ -308,19 +268,12 @@ pub fn print_section_separator() {
     info!("");
 }
 
-// ============================================================================
-// PROGRESS BAR MANAGEMENT
-// ============================================================================
-
 /// Initialize a progress bar with indicatif
 fn init_progress_bar(total_secs: f64) -> ProgressBar {
     let pb = ProgressBar::new((total_secs * 1000.0) as u64);
 
-    // Get terminal width
     let term = Term::stderr();
     let term_width = term.size().1 as usize;
-
-    // Create adaptive style
     let style = if term_width >= 100 {
         ProgressStyle::default_bar()
             .template("Encoding: {percent:>5.1}% [{bar:30}] ({elapsed_precise} / {eta_precise})")
@@ -341,7 +294,6 @@ fn init_progress_bar(total_secs: f64) -> ProgressBar {
     pb.set_style(style);
     pb.set_message("Encoding");
 
-    // Only show in interactive terminals
     if !std::io::stderr().is_terminal() {
         pb.set_draw_target(ProgressDrawTarget::hidden());
     }
@@ -362,7 +314,6 @@ pub fn print_progress_bar(
     if std::io::stderr().is_terminal() {
         let mut state = TERMINAL_STATE.lock().unwrap();
 
-        // Initialize progress bar if needed
         if state.current_progress.is_none() {
             state.current_progress = Some(init_progress_bar(total_secs));
         }
@@ -370,13 +321,11 @@ pub fn print_progress_bar(
         if let Some(pb) = state.current_progress.as_ref() {
             pb.set_position((elapsed_secs * 1000.0) as u64);
 
-            // Update message with speed/fps if available
             let term_width = Term::stderr().size().1 as usize;
             if let (Some(speed_val), Some(fps_val)) = (speed, fps) {
                 if term_width >= 100 {
                     let msg = format!(
-                        "Encoding - Speed: {:.2}x, Avg FPS: {:.2}",
-                        speed_val, fps_val
+                        "Encoding - Speed: {speed_val:.2}x, Avg FPS: {fps_val:.2}"
                     );
                     pb.set_message(msg);
                 }
@@ -396,11 +345,7 @@ pub fn clear_progress_bar() {
     }
 }
 
-// ============================================================================
-// CLI PROGRESS REPORTER IMPLEMENTATION
-// ============================================================================
-
-/// Implementation of the ProgressReporter trait for the CLI interface
+/// Implementation of the `ProgressReporter` trait for the CLI interface
 pub struct CliProgressReporter;
 
 /// Register the CLI progress reporter with the core library
@@ -417,18 +362,17 @@ impl drapto_core::progress_reporting::ProgressReporter for CliProgressReporter {
             CoreLevel::Section => print_section(text),
             CoreLevel::Subsection => print_subsection(text),
             CoreLevel::Processing => {
-                // Check if this is the first encoding message
                 let is_encoding_start = text.starts_with("Encoding:");
                 if is_encoding_start {
                     let mut state = TERMINAL_STATE.lock().unwrap();
-                    if !state.encoding_section_shown {
+                    if state.encoding_section_shown {
+                        drop(state);
+                        print_processing(text);
+                    } else {
                         state.encoding_section_shown = true;
                         drop(state);
                         print_section("ENCODING PROGRESS");
                         print_processing_no_spacing(text);
-                    } else {
-                        drop(state);
-                        print_processing(text);
                     }
                 } else {
                     print_processing(text);
@@ -437,9 +381,9 @@ impl drapto_core::progress_reporting::ProgressReporter for CliProgressReporter {
             CoreLevel::Success => print_success(text),
             CoreLevel::Error => print_error(text, "", None),
             CoreLevel::Warning => print_warning(text),
-            CoreLevel::Debug => debug!("{}", text),
+            CoreLevel::Debug => debug!("{text}"),
             CoreLevel::Info => print_sub_item(text),
-            _ => info!("{}", text),
+            _ => info!("{text}"),
         }
     }
 
@@ -448,8 +392,6 @@ impl drapto_core::progress_reporting::ProgressReporter for CliProgressReporter {
     }
 
     fn progress_bar(&self, percent: f32, elapsed_secs: f64, total_secs: f64) {
-        // For now, we'll use default values for speed/fps/eta
-        // These can be calculated from the progress data if needed
         print_progress_bar(percent, elapsed_secs, total_secs, None, None, None);
     }
 
@@ -459,33 +401,29 @@ impl drapto_core::progress_reporting::ProgressReporter for CliProgressReporter {
 
     fn log(&self, level: drapto_core::progress_reporting::LogLevel, message: &str) {
         match level {
-            drapto_core::progress_reporting::LogLevel::Info => info!("{}", message),
-            drapto_core::progress_reporting::LogLevel::Warning => warn!("{}", message),
-            drapto_core::progress_reporting::LogLevel::Error => error!("{}", message),
-            drapto_core::progress_reporting::LogLevel::Debug => debug!("{}", message),
+            drapto_core::progress_reporting::LogLevel::Info => info!("{message}"),
+            drapto_core::progress_reporting::LogLevel::Warning => warn!("{message}"),
+            drapto_core::progress_reporting::LogLevel::Error => error!("{message}"),
+            drapto_core::progress_reporting::LogLevel::Debug => debug!("{message}"),
         }
     }
 
     fn ffmpeg_command(&self, cmd_data: &str, is_sample: bool) {
         if is_sample {
-            debug!("FFmpeg command (grain sample): {}", cmd_data);
+            debug!("FFmpeg command (grain sample): {cmd_data}");
             return;
         }
 
-        // Simple FFmpeg command display
         debug!("    FFmpeg command:");
-
-        // Try to parse as JSON array first
         if let Ok(args) = serde_json::from_str::<Vec<String>>(cmd_data) {
             debug!("      {}", format_ffmpeg_simple(&args));
         } else {
-            // Fallback to showing raw command
-            debug!("      {}", cmd_data);
+            debug!("      {cmd_data}");
         }
     }
 }
 
-/// Simple FFmpeg command formatter
+/// Simple `FFmpeg` command formatter
 fn format_ffmpeg_simple(args: &[String]) -> String {
     if args.is_empty() {
         return String::new();
@@ -495,7 +433,6 @@ fn format_ffmpeg_simple(args: &[String]) -> String {
     let mut current_line = String::new();
 
     for arg in args.iter().skip(1) {
-        // Start new line for major argument groups
         let needs_new_line = matches!(
             arg.as_str(),
             "-i" | "-hwaccel"
@@ -512,7 +449,7 @@ fn format_ffmpeg_simple(args: &[String]) -> String {
         );
 
         if needs_new_line && !current_line.is_empty() {
-            lines.push(format!("  {}", current_line));
+            lines.push(format!("  {current_line}"));
             current_line.clear();
         }
 
@@ -520,24 +457,19 @@ fn format_ffmpeg_simple(args: &[String]) -> String {
             current_line.push(' ');
         }
 
-        // Quote arguments that need it
         if arg.contains(' ') || arg.contains('=') {
-            current_line.push_str(&format!("\"{}\"", arg));
+            current_line.push_str(&format!("\"{arg}\""));
         } else {
             current_line.push_str(arg);
         }
     }
 
     if !current_line.is_empty() {
-        lines.push(format!("  {}", current_line));
+        lines.push(format!("  {current_line}"));
     }
 
     lines.join("\n      ")
 }
-
-// ============================================================================
-// ADDITIONAL OUTPUT FUNCTIONS
-// ============================================================================
 
 /// Print encoding summary
 pub fn print_encoding_summary(
@@ -555,7 +487,7 @@ pub fn print_encoding_summary(
     };
 
     info!("");
-    info!("{}", filename);
+    info!("{filename}");
     info!(
         "  {:<13} {}",
         "Encode time:",
@@ -564,7 +496,7 @@ pub fn print_encoding_summary(
     info!("  {:<13} {}", "Input size:", format_bytes(input_size));
     info!("  {:<13} {}", "Output size:", format_bytes(output_size));
 
-    let reduction_str = format!("{}%", reduction);
+    let reduction_str = format!("{reduction}%");
     if should_use_color() && reduction >= 50 {
         info!("  {:<13} {}", "Reduced by:", reduction_str.green());
     } else {
@@ -581,7 +513,7 @@ pub fn print_file_list(header: &str, files: &[std::path::PathBuf]) {
         return;
     }
 
-    info!("{}", header);
+    info!("{header}");
     for file in files {
         info!("  - {}", file.display());
     }

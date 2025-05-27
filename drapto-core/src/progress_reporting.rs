@@ -1,34 +1,20 @@
-// ============================================================================
-// drapto-core/src/progress_reporting.rs
-// ============================================================================
-//
-// PROGRESS REPORTING: Simplified Progress Reporting API
-//
-// This module provides a minimal API for the core library to report progress
-// and output messages without direct dependencies on CLI-specific formatting.
-//
-// KEY DESIGN DECISIONS:
-// - Simplified trait with only essential methods
-// - Structured output levels instead of many specific methods
-// - Direct reporter access instead of wrapper functions
-// - No unsafe code or complex global state
-//
-// AI-ASSISTANT-INFO: Simplified progress reporting API
+//! Simplified Progress Reporting API
+//!
+//! This module provides a minimal API for the core library to report progress
+//! and output messages without direct dependencies on CLI-specific formatting.
+//!
+//! # Design Decisions
+//! - Simplified trait with only essential methods
+//! - Structured output levels instead of many specific methods
+//! - Direct reporter access instead of wrapper functions
+//! - No unsafe code or complex global state
 
-// ---- Submodules ----
 pub mod ffmpeg_handler;
 
-// ---- External crate imports ----
-use once_cell::sync::Lazy;
-
-// ---- Standard library imports ----
 use std::path::Path;
 use std::sync::Mutex;
 use std::time::Duration;
 
-// ============================================================================
-// OUTPUT LEVELS
-// ============================================================================
 
 /// Represents different levels of output for structured reporting
 #[derive(Debug, Clone, Copy)]
@@ -62,12 +48,8 @@ pub enum LogLevel {
     Debug,
 }
 
-// ============================================================================
-// PROGRESS REPORTER TRAIT (SIMPLIFIED)
-// ============================================================================
 
 /// A simplified trait for progress reporting
-/// Reduces ~21 methods to just 6 essential ones
 pub trait ProgressReporter: Send + Sync {
     /// Output a message at a specific level
     fn output(&self, level: OutputLevel, text: &str);
@@ -84,17 +66,14 @@ pub trait ProgressReporter: Send + Sync {
     /// Log a simple message
     fn log(&self, level: LogLevel, message: &str);
 
-    /// Output raw FFmpeg command for debugging
+    /// Output raw `FFmpeg` command for debugging
     fn ffmpeg_command(&self, cmd_data: &str, is_sample: bool);
 }
 
-// ============================================================================
-// GLOBAL REPORTER
-// ============================================================================
 
 /// Global progress reporter instance
-static PROGRESS_REPORTER: Lazy<Mutex<Option<Box<dyn ProgressReporter>>>> =
-    Lazy::new(|| Mutex::new(None));
+static PROGRESS_REPORTER: std::sync::LazyLock<Mutex<Option<Box<dyn ProgressReporter>>>> =
+    std::sync::LazyLock::new(|| Mutex::new(None));
 
 /// Set the global progress reporter
 pub fn set_progress_reporter(reporter: Box<dyn ProgressReporter>) {
@@ -116,9 +95,6 @@ where
     }
 }
 
-// ============================================================================
-// CONVENIENCE FUNCTIONS
-// ============================================================================
 
 /// Output a section header
 pub fn section(title: &str) {
@@ -175,16 +151,13 @@ pub fn log(level: LogLevel, message: &str) {
     with_reporter(|r| r.log(level, message));
 }
 
-/// Report FFmpeg command
+/// Report `FFmpeg` command
 pub fn ffmpeg_command(cmd_data: &str, is_sample: bool) {
     with_reporter(|r| r.ffmpeg_command(cmd_data, is_sample));
 }
 
-// ============================================================================
-// SPECIALIZED OUTPUT FUNCTIONS
-// ============================================================================
 
-/// Report encoding summary (convenience function that formats the output)
+/// Report encoding summary
 pub fn encoding_summary(filename: &str, duration: Duration, input_size: u64, output_size: u64) {
     success("Encoding complete");
     status("File", filename, false);
@@ -201,26 +174,22 @@ pub fn encoding_summary(filename: &str, duration: Duration, input_size: u64, out
     } else {
         0
     };
-    status("Reduction", &format!("{}%", reduction), reduction >= 50);
+    status("Reduction", &format!("{reduction}%"), reduction >= 50);
 }
 
 /// Report encode start
 pub fn encode_start(input_path: &Path, output_path: &Path) {
     let filename = input_path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_else(|| input_path.display().to_string());
+        .file_name().map_or_else(|| input_path.display().to_string(), |n| n.to_string_lossy().to_string());
 
-    processing(&format!("Encoding: {}", filename));
+    processing(&format!("Encoding: {filename}"));
     debug(&format!("Output: {}", output_path.display()));
 }
 
 /// Report encode error
 pub fn encode_error(input_path: &Path, message: &str) {
     let filename = input_path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_else(|| input_path.display().to_string());
+        .file_name().map_or_else(|| input_path.display().to_string(), |n| n.to_string_lossy().to_string());
 
-    error(&format!("Error encoding {}: {}", filename, message));
+    error(&format!("Error encoding {filename}: {message}"));
 }

@@ -1,62 +1,39 @@
-// ============================================================================
-// drapto-core/src/external/ffmpeg.rs
-// ============================================================================
-//
-// FFMPEG INTEGRATION: FFmpeg Command Building and Execution
-//
-// This module encapsulates the logic for executing ffmpeg commands using
-// ffmpeg-sidecar. It handles building complex ffmpeg command lines with
-// appropriate arguments for video and audio encoding, progress reporting,
-// and error handling.
-//
-// KEY COMPONENTS:
-// - EncodeParams: Structure defining encoding configuration parameters
-// - build_ffmpeg_command: Builds FFmpeg commands using ffmpeg-sidecar's builder pattern
-// - run_ffmpeg_encode: Executes and monitors the encoding process
-// - Film grain synthesis mapping from denoise parameters
-// - Progress reporting with real-time updates
-//
-// ARCHITECTURE:
-// The module uses dependency injection for the FFmpeg spawner, allowing for
-// testing without actual ffmpeg execution. It communicates with the progress
-// reporting system to provide user feedback on encoding status.
-//
-// AI-ASSISTANT-INFO: FFmpeg command generation and execution for encoding
+//! FFmpeg command building and execution for video encoding
+//!
+//! This module handles building complex ffmpeg command lines with
+//! appropriate arguments for video (libsvtav1) and audio (libopus) encoding,
+//! progress reporting, and error handling.
 
-// ---- Internal crate imports ----
 use crate::error::{CoreError, CoreResult, command_failed_error};
-use crate::processing::audio; // To access calculate_audio_bitrate
+use crate::processing::audio;
 use crate::processing::grain_types::GrainLevel;
 use crate::progress_reporting;
 
-// ---- External crate imports ----
 use ffmpeg_sidecar::command::FfmpegCommand;
 use log::{debug, error, info, warn};
 
-// ---- Standard library imports ----
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-/// Parameters required for running an FFmpeg encode operation.
+/// Parameters required for running an `FFmpeg` encode operation.
 #[derive(Debug, Clone)]
 pub struct EncodeParams {
     pub input_path: PathBuf,
     pub output_path: PathBuf,
-    pub quality: u32, // CRF value
-    pub preset: u8,   // SVT-AV1 preset
+    pub quality: u32,
+    pub preset: u8,
     /// Whether to use hardware decoding (when available)
     pub use_hw_decode: bool,
-    pub crop_filter: Option<String>, // Optional crop filter string "crop=W:H:X:Y"
-    pub audio_channels: Vec<u32>,    // Detected audio channels for bitrate mapping
-    pub duration: f64,               // Total video duration in seconds for progress calculation
+    pub crop_filter: Option<String>,
+    pub audio_channels: Vec<u32>,
+    pub duration: f64,
     /// The final hqdn3d parameters determined by analysis (used if override is not provided).
     pub hqdn3d_params: Option<String>,
-    // Add other parameters as needed (e.g., specific audio/subtitle stream selection)
 }
 
-/// Builds and configures an FFmpeg command using ffmpeg-sidecar's builder pattern.
+/// Builds and configures an `FFmpeg` command using ffmpeg-sidecar's builder pattern.
 ///
-/// This function creates a complete FFmpeg command for video encoding with libsvtav1
+/// This function creates a complete `FFmpeg` command for video encoding with libsvtav1
 /// and audio encoding with libopus. It leverages ffmpeg-sidecar's builder methods
 /// for cleaner and more maintainable code.
 ///
@@ -69,7 +46,7 @@ pub struct EncodeParams {
 ///
 /// # Returns
 ///
-/// * `CoreResult<FfmpegCommand>` - The configured FFmpeg command ready for execution
+/// * `CoreResult<FfmpegCommand>` - The configured `FFmpeg` command ready for execution
 pub fn build_ffmpeg_command(
     params: &EncodeParams,
     hqdn3d_override: Option<&str>,
@@ -80,61 +57,51 @@ pub fn build_ffmpeg_command(
     let mut cmd = crate::external::FfmpegCommandBuilder::new()
         .with_hardware_accel(params.use_hw_decode)
         .build();
-
-    // Input file
     cmd.input(params.input_path.to_string_lossy().as_ref());
 
-    // Audio filter (if not disabled)
+    cmd.input(params.input_path.to_string_lossy().as_ref());
+
     if !is_grain_analysis_sample && !disable_audio {
         cmd.args(["-af", "aformat=channel_layouts=7.1|5.1|stereo|mono"]);
     }
-
-    // Build video filter chain using the new builder
     let hqdn3d_to_use = hqdn3d_override.or(params.hqdn3d_params.as_deref());
     let filter_chain = crate::external::VideoFilterChain::new()
         .add_denoise(hqdn3d_to_use.unwrap_or(""))
         .add_crop(params.crop_filter.as_deref().unwrap_or(""))
         .build();
 
-    // Apply video filters and report if any
     if let Some(ref filters) = filter_chain {
         cmd.args(["-vf", filters]);
-        if !is_grain_analysis_sample {
-            crate::progress_reporting::info(&format!("Applying video filters: {}", filters));
+        if is_grain_analysis_sample {
+            debug!("Applying video filters (grain sample): {filters}");
         } else {
-            debug!("Applying video filters (grain sample): {}", filters);
+            crate::progress_reporting::info(&format!("Applying video filters: {filters}"));
         }
     } else if !is_grain_analysis_sample {
         crate::progress_reporting::info("No video filters applied.");
     }
 
-    // Calculate film grain value
     let film_grain_value = if let Some(denoise_params) = hqdn3d_to_use {
         map_hqdn3d_to_film_grain(denoise_params)
     } else {
-        0 // No denoise = no synthetic grain
+        0
     };
 
-    // Video encoding configuration
-    // NOTE: We exclusively use software encoding (libsvtav1) for output
-    // Hardware is only used for decoding the input when available
+    // Video encoding configuration - always use software encoding (libsvtav1)
     cmd.args(["-c:v", "libsvtav1"]);
     cmd.args(["-pix_fmt", "yuv420p10le"]);
     cmd.args(["-crf", &params.quality.to_string()]);
     cmd.args(["-preset", &params.preset.to_string()]);
 
-    // Film grain synthesis parameters using the builder
     let svtav1_params = crate::external::SvtAv1ParamsBuilder::new()
         .with_film_grain(film_grain_value)
         .build();
     cmd.args(["-svtav1-params", &svtav1_params]);
 
-    // Report film grain settings
     if !is_grain_analysis_sample {
         if film_grain_value > 0 {
             crate::progress_reporting::info(&format!(
-                "Applying film grain synthesis: level={}",
-                film_grain_value
+                "Applying film grain synthesis: level={film_grain_value}"
             ));
         } else {
             crate::progress_reporting::info(
@@ -143,61 +110,47 @@ pub fn build_ffmpeg_command(
         }
     } else if film_grain_value > 0 {
         debug!(
-            "Applying film grain synthesis (grain sample): level={}",
-            film_grain_value
+            "Applying film grain synthesis (grain sample): level={film_grain_value}"
         );
     }
 
-    // Audio configuration
     if !is_grain_analysis_sample && !disable_audio {
         cmd.args(["-c:a", "libopus"]);
-
-        // Set bitrate for each audio stream
         for (i, &channels) in params.audio_channels.iter().enumerate() {
             let bitrate = audio::calculate_audio_bitrate(channels);
-            cmd.args([&format!("-b:a:{}", i), &format!("{}k", bitrate)]);
+            cmd.args([&format!("-b:a:{i}"), &format!("{bitrate}k")]);
         }
     }
 
-    // Stream mapping
     if is_grain_analysis_sample || disable_audio {
-        cmd.args(["-map", "0:v:0"]); // Video only
+        cmd.args(["-map", "0:v:0"]);
         if disable_audio {
-            cmd.arg("-an"); // Explicitly disable audio
+            cmd.arg("-an");
         }
     } else {
-        cmd.args(["-map", "0:v:0"]); // Video stream
-        cmd.args(["-map", "0:a"]); // All audio streams
+        cmd.args(["-map", "0:v:0"]);
+        cmd.args(["-map", "0:a"]);
         cmd.args(["-map_metadata", "0"]);
         cmd.args(["-map_chapters", "0"]);
     }
 
-    // Additional output settings
     cmd.args(["-movflags", "+faststart"]);
 
-    // Note: Progress reporting is handled automatically by ffmpeg-sidecar
-    // through FfmpegEvent::Progress events, so we don't need -progress pipe:1
-
-    // Output file
     cmd.output(params.output_path.to_string_lossy().as_ref());
 
     Ok(cmd)
 }
 
-/// Executes an FFmpeg encode operation using the provided spawner and parameters.
+/// Executes an `FFmpeg` encode operation.
 ///
-/// This function handles the complete FFmpeg encoding process lifecycle, including:
-/// - Constructing and executing the FFmpeg command
+/// This function handles the complete `FFmpeg` encoding process lifecycle, including:
+/// - Constructing and executing the `FFmpeg` command
 /// - Monitoring and reporting progress during encoding
-/// - Processing and filtering FFmpeg output and error messages
+/// - Processing and filtering `FFmpeg` output and error messages
 /// - Determining encoding success or failure
-///
-/// The function uses dependency injection through the `FfmpegSpawner` trait to allow
-/// for testing without actually running FFmpeg processes.
 ///
 /// # Arguments
 ///
-/// * `spawner` - The FFmpeg process spawner implementation to use
 /// * `params` - Encoding parameters for this operation
 /// * `disable_audio` - Whether to disable audio in the output
 /// * `is_grain_analysis_sample` - Whether this is a grain analysis sample encode
@@ -212,16 +165,11 @@ pub fn run_ffmpeg_encode(
     is_grain_analysis_sample: bool,
     _grain_level_being_tested: Option<GrainLevel>,
 ) -> CoreResult<()> {
-    // Extract filename for logging
     let filename_cow = params
         .input_path
-        .file_name()
-        .map(|name| name.to_string_lossy())
-        .unwrap_or_else(|| params.input_path.to_string_lossy());
-
-    // Log start with appropriate level based on context
+        .file_name().map_or_else(|| params.input_path.to_string_lossy(), |name| name.to_string_lossy());
     if is_grain_analysis_sample {
-        debug!("Starting grain sample FFmpeg encode for: {}", filename_cow);
+        debug!("Starting grain sample FFmpeg encode for: {filename_cow}");
     } else {
         progress_reporting::encode_start(&params.input_path, &params.output_path);
         info!(
@@ -232,36 +180,27 @@ pub fn run_ffmpeg_encode(
         );
     }
 
-    debug!("Encode parameters: {:?}", params);
+    debug!("Encode parameters: {params:?}");
 
-    // Build the FFmpeg command using the new builder function
     let mut cmd = build_ffmpeg_command(params, None, disable_audio, is_grain_analysis_sample)?;
-
-    // Log the command for debugging
     if is_grain_analysis_sample {
-        debug!("FFmpeg command (grain sample): {:?}", cmd);
+        debug!("FFmpeg command (grain sample): {cmd:?}");
     } else {
-        // Convert command to string representation for reporting
-        let cmd_string = format!("{:?}", cmd);
+        let cmd_string = format!("{cmd:?}");
         crate::progress_reporting::ffmpeg_command(&cmd_string, false);
     }
-
-    // --- Execution and Progress ---
     if is_grain_analysis_sample {
         debug!("Starting grain sample encode...");
     }
     let _start_time = Instant::now();
-
-    // Spawn the ffmpeg command
     let mut child = cmd.spawn().map_err(|e| {
         command_failed_error(
             "ffmpeg",
             std::process::ExitStatus::default(),
-            format!("Failed to start: {}", e),
+            format!("Failed to start: {e}"),
         )
     })?;
 
-    // Initialize duration from params
     let duration_secs: Option<f64> = if params.duration > 0.0 {
         Some(params.duration)
     } else {
@@ -269,73 +208,58 @@ pub fn run_ffmpeg_encode(
     };
 
     if let Some(duration) = duration_secs {
-        if !is_grain_analysis_sample {
+        if is_grain_analysis_sample {
+            debug!(
+                "Using provided duration for progress (grain sample): {duration:.2}s"
+            );
+        } else {
             crate::progress_reporting::status(
                 "Progress duration",
                 &crate::utils::format_duration_seconds(duration),
                 false,
-            );
-        } else {
-            debug!(
-                "Using provided duration for progress (grain sample): {:.2}s",
-                duration
             );
         }
     } else {
         warn!("Video duration not provided or zero; progress percentage will not be accurate.");
     }
 
-    // Create progress handler
     let mut progress_handler =
         crate::progress_reporting::ffmpeg_handler::FfmpegProgressHandler::new(
             duration_secs,
             is_grain_analysis_sample,
         );
 
-    // Process events from ffmpeg until completion
     for event in child.iter().map_err(|e| {
         command_failed_error(
             "ffmpeg",
             std::process::ExitStatus::default(),
-            format!("Failed to get event iterator: {}", e),
+            format!("Failed to get event iterator: {e}"),
         )
     })? {
         progress_handler.handle_event(event)?;
     }
 
-    // Iterator completed successfully, which means FFmpeg finished
-    // If there were errors, they would have been caught in handle_event
-    // Create a successful exit status for compatibility with existing code
+    // FFmpeg finished - check status
     let status = std::process::ExitStatus::default();
-
-    // Extract filename for logging
     let filename_cow = params
         .input_path
-        .file_name()
-        .map(|name| name.to_string_lossy())
-        .unwrap_or_else(|| params.input_path.to_string_lossy());
+        .file_name().map_or_else(|| params.input_path.to_string_lossy(), |name| name.to_string_lossy());
 
     if status.success() {
-        // Clear any active progress bar before printing success messages
         if !is_grain_analysis_sample {
             crate::progress_reporting::clear_progress();
         }
 
-        // Log success at appropriate level based on context
         let prefix = if is_grain_analysis_sample {
             "Grain sample encode"
         } else {
             "Encode"
         };
-        // Use progress reporting for proper indentation
         if is_grain_analysis_sample {
-            // Log at debug level for grain samples
-            log::debug!("{} finished successfully for {}", prefix, filename_cow);
+            log::debug!("{prefix} finished successfully for {filename_cow}");
         } else {
-            // Use sub-item formatting for main encodes to properly indent
             crate::progress_reporting::info(&format!(
-                "{} finished successfully for {}",
-                prefix, filename_cow
+                "{prefix} finished successfully for {filename_cow}"
             ));
         }
         Ok(())
@@ -346,28 +270,22 @@ pub fn run_ffmpeg_encode(
             progress_handler.stderr_buffer().trim()
         );
 
-        // Log error with appropriate prefix based on context
         let prefix = if is_grain_analysis_sample {
             "Grain sample encode"
         } else {
             "FFmpeg encode"
         };
-        // Use progress reporting for error messages
-        if !is_grain_analysis_sample {
-            crate::progress_reporting::encode_error(&params.input_path, &error_message);
+        if is_grain_analysis_sample {
+            debug!("{prefix} failed for {filename_cow}: {error_message}");
         } else {
-            // For grain samples, just log at debug level
-            debug!("{} failed for {}: {}", prefix, filename_cow, error_message);
+            crate::progress_reporting::encode_error(&params.input_path, &error_message);
         }
 
-        // Create a more specific error type based on stderr content
+        // Check for specific error types
         if progress_handler
             .stderr_buffer()
             .contains("No streams found")
         {
-            // Handle "No streams found" as a specific error type
-            // Note: We filter the logging of this error above, but still
-            // propagate it properly here for correct error handling
             Err(CoreError::NoStreamsFound(filename_cow.to_string()))
         } else {
             Err(command_failed_error(
@@ -381,12 +299,8 @@ pub fn run_ffmpeg_encode(
 
 /// Maps hqdn3d denoising parameters to SVT-AV1 film grain synthesis values.
 ///
-/// This function provides a mapping between FFmpeg's hqdn3d denoising filter parameters
-/// and the corresponding film grain synthesis levels for SVT-AV1. It supports both
-/// standard predefined parameter sets and interpolated/custom values.
-///
 /// The mapping uses a perceptually balanced approach that:
-/// - Provides direct mappings for standard levels (VeryLight, Light, etc.)
+/// - Provides direct mappings for standard levels (`VeryLight`, Light, etc.)
 /// - Uses a square-root scale for custom values to maintain perceptual linearity
 /// - Optimizes for preserving natural-looking grain texture
 ///
@@ -398,12 +312,11 @@ pub fn run_ffmpeg_encode(
 ///
 /// * The corresponding SVT-AV1 film grain synthesis value (0-16)
 fn map_hqdn3d_to_film_grain(hqdn3d_params: &str) -> u8 {
-    // No denoising = no film grain synthesis
     if hqdn3d_params.is_empty() {
         return 0;
     }
 
-    // Fixed mapping for standard levels (for optimization)
+    // Fixed mapping for standard levels
     for (params, film_grain) in &[
         ("hqdn3d=0.5:0.4:3:3", 4),   // VeryLight
         ("hqdn3d=0.9:0.7:4:4", 7),   // Light
@@ -411,38 +324,26 @@ fn map_hqdn3d_to_film_grain(hqdn3d_params: &str) -> u8 {
         ("hqdn3d=1.5:1.0:6:6", 13),  // Moderate
         ("hqdn3d=2:1.3:8:8", 16),    // Elevated
     ] {
-        // Exact match for standard levels
         if hqdn3d_params == *params {
             return *film_grain;
         }
     }
 
-    // For interpolated/custom parameter sets, extract the luma spatial strength
-    // which is the most indicative parameter for denoising intensity
+    // Extract luma spatial strength for custom parameter sets
     let luma_spatial = parse_hqdn3d_first_param(hqdn3d_params);
 
-    // Map the luma spatial value (0.0-2.0+) to film grain value (0-16)
-    // using a more direct and granular mapping
-
-    // No denoising = no grain synthesis
     if luma_spatial <= 0.1 {
         return 0;
     }
 
-    // Use a square-root scale to reduce bias against higher grain values
-    // This helps prevent the function from selecting overly low grain values
-    // when the source video benefits from preserving more texture
+    // Use square-root scale to reduce bias against higher grain values
     let adjusted_value = (luma_spatial * 8.0).sqrt() * 8.0;
 
-    // Round to nearest integer and cap at 16
     let film_grain_value = adjusted_value.round() as u8;
     film_grain_value.min(16)
 }
 
 /// Extracts the luma spatial strength parameter from an hqdn3d filter string.
-///
-/// The luma spatial parameter is the first value in an hqdn3d filter string and
-/// represents the most significant factor for determining denoising intensity.
 ///
 /// # Arguments
 ///
@@ -458,17 +359,13 @@ fn parse_hqdn3d_first_param(params: &str) -> f32 {
             return first_param.parse::<f32>().unwrap_or(0.0);
         }
     }
-    0.0 // Default fallback value if parsing fails or format is unexpected
+    0.0
 }
 
-// ============================================================================
-// SAMPLE EXTRACTION
-// ============================================================================
 
 /// Extracts a raw video sample using ffmpeg's -c copy.
 ///
-/// Creates a temporary file within the specified `output_dir` using the temp_files module.
-/// The file will be cleaned up when the `output_dir` (assumed to be a TempDir) is dropped.
+/// Creates a temporary file within the specified output directory.
 pub fn extract_sample(
     input_path: &Path,
     start_time_secs: f64,
@@ -483,10 +380,8 @@ pub fn extract_sample(
         output_dir.display()
     );
 
-    // Generate a unique filename for the sample within the output directory
     let output_path = crate::temp_files::create_temp_file_path(output_dir, "raw_sample", "mkv");
 
-    // Build the command using the unified builder
     let mut cmd = crate::external::FfmpegCommandBuilder::new()
         .with_hardware_accel(true)
         .build();
@@ -494,21 +389,20 @@ pub fn extract_sample(
     cmd.input(input_path.to_string_lossy().as_ref())
         .args(["-ss", &start_time_secs.to_string()])
         .args(["-t", &duration_secs.to_string()])
-        .args(["-c", "copy"]) // Use stream copy
-        .args(["-an"]) // No audio
-        .args(["-sn"]) // No subtitles
-        .args(["-map", "0:v"]) // Map video stream 0
-        .args(["-map_metadata", "0"]) // Map metadata from input 0
+        .args(["-c", "copy"])
+        .args(["-an"])
+        .args(["-sn"])
+        .args(["-map", "0:v"])
+        .args(["-map_metadata", "0"])
         .output(output_path.to_string_lossy().as_ref());
 
-    debug!("Running sample extraction command: {:?}", cmd);
+    debug!("Running sample extraction command: {cmd:?}");
 
-    // Spawn and wait for completion
     let mut child = cmd.spawn().map_err(|e| {
         command_failed_error(
             "ffmpeg",
             std::process::ExitStatus::default(),
-            format!("Failed to start sample extraction: {}", e),
+            format!("Failed to start sample extraction: {e}"),
         )
     })?;
 
@@ -516,12 +410,12 @@ pub fn extract_sample(
         command_failed_error(
             "ffmpeg",
             std::process::ExitStatus::default(),
-            format!("Failed to wait for sample extraction: {}", e),
+            format!("Failed to wait for sample extraction: {e}"),
         )
     })?;
 
     if !status.success() {
-        error!("Sample extraction failed: {}", status);
+        error!("Sample extraction failed: {status}");
         return Err(command_failed_error(
             "ffmpeg (sample extraction)",
             status,
@@ -536,14 +430,10 @@ pub fn extract_sample(
     Ok(output_path)
 }
 
-// ============================================================================
-// QUALITY METRICS
-// ============================================================================
 
 /// Calculates XPSNR (eXtended Peak Signal-to-Noise Ratio) between reference and encoded videos.
 ///
 /// XPSNR is a more advanced quality metric that considers perceptual quality better than PSNR.
-/// Higher values indicate better quality (less distortion).
 ///
 /// # Arguments
 ///
@@ -565,93 +455,79 @@ pub fn calculate_xpsnr(
         encoded_path.display()
     );
 
-    // Build ffmpeg command with xpsnr filter
     let mut cmd = crate::external::FfmpegCommandBuilder::new()
         .with_hide_banner(true)
-        .with_hardware_accel(false) // Explicitly disable hardware decoding
+        .with_hardware_accel(false)
         .build();
 
-    // Force software decoding for both inputs to avoid hardware decoding issues
-    // Don't specify decoder - let FFmpeg choose the appropriate one for each file
+    // Force software decoding for both inputs
     cmd.args(["-hwaccel", "none"])
         .input(reference_path.to_string_lossy().as_ref())
         .args(["-hwaccel", "none"])
         .input(encoded_path.to_string_lossy().as_ref());
 
-    // Build filter chain - apply crop to reference if needed, then XPSNR
     let filter_complex = if let Some(crop) = crop_filter {
-        if !crop.is_empty() {
-            format!("[0:v]{}[ref];[ref][1:v]xpsnr=stats_file=-", crop)
-        } else {
+        if crop.is_empty() {
             "[0:v][1:v]xpsnr=stats_file=-".to_string()
+        } else {
+            format!("[0:v]{crop}[ref];[ref][1:v]xpsnr=stats_file=-")
         }
     } else {
         "[0:v][1:v]xpsnr=stats_file=-".to_string()
     };
 
     cmd.args(["-filter_complex", &filter_complex])
-        // Output format for parsing
         .args(["-f", "null", "-"])
-        // Log level to get filter output
         .args(["-loglevel", "info"]);
 
-    debug!("Running XPSNR calculation command: {:?}", cmd);
+    debug!("Running XPSNR calculation command: {cmd:?}");
 
-    // Spawn the process
     let mut child = cmd.spawn().map_err(|e| {
         command_failed_error(
             "ffmpeg",
             std::process::ExitStatus::default(),
-            format!("Failed to start XPSNR calculation: {}", e),
+            format!("Failed to start XPSNR calculation: {e}"),
         )
     })?;
 
-    // Collect stderr output for parsing
     let mut stderr = String::new();
     let process_success = true;
 
-    // Process events from ffmpeg
     for event in child.iter().map_err(|e| {
         command_failed_error(
             "ffmpeg",
             std::process::ExitStatus::default(),
-            format!("Failed to get event iterator: {}", e),
+            format!("Failed to get event iterator: {e}"),
         )
     })? {
         use ffmpeg_sidecar::event::FfmpegEvent;
         match event {
             FfmpegEvent::Log(_, line) | FfmpegEvent::Error(line) => {
-                // Collect all log lines for XPSNR parsing
                 stderr.push_str(&line);
                 stderr.push('\n');
             }
             FfmpegEvent::Done => {
-                // Process completed successfully
                 break;
             }
-            _ => {} // Ignore other events
+            _ => {}
         }
     }
 
     if !process_success {
-        error!("XPSNR calculation failed: {}", stderr);
+        error!("XPSNR calculation failed: {stderr}");
         return Err(command_failed_error(
             "ffmpeg (xpsnr)",
             std::process::ExitStatus::default(),
-            format!("XPSNR calculation failed: {}", stderr),
+            format!("XPSNR calculation failed: {stderr}"),
         ));
     }
 
-    // Look for the XPSNR line in the output
-    // Format: "[Parsed_xpsnr_0 @ ...] XPSNR  y: XX.XX  u: XX.XX  v: XX.XX  (minimum: XX.XX)"
-    // Use the Y (luma) component as recommended for XPSNR assessment
+    // Parse XPSNR value from output - use Y (luma) component
     let mut luma_xpsnr = None;
     for line in stderr.lines() {
         if line.contains("XPSNR") && line.contains("y:") {
-            // Extract the Y (luma) value which is the recommended metric for XPSNR
             if let Some(y_pos) = line.find("y:") {
                 let after_y = &line[y_pos + 2..];
-                // Extract value up to the next space
                 let value_str = after_y.split_whitespace().next().unwrap_or("").trim();
                 if let Ok(value) = value_str.parse::<f64>() {
                     luma_xpsnr = Some(value);
@@ -661,18 +537,14 @@ pub fn calculate_xpsnr(
         }
     }
 
-    match luma_xpsnr {
-        Some(value) => {
-            debug!("XPSNR (luma) calculation successful: {:.2} dB", value);
-            Ok(value)
-        }
-        None => {
-            error!("Failed to parse XPSNR luma value from output:\n{}", stderr);
-            Err(CoreError::FilmGrainAnalysisFailed(
-                "Failed to parse XPSNR luma value from ffmpeg output".to_string(),
-            ))
-        }
+    if let Some(value) = luma_xpsnr {
+        debug!("XPSNR (luma) calculation successful: {value:.2} dB");
+        Ok(value)
+    } else {
+        error!("Failed to parse XPSNR luma value from output:\n{stderr}");
+        Err(CoreError::FilmGrainAnalysisFailed(
+            "Failed to parse XPSNR luma value from ffmpeg output".to_string(),
+        ))
     }
 }
 
-// TODO: Create mocking infrastructure for FFmpeg processes and add unit tests for this module.

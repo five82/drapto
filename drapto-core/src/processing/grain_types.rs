@@ -1,16 +1,9 @@
-// ============================================================================
-// drapto-core/src/processing/grain_types.rs
-// ============================================================================
-//
-// GRAIN ANALYSIS TYPES: Type Definitions for Grain Analysis
-//
-// This file defines the types used in the grain analysis module, including
-// the GrainLevel enum that represents different levels of grain/noise in a video
-// and the GrainAnalysisResult structure that holds the final analysis result.
-//
-// AI-ASSISTANT-INFO: Type definitions for grain analysis results
+//! Type definitions for grain analysis.
+//!
+//! This file defines the types used in the grain analysis module, including
+//! the GrainLevel enum that represents different levels of grain/noise in a video
+//! and the GrainAnalysisResult structure that holds the final analysis result.
 
-// ---- External crate imports ----
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
@@ -21,7 +14,7 @@ use std::str::FromStr;
 /// to a different recommended denoising strength.
 ///
 /// The levels are ordered from least grain (Baseline) to most grain (Elevated),
-/// and this ordering is reflected in the derived PartialOrd and Ord traits.
+/// and this ordering is reflected in the derived `PartialOrd` and Ord traits.
 ///
 /// # Examples
 ///
@@ -64,7 +57,7 @@ pub enum GrainLevel {
     Elevated,
 }
 
-/// Error type for GrainLevel parsing failures.
+/// Error type for `GrainLevel` parsing failures.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GrainLevelParseError {
     /// The invalid string that couldn't be parsed
@@ -82,7 +75,7 @@ impl std::error::Error for GrainLevelParseError {}
 impl FromStr for GrainLevel {
     type Err = GrainLevelParseError;
 
-    /// Parses a string into a GrainLevel.
+    /// Parses a string into a `GrainLevel`.
     ///
     /// # Arguments
     ///

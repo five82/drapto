@@ -1,32 +1,15 @@
-// ============================================================================
-// drapto-cli/src/logging.rs
-// ============================================================================
-//
-// LOGGING UTILITIES: Helper Functions for Logging
-//
-// This file contains utility functions related to logging in the Drapto CLI
-// application. The main logging implementation uses the standard `log` crate
-// with `env_logger` as the backend, configured in main.rs.
-//
-// KEY COMPONENTS:
-// - Timestamp generation for log files and other time-based operations
-// - Other logging-related utility functions
-//
-// USAGE:
-// The application uses env_logger with the RUST_LOG environment variable:
-// - RUST_LOG=info (default): Normal operation logs
-// - RUST_LOG=debug: Detailed debugging information
-// - RUST_LOG=trace: Very verbose debugging information
-//
-// AI-ASSISTANT-INFO: Logging utilities and helper functions
+//! Logging utilities and helper functions.
+//!
+//! This module provides logging setup for both console and file output,
+//! with support for different log levels controlled by the RUST_LOG environment variable.
 
-/// Returns the current local timestamp formatted as "YYYYMMDD_HHMMSS".
+/// Returns the current local timestamp formatted as "`YYYYMMDD_HHMMSS`".
 ///
 /// This function is used to generate unique timestamps for log files,
 /// temporary directories, and other time-based operations.
 ///
 /// # Returns
-/// A string containing the formatted timestamp (e.g., "20240601_123045")
+/// A string containing the formatted timestamp (e.g., "`20240601_123045`")
 ///
 /// # Example
 /// ```
@@ -35,14 +18,9 @@
 /// let log_filename = format!("drapto_log_{}.txt", get_timestamp());
 /// // Result: "drapto_log_20240601_123045.txt"
 /// ```
-pub fn get_timestamp() -> String {
+#[must_use] pub fn get_timestamp() -> String {
     chrono::Local::now().format("%Y%m%d_%H%M%S").to_string()
 }
-
-// Note: The previous custom log callback system has been replaced by
-// standard `log` macros and `env_logger` initialization in `main.rs`.
-// This provides better integration with the Rust ecosystem and
-// standardized logging levels (error, warn, info, debug, trace).
 
 use crate::error::CliResult;
 use drapto_core::CoreError;
@@ -75,10 +53,10 @@ fn strip_ansi_codes(s: &str) -> String {
 
 /// Setup logging for interactive mode that logs to both console and file
 ///
-/// Logging is controlled by the RUST_LOG environment variable:
+/// Logging is controlled by the `RUST_LOG` environment variable:
 /// - Default: info level (normal output)
 /// - With --verbose flag: debug level (detailed output)
-/// - Can be overridden by setting RUST_LOG explicitly
+/// - Can be overridden by setting `RUST_LOG` explicitly
 pub fn setup_file_logging(log_path: &Path) -> CliResult<()> {
     // Create parent directory if it doesn't exist
     if let Some(parent) = log_path.parent() {
@@ -108,55 +86,47 @@ pub fn setup_file_logging(log_path: &Path) -> CliResult<()> {
     // Console formatter - simple and clean
     let console_dispatch = fern::Dispatch::new()
         .format(|out, message, record| {
-            let msg_str = format!("{}", message);
+            let msg_str = format!("{message}");
 
-            // Check if this is ffmpeg output that already has [info] prefix
+            // Ffmpeg output already has prefixes, don't add more
             if msg_str.starts_with("[info]") || msg_str.starts_with("Svt[info]:") {
-                // Output as-is without additional formatting
-                out.finish(format_args!("{}", message))
+                out.finish(format_args!("{message}"));
             } else if record.level() != log::Level::Info {
-                out.finish(format_args!("[{}] {}", record.level(), message))
+                out.finish(format_args!("[{}] {}", record.level(), message));
             } else {
-                out.finish(format_args!("{}", message))
+                out.finish(format_args!("{message}"));
             }
         })
         .level(log_level)
         .level_for("drapto", log_level)
         .level_for("drapto_cli", log_level)
         .level_for("drapto_core", log_level)
-        // Filter out progress messages from console output
         .level_for("drapto::progress", log::LevelFilter::Off)
         .chain(std::io::stdout());
 
-    // File formatter - strips ANSI codes for clean file output
     let file_dispatch =
         fern::Dispatch::new()
             .format(|out, message, record| {
-                let msg_str = format!("{}", message);
+                let msg_str = format!("{message}");
 
-                // Strip ANSI escape codes for clean file output
                 let clean_str = strip_ansi_codes(&msg_str);
-
-                // Format based on log level
                 if clean_str.starts_with("[info]") || clean_str.starts_with("Svt[info]:") {
-                    out.finish(format_args!("{}", clean_str))
+                    out.finish(format_args!("{clean_str}"));
                 } else if record.level() != log::Level::Info {
-                    out.finish(format_args!("[{}] {}", record.level(), clean_str))
+                    out.finish(format_args!("[{}] {}", record.level(), clean_str));
                 } else {
-                    out.finish(format_args!("{}", clean_str))
+                    out.finish(format_args!("{clean_str}"));
                 }
             })
             .level(log_level)
             .level_for("drapto", log_level)
             .level_for("drapto_cli", log_level)
             .level_for("drapto_core", log_level)
-            // Ensure progress messages are included in file output
             .level_for("drapto::progress", log_level)
             .chain(fern::log_file(log_path).map_err(|e| {
-                CoreError::OperationFailed(format!("Failed to open log file: {}", e))
+                CoreError::OperationFailed(format!("Failed to open log file: {e}"))
             })?);
 
-    // Combine both outputs
     fern::Dispatch::new()
         .level(log_level)
         .level_for("drapto", log_level)
@@ -165,7 +135,7 @@ pub fn setup_file_logging(log_path: &Path) -> CliResult<()> {
         .chain(console_dispatch)
         .chain(file_dispatch)
         .apply()
-        .map_err(|e| CoreError::OperationFailed(format!("Failed to initialize logging: {}", e)))?;
+        .map_err(|e| CoreError::OperationFailed(format!("Failed to initialize logging: {e}")))?;
 
     Ok(())
 }

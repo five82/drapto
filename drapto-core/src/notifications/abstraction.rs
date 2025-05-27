@@ -1,29 +1,10 @@
-// ============================================================================
-// drapto-core/src/notifications/abstraction.rs
-// ============================================================================
-//
-// NOTIFICATION TYPES: Notification System Type Definitions
-//
-// This module defines the notification types used throughout the application.
-// It provides a simple enum for different notification scenarios without
-// unnecessary abstraction layers.
-//
-// KEY COMPONENTS:
-// - NotificationType: Enum of different notification types
-//
-// DESIGN PHILOSOPHY:
-// This module follows a minimalist approach, focusing on the data structures
-// needed for notifications without adding unnecessary abstraction layers.
-//
-// AI-ASSISTANT-INFO: Notification system type definitions
-
-// ---- Standard library imports ----
+//! Notification type definitions for the notification system.
+//!
+//! This module defines the notification types used throughout the application
+//! for different notification scenarios during the encoding process.
 use std::path::PathBuf;
 use std::time::Duration;
 
-// ============================================================================
-// NOTIFICATION TYPES
-// ============================================================================
 
 /// Represents different types of notifications that can be sent.
 ///
@@ -78,7 +59,7 @@ impl NotificationType {
     /// # Returns
     ///
     /// * A string representing the title for this notification
-    pub fn get_title(&self) -> String {
+    #[must_use] pub fn get_title(&self) -> String {
         match self {
             NotificationType::EncodeStart { .. } => "Encoding Started".to_string(),
             NotificationType::EncodeComplete { .. } => "Encoding Complete".to_string(),
@@ -92,14 +73,12 @@ impl NotificationType {
     /// # Returns
     ///
     /// * A string representing the message body for this notification
-    pub fn get_message(&self) -> String {
+    #[must_use] pub fn get_message(&self) -> String {
         match self {
             NotificationType::EncodeStart { input_path, .. } => {
                 let filename = input_path
-                    .file_name()
-                    .map(|name| name.to_string_lossy().to_string())
-                    .unwrap_or_else(|| input_path.to_string_lossy().to_string());
-                format!("Started encoding {}", filename)
+                    .file_name().map_or_else(|| input_path.to_string_lossy().to_string(), |name| name.to_string_lossy().to_string());
+                format!("Started encoding {filename}")
             }
             NotificationType::EncodeComplete {
                 input_path,
@@ -109,11 +88,9 @@ impl NotificationType {
                 ..
             } => {
                 let filename = input_path
-                    .file_name()
-                    .map(|name| name.to_string_lossy().to_string())
-                    .unwrap_or_else(|| input_path.to_string_lossy().to_string());
+                    .file_name().map_or_else(|| input_path.to_string_lossy().to_string(), |name| name.to_string_lossy().to_string());
 
-                // Calculate size reduction percentage
+                // Size reduction percentage
                 let reduction = if *input_size > 0 {
                     100 - ((output_size * 100) / input_size)
                 } else {
@@ -131,12 +108,11 @@ impl NotificationType {
                 } else if duration_secs >= 60 {
                     format!("{}m {}s", duration_secs / 60, duration_secs % 60)
                 } else {
-                    format!("{}s", duration_secs)
+                    format!("{duration_secs}s")
                 };
 
                 format!(
-                    "Completed encoding {} in {}. Reduced by {}%",
-                    filename, duration_str, reduction
+                    "Completed encoding {filename} in {duration_str}. Reduced by {reduction}%"
                 )
             }
             NotificationType::EncodeError {
@@ -144,10 +120,8 @@ impl NotificationType {
                 message,
             } => {
                 let filename = input_path
-                    .file_name()
-                    .map(|name| name.to_string_lossy().to_string())
-                    .unwrap_or_else(|| input_path.to_string_lossy().to_string());
-                format!("Error encoding {}: {}", filename, message)
+                    .file_name().map_or_else(|| input_path.to_string_lossy().to_string(), |name| name.to_string_lossy().to_string());
+                format!("Error encoding {filename}: {message}")
             }
             NotificationType::Custom { message, .. } => message.clone(),
         }
@@ -158,7 +132,7 @@ impl NotificationType {
     /// # Returns
     ///
     /// * A priority level (1-5, with 5 being highest)
-    pub fn get_priority(&self) -> u8 {
+    #[must_use] pub fn get_priority(&self) -> u8 {
         match self {
             NotificationType::EncodeStart { .. } => 3,
             NotificationType::EncodeComplete { .. } => 4,

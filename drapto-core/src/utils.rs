@@ -1,31 +1,11 @@
-// ============================================================================
-// drapto-core/src/utils.rs
-// ============================================================================
-//
-// UTILITY FUNCTIONS: Common Helper Functions
-//
-// This module provides general-purpose utility functions used throughout the
-// drapto-core library. These include functions for file size retrieval,
-// duration formatting, and byte formatting.
-//
-// KEY COMPONENTS:
-// - get_file_size: Retrieves the size of a file
-// - format_duration: Formats a Duration into a human-readable string
-// - format_bytes: Formats byte counts into human-readable units
-//
-// DESIGN PHILOSOPHY:
-// These utility functions are designed to be simple, reusable, and focused on
-// a single responsibility. They help maintain consistency in how common operations
-// are performed throughout the codebase.
-//
-// AI-ASSISTANT-INFO: Utility functions for formatting and file operations
+//! Utility functions for formatting and file operations.
+//!
+//! This module provides general-purpose utility functions used throughout the
+//! drapto-core library. These include functions for duration formatting
+//! and byte formatting.
 
-// ---- Standard library imports ----
+
 use std::time::Duration;
-
-// ============================================================================
-// FORMATTING FUNCTIONS
-// ============================================================================
 
 /// Formats a Duration into a human-readable string in HH:MM:SS format.
 ///
@@ -52,7 +32,7 @@ use std::time::Duration;
 /// let formatted = format_duration(duration);
 /// assert_eq!(formatted, "01:02:05");
 /// ```
-pub fn format_duration(duration: Duration) -> String {
+#[must_use] pub fn format_duration(duration: Duration) -> String {
     format_duration_seconds(duration.as_secs_f64())
 }
 
@@ -60,7 +40,7 @@ pub fn format_duration(duration: Duration) -> String {
 ///
 /// This function converts a floating-point number of seconds into a
 /// formatted string in HH:MM:SS format. It's useful when working with
-/// duration values that come from external sources (like FFmpeg) as
+/// duration values that come from external sources (like `FFmpeg`) as
 /// floating-point seconds.
 ///
 /// # Arguments
@@ -79,8 +59,7 @@ pub fn format_duration(duration: Duration) -> String {
 /// let formatted = format_duration_seconds(3725.0);
 /// assert_eq!(formatted, "01:02:05");
 /// ```
-pub fn format_duration_seconds(seconds: f64) -> String {
-    // Handle invalid values
+#[must_use] pub fn format_duration_seconds(seconds: f64) -> String {
     if seconds < 0.0 || !seconds.is_finite() {
         return "??:??:??".to_string();
     }
@@ -89,7 +68,7 @@ pub fn format_duration_seconds(seconds: f64) -> String {
     let hours = total_seconds / 3600;
     let minutes = (total_seconds % 3600) / 60;
     let secs = total_seconds % 60;
-    format!("{:02}:{:02}:{:02}", hours, minutes, secs)
+    format!("{hours:02}:{minutes:02}:{secs:02}")
 }
 
 /// Formats a byte count into a human-readable string with appropriate units.
@@ -120,36 +99,28 @@ pub fn format_duration_seconds(seconds: f64) -> String {
 /// let small_formatted = format_bytes(small_size);
 /// assert_eq!(small_formatted, "500 B");
 /// ```
-pub fn format_bytes(bytes: u64) -> String {
-    // Define binary unit constants
+#[must_use] pub fn format_bytes(bytes: u64) -> String {
     const KIB: f64 = 1024.0;
     const MIB: f64 = KIB * 1024.0;
     const GIB: f64 = MIB * 1024.0;
 
-    // Convert bytes to f64 for division
     let bytes_f64 = bytes as f64;
-
-    // Select the appropriate unit based on size
     if bytes_f64 >= GIB {
-        // Format as GiB with 2 decimal places
         format!("{:.2} GiB", bytes_f64 / GIB)
     } else if bytes_f64 >= MIB {
-        // Format as MiB with 2 decimal places
         format!("{:.2} MiB", bytes_f64 / MIB)
     } else if bytes_f64 >= KIB {
-        // Format as KiB with 2 decimal places
         format!("{:.2} KiB", bytes_f64 / KIB)
     } else {
-        // Format as bytes with no decimal places
-        format!("{} B", bytes)
+        format!("{bytes} B")
     }
 }
 
-/// Parses FFmpeg time string (HH:MM:SS.MS format) to seconds.
+/// Parses `FFmpeg` time string (HH:MM:SS.MS format) to seconds.
 ///
-/// This function parses time strings in the format used by FFmpeg progress
+/// This function parses time strings in the format used by `FFmpeg` progress
 /// output (e.g., "01:23:45.67") and converts them to a floating-point number
-/// of seconds. This is useful for parsing FFmpeg progress reports and
+/// of seconds. This is useful for parsing `FFmpeg` progress reports and
 /// calculating encoding progress.
 ///
 /// # Arguments
@@ -172,7 +143,7 @@ pub fn format_bytes(bytes: u64) -> String {
 /// let invalid = parse_ffmpeg_time("invalid");
 /// assert_eq!(invalid, None);
 /// ```
-pub fn parse_ffmpeg_time(time: &str) -> Option<f64> {
+#[must_use] pub fn parse_ffmpeg_time(time: &str) -> Option<f64> {
     let parts: Vec<&str> = time.split(':').collect();
     if parts.len() == 3 {
         let hours = parts[0].parse::<f64>().ok()?;

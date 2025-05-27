@@ -1,37 +1,7 @@
-// ============================================================================
-// drapto-cli/src/platform.rs
-// ============================================================================
-//
-// PLATFORM: Platform-specific functionality
-//
-// This module provides platform-specific functionality and abstractions for
-// the drapto-cli application. It encapsulates platform detection, hardware
-// decoding capabilities, and other OS-specific features.
-//
-// KEY COMPONENTS:
-// - Platform detection functions
-// - Hardware decoding capability detection
-// - Platform-specific formatting and output
-//
-// DESIGN PHILOSOPHY:
-// This module centralizes platform-specific code to make the rest of the
-// application more portable and easier to maintain. It provides a clean
-// abstraction over platform differences.
-//
-// AI-ASSISTANT-INFO: Platform-specific functionality and detection
+//! Platform-specific functionality and detection.
+//!
+//! This module provides platform abstractions including OS detection
+//! and hardware decoding capabilities.
 
-// ---- External crate imports ----
-
-// ============================================================================
-// PLATFORM DETECTION
-// ============================================================================
-
-/// Re-export is_macos from hardware_accel module
-pub use drapto_core::hardware_decode::is_macos;
-
-// ============================================================================
-// HARDWARE DECODING
-// ============================================================================
-
-/// Re-export HardwareAcceleration from hardware_accel module
-pub use drapto_core::hardware_decode::HardwareDecoding;
+// Re-export platform detection and hardware capabilities from core
+pub use drapto_core::hardware_decode::{is_macos, HardwareDecoding};

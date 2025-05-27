@@ -1,39 +1,13 @@
-// ============================================================================
-// drapto-core/src/processing/crop_detection.rs
-// ============================================================================
-//
-// CROP DETECTION: Black Bar Detection and Removal
-//
-// This module handles the detection of black bars in video files and generates
-// appropriate crop parameters to remove them. It uses ffmpeg's cropdetect filter
-// to analyze video frames and determine the optimal crop values.
-//
-// KEY COMPONENTS:
-// - detect_crop: Main entry point for crop detection
-// - HDR-aware black level detection
-// - Adaptive sampling based on video duration
-//
-// WORKFLOW:
-// 1. Determine initial crop threshold based on video properties
-// 2. For HDR content, refine the threshold using black level analysis
-// 3. Run ffmpeg cropdetect on sample frames
-// 4. Analyze the results to determine the most common crop values
-// 5. Return the crop filter string if black bars are detected
-//
-// AI-ASSISTANT-INFO: Black bar detection and crop parameter generation
+//! Black bar detection and crop parameter generation.
+//!
+//! This module handles the detection of black bars in video files and generates
+//! appropriate crop parameters to remove them. It uses ffmpeg's cropdetect filter
+//! to analyze video frames and determine the optimal crop values.
 
-// ---- External crate imports ----
-
-// ---- Internal crate imports ----
 use crate::error::CoreResult;
 use crate::processing::video_properties::VideoProperties;
-
-// ---- Standard library imports ----
 use std::path::Path;
 
-// ============================================================================
-// THRESHOLD DETERMINATION
-// ============================================================================
 
 /// Determines the initial crop detection threshold based on color properties.
 ///
@@ -53,25 +27,19 @@ use std::path::Path;
 ///
 /// # Note
 ///
-/// HDR detection is simplified to only use color_space since color_transfer and
-/// color_primaries are not available in the current ffprobe crate version.
+/// HDR detection is simplified to only use `color_space` since `color_transfer` and
+/// `color_primaries` are not available in the current ffprobe crate version.
 fn determine_crop_threshold(props: &VideoProperties) -> (u32, bool) {
-    // Get the color space, defaulting to empty string if not available
     let cs = props.color_space.as_deref().unwrap_or("");
-
-    // Check if the color space matches common HDR color spaces (bt2020)
     let is_hdr_cs = cs == "bt2020nc" || cs == "bt2020c";
 
     if is_hdr_cs {
-        // For HDR content, use a higher initial threshold
         log::debug!(
-            "HDR content potentially detected via color space ({}), adjusting detection sensitivity.",
-            cs
+            "HDR content potentially detected via color space ({cs}), adjusting detection sensitivity."
         );
         (128, true) // Initial threshold for potential HDR
     } else {
-        // For SDR content, use the standard threshold
-        (16, false) // Default threshold for SDR
+        (16, false)
     }
 }
 
@@ -133,8 +101,7 @@ fn run_hdr_blackdetect(input_file: &Path, initial_threshold: u32) -> CoreResult<
             e
         );
         log::warn!(
-            "HDR black level analysis failed, using initial threshold: {}",
-            initial_threshold
+            "HDR black level analysis failed, using initial threshold: {initial_threshold}"
         );
         return Ok(initial_threshold);
     }
@@ -170,21 +137,17 @@ fn run_hdr_blackdetect(input_file: &Path, initial_threshold: u32) -> CoreResult<
         );
         Ok(initial_threshold)
     } else {
-        // For HDR content, YMIN represents the minimum luminance
-        // We adjust the threshold based on the minimum values found
+        // YMIN represents the minimum luminance
+        // Adjust the threshold based on the minimum values found
         let avg_ymin: f64 = matches.iter().sum::<f64>() / matches.len() as f64;
 
-        // For HDR content, we need a higher threshold than the minimum black level
         // The signalstats values are already in 8-bit range (0-255)
-        // We use a multiplier to set the threshold well above the black level
-        let refined_threshold = (avg_ymin * 2.5).round() as u32; // 2.5x multiplier for HDR
-        let clamped_threshold = refined_threshold.clamp(64, 256); // Higher minimum for HDR
+        // Use a multiplier to set the threshold well above the black level
+        let refined_threshold = (avg_ymin * 2.5).round() as u32;
+        let clamped_threshold = refined_threshold.clamp(64, 256);
 
         log::debug!(
-            "HDR black level analysis: Avg YMIN={:.2}, Refined Threshold={}, Final={}",
-            avg_ymin,
-            refined_threshold,
-            clamped_threshold
+            "HDR black level analysis: Avg YMIN={avg_ymin:.2}, Refined Threshold={refined_threshold}, Final={clamped_threshold}"
         );
         Ok(clamped_threshold)
     }
@@ -213,10 +176,7 @@ fn run_cropdetect(
     let (orig_width, orig_height) = dimensions;
     if orig_width == 0 || orig_height == 0 || duration <= 0.0 {
         log::warn!(
-            "Invalid dimensions or duration for cropdetect: {}x{}, {}s",
-            orig_width,
-            orig_height,
-            duration
+            "Invalid dimensions or duration for cropdetect: {orig_width}x{orig_height}, {duration}s"
         );
         return Ok(None);
     }
@@ -227,7 +187,7 @@ fn run_cropdetect(
     }
     let frames_to_scan = total_samples * 2;
 
-    let cropdetect_filter = format!("cropdetect=limit={}:round=2:reset=1", crop_threshold);
+    let cropdetect_filter = format!("cropdetect=limit={crop_threshold}:round=2:reset=1");
 
     log::debug!(
         "Running ffmpeg (sidecar) cropdetect on {}",
@@ -296,7 +256,7 @@ fn run_cropdetect(
     // Parse crop=w:h:x:y patterns from stderr output
     for line in stderr_output.lines() {
         if let Some(crop_start) = line.find("crop=") {
-            let crop_part = &line[crop_start + 5..]; // Skip "crop="
+            let crop_part = &line[crop_start + 5..];
             let crop_end = crop_part.find(']').unwrap_or(crop_part.len());
             let crop_values = &crop_part[..crop_end];
 
@@ -349,15 +309,11 @@ fn run_cropdetect(
         );
         Ok(None)
     } else {
-        let crop_filter_string = format!("crop={}:{}:{}:{}", crop_w, crop_h, crop_x, crop_y);
-        // Removed redundant log::info! for detected crop, as println! below covers it.
+        let crop_filter_string = format!("crop={crop_w}:{crop_h}:{crop_x}:{crop_y}");
         Ok(Some(crop_filter_string))
     }
 }
 
-// ============================================================================
-// PUBLIC API
-// ============================================================================
 
 /// Main entry point for crop detection.
 ///
@@ -367,7 +323,7 @@ fn run_cropdetect(
 ///
 /// # Arguments
 ///
-/// * `spawner` - Implementation of FfmpegSpawner for executing ffmpeg
+/// * `spawner` - Implementation of `FfmpegSpawner` for executing ffmpeg
 /// * `input_file` - Path to the video file to analyze
 /// * `video_props` - Properties of the video (resolution, duration, color space)
 /// * `disable_crop` - Whether to skip crop detection (e.g., user preference)
@@ -430,19 +386,8 @@ pub fn detect_crop(
         crop_threshold = run_hdr_blackdetect(input_file, crop_threshold)?;
     }
 
-    // STEP 3: Log video properties for debugging
-    // Extract filename for logging
     let _filename_cow = input_file
-        .file_name()
-        .map(|name| name.to_string_lossy())
-        .unwrap_or_else(|| input_file.to_string_lossy());
-
-    // We're moving HDR display to the initialization section
-    // Keep the is_hdr detection logic but don't log it here
-
-    // Crop threshold is already reported in video.rs
-
-    // STEP 4: Calculate effective analysis duration (skipping credits)
+        .file_name().map_or_else(|| input_file.to_string_lossy(), |name| name.to_string_lossy());
     let credits_skip = calculate_credits_skip(video_props.duration_secs);
     let analysis_duration = if video_props.duration_secs > credits_skip {
         video_props.duration_secs - credits_skip
@@ -452,9 +397,7 @@ pub fn detect_crop(
 
     if credits_skip > 0.0 {
         log::debug!(
-            "Skipping last {:.2}s for crop analysis (credits). Effective duration: {:.2}s",
-            credits_skip,
-            analysis_duration
+            "Skipping last {credits_skip:.2}s for crop analysis (credits). Effective duration: {analysis_duration:.2}s"
         );
     }
 
@@ -489,6 +432,5 @@ pub fn detect_crop(
         );
     }
 
-    // Return the crop filter and HDR status
     Ok((crop_filter, is_hdr))
 }

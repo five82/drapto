@@ -1,23 +1,8 @@
-// ============================================================================
-// drapto-core/src/external/ffprobe_executor.rs
-// ============================================================================
-//
-// FFPROBE INTEGRATION: Video Analysis and Media Information Extraction
-//
-// This module provides abstractions for executing ffprobe commands to analyze
-// media files and extract properties such as dimensions, duration, audio channels,
-// and bitplane noise for grain analysis.
-//
-// KEY COMPONENTS:
-// - FfprobeExecutor trait: Defines the interface for ffprobe operations
-// - CrateFfprobeExecutor: Concrete implementation using the ffprobe crate
-// - MediaInfo: Structure containing extracted media information
-//
-// DESIGN PHILOSOPHY:
-// The module follows the dependency injection pattern with a trait-based
-// interface, allowing for testing and flexibility in implementation.
-//
-// AI-ASSISTANT-INFO: FFprobe execution for media analysis and information extraction
+//! FFprobe integration for media analysis and information extraction
+//!
+//! This module provides functions for executing ffprobe commands to analyze
+//! media files and extract properties such as dimensions, duration, audio channels,
+//! and bitplane noise for grain analysis.
 use crate::error::{CoreError, CoreResult, command_failed_error, command_start_error};
 use crate::processing::video_properties::VideoProperties;
 use ffprobe::{FfProbeError, ffprobe};
@@ -35,39 +20,28 @@ pub struct MediaInfo {
     pub height: Option<i64>,
 }
 
-// --- Direct Ffprobe Functions ---
 
 /// Runs ffprobe with bitplanenoise filter to analyze grain.
 pub fn run_ffprobe_bitplanenoise(input_path: &Path, duration_secs: f64) -> CoreResult<Vec<f32>> {
-    // Changed return type
     let cmd_name = "ffprobe";
-    const TARGET_SAMPLES: f64 = 10.0; // Aim for roughly 10 samples
-
-    // Calculate sampling interval, ensuring it's at least a small value to avoid division by zero
-    // and handle very short videos reasonably (e.g., sample at least the start).
+    const TARGET_SAMPLES: f64 = 10.0;
     let sample_interval = if duration_secs > 0.0 {
-        (duration_secs / TARGET_SAMPLES).max(0.1) // Sample at least every 0.1s if duration is tiny
+        (duration_secs / TARGET_SAMPLES).max(0.1)
     } else {
-        1.0 // Default interval if duration is zero or negative (shouldn't happen)
+        1.0
     };
 
     let input_path_str = input_path.to_str().ok_or_else(|| {
         CoreError::PathError(format!(
-            // Changed to PathError
             "Input path is not valid UTF-8: {}",
             input_path.display()
         ))
     })?;
 
-    // Construct the filter graph string carefully, escaping the filename
-    // Basic escaping for common shell characters, might need refinement
-    let escaped_input_path = input_path_str.replace('\'', "'\\''"); // Handle single quotes
-    // Use time-based selection: select the first frame, then frames at least 'sample_interval' seconds apart.
-    // Use default bitplanenoise (bitplane=1 for luma plane 0).
+    // Escape filename for filter graph
+    let escaped_input_path = input_path_str.replace('\'', "'\\''");
     let filter_graph = format!(
-        "movie='{}',select='isnan(prev_selected_t)+gte(t-prev_selected_t\\,{:.3})',bitplanenoise,metadata=print", // Removed explicit bitplane settings
-        escaped_input_path, // Use escaped path
-        sample_interval     // Use calculated interval
+        "movie='{escaped_input_path}',select='isnan(prev_selected_t)+gte(t-prev_selected_t\\,{sample_interval:.3})',bitplanenoise,metadata=print"
     );
 
     log::debug!(
@@ -75,23 +49,22 @@ pub fn run_ffprobe_bitplanenoise(input_path: &Path, duration_secs: f64) -> CoreR
         cmd_name,
         input_path.display()
     );
-    log::trace!("Filter graph: {}", filter_graph); // Log the filter graph for debugging
+    log::trace!("Filter graph: {filter_graph}");
 
     let output = Command::new(cmd_name)
         .args([
             "-v",
-            "error", // Use error level to see potential ffprobe errors
+            "error",
             "-f",
             "lavfi",
             "-i",
-            &filter_graph, // Use -i for input filtergraph
+            &filter_graph,
             "-show_entries",
-            // Request the correct metadata tag for luma plane (0), bitplane 1
             "frame_tags=lavfi.bitplanenoise.0.1",
             "-of",
-            "csv=p=0", // Output format: CSV, no header (print_section=0)
+            "csv=p=0",
         ])
-        .output() // Use output() for simplicity first
+        .output()
         .map_err(|e| command_start_error(cmd_name, e))?;
 
     if !output.status.success() {
@@ -104,7 +77,7 @@ pub fn run_ffprobe_bitplanenoise(input_path: &Path, duration_secs: f64) -> CoreR
             stderr
         );
         return Err(command_failed_error(
-            format!("{} bitplanenoise", cmd_name),
+            format!("{cmd_name} bitplanenoise"),
             output.status,
             stderr,
         ));
@@ -118,17 +91,15 @@ pub fn run_ffprobe_bitplanenoise(input_path: &Path, duration_secs: f64) -> CoreR
         stdout
     );
 
-    let mut results: Vec<f32> = Vec::new(); // Changed result type
+    let mut results: Vec<f32> = Vec::new();
     for line in stdout.lines() {
         let trimmed_line = line.trim();
         if trimmed_line.is_empty() {
             continue;
         }
-        // Remove trailing comma if present before parsing
         let value_str = trimmed_line.strip_suffix(',').unwrap_or(trimmed_line);
-        // Expecting a single float value per line now
         match value_str.parse::<f32>() {
-            Ok(n1) => results.push(n1), // Push the single value
+            Ok(n1) => results.push(n1),
             Err(_) => log::warn!(
                 "Failed to parse bitplanenoise value as f32: '{}' (original line: '{}') for {}",
                 value_str,
@@ -139,7 +110,6 @@ pub fn run_ffprobe_bitplanenoise(input_path: &Path, duration_secs: f64) -> CoreR
     }
 
     if results.is_empty() {
-        // Log the stdout content at TRACE level when no results are parsed
         log::trace!(
             "{} bitplanenoise analysis produced no valid results for {}. Stdout content was:\n---\n{}\n---",
             cmd_name,
@@ -162,16 +132,15 @@ pub fn get_audio_channels(input_path: &Path) -> CoreResult<Vec<u32>> {
                 .streams
                 .iter()
                 .filter(|s| s.codec_type.as_deref() == Some("audio"))
-                .filter_map(|s| s.channels) // filter_map handles Option<i64> in ffprobe v0.3.3
+                .filter_map(|s| s.channels)
                 .map(|c| {
-                    // Cast i64 to u32
                     if c < 0 {
                         log::warn!(
                             "Negative channel count ({}) found for {}, treating as 0",
                             c,
                             input_path.display()
                         );
-                        0u32 // Or handle as error? Unlikely scenario.
+                        0u32
                     } else {
                         c as u32
                     }
@@ -226,8 +195,6 @@ pub fn get_video_properties(input_path: &Path) -> CoreResult<VideoProperties> {
                         input_path.display()
                     ))
                 })?;
-
-            // Use i64 from ffprobe crate and cast carefully
             let width = video_stream.width.ok_or_else(|| {
                 CoreError::VideoInfoError(format!(
                     "Video stream missing width in {}",
@@ -241,7 +208,6 @@ pub fn get_video_properties(input_path: &Path) -> CoreResult<VideoProperties> {
                 ))
             })?;
 
-            // Ensure non-negative before casting
             if width < 0 || height < 0 {
                 return Err(CoreError::VideoInfoError(format!(
                     "Invalid dimensions (negative) found in {}: width={}, height={}",
@@ -252,11 +218,10 @@ pub fn get_video_properties(input_path: &Path) -> CoreResult<VideoProperties> {
             }
 
             Ok(VideoProperties {
-                width: width as u32,   // Cast after check
-                height: height as u32, // Cast after check
+                width: width as u32,
+                height: height as u32,
                 duration_secs,
                 color_space: video_stream.color_space.clone(),
-                // color_primaries and color_transfer removed as they are not in ffprobe v0.3.3 Stream struct
             })
         }
         Err(err) => {
@@ -278,7 +243,6 @@ pub fn get_media_info(input_path: &Path) -> CoreResult<MediaInfo> {
     );
     match ffprobe(input_path) {
         Ok(metadata) => {
-            // Get duration from format
             let duration = metadata
                 .format
                 .duration
@@ -290,13 +254,11 @@ pub fn get_media_info(input_path: &Path) -> CoreResult<MediaInfo> {
                 ..Default::default()
             };
 
-            // Find video stream
             if let Some(video_stream) = metadata
                 .streams
                 .iter()
                 .find(|s| s.codec_type.as_deref() == Some("video"))
             {
-                // Get width and height
                 info.width = video_stream.width;
                 info.height = video_stream.height;
             }
@@ -304,34 +266,26 @@ pub fn get_media_info(input_path: &Path) -> CoreResult<MediaInfo> {
             Ok(info)
         }
         Err(err) => {
-            log::warn!("Failed to get media info: {:?}", err);
+            log::warn!("Failed to get media info: {err:?}");
             Err(map_ffprobe_error(err, "media info"))
         }
     }
 }
 
-// Helper function to map ffprobe crate errors to CoreError
 fn map_ffprobe_error(err: FfProbeError, context: &str) -> CoreError {
     match err {
         FfProbeError::Io(io_err) => {
-            // Use CommandStart for all IO errors when executing ffprobe
-            command_start_error(format!("ffprobe ({})", context), io_err)
+            command_start_error(format!("ffprobe ({context})"), io_err)
         }
-        // Adjusted for ffprobe v0.3.3 FfProbeError::Status variant
         FfProbeError::Status(output) => {
-            // Pass the actual ExitStatus (output.status) instead of a string representation
             let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-            command_failed_error(format!("ffprobe ({})", context), output.status, stderr)
+            command_failed_error(format!("ffprobe ({context})"), output.status, stderr)
         }
-        // Adjusted for ffprobe v0.3.3 FfProbeError::Deserialize variant (assuming name)
         FfProbeError::Deserialize(err) => CoreError::JsonParseError(format!(
-            "ffprobe {} output deserialization: {}",
-            context, err
+            "ffprobe {context} output deserialization: {err}"
         )),
-        // Add wildcard arm for non-exhaustive enum
         _ => CoreError::FfprobeParse(format!(
-            "Unknown ffprobe error during {}: {:?}",
-            context, err
+            "Unknown ffprobe error during {context}: {err:?}"
         )),
     }
 }

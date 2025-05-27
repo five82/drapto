@@ -1,42 +1,13 @@
-// ============================================================================
-// drapto-core/src/error.rs
-// ============================================================================
-//
-// ERROR HANDLING: Custom Error Types and Result Definitions
-//
-// This module defines the custom error handling infrastructure for the drapto-core
-// library. It provides a comprehensive error type hierarchy that covers all possible
-// error conditions that can occur during video processing operations.
-//
-// KEY COMPONENTS:
-// - CoreError: Enum of all possible errors with descriptive messages
-// - CoreResult: Type alias for Result<T, CoreError> for consistent return types
-//
-// ERROR CATEGORIES:
-// - I/O and filesystem errors (Io, PathError)
-// - External command errors (Command with CommandErrorKind)
-// - Parsing errors (FfprobeParse, JsonParseError)
-// - Video processing errors (VideoInfoError, NoFilesFound, OperationFailed)
-// - Film grain analysis errors (FilmGrainEncodingFailed, FilmGrainAnalysisFailed)
-// - Notification errors (NotificationError)
-//
-// USAGE:
-// Functions in the library return CoreResult<T> to provide consistent error
-// handling. Consumers can use the ? operator to propagate errors or match
-// on specific error variants for custom handling.
-//
-// AI-ASSISTANT-INFO: Error handling infrastructure for the drapto-core library
+//! Custom error types and result definitions for drapto-core.
+//!
+//! This module provides a comprehensive error type hierarchy that covers all possible
+//! error conditions during video processing operations, including I/O errors,
+//! external command failures, parsing errors, and video processing errors.
 
-// ---- External crate imports ----
 use thiserror::Error;
 
-// ---- Standard library imports ----
 use std::io;
 use std::process::ExitStatus;
-
-// ============================================================================
-// ERROR TYPES
-// ============================================================================
 
 /// Represents the kind of command error that occurred.
 #[derive(Debug)]
@@ -86,8 +57,8 @@ pub struct CommandError {
 /// ```
 #[derive(Error, Debug)]
 pub enum CoreError {
-    // ---- I/O and Filesystem Errors ----
-    /// Standard I/O errors from the std::io module
+    // I/O and Filesystem Errors
+    /// Standard I/O errors from the `std::io` module
     #[error("I/O error: {0}")]
     Io(#[from] io::Error),
 
@@ -95,12 +66,12 @@ pub enum CoreError {
     #[error("Path error: {0}")]
     PathError(String),
 
-    // ---- External Command Errors ----
+    // External Command Errors
     /// Errors that occur when executing external commands
     #[error("{}", format_command_error(.0))]
     Command(CommandError),
 
-    // ---- Parsing Errors ----
+    // Parsing Errors
     /// Errors that occur when parsing ffprobe output
     #[error("ffprobe output parsing error: {0}")]
     FfprobeParse(String),
@@ -113,7 +84,7 @@ pub enum CoreError {
     #[error("Failed to extract video information: {0}")]
     VideoInfoError(String),
 
-    // ---- Video Processing Errors ----
+    // Video Processing Errors
     /// Error indicating that no suitable video files were found
     #[error("No suitable video files found in input directory")]
     NoFilesFound,
@@ -122,7 +93,7 @@ pub enum CoreError {
     #[error("Operation failed: {0}")]
     OperationFailed(String),
 
-    // ---- Film Grain Analysis Errors ----
+    // Film Grain Analysis Errors
     /// Errors that occur during film grain sample extraction or encoding
     #[error("Film grain sample extraction/encoding failed: {0}")]
     FilmGrainEncodingFailed(String),
@@ -135,7 +106,7 @@ pub enum CoreError {
     #[error("Grain analysis using ffprobe returned no data for file: {0}")]
     GrainAnalysisNoData(String),
 
-    // ---- Notification Errors ----
+    // Notification Errors
     /// Errors that occur when sending notifications
     #[error("Notification error: {0}")]
     NotificationError(String),
@@ -145,15 +116,11 @@ pub enum CoreError {
     NoStreamsFound(String),
 }
 
-// ============================================================================
-// RESULT TYPE ALIAS
-// ============================================================================
-
 /// Type alias for Result using our custom error type.
 ///
 /// This type alias is used throughout the library to provide a consistent
 /// return type for functions that can fail. It simplifies function signatures
-/// and makes it clear that the function can return a CoreError.
+/// and makes it clear that the function can return a `CoreError`.
 ///
 /// # Examples
 ///
@@ -176,12 +143,7 @@ pub enum CoreError {
 /// ```
 pub type CoreResult<T> = Result<T, CoreError>;
 
-// ============================================================================
-// HELPER FUNCTIONS
-// ============================================================================
-
 /// Helper function to format command errors for display.
-/// This is used by the thiserror #[error] attribute for the Command variant.
 fn format_command_error(err: &CommandError) -> String {
     match &err.kind {
         CommandErrorKind::Start(io_err) => {
@@ -199,11 +161,7 @@ fn format_command_error(err: &CommandError) -> String {
     }
 }
 
-// ============================================================================
-// CONVERSION FUNCTIONS
-// ============================================================================
-
-/// Convenience function to create a CommandStart error
+/// Convenience function to create a `CommandStart` error
 pub fn command_start_error(command: impl Into<String>, error: io::Error) -> CoreError {
     CoreError::Command(CommandError {
         command: command.into(),
@@ -211,7 +169,7 @@ pub fn command_start_error(command: impl Into<String>, error: io::Error) -> Core
     })
 }
 
-/// Convenience function to create a CommandWait error
+/// Convenience function to create a `CommandWait` error
 pub fn command_wait_error(command: impl Into<String>, error: io::Error) -> CoreError {
     CoreError::Command(CommandError {
         command: command.into(),
@@ -219,7 +177,7 @@ pub fn command_wait_error(command: impl Into<String>, error: io::Error) -> CoreE
     })
 }
 
-/// Convenience function to create a CommandFailed error
+/// Convenience function to create a `CommandFailed` error
 pub fn command_failed_error(
     command: impl Into<String>,
     status: ExitStatus,

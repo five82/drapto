@@ -1,23 +1,13 @@
-// ============================================================================
-// drapto-core/src/processing/video_properties.rs
-// ============================================================================
-//
-// VIDEO PROPERTIES: Structure for Video Metadata
-//
-// This file defines the VideoProperties structure that holds metadata about
-// video files, such as resolution, duration, and color space. This structure
-// is used throughout the codebase to represent the properties of a video file.
-//
-// The actual detection of these properties is handled by the FfprobeExecutor
-// trait implementations in the external module, which use ffprobe to analyze
-// video files and populate this structure.
-//
-// AI-ASSISTANT-INFO: Video properties structure for metadata about video files
+//! Structure for video metadata.
+//!
+//! This file defines the VideoProperties structure that holds metadata about
+//! video files, such as resolution, duration, and color space. This structure
+//! is used throughout the codebase to represent the properties of a video file.
 
 /// Structure containing detected video properties.
 ///
 /// This structure holds metadata about a video file, including its resolution,
-/// duration, and color space. It is populated by the FfprobeExecutor trait
+/// duration, and color space. It is populated by the `FfprobeExecutor` trait
 /// implementations and used throughout the codebase for encoding decisions.
 ///
 /// # Fields
@@ -57,10 +47,4 @@ pub struct VideoProperties {
 
     /// Color space of the video (e.g., "bt709", "bt2020nc")
     pub color_space: Option<String>,
-    // Note: color_transfer and color_primaries were removed as they are not
-    // available in the ffprobe crate v0.3.3 that is currently being used
 }
-
-// Note: The implementation logic for detecting video properties has been moved
-// to the CrateFfprobeExecutor implementation in src/external/ffprobe_executor.rs,
-// which uses the ffprobe crate to execute ffprobe and parse its output.

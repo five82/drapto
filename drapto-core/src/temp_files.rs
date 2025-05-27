@@ -1,31 +1,16 @@
-// ============================================================================
-// drapto-core/src/temp_files.rs
-// ============================================================================
-//
-// TEMPORARY FILE MANAGEMENT: Helper Functions for Temporary Files
-//
-// This module provides helper functions for creating and managing temporary
-// files and directories used throughout the drapto-core library. It centralizes
-// temporary file operations to ensure consistent behavior and proper cleanup.
-//
-// DESIGN PHILOSOPHY:
-// This module leverages the tempfile crate to handle automatic cleanup via
-// the Drop trait, ensuring that temporary files are properly cleaned up even
-// in error cases. It provides a simple interface for temporary file operations.
-//
-// AI-ASSISTANT-INFO: Temporary file management utilities
+//! Temporary file management utilities.
+//!
+//! This module provides helper functions for creating and managing temporary
+//! files and directories. It leverages the tempfile crate to handle automatic
+//! cleanup via the Drop trait, ensuring proper cleanup even in error cases.
 
 use crate::config::CoreConfig;
 use crate::error::CoreResult;
 use std::path::{Path, PathBuf};
 use tempfile::{self, Builder as TempFileBuilder, NamedTempFile, TempDir};
 
-// ============================================================================
-// TEMPORARY DIRECTORY FUNCTIONS
-// ============================================================================
-
 /// Creates a temporary directory within the configured temp directory.
-/// The directory will be automatically cleaned up when the returned TempDir is dropped.
+/// The directory will be automatically cleaned up when the returned `TempDir` is dropped.
 ///
 /// # Arguments
 ///
@@ -63,7 +48,7 @@ pub fn create_temp_dir(config: &CoreConfig, prefix: &str) -> CoreResult<TempDir>
 }
 
 /// Creates a temporary directory for grain analysis samples.
-/// This is a convenience function that calls create_temp_dir with a specific prefix.
+/// This is a convenience function that calls `create_temp_dir` with a specific prefix.
 ///
 /// # Arguments
 ///
@@ -78,7 +63,7 @@ pub fn create_grain_analysis_dir(config: &CoreConfig) -> CoreResult<TempDir> {
 }
 
 /// Creates a temporary directory for analysis operations.
-/// This is a convenience function that calls create_temp_dir with the provided prefix.
+/// This is a convenience function that calls `create_temp_dir` with the provided prefix.
 ///
 /// # Arguments
 ///
@@ -93,13 +78,9 @@ pub fn create_analysis_dir(config: &CoreConfig, prefix: &str) -> CoreResult<Temp
     create_temp_dir(config, prefix)
 }
 
-// ============================================================================
-// TEMPORARY FILE FUNCTIONS
-// ============================================================================
-
 /// Creates a temporary file with the given prefix and extension.
 /// The file will be created in the specified directory and will be automatically
-/// deleted when the returned NamedTempFile is dropped.
+/// deleted when the returned `NamedTempFile` is dropped.
 ///
 /// # Arguments
 ///
@@ -134,20 +115,17 @@ pub fn create_analysis_dir(config: &CoreConfig, prefix: &str) -> CoreResult<Temp
 /// }
 /// ```
 pub fn create_temp_file(dir: &Path, prefix: &str, extension: &str) -> CoreResult<NamedTempFile> {
-    // Ensure the directory exists
     std::fs::create_dir_all(dir)?;
-
-    // Create a temporary file with the given prefix and extension
     let temp_file = TempFileBuilder::new()
-        .prefix(&format!("{}_", prefix))
-        .suffix(&format!(".{}", extension))
+        .prefix(&format!("{prefix}_"))
+        .suffix(&format!(".{extension}"))
         .tempfile_in(dir)?;
 
     Ok(temp_file)
 }
 
 /// Creates a temporary file path within a directory.
-/// Unlike create_temp_file, this function only returns a path and does not create a file.
+/// Unlike `create_temp_file`, this function only returns a path and does not create a file.
 ///
 /// # Arguments
 ///
@@ -175,28 +153,20 @@ pub fn create_temp_file_path(dir: &Path, prefix: &str, extension: &str) -> PathB
     use rand::distributions::Alphanumeric;
     use rand::{Rng, thread_rng};
 
-    // Generate a random suffix
     let random_suffix: String = thread_rng()
         .sample_iter(&Alphanumeric)
-        .take(6) // 6 random characters
+        .take(6)
         .map(char::from)
         .collect();
 
-    // Create the filename with prefix, random suffix, and extension
-    let filename = format!("{}_{}.{}", prefix, random_suffix, extension);
-
-    // Return the full path
+    let filename = format!("{prefix}_{random_suffix}.{extension}");
     dir.join(filename)
 }
-
-// ============================================================================
-// CLEANUP FUNCTIONS
-// ============================================================================
 
 /// Cleans up any empty temporary directories in the configured temp directory.
 /// This is optional and can be called at the end of processing.
 ///
-/// Note: Most temporary directories are automatically cleaned up when their TempDir
+/// Note: Most temporary directories are automatically cleaned up when their `TempDir`
 /// objects are dropped, so this function is mainly useful for cleaning up any
 /// directories that might have been left behind due to process crashes or other issues.
 ///
@@ -208,28 +178,21 @@ pub fn create_temp_file_path(dir: &Path, prefix: &str, extension: &str) -> PathB
 ///
 /// * `CoreResult<()>` - Ok if cleanup was successful, Err otherwise
 pub fn cleanup_base_dirs(config: &CoreConfig) -> CoreResult<()> {
-    // Get the base temporary directory
     let temp_base_dir = config.temp_dir.as_ref().unwrap_or(&config.output_dir);
-
-    // If the directory doesn't exist, there's nothing to clean up
     if !temp_base_dir.exists() {
         return Ok(());
     }
 
-    // Iterate through all entries in the temp directory
     for entry in std::fs::read_dir(temp_base_dir)? {
         let entry = entry?;
         let path = entry.path();
 
-        // Only process directories
         if path.is_dir() {
-            // Check if the directory name starts with a known prefix
             let dir_name = path.file_name().unwrap_or_default().to_string_lossy();
             if dir_name.starts_with("grain_analysis_")
                 || dir_name.starts_with("crop_analysis_")
                 || dir_name.starts_with("analysis_")
             {
-                // Check if directory is empty
                 if std::fs::read_dir(&path)?.next().is_none() {
                     log::debug!("Removing empty temporary directory: {}", path.display());
                     std::fs::remove_dir(&path)?;

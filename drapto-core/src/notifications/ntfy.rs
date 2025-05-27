@@ -1,36 +1,15 @@
-// ============================================================================
-// drapto-core/src/notifications/ntfy.rs
-// ============================================================================
-//
-// NTFY IMPLEMENTATION: Notification Implementation Using ntfy.sh
-//
-// This module provides functionality for sending notifications using the ntfy.sh
-// service. It allows for sending notifications to ntfy.sh topics, which can be
-// received on various devices.
-//
-// KEY COMPONENTS:
-// - NtfyNotificationSender: Sends notifications to ntfy.sh
-//
-// DESIGN PHILOSOPHY:
-// This module follows a minimalist approach, providing a direct implementation
-// for sending notifications to ntfy.sh without unnecessary abstraction layers.
-//
-// AI-ASSISTANT-INFO: ntfy.sh implementation for sending notifications
-
-// ---- Internal crate imports ----
+//! Notification implementation using the ntfy.sh service.
+//!
+//! This module provides functionality for sending notifications to ntfy.sh topics,
+//! which can be received on various devices.
 use crate::error::{CoreError, CoreResult};
 use crate::notifications::NotificationType;
 
-// ---- External crate imports ----
 use ntfy::DispatcherBuilder;
 use ntfy::payload::{Payload, Priority as NtfyPriority};
 
-// ---- Standard library imports ----
 use log;
 
-// ============================================================================
-// NTFY NOTIFICATION SENDER
-// ============================================================================
 
 /// Sends notifications to the ntfy.sh service.
 ///
@@ -66,50 +45,43 @@ pub struct NtfyNotificationSender {
 }
 
 impl NtfyNotificationSender {
-    /// Creates a new NtfyNotificationSender instance.
+    /// Creates a new `NtfyNotificationSender` instance.
     ///
     /// # Arguments
     ///
-    /// * `topic_url` - The full URL of the notification topic (e.g., "https://ntfy.sh/your_topic")
+    /// * `topic_url` - The full URL of the notification topic (e.g., "<https://ntfy.sh/your_topic>")
     ///
     /// # Returns
     ///
     /// * `Ok(NtfyNotificationSender)` - A new notification sender instance
     /// * `Err(CoreError)` - If the topic URL is invalid
     pub fn new(topic_url: &str) -> CoreResult<Self> {
-        // Basic URL validation - must start with https:// and have a topic path
+        // Must start with https:// and have a topic path
         if !topic_url.starts_with("https://") {
             return Err(CoreError::NotificationError(format!(
-                "Invalid ntfy topic URL '{}': must start with https://",
-                topic_url
+                "Invalid ntfy topic URL '{topic_url}': must start with https://"
             )));
         }
 
-        // Find the host part (after https://)
-        let after_scheme = &topic_url[8..]; // Skip "https://"
+        let after_scheme = &topic_url[8..];
         let host_end = after_scheme.find('/').unwrap_or(after_scheme.len());
         let host = &after_scheme[..host_end];
 
-        // Ensure the host is not empty
         if host.is_empty() {
             return Err(CoreError::NotificationError(format!(
-                "URL '{}' must have a non-empty host",
-                topic_url
+                "URL '{topic_url}' must have a non-empty host"
             )));
         }
 
-        // Extract the topic from the path (after the host)
         let topic = if host_end < after_scheme.len() {
-            &after_scheme[host_end + 1..] // Skip the '/'
+            &after_scheme[host_end + 1..]
         } else {
             ""
         };
 
-        // Ensure the topic is not empty
         if topic.is_empty() {
             return Err(CoreError::NotificationError(format!(
-                "URL '{}' is missing topic path",
-                topic_url
+                "URL '{topic_url}' is missing topic path"
             )));
         }
 
@@ -129,47 +101,39 @@ impl NtfyNotificationSender {
     /// * `Ok(())` - If the notification was sent successfully
     /// * `Err(CoreError)` - If an error occurred while sending the notification
     pub fn send_notification(&self, notification: &NotificationType) -> CoreResult<()> {
-        // Extract base URL and topic from the stored URL (already validated in new())
-        let after_scheme = &self.topic_url[8..]; // Skip "https://"
+        // Extract base URL and topic from validated URL
+        let after_scheme = &self.topic_url[8..];
         let host_end = after_scheme.find('/').unwrap_or(after_scheme.len());
         let host = &after_scheme[..host_end];
-        let base_url = format!("https://{}", host);
+        let base_url = format!("https://{host}");
         let topic = if host_end < after_scheme.len() {
-            &after_scheme[host_end + 1..] // Skip the '/'
+            &after_scheme[host_end + 1..]
         } else {
             ""
         };
 
-        // Build the ntfy dispatcher
         let dispatcher = DispatcherBuilder::new(&base_url)
             .build_blocking()
             .map_err(|e| {
                 CoreError::NotificationError(format!(
-                    "Failed to build ntfy dispatcher for {}: {}",
-                    base_url, e
+                    "Failed to build ntfy dispatcher for {base_url}: {e}"
                 ))
             })?;
 
-        // Build the notification payload
-        // Start with the required fields (topic and message)
+        // Build notification payload
         let mut payload_builder = Payload::new(topic)
             .message(notification.get_message())
             .title(notification.get_title());
 
-        // Add priority
-        let priority = match map_priority(notification.get_priority()) {
-            Some(p) => p,
-            None => {
-                log::warn!(
-                    "Invalid ntfy priority value provided: {}",
-                    notification.get_priority()
-                );
-                NtfyPriority::Default
-            }
+        let priority = if let Some(p) = map_priority(notification.get_priority()) { p } else {
+            log::warn!(
+                "Invalid ntfy priority value provided: {}",
+                notification.get_priority()
+            );
+            NtfyPriority::Default
         };
         payload_builder = payload_builder.priority(priority);
 
-        // Add tags
         let mut tags = vec!["drapto".to_string()];
         match notification {
             NotificationType::EncodeStart { .. } => tags.push("start".to_string()),
@@ -179,10 +143,8 @@ impl NtfyNotificationSender {
         }
         payload_builder = payload_builder.tags(tags);
 
-        // Finalize the payload
         let final_payload = payload_builder;
 
-        // Send the notification
         dispatcher.send(&final_payload).map_err(|e| {
             CoreError::NotificationError(format!(
                 "Failed to send ntfy notification to {}: {}",
@@ -193,14 +155,11 @@ impl NtfyNotificationSender {
     }
 }
 
-// ============================================================================
-// HELPER FUNCTIONS
-// ============================================================================
 
 /// Maps a numeric priority value to the corresponding ntfy Priority enum.
 ///
 /// This function converts a simple numeric priority (1-5) to the corresponding
-/// ntfy::Priority enum value. This makes it easier for consumers of the library
+/// `ntfy::Priority` enum value. This makes it easier for consumers of the library
 /// to specify priorities without needing to know the specific enum values.
 ///
 /// # Arguments
@@ -221,11 +180,11 @@ impl NtfyNotificationSender {
 /// * 5 -> Max (highest priority)
 fn map_priority(p: u8) -> Option<NtfyPriority> {
     match p {
-        1 => Some(NtfyPriority::Min),     // Lowest priority
-        2 => Some(NtfyPriority::Low),     // Low priority
-        3 => Some(NtfyPriority::Default), // Normal priority
-        4 => Some(NtfyPriority::High),    // High priority
-        5 => Some(NtfyPriority::Max),     // Highest priority
-        _ => None,                        // Invalid priority value
+        1 => Some(NtfyPriority::Min),
+        2 => Some(NtfyPriority::Low),
+        3 => Some(NtfyPriority::Default),
+        4 => Some(NtfyPriority::High),
+        5 => Some(NtfyPriority::Max),
+        _ => None,
     }
 }
