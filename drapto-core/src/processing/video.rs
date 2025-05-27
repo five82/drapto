@@ -427,7 +427,7 @@ pub fn process_videos(
             &final_encode_params,
             false, // disable_audio: Keep audio in the output
             false, // is_grain_analysis_sample: This is the main encode, not a sample
-            None,  // grain_level_being_tested: Not applicable for final encode
+            final_grain_level,  // grain_level: Pass the detected grain level for film grain synthesis
         );
 
         // Handle encoding results

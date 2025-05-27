@@ -30,32 +30,24 @@ const MAX_SAMPLES: usize = 7;
 /// Target seconds of video per sample (used to calculate number of samples)
 const SECS_PER_SAMPLE_TARGET: f64 = 1200.0; // 20 minutes
 
-/// Mapping of grain levels to hqdn3d denoising parameters
-/// Format: "`spatial_luma:spatial_chroma:temporal_luma:temporal_chroma`"
-const HQDN3D_PARAMS: &[(GrainLevel, &str)] = &[
-    (GrainLevel::VeryLight, "1.5:1.2:2.0:1.5"),
-    (GrainLevel::Light, "2.5:2.0:3.5:2.5"),
-    (GrainLevel::LightModerate, "3.5:2.8:5.0:3.5"),
-    (GrainLevel::Moderate, "5.0:4.0:7.0:5.0"),
-    (GrainLevel::Elevated, "7.0:5.5:10.0:7.0"),
-];
+/// Get the hqdn3d parameters to test for grain analysis
+fn get_test_levels() -> Vec<(GrainLevel, &'static str)> {
+    vec![
+        GrainLevel::VeryLight,
+        GrainLevel::Light,
+        GrainLevel::LightModerate,
+        GrainLevel::Moderate,
+        GrainLevel::Elevated,
+    ]
+    .into_iter()
+    .filter_map(|level| level.hqdn3d_params().map(|params| (level, params)))
+    .collect()
+}
 
 
 /// Determines the appropriate hqdn3d denoising parameters based on grain level
 #[must_use] pub fn determine_hqdn3d_params(level: GrainLevel) -> Option<String> {
-    if level == GrainLevel::Baseline {
-        None
-    } else {
-        HQDN3D_PARAMS
-            .iter()
-            .find(|(l, _)| *l == level)
-            .map(|(_, params)| (*params).to_string())
-    }
-}
-
-/// Generates appropriate hqdn3d parameters based on grain level
-#[must_use] pub fn generate_hqdn3d_params(level: GrainLevel) -> Option<String> {
-    determine_hqdn3d_params(level)
+    level.hqdn3d_params().map(|s| s.to_string())
 }
 
 /// Converts a grain level to a numeric strength value (0.0 to 1.0)
@@ -567,7 +559,7 @@ pub fn analyze_grain(
     let initial_test_levels: Vec<(Option<GrainLevel>, Option<&str>)> =
         std::iter::once((None, None))
             .chain(
-                HQDN3D_PARAMS
+                get_test_levels()
                     .iter()
                     .map(|(level, params)| (Some(*level), Some(*params))),
             )

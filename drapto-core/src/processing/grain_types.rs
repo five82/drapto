@@ -152,3 +152,55 @@ pub struct GrainLevelTestResult {
     /// XPSNR quality metric compared to baseline (higher is better)
     pub xpsnr: Option<f64>,
 }
+
+/// Grain level parameters that combine denoising and film grain synthesis
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GrainParameters {
+    /// hqdn3d denoising parameters (spatial_luma:spatial_chroma:temporal_luma:temporal_chroma)
+    pub hqdn3d: &'static str,
+    /// Film grain synthesis strength (0-50)
+    pub film_grain: u8,
+}
+
+impl GrainLevel {
+    /// Returns the grain parameters (hqdn3d and film grain synthesis) for this level
+    /// 
+    /// IMPORTANT: Do not change these values unless explicitly instructed.
+    /// These parameters are carefully calibrated and documented in docs/film_grain_technical.md.
+    /// Any changes must be synchronized with the technical documentation.
+    pub fn parameters(self) -> Option<GrainParameters> {
+        match self {
+            GrainLevel::Baseline => None,
+            GrainLevel::VeryLight => Some(GrainParameters {
+                hqdn3d: "0.5:0.4:3:3",
+                film_grain: 4,
+            }),
+            GrainLevel::Light => Some(GrainParameters {
+                hqdn3d: "0.9:0.7:4:4",
+                film_grain: 7,
+            }),
+            GrainLevel::LightModerate => Some(GrainParameters {
+                hqdn3d: "1.2:0.85:5:5",
+                film_grain: 10,
+            }),
+            GrainLevel::Moderate => Some(GrainParameters {
+                hqdn3d: "1.5:1.0:6:6",
+                film_grain: 13,
+            }),
+            GrainLevel::Elevated => Some(GrainParameters {
+                hqdn3d: "2:1.3:8:8",
+                film_grain: 16,
+            }),
+        }
+    }
+
+    /// Returns just the hqdn3d parameters for this level
+    pub fn hqdn3d_params(self) -> Option<&'static str> {
+        self.parameters().map(|p| p.hqdn3d)
+    }
+
+    /// Returns just the film grain synthesis value for this level
+    pub fn film_grain_value(self) -> Option<u8> {
+        self.parameters().map(|p| p.film_grain)
+    }
+}

@@ -52,6 +52,7 @@ pub fn build_ffmpeg_command(
     hqdn3d_override: Option<&str>,
     disable_audio: bool,
     is_grain_analysis_sample: bool,
+    grain_level: Option<crate::processing::grain_types::GrainLevel>,
 ) -> CoreResult<FfmpegCommand> {
     // Use the new builder for common setup
     let mut cmd = crate::external::FfmpegCommandBuilder::new()
@@ -82,7 +83,7 @@ pub fn build_ffmpeg_command(
     }
 
     let film_grain_value = if let Some(denoise_params) = hqdn3d_to_use {
-        map_hqdn3d_to_film_grain(denoise_params)
+        map_hqdn3d_to_film_grain(denoise_params, grain_level)
     } else {
         0
     };
@@ -182,7 +183,7 @@ pub fn run_ffmpeg_encode(
 
     debug!("Encode parameters: {params:?}");
 
-    let mut cmd = build_ffmpeg_command(params, None, disable_audio, is_grain_analysis_sample)?;
+    let mut cmd = build_ffmpeg_command(params, None, disable_audio, is_grain_analysis_sample, _grain_level_being_tested)?;
     if is_grain_analysis_sample {
         debug!("FFmpeg command (grain sample): {cmd:?}");
     } else {
@@ -299,37 +300,31 @@ pub fn run_ffmpeg_encode(
 
 /// Maps hqdn3d denoising parameters to SVT-AV1 film grain synthesis values.
 ///
-/// The mapping uses a perceptually balanced approach that:
-/// - Provides direct mappings for standard levels (`VeryLight`, Light, etc.)
-/// - Uses a square-root scale for custom values to maintain perceptual linearity
-/// - Optimizes for preserving natural-looking grain texture
+/// This function looks up the corresponding film grain value for standard
+/// grain levels. For custom parameters, it uses a square-root scale based
+/// on the luma spatial strength.
 ///
 /// # Arguments
 ///
 /// * `hqdn3d_params` - The hqdn3d filter parameters as a string
+/// * `grain_level` - Optional grain level for direct lookup
 ///
 /// # Returns
 ///
-/// * The corresponding SVT-AV1 film grain synthesis value (0-16)
-fn map_hqdn3d_to_film_grain(hqdn3d_params: &str) -> u8 {
+/// * The corresponding SVT-AV1 film grain synthesis value (0-50)
+fn map_hqdn3d_to_film_grain(hqdn3d_params: &str, grain_level: Option<crate::processing::grain_types::GrainLevel>) -> u8 {
     if hqdn3d_params.is_empty() {
         return 0;
     }
 
-    // Fixed mapping for standard levels
-    for (params, film_grain) in &[
-        ("hqdn3d=0.5:0.4:3:3", 4),   // VeryLight
-        ("hqdn3d=0.9:0.7:4:4", 7),   // Light
-        ("hqdn3d=1.2:0.85:5:5", 10), // LightModerate
-        ("hqdn3d=1.5:1.0:6:6", 13),  // Moderate
-        ("hqdn3d=2:1.3:8:8", 16),    // Elevated
-    ] {
-        if hqdn3d_params == *params {
-            return *film_grain;
+    // If we have a grain level, use its film grain value directly
+    if let Some(level) = grain_level {
+        if let Some(value) = level.film_grain_value() {
+            return value;
         }
     }
 
-    // Extract luma spatial strength for custom parameter sets
+    // For custom parameters, extract luma spatial strength
     let luma_spatial = parse_hqdn3d_first_param(hqdn3d_params);
 
     if luma_spatial <= 0.1 {
@@ -340,7 +335,7 @@ fn map_hqdn3d_to_film_grain(hqdn3d_params: &str) -> u8 {
     let adjusted_value = (luma_spatial * 8.0).sqrt() * 8.0;
 
     let film_grain_value = adjusted_value.round() as u8;
-    film_grain_value.min(16)
+    film_grain_value.min(50) // Max value for SVT-AV1 film grain
 }
 
 /// Extracts the luma spatial strength parameter from an hqdn3d filter string.
@@ -353,13 +348,20 @@ fn map_hqdn3d_to_film_grain(hqdn3d_params: &str) -> u8 {
 ///
 /// * The extracted luma spatial strength as a float, or 0.0 if parsing fails
 fn parse_hqdn3d_first_param(params: &str) -> f32 {
-    if let Some(suffix) = params.strip_prefix("hqdn3d=") {
-        if let Some(index) = suffix.find(':') {
-            let first_param = &suffix[0..index];
-            return first_param.parse::<f32>().unwrap_or(0.0);
-        }
+    // Handle params with or without "hqdn3d=" prefix
+    let params_to_parse = if let Some(suffix) = params.strip_prefix("hqdn3d=") {
+        suffix
+    } else {
+        params
+    };
+    
+    if let Some(index) = params_to_parse.find(':') {
+        let first_param = &params_to_parse[0..index];
+        return first_param.parse::<f32>().unwrap_or(0.0);
     }
-    0.0
+    
+    // If no colon found, try parsing the entire string as a single value
+    params_to_parse.parse::<f32>().unwrap_or(0.0)
 }
 
 
