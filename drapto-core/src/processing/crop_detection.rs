@@ -1,5 +1,5 @@
 // ============================================================================
-// drapto-core/src/processing/detection/crop_analysis.rs
+// drapto-core/src/processing/crop_detection.rs
 // ============================================================================
 //
 // CROP DETECTION: Black Bar Detection and Removal
@@ -26,7 +26,7 @@
 
 // ---- Internal crate imports ----
 use crate::error::CoreResult;
-use crate::processing::detection::VideoProperties;
+use crate::processing::video_properties::VideoProperties;
 
 // ---- Standard library imports ----
 use std::path::Path;
@@ -382,7 +382,7 @@ fn run_cropdetect(
 /// # Example
 ///
 /// ```rust,no_run
-/// use drapto_core::processing::detection::{detect_crop, VideoProperties};
+/// use drapto_core::processing::{crop_detection::detect_crop, video_properties::VideoProperties};
 /// use std::path::Path;
 ///
 /// let input_file = Path::new("/path/to/video.mkv");

@@ -298,7 +298,7 @@ pub fn run_encode(
 
     // Parse grain level strings to GrainLevel enum values using FromStr implementation
     let grain_max_level = args.grain_max_level.as_deref().and_then(|level_str| {
-        match drapto_core::processing::detection::grain_analysis::GrainLevel::from_str(level_str) {
+        match drapto_core::processing::grain_types::GrainLevel::from_str(level_str) {
             Ok(level) => Some(level),
             Err(_) => {
                 // Log warning for invalid grain level

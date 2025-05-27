@@ -1,5 +1,5 @@
 // ============================================================================
-// drapto-core/src/processing/detection/properties.rs
+// drapto-core/src/processing/video_properties.rs
 // ============================================================================
 //
 // VIDEO PROPERTIES: Structure for Video Metadata
@@ -30,7 +30,7 @@
 /// # Examples
 ///
 /// ```rust
-/// use drapto_core::processing::detection::VideoProperties;
+/// use drapto_core::processing::video_properties::VideoProperties;
 ///
 /// // Create a new VideoProperties instance
 /// let props = VideoProperties {

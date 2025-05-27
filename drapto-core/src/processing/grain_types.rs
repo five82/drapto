@@ -1,5 +1,5 @@
 // ============================================================================
-// drapto-core/src/processing/detection/grain_analysis/types.rs
+// drapto-core/src/processing/grain_types.rs
 // ============================================================================
 //
 // GRAIN ANALYSIS TYPES: Type Definitions for Grain Analysis
@@ -26,7 +26,7 @@ use std::str::FromStr;
 /// # Examples
 ///
 /// ```rust
-/// use drapto_core::processing::detection::grain_analysis::GrainLevel;
+/// use drapto_core::processing::grain_types::GrainLevel;
 ///
 /// // Compare grain levels
 /// assert!(GrainLevel::Elevated > GrainLevel::Light);
@@ -96,7 +96,7 @@ impl FromStr for GrainLevel {
     /// # Examples
     ///
     /// ```rust
-    /// use drapto_core::processing::detection::grain_analysis::GrainLevel;
+    /// use drapto_core::processing::grain_types::GrainLevel;
     /// use std::str::FromStr;
     ///
     /// // Parse grain level names
@@ -127,7 +127,7 @@ impl FromStr for GrainLevel {
 /// # Examples
 ///
 /// ```rust
-/// use drapto_core::processing::detection::grain_analysis::{GrainAnalysisResult, GrainLevel};
+/// use drapto_core::processing::grain_types::{GrainAnalysisResult, GrainLevel};
 ///
 /// // Create a result with a detected level
 /// let result = GrainAnalysisResult {

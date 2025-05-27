@@ -222,4 +222,3 @@ fn is_non_critical_ffmpeg_error(error: &str) -> bool {
         || error.contains("Queue input is backward")
         || error.contains("No streams found") // hqdn3d filter spurious error
 }
-

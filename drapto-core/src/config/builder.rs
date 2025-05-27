@@ -26,7 +26,7 @@ use std::path::PathBuf;
 
 // ---- Internal crate imports ----
 use super::CoreConfig;
-use crate::processing::detection::grain_analysis::GrainLevel;
+use crate::processing::grain_types::GrainLevel;
 
 /// Builder for creating CoreConfig instances.
 ///
@@ -38,7 +38,7 @@ use crate::processing::detection::grain_analysis::GrainLevel;
 ///
 /// ```rust
 /// use drapto_core::config::CoreConfigBuilder;
-/// use drapto_core::processing::detection::grain_analysis::GrainLevel;
+/// use drapto_core::processing::grain_types::GrainLevel;
 /// use std::path::PathBuf;
 ///
 /// let config = CoreConfigBuilder::new()

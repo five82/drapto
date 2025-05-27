@@ -36,7 +36,7 @@ use crate::external::ffmpeg::{EncodeParams, run_ffmpeg_encode};
 use crate::external::get_file_size as external_get_file_size;
 use crate::notifications::{NotificationType, NtfyNotificationSender};
 use crate::processing::audio;
-use crate::processing::detection::{self, grain_analysis};
+use crate::processing::{crop_detection, grain_analysis};
 // Direct progress reporting - only importing what we need
 use crate::EncodeResult;
 use crate::utils::format_duration;
@@ -75,7 +75,7 @@ use std::time::Instant;
 /// ```rust,no_run
 /// use drapto_core::{CoreConfig, process_videos, EncodeResult};
 /// use drapto_core::notifications::NtfyNotificationSender;
-/// use drapto_core::processing::detection::GrainLevel;
+/// use drapto_core::processing::grain_types::GrainLevel;
 /// use std::path::PathBuf;
 ///
 /// // Create dependencies
@@ -331,7 +331,7 @@ pub fn process_videos(
 
         // Detect black bars in the video and generate crop parameters if needed
         let (crop_filter_opt, _is_hdr) =
-            match detection::detect_crop(input_path, &video_props, disable_crop) {
+            match crop_detection::detect_crop(input_path, &video_props, disable_crop) {
                 Ok(result) => result,
                 Err(e) => {
                     // Log warning and proceed without cropping

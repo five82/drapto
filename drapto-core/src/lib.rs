@@ -39,7 +39,7 @@
 //! ```rust,no_run
 //! use drapto_core::{CoreConfig, process_videos};
 //! use drapto_core::notifications::NtfyNotificationSender;
-//! use drapto_core::processing::detection::GrainLevel;
+//! use drapto_core::processing::grain_types::GrainLevel;
 //! use std::path::PathBuf;
 //!
 //! // Create configuration using the builder pattern

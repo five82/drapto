@@ -26,7 +26,7 @@
 // ---- Internal crate imports ----
 use crate::error::{CoreError, CoreResult, command_failed_error};
 use crate::processing::audio; // To access calculate_audio_bitrate
-use crate::processing::detection::grain_analysis::GrainLevel;
+use crate::processing::grain_types::GrainLevel;
 use crate::progress_reporting;
 
 // ---- External crate imports ----

@@ -19,7 +19,7 @@
 //
 // AI-ASSISTANT-INFO: FFprobe execution for media analysis and information extraction
 use crate::error::{CoreError, CoreResult, command_failed_error, command_start_error};
-use crate::processing::detection::properties::VideoProperties;
+use crate::processing::video_properties::VideoProperties;
 use ffprobe::{FfProbeError, ffprobe};
 use std::path::Path;
 use std::process::Command;

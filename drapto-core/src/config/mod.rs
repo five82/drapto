@@ -33,7 +33,7 @@ mod builder;
 use std::path::PathBuf;
 
 // ---- Internal module imports ----
-use crate::processing::detection::grain_analysis::GrainLevel;
+use crate::processing::grain_types::GrainLevel;
 
 // ---- Re-exports ----
 pub use builder::CoreConfigBuilder;
@@ -93,7 +93,7 @@ pub const DEFAULT_GRAIN_REFINEMENT_POINTS: usize = 5;
 ///
 /// ```rust,no_run
 /// use drapto_core::config::CoreConfigBuilder;
-/// use drapto_core::processing::detection::grain_analysis::GrainLevel;
+/// use drapto_core::processing::grain_types::GrainLevel;
 /// use std::path::PathBuf;
 ///
 /// let config = CoreConfigBuilder::new()

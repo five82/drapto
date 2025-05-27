@@ -44,7 +44,16 @@ pub mod video;
 pub mod audio;
 
 /// Video property detection and analysis
-pub mod detection;
+pub mod video_properties;
+
+/// Crop detection and analysis
+pub mod crop_detection;
+
+/// Film grain analysis for optimal denoising
+pub mod grain_analysis;
+
+/// Type definitions for grain analysis
+pub mod grain_types;
 
 // ============================================================================
 // PUBLIC API RE-EXPORTS
@@ -54,7 +63,7 @@ pub mod detection;
 pub use video::process_videos;
 
 /// Structure containing detected video properties
-pub use detection::VideoProperties;
+pub use video_properties::VideoProperties;
 
 /// Function to detect optimal crop parameters
-pub use detection::detect_crop;
+pub use crop_detection::detect_crop;
