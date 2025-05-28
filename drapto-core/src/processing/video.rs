@@ -352,6 +352,20 @@ pub fn process_videos(
             }
         };
 
+        // Developer feature: Check if we should stop after grain analysis
+        if std::env::var("DRAPTO_STOP_AFTER_GRAIN_ANALYSIS").is_ok() {
+            crate::progress_reporting::info("");
+            crate::progress_reporting::success("Skipping encoding (DRAPTO_STOP_AFTER_GRAIN_ANALYSIS is set)");
+            
+            // If we detected a grain level, report it one more time for clarity
+            if let Some(level) = final_grain_level {
+                info!("Final grain level detected: {level:?}");
+            }
+            
+            // Skip to the next file instead of returning
+            continue;
+        }
+
         // Finalize encoding parameters
         initial_encode_params.hqdn3d_params = final_hqdn3d_params.clone();
         let final_encode_params = initial_encode_params;
@@ -510,6 +524,12 @@ pub fn process_videos(
             }
             }
         }
+
+    // If we're in grain analysis only mode, report completion
+    if std::env::var("DRAPTO_STOP_AFTER_GRAIN_ANALYSIS").is_ok() && !files_to_process.is_empty() {
+        crate::progress_reporting::info("");
+        crate::progress_reporting::success("All grain analyses complete (DRAPTO_STOP_AFTER_GRAIN_ANALYSIS mode)");
+    }
 
     Ok(results)
 }

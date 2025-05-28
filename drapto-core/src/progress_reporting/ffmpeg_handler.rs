@@ -189,4 +189,5 @@ fn is_non_critical_ffmpeg_error(error: &str) -> bool {
         || error.contains("does not match the corresponding codec")
         || error.contains("Queue input is backward")
         || error.contains("No streams found")
+        || error.contains("first frame is no keyframe")
 }

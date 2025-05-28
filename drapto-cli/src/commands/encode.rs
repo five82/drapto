@@ -317,11 +317,14 @@ pub fn run_encode(
         Ok(ref results) => {
             successfully_encoded = results.clone();
             if successfully_encoded.is_empty() {
-                terminal::print_error(
-                    "No files encoded",
-                    "No files were successfully encoded",
-                    Some("Check that your input files are valid .mkv files"),
-                );
+                // Only show error if we're not in grain analysis only mode
+                if std::env::var("DRAPTO_STOP_AFTER_GRAIN_ANALYSIS").is_err() {
+                    terminal::print_error(
+                        "No files encoded",
+                        "No files were successfully encoded",
+                        Some("Check that your input files are valid .mkv files"),
+                    );
+                }
             } else {
                 terminal::print_section("ENCODING COMPLETE");
                 terminal::print_success(&format!(
