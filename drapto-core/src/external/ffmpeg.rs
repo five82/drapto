@@ -408,20 +408,43 @@ pub fn extract_sample(
         )
     })?;
 
-    let status = child.wait().map_err(|e| {
+    // Collect stderr for error reporting, filtering non-critical messages
+    let mut stderr_buffer = String::new();
+    for event in child.iter().map_err(|e| {
         command_failed_error(
             "ffmpeg",
             std::process::ExitStatus::default(),
-            format!("Failed to wait for sample extraction: {e}"),
+            format!("Failed to get event iterator: {e}"),
         )
-    })?;
+    })? {
+        match event {
+            ffmpeg_sidecar::event::FfmpegEvent::Log(_level, message) => {
+                if !crate::external::is_non_critical_ffmpeg_message(&message) {
+                    stderr_buffer.push_str(&format!("{message}\n"));
+                }
+            }
+            ffmpeg_sidecar::event::FfmpegEvent::Error(error) => {
+                if !crate::external::is_non_critical_ffmpeg_message(&error) {
+                    stderr_buffer.push_str(&format!("{error}\n"));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let status = std::process::ExitStatus::default();
 
     if !status.success() {
-        error!("Sample extraction failed: {status}");
+        let error_msg = if stderr_buffer.is_empty() {
+            "Sample extraction process failed".to_string()
+        } else {
+            format!("Sample extraction failed. Stderr:\n{}", stderr_buffer.trim())
+        };
+        error!("Sample extraction failed: {error_msg}");
         return Err(command_failed_error(
             "ffmpeg (sample extraction)",
             status,
-            "Sample extraction process failed",
+            error_msg,
         ));
     }
 

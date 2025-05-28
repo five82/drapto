@@ -88,7 +88,8 @@ impl FfmpegProgressHandler {
 
     /// Handles log events
     fn handle_log(&mut self, level: FfmpegLogLevel, message: &str) {
-        if message.contains("Skipping NAL unit") {
+        if crate::external::is_non_critical_ffmpeg_message(message) {
+            log::debug!("ffmpeg non-critical log: {message}");
             return;
         }
 
@@ -105,10 +106,8 @@ impl FfmpegProgressHandler {
 
     /// Handles error events
     fn handle_error(&mut self, error: &str) {
-        let is_non_critical = is_non_critical_ffmpeg_error(error);
-
-        if is_non_critical {
-            log::debug!("ffmpeg non-critical message: {error}");
+        if crate::external::is_non_critical_ffmpeg_message(error) {
+            log::debug!("ffmpeg non-critical error: {error}");
         } else {
             crate::progress_reporting::log(
                 LogLevel::Error,
@@ -177,17 +176,3 @@ fn map_ffmpeg_log_level(level: &FfmpegLogLevel) -> log::Level {
     }
 }
 
-/// Determines if an `FFmpeg` error message is non-critical.
-///
-/// These are `FFmpeg` messages that appear in stderr but don't indicate actual problems.
-fn is_non_critical_ffmpeg_error(error: &str) -> bool {
-    error.contains("deprecated pixel format")
-        || error.contains("No accelerated colorspace conversion")
-        || error.contains("Stream map")
-        || error.contains("automatically inserted filter")
-        || error.contains("Timestamps are unset")
-        || error.contains("does not match the corresponding codec")
-        || error.contains("Queue input is backward")
-        || error.contains("No streams found")
-        || error.contains("first frame is no keyframe")
-}

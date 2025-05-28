@@ -40,3 +40,33 @@ pub fn get_file_size(path: &Path) -> CoreResult<u64> {
 
 // Re-export platform detection for backward compatibility
 pub use crate::hardware_decode::is_macos;
+
+/// List of FFmpeg error messages that should be treated as non-critical.
+/// These messages appear in stderr but don't indicate actual problems.
+pub const NON_CRITICAL_FFMPEG_MESSAGES: &[&str] = &[
+    "deprecated pixel format",
+    "No accelerated colorspace conversion",
+    "Stream map",
+    "automatically inserted filter",
+    "Timestamps are unset",
+    "does not match the corresponding codec",
+    "Queue input is backward",
+    "No streams found",
+    "first frame is no keyframe",
+    "Skipping NAL unit",
+];
+
+/// Determines if an FFmpeg error message is non-critical.
+/// 
+/// # Arguments
+/// 
+/// * `message` - The error message to check
+/// 
+/// # Returns
+/// 
+/// * `true` if the message is non-critical, `false` otherwise
+pub fn is_non_critical_ffmpeg_message(message: &str) -> bool {
+    NON_CRITICAL_FFMPEG_MESSAGES
+        .iter()
+        .any(|pattern| message.contains(pattern))
+}
