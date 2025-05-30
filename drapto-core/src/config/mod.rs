@@ -35,15 +35,27 @@ pub const DEFAULT_CROP_MODE: &str = "auto";
 /// Default sample duration for grain analysis in seconds.
 pub const DEFAULT_GRAIN_SAMPLE_DURATION: u32 = 10;
 
-/// Default knee point threshold for grain analysis (0.0-1.0).
-/// This represents the point of diminishing returns in denoising strength.
-pub const DEFAULT_GRAIN_KNEE_THRESHOLD: f64 = 0.8;
-
 /// Default maximum allowed grain level for any analysis result.
 pub const DEFAULT_GRAIN_MAX_LEVEL: GrainLevel = GrainLevel::Elevated;
 
-/// Default number of refinement points to test during adaptive refinement.
-pub const DEFAULT_GRAIN_REFINEMENT_POINTS: usize = 5;
+/// Default XPSNR threshold for grain analysis in decibels.
+/// This represents the Just Noticeable Difference (JND) threshold.
+pub const DEFAULT_XPSNR_THRESHOLD: f64 = 1.2;
+
+/// Default minimum number of samples for grain analysis.
+pub const DEFAULT_GRAIN_MIN_SAMPLES: usize = 3;
+
+/// Default maximum number of samples for grain analysis.
+pub const DEFAULT_GRAIN_MAX_SAMPLES: usize = 7;
+
+/// Default target seconds per sample for calculating sample count.
+pub const DEFAULT_GRAIN_SECS_PER_SAMPLE: f64 = 1200.0; // 20 minutes
+
+/// Default start boundary for sample extraction (as fraction of video duration).
+pub const DEFAULT_GRAIN_SAMPLE_START_BOUNDARY: f64 = 0.15; // 15%
+
+/// Default end boundary for sample extraction (as fraction of video duration).
+pub const DEFAULT_GRAIN_SAMPLE_END_BOUNDARY: f64 = 0.85; // 85%
 
 
 /// Main configuration structure for the drapto-core library.
@@ -74,6 +86,7 @@ pub const DEFAULT_GRAIN_REFINEMENT_POINTS: usize = 5;
 ///     .quality_uhd(28)
 ///     .crop_mode("auto")
 ///     .ntfy_topic("https://ntfy.sh/my-topic")
+///     .film_grain_sample_duration(10)
 ///     .film_grain_max_level(GrainLevel::Moderate)
 ///     .build();
 /// ```
@@ -119,18 +132,28 @@ pub struct CoreConfig {
     /// Shorter samples process faster but may be less representative
     pub film_grain_sample_duration: u32,
 
-    /// Knee point threshold for grain analysis (0.0-1.0)
-    /// This represents the point of diminishing returns in denoising strength.
-    /// Default: 0.8 (80% of maximum file size reduction)
-    pub film_grain_knee_threshold: f64,
-
     /// Maximum allowed grain level for any analysis result
     /// This prevents excessive denoising even if analysis suggests it
     pub film_grain_max_level: GrainLevel,
 
-    /// Number of refinement points to test during adaptive refinement
-    /// More points provide more accurate results but increase processing time
-    pub film_grain_refinement_points_count: usize,
+    /// XPSNR threshold for grain analysis in decibels
+    /// Represents the Just Noticeable Difference (JND) threshold
+    pub xpsnr_threshold: f64,
+
+    /// Minimum number of samples for grain analysis
+    pub grain_min_samples: usize,
+
+    /// Maximum number of samples for grain analysis
+    pub grain_max_samples: usize,
+
+    /// Target seconds per sample for calculating sample count
+    pub grain_secs_per_sample: f64,
+
+    /// Start boundary for sample extraction (fraction of video duration)
+    pub grain_sample_start_boundary: f64,
+
+    /// End boundary for sample extraction (fraction of video duration)
+    pub grain_sample_end_boundary: f64,
 }
 
 impl Default for CoreConfig {
@@ -148,9 +171,13 @@ impl Default for CoreConfig {
             ntfy_topic: None,
             enable_denoise: true,
             film_grain_sample_duration: DEFAULT_GRAIN_SAMPLE_DURATION,
-            film_grain_knee_threshold: DEFAULT_GRAIN_KNEE_THRESHOLD,
             film_grain_max_level: DEFAULT_GRAIN_MAX_LEVEL,
-            film_grain_refinement_points_count: DEFAULT_GRAIN_REFINEMENT_POINTS,
+            xpsnr_threshold: DEFAULT_XPSNR_THRESHOLD,
+            grain_min_samples: DEFAULT_GRAIN_MIN_SAMPLES,
+            grain_max_samples: DEFAULT_GRAIN_MAX_SAMPLES,
+            grain_secs_per_sample: DEFAULT_GRAIN_SECS_PER_SAMPLE,
+            grain_sample_start_boundary: DEFAULT_GRAIN_SAMPLE_START_BOUNDARY,
+            grain_sample_end_boundary: DEFAULT_GRAIN_SAMPLE_END_BOUNDARY,
         }
     }
 }

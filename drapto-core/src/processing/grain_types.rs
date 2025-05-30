@@ -130,11 +130,11 @@ impl FromStr for GrainLevel {
 /// // Use the result to determine denoising parameters (example values)
 /// let denoising_params = match result.detected_level {
 ///     GrainLevel::Baseline => "0:0:0:0", // No denoising
-///     GrainLevel::VeryLight => "0.5:0.4:3:3", // Very light denoising
-///     GrainLevel::Light => "0.9:0.7:4:4", // Light denoising
-///     GrainLevel::LightModerate => "1.2:0.85:5:5", // Light to moderate denoising
-///     GrainLevel::Moderate => "1.5:1.0:6:6", // Moderate denoising
-///     GrainLevel::Elevated => "2.0:1.3:8:8", // Elevated denoising
+///     GrainLevel::VeryLight => "0.5:0.4:2:2", // Very light denoising
+///     GrainLevel::Light => "0.7:0.55:3:3", // Light denoising
+///     GrainLevel::LightModerate => "1.0:0.8:5:5", // Light to moderate denoising
+///     GrainLevel::Moderate => "1.4:1.05:6:6", // Moderate denoising
+///     GrainLevel::Elevated => "2.5:1.8:10:10", // Elevated denoising
 /// };
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -164,7 +164,7 @@ pub struct GrainParameters {
 
 impl GrainLevel {
     /// Returns the grain parameters (hqdn3d and film grain synthesis) for this level
-    /// 
+    ///
     /// IMPORTANT: Do not change these values unless explicitly instructed.
     /// These parameters are carefully calibrated and documented in docs/film_grain_technical.md.
     /// Any changes must be synchronized with the technical documentation.
@@ -172,23 +172,23 @@ impl GrainLevel {
         match self {
             GrainLevel::Baseline => None,
             GrainLevel::VeryLight => Some(GrainParameters {
-                hqdn3d: "0.5:0.4:3:3",
+                hqdn3d: "0.5:0.4:2:2",
                 film_grain: 4,
             }),
             GrainLevel::Light => Some(GrainParameters {
-                hqdn3d: "0.9:0.7:4:4",
+                hqdn3d: "0.7:0.55:3:3",
                 film_grain: 7,
             }),
             GrainLevel::LightModerate => Some(GrainParameters {
-                hqdn3d: "1.2:0.85:5:5",
+                hqdn3d: "1.0:0.8:5:5",
                 film_grain: 10,
             }),
             GrainLevel::Moderate => Some(GrainParameters {
-                hqdn3d: "1.5:1.0:6:6",
+                hqdn3d: "1.4:1.05:6:6",
                 film_grain: 13,
             }),
             GrainLevel::Elevated => Some(GrainParameters {
-                hqdn3d: "2:1.3:8:8",
+                hqdn3d: "2.5:1.8:10:10",
                 film_grain: 16,
             }),
         }

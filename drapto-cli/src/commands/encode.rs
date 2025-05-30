@@ -223,17 +223,6 @@ pub fn run_encode(
         }
     });
 
-    // Validate knee threshold range (0.1 to 1.0)
-    let grain_knee_threshold = args.grain_knee_threshold.and_then(|threshold| {
-        if (0.1..=1.0).contains(&threshold) {
-            Some(threshold)
-        } else {
-            debug!(
-                "Warning: Knee threshold {threshold} is outside valid range (0.1-1.0). Using default."
-            );
-            None
-        }
-    });
 
     let mut builder = drapto_core::config::CoreConfigBuilder::new()
         .input_dir(effective_input_dir)
@@ -272,9 +261,6 @@ pub fn run_encode(
         builder = builder.film_grain_sample_duration(duration);
     }
 
-    if let Some(threshold) = grain_knee_threshold {
-        builder = builder.film_grain_knee_threshold(threshold);
-    }
 
     if let Some(level) = grain_max_level {
         builder = builder.film_grain_max_level(level);

@@ -100,7 +100,6 @@ pub enum Commands {
 ///     disable_autocrop: false,
 ///     no_denoise: false,
 ///     grain_sample_duration: None,
-///     grain_knee_threshold: None,
 ///     grain_max_level: None,
 ///     ntfy: None,
 /// };
@@ -123,7 +122,6 @@ pub enum Commands {
 ///     disable_autocrop: false,
 ///     no_denoise: true,
 ///     grain_sample_duration: None,
-///     grain_knee_threshold: None,
 ///     grain_max_level: None,
 ///     ntfy: None,
 /// };
@@ -200,12 +198,6 @@ pub struct EncodeArgs {
     #[arg(long, value_name = "SECONDS")]
     pub grain_sample_duration: Option<u32>,
 
-    /// Knee point threshold for grain analysis (0.0-1.0).
-    /// This represents the point of diminishing returns in denoising strength.
-    /// A value of 0.8 means we look for the point where we achieve 80% of the
-    /// maximum possible file size reduction.
-    #[arg(long, value_name = "THRESHOLD")]
-    pub grain_knee_threshold: Option<f64>,
 
     /// Maximum allowed grain level for any analysis result.
     /// This prevents excessive denoising even if analysis suggests it.

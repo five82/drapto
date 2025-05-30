@@ -74,9 +74,8 @@ use std::time::Instant;
 ///     .crop_mode("auto")
 ///     .ntfy_topic("https://ntfy.sh/my-topic")
 ///     .film_grain_sample_duration(5)
-///     .film_grain_knee_threshold(0.8)
 ///     .film_grain_max_level(GrainLevel::Moderate)
-///     .film_grain_refinement_points_count(5)
+///     .xpsnr_threshold(1.2)
 ///     .build();
 ///
 /// // Find files to process
