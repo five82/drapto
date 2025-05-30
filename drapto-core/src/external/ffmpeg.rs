@@ -60,8 +60,6 @@ pub fn build_ffmpeg_command(
         .build();
     cmd.input(params.input_path.to_string_lossy().as_ref());
 
-    cmd.input(params.input_path.to_string_lossy().as_ref());
-
     if !is_grain_analysis_sample && !disable_audio {
         cmd.args(["-af", "aformat=channel_layouts=7.1|5.1|stereo|mono"]);
     }

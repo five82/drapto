@@ -112,7 +112,7 @@ fn calculate_median_level(estimates: &mut [GrainLevel]) -> GrainLevel {
 ///    - XPSNR 40-45 dB: factor = 0.9-1.0 (minimal quality loss)
 ///    - XPSNR 35-40 dB: factor = 0.7-0.9 (moderate quality loss)
 ///    - XPSNR < 35 dB: factor < 0.7 (significant quality loss)
-/// 3. Find diminishing returns point where improvement rate drops below 25%
+/// 3. Find diminishing returns point where improvement rate drops below threshold
 /// 4. If no clear knee point exists, default to `VeryLight` (safe choice)
 ///
 /// # Key Behaviors
@@ -133,7 +133,7 @@ fn calculate_median_level(estimates: &mut [GrainLevel]) -> GrainLevel {
 /// The optimal `GrainLevel` for file size reduction (minimum: `VeryLight`)
 fn analyze_sample_with_knee_point(
     results: &HashMap<Option<GrainLevel>, GrainLevelTestResult>,
-    _knee_threshold: f64,
+    knee_threshold: f64,
     sample_index: usize,
 ) -> GrainLevel {
     // Get the baseline (no denoising) for informational display
@@ -308,7 +308,7 @@ fn analyze_sample_with_knee_point(
                 improvement_rate * 100.0
             );
 
-            if improvement_rate < 0.25 {
+            if improvement_rate < knee_threshold {
                 selected_level = Some(sorted_efficiencies[i - 1]);
                 log::debug!(
                     "Sample {}: Diminishing returns detected at {:?}, selecting {:?}",
