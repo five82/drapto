@@ -1,436 +1,228 @@
 //! Black bar detection and crop parameter generation.
 //!
-//! This module handles the detection of black bars in video files and generates
-//! appropriate crop parameters to remove them. It uses ffmpeg's cropdetect filter
-//! to analyze video frames and determine the optimal crop values.
+//! This module implements a simple and efficient crop detection algorithm
+//! inspired by alabamaEncoder. It samples multiple points throughout the video
+//! and uses the most common crop result.
 
 use crate::error::CoreResult;
 use crate::processing::video_properties::VideoProperties;
 use std::path::Path;
+use std::collections::HashMap;
+use rayon::prelude::*;
 
-
-/// Determines the initial crop detection threshold based on color properties.
+/// Detect crop parameters by sampling multiple points in the video.
 ///
-/// This function analyzes the video's color space to determine if it's HDR content
-/// and returns an appropriate threshold for black level detection. HDR content
-/// typically requires a higher threshold due to its expanded luminance range.
-///
-/// # Arguments
-///
-/// * `props` - Video properties containing color space information
-///
-/// # Returns
-///
-/// * A tuple containing:
-///   - The initial crop threshold value (u32)
-///   - A boolean indicating whether the content is HDR
-///
-/// # Note
-///
-/// HDR detection is simplified to only use `color_space` since `color_transfer` and
-/// `color_primaries` are not available in the current ffprobe crate version.
-fn determine_crop_threshold(props: &VideoProperties) -> (u32, bool) {
-    let cs = props.color_space.as_deref().unwrap_or("");
-    let is_hdr_cs = cs == "bt2020nc" || cs == "bt2020c";
-
-    if is_hdr_cs {
-        log::debug!(
-            "HDR content potentially detected via color space ({cs}), adjusting detection sensitivity."
-        );
-        (128, true) // Initial threshold for potential HDR
-    } else {
-        (16, false)
-    }
-}
-
-/// Runs ffmpeg with signalstats to analyze HDR black levels and refine the threshold.
-fn run_hdr_blackdetect(input_file: &Path, initial_threshold: u32) -> CoreResult<u32> {
-    log::debug!(
-        "Running ffmpeg (sidecar) for HDR black level analysis on {}",
-        input_file.display()
-    );
-
-    // Use signalstats to analyze luminance values at key frames
-    // The metadata filter prints the signalstats values to stderr using file=/dev/stderr
-    let filter =
-        "select='eq(n,0)+eq(n,100)+eq(n,200)',signalstats,metadata=mode=print:file=/dev/stderr";
-
-    let mut cmd = crate::external::FfmpegCommandBuilder::new()
-        .with_hardware_accel(true)
-        .build();
-
-    cmd.input(input_file.to_string_lossy())
-        .filter_complex(filter)
-        .format("null")
-        .output("-");
-
-    let mut metadata_output = String::new();
-    // Spawn the command
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| crate::error::command_start_error("ffmpeg", e))?;
-
-    // Process events
-    let process_result: CoreResult<()> = (|| {
-        for event in child.iter().map_err(|e| {
-            crate::error::command_failed_error(
-                "ffmpeg",
-                std::process::ExitStatus::default(),
-                e.to_string(),
-            )
-        })? {
-            match event {
-                ffmpeg_sidecar::event::FfmpegEvent::Log(_, line)
-                | ffmpeg_sidecar::event::FfmpegEvent::Error(line) => {
-                    // Capture signalstats metadata output lines
-                    if line.contains("lavfi.signalstats.") {
-                        metadata_output.push_str(&line);
-                        metadata_output.push('\n');
-                    }
-                }
-                _ => {}
-            }
-        }
-        Ok(())
-    })();
-
-    if let Err(e) = process_result {
-        log::error!(
-            "ffmpeg (sidecar) failed during HDR black level analysis on {}: {}",
-            input_file.display(),
-            e
-        );
-        log::warn!(
-            "HDR black level analysis failed, using initial threshold: {initial_threshold}"
-        );
-        return Ok(initial_threshold);
-    }
-
-    log::trace!(
-        "ffmpeg HDR signalstats output for {}: {}",
-        input_file.display(),
-        metadata_output
-    );
-
-    // Parse YMIN values from signalstats metadata output
-    let matches: Vec<f64> = metadata_output
-        .lines()
-        .filter_map(|line| {
-            // Look for lavfi.signalstats.YMIN=value pattern
-            if line.contains("lavfi.signalstats.YMIN=") {
-                let parts: Vec<&str> = line.split('=').collect();
-                if parts.len() >= 2 {
-                    parts[1].parse::<f64>().ok()
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    if matches.is_empty() {
-        log::warn!(
-            "Could not parse YMIN values from signalstats output for {}. Using initial threshold.",
-            input_file.display()
-        );
-        Ok(initial_threshold)
-    } else {
-        // YMIN represents the minimum luminance
-        // Adjust the threshold based on the minimum values found
-        let avg_ymin: f64 = matches.iter().sum::<f64>() / matches.len() as f64;
-
-        // The signalstats values are already in 8-bit range (0-255)
-        // Use a multiplier to set the threshold well above the black level
-        let refined_threshold = (avg_ymin * 2.5).round() as u32;
-        let clamped_threshold = refined_threshold.clamp(64, 256);
-
-        log::debug!(
-            "HDR black level analysis: Avg YMIN={avg_ymin:.2}, Refined Threshold={refined_threshold}, Final={clamped_threshold}"
-        );
-        Ok(clamped_threshold)
-    }
-}
-
-/// Calculates how much time (in seconds) to skip at the end for credits analysis avoidance.
-fn calculate_credits_skip(duration: f64) -> f64 {
-    if duration > 3600.0 {
-        180.0
-    } else if duration > 1200.0 {
-        60.0
-    } else if duration > 300.0 {
-        30.0
-    } else {
-        0.0
-    }
-}
-
-/// Runs ffmpeg cropdetect and analyzes the results to determine the crop filter.
-fn run_cropdetect(
-    input_file: &Path,
-    crop_threshold: u32,
-    dimensions: (u32, u32),
-    duration: f64,
-) -> CoreResult<Option<String>> {
-    let (orig_width, orig_height) = dimensions;
-    if orig_width == 0 || orig_height == 0 || duration <= 0.0 {
-        log::warn!(
-            "Invalid dimensions or duration for cropdetect: {orig_width}x{orig_height}, {duration}s"
-        );
-        return Ok(None);
-    }
-
-    let mut total_samples = (duration / 5.0).floor() as u32;
-    if total_samples < 20 {
-        total_samples = 20;
-    }
-    let frames_to_scan = total_samples * 2;
-
-    let cropdetect_filter = format!("cropdetect=limit={crop_threshold}:round=2:reset=1");
-
-    log::debug!(
-        "Running ffmpeg (sidecar) cropdetect on {}",
-        input_file.display()
-    );
-
-    let mut cmd = crate::external::FfmpegCommandBuilder::new()
-        .with_hardware_accel(true)
-        .build();
-
-    cmd.input(input_file.to_string_lossy())
-        .filter_complex(&cropdetect_filter)
-        .frames(frames_to_scan)
-        .format("null")
-        .output("-");
-
-    let mut stderr_output = String::new();
-    // Spawn the command
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| crate::error::command_start_error("ffmpeg", e))?;
-
-    // Process events
-    let process_result: CoreResult<()> = (|| {
-        for event in child.iter().map_err(|e| {
-            crate::error::command_failed_error(
-                "ffmpeg",
-                std::process::ExitStatus::default(),
-                e.to_string(),
-            )
-        })? {
-            match event {
-                ffmpeg_sidecar::event::FfmpegEvent::Log(_, line)
-                | ffmpeg_sidecar::event::FfmpegEvent::Error(line) => {
-                    if line.contains("crop=") {
-                        stderr_output.push_str(&line);
-                        stderr_output.push('\n');
-                    }
-                }
-                _ => {}
-            }
-        }
-        Ok(())
-    })();
-
-    if let Err(e) = process_result {
-        log::error!(
-            "ffmpeg (sidecar) failed during cropdetect on {}: {}",
-            input_file.display(),
-            e
-        );
-        return Ok(None);
-    }
-
-    log::trace!(
-        "ffmpeg cropdetect stderr output for {}: {}",
-        input_file.display(),
-        stderr_output
-    );
-
-    // Parse crop values from stderr output
-    let mut crop_counts: std::collections::HashMap<(u32, u32, u32, u32), usize> =
-        std::collections::HashMap::new();
-    let mut valid_crops_found = false;
-
-    // Parse crop=w:h:x:y patterns from stderr output
-    for line in stderr_output.lines() {
-        if let Some(crop_start) = line.find("crop=") {
-            let crop_part = &line[crop_start + 5..];
-            let crop_end = crop_part.find(']').unwrap_or(crop_part.len());
-            let crop_values = &crop_part[..crop_end];
-
-            let parts: Vec<&str> = crop_values.split(':').collect();
-            if parts.len() == 4 {
-                if let (Ok(w), Ok(h), Ok(x), Ok(y)) = (
-                    parts[0].parse::<u32>(),
-                    parts[1].parse::<u32>(),
-                    parts[2].parse::<u32>(),
-                    parts[3].parse::<u32>(),
-                ) {
-                    if w == orig_width {
-                        valid_crops_found = true;
-                        *crop_counts.entry((w, h, x, y)).or_insert(0) += 1;
-                    }
-                }
-            }
-        }
-    }
-
-    if !valid_crops_found || crop_counts.is_empty() {
-        log::info!(
-            "No valid crop values detected (or width changed). Using full dimensions for {}.",
-            input_file.display()
-        );
-        return Ok(None);
-    }
-
-    let (most_common_crop, _count) = crop_counts
-        .into_iter()
-        .max_by_key(|&(_, count)| count)
-        .unwrap();
-
-    let (crop_w, crop_h, crop_x, crop_y) = most_common_crop;
-
-    if crop_w == orig_width && crop_h == orig_height && crop_x == 0 && crop_y == 0 {
-        log::info!(
-            "Most frequent crop detected is full frame for {}.",
-            input_file.display()
-        );
-        Ok(None)
-    } else if crop_w + crop_x > orig_width || crop_h + crop_y > orig_height {
-        log::warn!(
-            "Detected crop dimensions exceed original video size for {}: crop={}:{}:{}:{}",
-            input_file.display(),
-            crop_w,
-            crop_h,
-            crop_x,
-            crop_y
-        );
-        Ok(None)
-    } else {
-        let crop_filter_string = format!("crop={crop_w}:{crop_h}:{crop_x}:{crop_y}");
-        Ok(Some(crop_filter_string))
-    }
-}
-
-
-/// Main entry point for crop detection.
-///
-/// This function analyzes a video file to detect black bars and determine the
-/// appropriate crop parameters. It handles both SDR and HDR content, with special
-/// processing for HDR to ensure accurate black level detection.
+/// This function analyzes a video file every 0.5% from 15% to 85% (141 points)
+/// to detect black bars and determine the most common crop parameters.
 ///
 /// # Arguments
 ///
-/// * `spawner` - Implementation of `FfmpegSpawner` for executing ffmpeg
 /// * `input_file` - Path to the video file to analyze
 /// * `video_props` - Properties of the video (resolution, duration, color space)
-/// * `disable_crop` - Whether to skip crop detection (e.g., user preference)
+/// * `disable_crop` - Whether to skip crop detection
 ///
 /// # Returns
 ///
 /// * `Ok((Option<String>, bool))` - A tuple containing:
 ///   - An optional crop filter string (e.g., "crop=1920:800:0:140")
 ///   - A boolean indicating whether the content is HDR
-/// * `Err(CoreError)` - If an error occurs during analysis
-///
-/// # Example
-///
-/// ```rust,no_run
-/// use drapto_core::processing::{crop_detection::detect_crop, video_properties::VideoProperties};
-/// use std::path::Path;
-///
-/// let input_file = Path::new("/path/to/video.mkv");
-/// let video_props = VideoProperties {
-///     width: 1920,
-///     height: 1080,
-///     duration_secs: 3600.0,
-///     color_space: Some("bt709".to_string()),
-/// };
-///
-/// match detect_crop(input_file, &video_props, false) {
-///     Ok((Some(crop_filter), is_hdr)) => {
-///         println!("Crop filter: {}, HDR: {}", crop_filter, is_hdr);
-///     },
-///     Ok((None, is_hdr)) => {
-///         println!("No cropping needed, HDR: {}", is_hdr);
-///     },
-///     Err(e) => {
-///         eprintln!("Error during crop detection: {}", e);
-///     }
-/// }
-/// ```
 pub fn detect_crop(
     input_file: &Path,
     video_props: &VideoProperties,
     disable_crop: bool,
 ) -> CoreResult<(Option<String>, bool)> {
-    // Check if crop detection is disabled by user preference
+    // Check if crop detection is disabled
     if disable_crop {
         crate::progress_reporting::success("Crop detection complete");
         crate::progress_reporting::status("Detected crop", "Disabled", false);
         return Ok((None, false));
     }
 
-    // STEP 1: Determine initial crop threshold based on video properties
-    let (mut crop_threshold, is_hdr) = determine_crop_threshold(video_props);
+    // Detect HDR content
+    let color_space = video_props.color_space.as_deref().unwrap_or("");
+    let is_hdr = color_space == "bt2020nc" || color_space == "bt2020c";
+    
+    // Set threshold based on content type
+    let threshold = if is_hdr { 100 } else { 16 };
 
-    // STEP 2: For HDR content, refine the threshold using black level analysis
-    if is_hdr {
-        log::debug!("Performing HDR black level analysis...");
-        log::debug!(
-            "Running HDR black level analysis for {}...",
-            input_file.display()
-        );
-        crop_threshold = run_hdr_blackdetect(input_file, crop_threshold)?;
+    // Sample every 0.5% from 15% to 85% (141 points total)
+    // Avoids first/last 15% where intros/credits typically appear
+    let sample_points: Vec<f64> = (30..=170)
+        .map(|i| i as f64 / 200.0)
+        .collect();
+    let mut crop_results = HashMap::new();
+    
+    log::debug!(
+        "Sampling crop at {} points throughout the video (15% to 85%, every 0.5%)",
+        sample_points.len()
+    );
+    
+    // Process samples in parallel for faster detection
+    let crops: Vec<Option<String>> = sample_points
+        .par_iter()
+        .map(|&position| {
+            let start_time = video_props.duration_secs * position;
+            sample_crop_at_position(input_file, start_time, threshold)
+                .unwrap_or(None)
+        })
+        .collect();
+    
+    // Count the results
+    for crop in crops.into_iter().flatten() {
+        *crop_results.entry(crop).or_insert(0) += 1;
     }
-
-    let _filename_cow = input_file
-        .file_name().map_or_else(|| input_file.to_string_lossy(), |name| name.to_string_lossy());
-    let credits_skip = calculate_credits_skip(video_props.duration_secs);
-    let analysis_duration = if video_props.duration_secs > credits_skip {
-        video_props.duration_secs - credits_skip
+    
+    // Analyze crop results
+    let (best_crop, has_multiple_ratios) = if crop_results.is_empty() {
+        (None, false)
+    } else if crop_results.len() == 1 {
+        // Only one crop detected - use it
+        (crop_results.into_iter().next().map(|(crop, _)| crop), false)
     } else {
-        video_props.duration_secs
+        // Multiple crops detected - check if they're significantly different
+        let total_samples: usize = crop_results.values().sum();
+        let mut sorted_crops: Vec<(String, usize)> = crop_results.into_iter().collect();
+        sorted_crops.sort_by(|a, b| b.1.cmp(&a.1));
+        
+        let (most_common_crop, most_common_count) = &sorted_crops[0];
+        let ratio = *most_common_count as f64 / total_samples as f64;
+        
+        // If one crop is dominant (>80% of samples), use it
+        if ratio > 0.8 {
+            (Some(most_common_crop.clone()), false)
+        } else {
+            // Multiple significant aspect ratios detected
+            log::info!(
+                "Multiple aspect ratios detected in {}:",
+                input_file.display()
+            );
+            for (crop, count) in &sorted_crops {
+                let percentage = (count * 100) / total_samples;
+                log::info!("  {} - {}% of samples", crop, percentage);
+            }
+            
+            // Conservative approach: don't crop at all for mixed aspect ratio content
+            log::info!("Using conservative approach - no cropping for mixed aspect ratio content");
+            (None, true)
+        }
     };
-
-    if credits_skip > 0.0 {
-        log::debug!(
-            "Skipping last {credits_skip:.2}s for crop analysis (credits). Effective duration: {analysis_duration:.2}s"
-        );
+    
+    // Report results
+    match &best_crop {
+        Some(crop) => {
+            crate::progress_reporting::success("Crop detection complete");
+            crate::progress_reporting::status("Detected crop", crop, false);
+            log::debug!("Applied crop filter: {}", crop);
+        }
+        None => {
+            crate::progress_reporting::success("Crop detection complete");
+            if has_multiple_ratios {
+                crate::progress_reporting::status("Detected crop", "Multiple ratios (no crop)", false);
+                log::debug!("Multiple aspect ratios detected - no cropping applied");
+            } else {
+                crate::progress_reporting::status("Detected crop", "None required", false);
+                log::debug!("No cropping needed for {}", input_file.display());
+            }
+        }
     }
+    
+    Ok((best_crop, is_hdr))
+}
 
-    // STEP 5: Run crop detection analysis
-    // Removed redundant "Analyzing frames..." message for cleaner output
-    // We'll implement real progress tracking later if needed
-
-    let crop_filter = run_cropdetect(
-        input_file,
-        crop_threshold,
-        (video_props.width, video_props.height),
-        analysis_duration,
-    )?;
-
-    // STEP 6: Report results using the centralized formatting function
-    if crop_filter.is_none() {
-        // Use the centralized function for success+status formatting
-        crate::progress_reporting::success("Crop detection complete");
-        crate::progress_reporting::status("Detected crop", "None required", false);
-        log::debug!("No cropping needed for {}", input_file.display());
-    } else {
-        // Use the centralized function for success+status formatting
-        crate::progress_reporting::success("Crop detection complete");
-        crate::progress_reporting::status(
-            "Detected crop",
-            crop_filter.as_deref().unwrap_or(""),
-            false,
-        );
-        log::debug!(
-            "Applied crop filter: {}",
-            crop_filter.as_deref().unwrap_or("")
-        );
+/// Sample crop detection at a specific position in the video.
+fn sample_crop_at_position(
+    input_file: &Path,
+    start_time: f64,
+    threshold: u32,
+) -> CoreResult<Option<String>> {
+    log::trace!(
+        "Sampling crop at {:.1}s with threshold {}",
+        start_time,
+        threshold
+    );
+    
+    let mut cmd = crate::external::FfmpegCommandBuilder::new()
+        .with_hardware_accel(true)
+        .build();
+    
+    // Start at the specified time
+    cmd.args(["-ss", &format!("{:.2}", start_time)]);
+    
+    // Input file
+    cmd.input(input_file.to_string_lossy());
+    
+    // Cropdetect filter and output
+    cmd.args([
+        "-vframes", "10",  // Analyze 10 frames
+        "-vf", &format!("cropdetect=limit={threshold}:round=2:reset=1"),
+        "-f", "null",
+        "-"
+    ]);
+    
+    // Spawn and collect output
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| crate::error::command_start_error("ffmpeg", e))?;
+    
+    let mut crop_output = String::new();
+    
+    for event in child.iter().map_err(|e| {
+        crate::error::command_failed_error(
+            "ffmpeg",
+            std::process::ExitStatus::default(),
+            e.to_string(),
+        )
+    })? {
+        if let ffmpeg_sidecar::event::FfmpegEvent::Log(_, line) = event {
+            if line.contains("crop=") {
+                crop_output.push_str(&line);
+                crop_output.push('\n');
+            }
+        }
     }
+    
+    // Parse the most common crop from this sample
+    parse_crop_from_output(&crop_output)
+}
 
-    Ok((crop_filter, is_hdr))
+/// Parse crop values from ffmpeg output.
+fn parse_crop_from_output(output: &str) -> CoreResult<Option<String>> {
+    let mut crop_counts: HashMap<String, usize> = HashMap::new();
+    
+    // Extract all crop values
+    for line in output.lines() {
+        if let Some(crop_pos) = line.find("crop=") {
+            let crop_part = &line[crop_pos + 5..];
+            
+            // Find the end of the crop value (space or end of line)
+            let end_pos = crop_part
+                .find(|c: char| c.is_whitespace())
+                .unwrap_or(crop_part.len());
+            
+            let crop_value = &crop_part[..end_pos];
+            
+            // Validate it's a proper crop format (w:h:x:y)
+            if is_valid_crop_format(crop_value) {
+                *crop_counts.entry(crop_value.to_string()).or_insert(0) += 1;
+            }
+        }
+    }
+    
+    // Return the most common crop value
+    Ok(crop_counts
+        .into_iter()
+        .max_by_key(|&(_, count)| count)
+        .map(|(crop, _)| format!("crop={}", crop)))
+}
+
+/// Validate that a crop string is in the format w:h:x:y with valid numbers.
+fn is_valid_crop_format(crop: &str) -> bool {
+    let parts: Vec<&str> = crop.split(':').collect();
+    
+    if parts.len() != 4 {
+        return false;
+    }
+    
+    // All parts must be valid numbers
+    parts.iter().all(|part| part.parse::<u32>().is_ok())
 }

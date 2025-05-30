@@ -39,6 +39,9 @@ once_cell = "1.19"               # Thread-safe lazy statics for the core library
 # ---- Randomization ----
 rand = "0.8"                     # Random number generation for grain analysis sampling
 
+# ---- Parallelization ----
+rayon = "1.10"                   # Data parallelism for concurrent processing
+
 # ---- Notifications ----
 ntfy = { version = "0.7.0", default-features = false, features = ["blocking"] }  # Push notifications
 
