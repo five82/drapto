@@ -25,7 +25,7 @@ pub struct EncodeParams {
     pub crop_filter: Option<String>,
     pub audio_channels: Vec<u32>,
     pub duration: f64,
-    /// The final hqdn3d parameters determined by analysis (used if override is not provided).
+    /// The fixed hqdn3d parameters for VeryLight denoising (used if override is not provided).
     pub hqdn3d_params: Option<String>,
 }
 
