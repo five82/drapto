@@ -35,9 +35,9 @@ pub mod external;
 pub mod processing;
 pub mod utils;
 pub mod notifications;
-pub mod progress_reporting;
 pub mod temp_files;
 pub mod hardware_decode;
+pub mod terminal_output;
 
 // Re-exports for public API
 pub use config::CoreConfig;
@@ -49,7 +49,6 @@ pub use external::{
     MediaInfo, get_audio_channels, get_file_size, get_media_info,
     get_video_properties,
 };
-pub use progress_reporting::{LogLevel, OutputLevel, ProgressReporter};
 pub use notifications::{NotificationType, NtfyNotificationSender};
 pub use temp_files::{
     cleanup_base_dirs,

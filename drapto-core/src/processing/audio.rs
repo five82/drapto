@@ -7,6 +7,7 @@
 use crate::error::CoreResult;
 use crate::external::get_audio_channels;
 
+use log::warn;
 use std::path::Path;
 
 /// Calculates the appropriate audio bitrate based on the number of channels.
@@ -84,15 +85,13 @@ pub fn log_audio_info(input_path: &Path) -> CoreResult<()> {
         Ok(channels) => channels,
         Err(e) => {
             // Audio info is non-critical - warn and continue
-            crate::progress_reporting::warning(&format!(
-                "Error getting audio channels for {filename}: {e}. Cannot log bitrate info."
-            ));
+            warn!("Error getting audio channels for {}: {}. Cannot log bitrate info.", filename, e);
 
             return Ok(());
         }
     };
     if audio_channels.is_empty() {
-        crate::progress_reporting::status("Audio streams", "None detected", false);
+        crate::terminal_output::print_status("Audio streams", "None detected", false);
         return Ok(());
     }
 
@@ -110,20 +109,20 @@ pub fn log_audio_info(input_path: &Path) -> CoreResult<()> {
                 .join(", ")
         )
     };
-    crate::progress_reporting::status("Audio", &channel_summary, false);
+    crate::terminal_output::print_status("Audio", &channel_summary, false);
 
     let mut bitrate_parts = Vec::new();
     for (index, &num_channels) in audio_channels.iter().enumerate() {
         let bitrate = calculate_audio_bitrate(num_channels);
         if audio_channels.len() == 1 {
-            crate::progress_reporting::status("Bitrate", &format!("{bitrate}kbps"), false);
+            crate::terminal_output::print_status("Bitrate", &format!("{}kbps", bitrate), false);
         } else {
             bitrate_parts.push(format!("Stream {index}: {bitrate}kbps"));
         }
     }
 
     if audio_channels.len() > 1 {
-        crate::progress_reporting::status("Bitrates", &bitrate_parts.join(", "), false);
+        crate::terminal_output::print_status("Bitrates", &bitrate_parts.join(", "), false);
     }
 
     Ok(())

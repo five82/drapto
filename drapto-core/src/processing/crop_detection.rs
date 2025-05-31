@@ -6,6 +6,7 @@
 
 use crate::error::CoreResult;
 use crate::processing::video_properties::VideoProperties;
+// Removed unused log::info import
 use std::path::Path;
 use std::collections::HashMap;
 use rayon::prelude::*;
@@ -33,8 +34,8 @@ pub fn detect_crop(
 ) -> CoreResult<(Option<String>, bool)> {
     // Check if crop detection is disabled
     if disable_crop {
-        crate::progress_reporting::success("Crop detection complete");
-        crate::progress_reporting::status("Detected crop", "Disabled", false);
+        crate::terminal_output::print_success("Crop detection complete");
+        crate::terminal_output::print_status("Detected crop", "Disabled", false);
         return Ok((None, false));
     }
 
@@ -110,17 +111,17 @@ pub fn detect_crop(
     // Report results
     match &best_crop {
         Some(crop) => {
-            crate::progress_reporting::success("Crop detection complete");
-            crate::progress_reporting::status("Detected crop", crop, false);
+            crate::terminal_output::print_success("Crop detection complete");
+            crate::terminal_output::print_status("Detected crop", crop, false);
             log::debug!("Applied crop filter: {}", crop);
         }
         None => {
-            crate::progress_reporting::success("Crop detection complete");
+            crate::terminal_output::print_success("Crop detection complete");
             if has_multiple_ratios {
-                crate::progress_reporting::status("Detected crop", "Multiple ratios (no crop)", false);
+                crate::terminal_output::print_status("Detected crop", "Multiple ratios (no crop)", false);
                 log::debug!("Multiple aspect ratios detected - no cropping applied");
             } else {
-                crate::progress_reporting::status("Detected crop", "None required", false);
+                crate::terminal_output::print_status("Detected crop", "None required", false);
                 log::debug!("No cropping needed for {}", input_file.display());
             }
         }

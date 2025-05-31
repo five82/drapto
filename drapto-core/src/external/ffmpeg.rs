@@ -6,10 +6,9 @@
 
 use crate::error::{CoreError, CoreResult, command_failed_error};
 use crate::processing::audio;
-use crate::progress_reporting;
 
 use ffmpeg_sidecar::command::FfmpegCommand;
-use log::{debug, info, warn};
+use log::{debug, error, warn};
 
 use std::path::PathBuf;
 use std::time::Instant;
@@ -68,9 +67,9 @@ pub fn build_ffmpeg_command(
 
     if let Some(ref filters) = filter_chain {
         cmd.args(["-vf", filters]);
-        crate::progress_reporting::info(&format!("Applying video filters: {filters}"));
+        crate::terminal_output::print_sub_item_with_spacing(&format!("Applying video filters: {}", filters));
     } else {
-        crate::progress_reporting::info("No video filters applied.");
+        crate::terminal_output::print_sub_item_with_spacing("No video filters applied.");
     }
 
     let film_grain_value = if has_denoising {
@@ -91,13 +90,9 @@ pub fn build_ffmpeg_command(
     cmd.args(["-svtav1-params", &svtav1_params]);
 
     if film_grain_value > 0 {
-        crate::progress_reporting::info(&format!(
-            "Applying film grain synthesis: level={film_grain_value}"
-        ));
+        crate::terminal_output::print_sub_item(&format!("Applying film grain synthesis: level={}", film_grain_value));
     } else {
-        crate::progress_reporting::info(
-            "No film grain synthesis applied (denoise level is None or 0).",
-        );
+        crate::terminal_output::print_sub_item("No film grain synthesis applied (denoise level is None or 0).");
     }
 
     if !disable_audio {
@@ -144,8 +139,8 @@ pub fn run_ffmpeg_encode(
     disable_audio: bool,
     has_denoising: bool,
 ) -> CoreResult<()> {
-    progress_reporting::encode_start(&params.input_path, &params.output_path);
-    info!(
+    debug!("Output: {}", params.output_path.display());
+    log::info!(
         target: "drapto::progress",
         "Starting encode: {} -> {}",
         params.input_path.display(),
@@ -156,7 +151,7 @@ pub fn run_ffmpeg_encode(
 
     let mut cmd = build_ffmpeg_command(params, None, disable_audio, has_denoising)?;
     let cmd_string = format!("{cmd:?}");
-    crate::progress_reporting::ffmpeg_command(&cmd_string);
+    debug!("FFmpeg command: {}", cmd_string);
     let _start_time = Instant::now();
     let mut child = cmd.spawn().map_err(|e| {
         command_failed_error(
@@ -173,19 +168,13 @@ pub fn run_ffmpeg_encode(
     };
 
     if let Some(duration) = duration_secs {
-        crate::progress_reporting::status(
-            "Progress duration",
-            &crate::utils::format_duration_seconds(duration),
-            false,
-        );
+        crate::terminal_output::print_status("Progress duration", &crate::utils::format_duration_seconds(duration), false);
     } else {
         warn!("Video duration not provided or zero; progress percentage will not be accurate.");
     }
 
-    let mut progress_handler =
-        crate::progress_reporting::ffmpeg_handler::FfmpegProgressHandler::new(
-            duration_secs,
-        );
+    let mut stderr_buffer = String::new();
+    let mut last_progress_percent = 0.0;
 
     for event in child.iter().map_err(|e| {
         command_failed_error(
@@ -194,8 +183,54 @@ pub fn run_ffmpeg_encode(
             format!("Failed to get event iterator: {e}"),
         )
     })? {
-        progress_handler.handle_event(event)?;
+        match event {
+            ffmpeg_sidecar::event::FfmpegEvent::Log(_level, message) => {
+                stderr_buffer.push_str(&message);
+                stderr_buffer.push('\n');
+            }
+            ffmpeg_sidecar::event::FfmpegEvent::Error(error) => {
+                stderr_buffer.push_str(&format!("ERROR: {}\n", error));
+            }
+            ffmpeg_sidecar::event::FfmpegEvent::Progress(progress) => {
+                if let Some(total_duration) = duration_secs {
+                    let elapsed_secs = if let Some(duration) = crate::utils::parse_ffmpeg_time(&progress.time) {
+                        duration
+                    } else {
+                        progress.time.parse::<f64>().unwrap_or(0.0)
+                    };
+                    
+                    let percent = if total_duration > 0.0 {
+                        (elapsed_secs / total_duration * 100.0).min(100.0)
+                    } else {
+                        0.0
+                    };
+                    
+                    // Only report progress when it changes by at least 3% (like the original implementation)
+                    if percent >= last_progress_percent + 3.0 || 
+                       (percent >= 100.0 && last_progress_percent < 100.0) {
+                        
+                        let speed = progress.speed;
+                        let fps = progress.fps;
+                        
+                        crate::terminal_output::print_progress_bar(
+                            percent as f32,
+                            elapsed_secs,
+                            total_duration,
+                            Some(speed),
+                            Some(fps),
+                            None,
+                        );
+                        
+                        last_progress_percent = percent;
+                    }
+                }
+            }
+            _ => {}
+        }
     }
+    
+    // Clear progress bar when done
+    crate::terminal_output::clear_progress_bar();
 
     // FFmpeg finished - check status
     let status = std::process::ExitStatus::default();
@@ -204,26 +239,22 @@ pub fn run_ffmpeg_encode(
         .file_name().map_or_else(|| params.input_path.to_string_lossy(), |name| name.to_string_lossy());
 
     if status.success() {
-        crate::progress_reporting::clear_progress();
-
-        crate::progress_reporting::info(&format!(
-            "Encode finished successfully for {filename_cow}"
-        ));
+        log::info!("Encode finished successfully for {}", filename_cow);
         Ok(())
     } else {
         let error_message = format!(
             "FFmpeg process exited with non-zero status ({:?}). Stderr output:\n{}",
             status.code(),
-            progress_handler.stderr_buffer().trim()
+            stderr_buffer.trim()
         );
 
-        crate::progress_reporting::encode_error(&params.input_path, &error_message);
+        let filename = params.input_path
+            .file_name()
+            .map_or_else(|| params.input_path.display().to_string(), |n| n.to_string_lossy().to_string());
+        error!("Error encoding {}: {}", filename, error_message);
 
         // Check for specific error types
-        if progress_handler
-            .stderr_buffer()
-            .contains("No streams found")
-        {
+        if stderr_buffer.contains("No streams found") {
             Err(CoreError::NoStreamsFound(filename_cow.to_string()))
         } else {
             Err(command_failed_error(

@@ -44,16 +44,6 @@ pub struct Cli {
     #[arg(short, long, global = true, default_value_t = false)]
     pub verbose: bool,
 
-    /// Disable colored output.
-    /// Useful for log files or terminals that don't support ANSI colors.
-    /// Can also be controlled via the `NO_COLOR` environment variable.
-    #[arg(
-        long = "no-color",
-        global = true,
-        env = "NO_COLOR",
-        default_value_t = false
-    )]
-    pub no_color: bool,
 }
 
 /// Enum of available subcommands for the Drapto CLI application.

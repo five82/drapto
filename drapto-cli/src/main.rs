@@ -5,7 +5,7 @@
 //! in either interactive mode (with terminal output) or daemon mode (background process).
 
 use drapto_cli::commands::encode::discover_encode_files;
-use drapto_cli::error::{CliErrorContext, CliResult};
+use drapto_cli::error::CliResult;
 use drapto_cli::logging::{get_timestamp, setup_file_logging};
 use drapto_cli::terminal;
 use drapto_cli::{Cli, Commands, run_encode};
@@ -45,13 +45,13 @@ fn main() -> CliResult<()> {
         }
     }
 
-    terminal::set_color(!cli_args.no_color);
-    terminal::register_cli_reporter();
 
     let _ = match cli_args.command {
         Commands::Encode(args) => {
             let (discovered_files, effective_input_dir) =
-                discover_encode_files(&args).cli_context("Error during file discovery")?;
+                discover_encode_files(&args).map_err(|e| 
+                    CoreError::OperationFailed(format!("Error during file discovery: {}", e))
+                )?;
 
             // Calculate log path before daemonization to provide consistent user feedback
             // This logic mirrors run_encode to predict the correct log path
@@ -80,11 +80,12 @@ fn main() -> CliResult<()> {
             let main_log_path = log_dir.join(&main_log_filename);
             if interactive_mode {
                 // Interactive mode: use fern to log to both console and file
-                setup_file_logging(&main_log_path).cli_with_context(|| {
-                    format!(
-                        "Failed to set up file logging to: {}",
-                        main_log_path.display()
-                    )
+                setup_file_logging(&main_log_path).map_err(|e| {
+                    CoreError::OperationFailed(format!(
+                        "Failed to set up file logging to {}: {}",
+                        main_log_path.display(),
+                        e
+                    ))
                 })?;
             } else {
                 // Daemon mode: use env_logger (stdout/stderr will be redirected to file)

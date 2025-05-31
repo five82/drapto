@@ -4,8 +4,7 @@
 //! configuration setup, and delegation to the drapto-core library.
 
 use crate::cli::EncodeArgs;
-use crate::config;
-use crate::error::{CliErrorContext, CliResult};
+use crate::error::CliResult;
 use crate::terminal;
 
 use drapto_core::notifications::NtfyNotificationSender;
@@ -42,10 +41,14 @@ pub fn discover_encode_files(args: &EncodeArgs) -> CliResult<(Vec<PathBuf>, Path
     let input_path = args
         .input_path
         .canonicalize()
-        .cli_with_context(|| format!("Invalid input path '{}'", args.input_path.display()))?;
+        .map_err(|e| CoreError::PathError(
+            format!("Invalid input path '{}': {}", args.input_path.display(), e)
+        ))?;
 
     let metadata = fs::metadata(&input_path)
-        .cli_with_context(|| format!("Failed to access input path '{}'", input_path.display()))?;
+        .map_err(|e| CoreError::PathError(
+            format!("Failed to access input path '{}': {}", input_path.display(), e)
+        ))?;
 
     if metadata.is_dir() {
         match drapto_core::find_processable_files(&input_path) {
@@ -116,14 +119,17 @@ pub fn run_encode(
         .unwrap_or_else(|| actual_output_dir.join("logs"));
 
     // Create output directories (log dir may already exist in daemon mode)
-    fs::create_dir_all(&actual_output_dir).cli_with_context(|| {
-        format!(
-            "Failed to create output directory '{}'",
-            actual_output_dir.display()
-        )
+    fs::create_dir_all(&actual_output_dir).map_err(|e| {
+        CoreError::PathError(format!(
+            "Failed to create output directory '{}': {}",
+            actual_output_dir.display(),
+            e
+        ))
     })?;
     fs::create_dir_all(&log_dir)
-        .cli_with_context(|| format!("Failed to create log directory '{}'", log_dir.display()))?;
+        .map_err(|e| CoreError::PathError(
+            format!("Failed to create log directory '{}': {}", log_dir.display(), e)
+        ))?;
 
     let main_log_filename = format!("drapto_encode_run_{}.log", crate::logging::get_timestamp());
     let main_log_path = log_dir.join(&main_log_filename);
@@ -236,7 +242,7 @@ pub fn run_encode(
     let crop_mode = if args.disable_autocrop {
         "none"
     } else {
-        config::DEFAULT_CROP_MODE
+        drapto_core::config::DEFAULT_CROP_MODE
     };
     builder = builder.crop_mode(crop_mode);
 
@@ -278,7 +284,9 @@ pub fn run_encode(
             &files_to_process,
             target_filename_override,
         )
-        .cli_context("Video processing failed")
+        .map_err(|e| CoreError::OperationFailed(
+            format!("Video processing failed: {}", e)
+        ))
     };
 
     let successfully_encoded: Vec<EncodeResult>;
@@ -326,7 +334,9 @@ pub fn run_encode(
     debug!("Cleaning up temporary directories");
 
     if let Err(e) = drapto_core::temp_files::cleanup_base_dirs(&config)
-        .cli_context("Failed to clean up temporary directories")
+        .map_err(|e| CoreError::OperationFailed(
+            format!("Failed to clean up temporary directories: {}", e)
+        ))
     {
         terminal::print_error("Cleanup warning", &e.to_string(), None);
     }

@@ -165,7 +165,7 @@ pub fn process_videos(
             continue;
         }
 
-        crate::progress_reporting::status("File", &filename, false);
+        crate::terminal_output::print_status("File", &filename, false);
 
         // Send encoding start notification
         if let Some(sender) = notification_sender {
@@ -200,7 +200,7 @@ pub fn process_videos(
                     }
                 }
 
-                crate::progress_reporting::info("");
+                info!("");
                 continue;
             }
         };
@@ -234,21 +234,17 @@ pub fn process_videos(
         };
 
         // Report the detected resolution and selected quality as a status line
-        crate::progress_reporting::status(
-            "Video quality",
-            &format!("{video_width} ({category}) - CRF {quality}"),
-            false,
-        );
-        crate::progress_reporting::status("Duration", &format!("{duration_secs:.2}s"), false);
+        crate::terminal_output::print_status("Video quality", &format!("{} ({}) - CRF {}", video_width, category, quality), false);
+        crate::terminal_output::print_status("Duration", &format!("{:.2}s", duration_secs), false);
 
         // Detect and report HDR/SDR status based on color space
         let color_space = video_props.color_space.as_deref().unwrap_or("");
         let is_hdr = color_space == "bt2020nc" || color_space == "bt2020c";
         let dynamic_range = if is_hdr { "HDR" } else { "SDR" };
-        crate::progress_reporting::status("Dynamic range", dynamic_range, false);
+        crate::terminal_output::print_status("Dynamic range", dynamic_range, false);
 
         // Perform crop detection
-        crate::progress_reporting::processing("Detecting black bars");
+        crate::terminal_output::print_processing("Detecting black bars");
 
         let disable_crop = config.crop_mode == "off";
         let (crop_filter_opt, _is_hdr) =
@@ -265,7 +261,7 @@ pub fn process_videos(
             };
 
         // Analyze audio streams
-        crate::progress_reporting::processing("Audio analysis");
+        crate::terminal_output::print_processing("Audio analysis");
 
         // Log information about audio streams (channels, bitrates)
         let _ = audio::log_audio_info(input_path);
@@ -301,7 +297,7 @@ pub fn process_videos(
         let final_hqdn3d_params = if config.enable_denoise {
             Some(crate::config::FIXED_HQDN3D_PARAMS.to_string())
         } else {
-            info!("Denoising disabled via config.");
+            crate::terminal_output::print_sub_item("Denoising disabled via config.");
             None
         };
 
@@ -330,30 +326,27 @@ pub fn process_videos(
         };
         log::debug!("Acceleration: {hw_display}");
 
-        crate::progress_reporting::section("ENCODING CONFIGURATION");
-        // Video settings
-        crate::progress_reporting::info("Video:");
-        crate::progress_reporting::status("Preset", &format!("{preset_value} (SVT-AV1)"), false);
-        crate::progress_reporting::status("Quality", &format!("{quality} (CRF)"), false);
+        crate::terminal_output::print_section("ENCODING CONFIGURATION");
+        
+        // Video settings - Level 3 subsection within main section
+        crate::terminal_output::print_subsection_level3("Video:");
+        crate::terminal_output::print_status("Preset", &format!("{} (SVT-AV1)", preset_value), false);
+        crate::terminal_output::print_status("Quality", &format!("{} (CRF)", quality), false);
 
         if let Some(hqdn3d) = &final_hqdn3d_params {
-            crate::progress_reporting::status(
-                "Grain Level",
-                &format!("VeryLight ({hqdn3d})"),
-                false,
-            );
+            crate::terminal_output::print_status("Grain Level", &format!("VeryLight ({})", hqdn3d), false);
         } else {
-            crate::progress_reporting::status("Grain Level", "None (no denoising)", false);
+            crate::terminal_output::print_status("Grain Level", "None (no denoising)", false);
         }
 
-        // Hardware info
-        crate::progress_reporting::info("Hardware:");
+        // Hardware info - Level 3 subsection within main section
+        crate::terminal_output::print_subsection_level3_with_spacing("Hardware:");
         let hw_info = crate::hardware_decode::get_hardware_decoding_info();
         let hw_display = match hw_info {
             Some(info) => format!("{info} (decode only)"),
             None => "No hardware decoder available".to_string(),
         };
-        crate::progress_reporting::status("Acceleration", &hw_display, false);
+        crate::terminal_output::print_status("Acceleration", &hw_display, false);
 
         let encode_result = run_ffmpeg_encode(
             &final_encode_params,
@@ -376,11 +369,11 @@ pub fn process_videos(
                     output_size,
                 });
 
-                crate::progress_reporting::success(&format!(
-                    "Encoding complete: {} in {}",
-                    filename,
-                    format_duration(file_elapsed_time)
-                ));
+                crate::terminal_output::print_completion_with_status(
+                    &format!("Encoding complete: {}", filename),
+                    "Time",
+                    &format_duration(file_elapsed_time)
+                );
 
                 // Send success notification
                 if let Some(sender) = notification_sender {

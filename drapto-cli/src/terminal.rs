@@ -6,13 +6,12 @@
 
 use console::{Term, style};
 use indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
-use log::{debug, error, info, warn};
+use log::info;
 use std::sync::LazyLock;
 use owo_colors::OwoColorize;
 use std::io::IsTerminal;
 use std::sync::Mutex;
 use std::time::Duration;
-use supports_color::Stream;
 use unicode_width::UnicodeWidthStr;
 
 use drapto_core::{format_bytes, format_duration_seconds};
@@ -47,46 +46,23 @@ impl OutputLevel {
 
 /// Terminal state management
 struct TerminalState {
-    /// Whether we've printed the encoding section
-    encoding_section_shown: bool,
     /// Current progress bar if any
     current_progress: Option<ProgressBar>,
-    /// Whether color output is enabled
-    use_color: bool,
 }
 
 impl TerminalState {
     fn new() -> Self {
-        // Detect color support using multiple methods
-        let use_color = if std::env::var("NO_COLOR").is_ok() || !std::io::stderr().is_terminal() {
-            false
-        } else {
-            supports_color::on(Stream::Stderr).is_some()
-        };
-
         Self {
-            encoding_section_shown: false,
             current_progress: None,
-            use_color,
         }
     }
 }
 
 static TERMINAL_STATE: LazyLock<Mutex<TerminalState>> = LazyLock::new(|| Mutex::new(TerminalState::new()));
 
-/// Set whether to use color in terminal output
-pub fn set_color(enable: bool) {
-    if let Ok(mut state) = TERMINAL_STATE.lock() {
-        state.use_color = enable;
-    }
-}
-
-/// Check if color should be used
+/// Check if color should be used (respects NO_COLOR environment variable)
 fn should_use_color() -> bool {
-    TERMINAL_STATE
-        .lock()
-        .map(|state| state.use_color)
-        .unwrap_or(false)
+    std::env::var("NO_COLOR").is_err()
 }
 
 /// Print a section header for major workflow phases
@@ -332,126 +308,7 @@ pub fn clear_progress_bar() {
     }
 }
 
-/// Implementation of the `ProgressReporter` trait for the CLI interface
-pub struct CliProgressReporter;
 
-/// Register the CLI progress reporter with the core library
-pub fn register_cli_reporter() {
-    let reporter = Box::new(CliProgressReporter);
-    drapto_core::progress_reporting::set_progress_reporter(reporter);
-}
-
-impl drapto_core::progress_reporting::ProgressReporter for CliProgressReporter {
-    fn output(&self, level: drapto_core::progress_reporting::OutputLevel, text: &str) {
-        use drapto_core::progress_reporting::OutputLevel as CoreLevel;
-
-        match level {
-            CoreLevel::Section => print_section(text),
-            CoreLevel::Subsection => print_subsection(text),
-            CoreLevel::Processing => {
-                let is_encoding_start = text.starts_with("Encoding:");
-                if is_encoding_start {
-                    let mut state = TERMINAL_STATE.lock().unwrap();
-                    if state.encoding_section_shown {
-                        drop(state);
-                        print_processing(text);
-                    } else {
-                        state.encoding_section_shown = true;
-                        drop(state);
-                        print_section("ENCODING PROGRESS");
-                        print_processing_no_spacing(text);
-                    }
-                } else {
-                    print_processing(text);
-                }
-            }
-            CoreLevel::Success => print_success(text),
-            CoreLevel::Error => print_error(text, "", None),
-            CoreLevel::Warning => print_warning(text),
-            CoreLevel::Debug => debug!("{text}"),
-            CoreLevel::Info => print_sub_item(text),
-            _ => info!("{text}"),
-        }
-    }
-
-    fn output_status(&self, label: &str, value: &str, highlight: bool) {
-        print_status(label, value, highlight);
-    }
-
-    fn progress_bar(&self, percent: f32, elapsed_secs: f64, total_secs: f64) {
-        print_progress_bar(percent, elapsed_secs, total_secs, None, None, None);
-    }
-
-    fn clear_progress_bar(&self) {
-        clear_progress_bar();
-    }
-
-    fn log(&self, level: drapto_core::progress_reporting::LogLevel, message: &str) {
-        match level {
-            drapto_core::progress_reporting::LogLevel::Info => info!("{message}"),
-            drapto_core::progress_reporting::LogLevel::Warning => warn!("{message}"),
-            drapto_core::progress_reporting::LogLevel::Error => error!("{message}"),
-            drapto_core::progress_reporting::LogLevel::Debug => debug!("{message}"),
-        }
-    }
-
-    fn ffmpeg_command(&self, cmd_data: &str) {
-        debug!("    FFmpeg command:");
-        if let Ok(args) = serde_json::from_str::<Vec<String>>(cmd_data) {
-            debug!("      {}", format_ffmpeg_simple(&args));
-        } else {
-            debug!("      {cmd_data}");
-        }
-    }
-}
-
-/// Simple `FFmpeg` command formatter
-fn format_ffmpeg_simple(args: &[String]) -> String {
-    if args.is_empty() {
-        return String::new();
-    }
-
-    let mut lines = vec![args[0].clone()];
-    let mut current_line = String::new();
-
-    for arg in args.iter().skip(1) {
-        let needs_new_line = matches!(
-            arg.as_str(),
-            "-i" | "-hwaccel"
-                | "-vf"
-                | "-af"
-                | "-filter_complex"
-                | "-c:v"
-                | "-c:a"
-                | "-preset"
-                | "-crf"
-                | "-svtav1-params"
-                | "-map"
-                | "-y"
-        );
-
-        if needs_new_line && !current_line.is_empty() {
-            lines.push(format!("  {current_line}"));
-            current_line.clear();
-        }
-
-        if !current_line.is_empty() {
-            current_line.push(' ');
-        }
-
-        if arg.contains(' ') || arg.contains('=') {
-            current_line.push_str(&format!("\"{arg}\""));
-        } else {
-            current_line.push_str(arg);
-        }
-    }
-
-    if !current_line.is_empty() {
-        lines.push(format!("  {current_line}"));
-    }
-
-    lines.join("\n      ")
-}
 
 /// Print encoding summary
 pub fn print_encoding_summary(

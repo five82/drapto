@@ -49,3 +49,8 @@ ntfy = { version = "0.7.0", default-features = false, features = ["blocking"] } 
 # ---- FFmpeg Integration ----
 ffmpeg-sidecar = "2.0.5"         # FFmpeg process execution and management
 ffprobe = "0.3.0"                # FFprobe media file analysis
+
+# ---- Terminal UI ----
+indicatif = { version = "0.17", features = ["improved_unicode"] }  # Progress bars
+console = "0.15"                 # Terminal utilities and color detection
+owo-colors = "4.1"               # Zero-allocation terminal colors

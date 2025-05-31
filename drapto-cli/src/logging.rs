@@ -26,31 +26,6 @@ use crate::error::CliResult;
 use drapto_core::CoreError;
 use std::path::Path;
 
-/// Strip ANSI escape codes from a string
-fn strip_ansi_codes(s: &str) -> String {
-    // Simple regex-free approach to strip ANSI codes
-    let mut result = String::with_capacity(s.len());
-    let mut chars = s.chars();
-
-    while let Some(ch) = chars.next() {
-        if ch == '\x1b' {
-            // Skip the escape sequence
-            if chars.next() == Some('[') {
-                // Skip until we find a letter (end of sequence)
-                for next_ch in chars.by_ref() {
-                    if next_ch.is_alphabetic() {
-                        break;
-                    }
-                }
-            }
-        } else {
-            result.push(ch);
-        }
-    }
-
-    result
-}
-
 /// Setup logging for interactive mode that logs to both console and file
 ///
 /// Logging is controlled by the `RUST_LOG` environment variable:
@@ -109,7 +84,7 @@ pub fn setup_file_logging(log_path: &Path) -> CliResult<()> {
             .format(|out, message, record| {
                 let msg_str = format!("{message}");
 
-                let clean_str = strip_ansi_codes(&msg_str);
+                let clean_str = console::strip_ansi_codes(&msg_str);
                 if clean_str.starts_with("[info]") || clean_str.starts_with("Svt[info]:") {
                     out.finish(format_args!("{clean_str}"));
                 } else if record.level() != log::Level::Info {
