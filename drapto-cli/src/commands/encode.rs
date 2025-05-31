@@ -13,7 +13,6 @@ use drapto_core::{CoreError, EncodeResult};
 
 use std::fs;
 use std::path::PathBuf;
-use std::str::FromStr;
 use std::time::Instant;
 
 use log::{debug, info, warn};
@@ -214,14 +213,6 @@ pub fn run_encode(
         }
     }
 
-    let grain_max_level = args.grain_max_level.as_deref().and_then(|level_str| {
-        if let Ok(level) = drapto_core::processing::grain_types::GrainLevel::from_str(level_str) { Some(level) } else {
-            debug!(
-                "Warning: Invalid grain_max_level '{level_str}'. Using default."
-            );
-            None
-        }
-    });
 
 
     let mut builder = drapto_core::config::CoreConfigBuilder::new()
@@ -257,14 +248,6 @@ pub fn run_encode(
         builder = builder.encoder_preset(preset);
     }
 
-    if let Some(duration) = args.grain_sample_duration {
-        builder = builder.film_grain_sample_duration(duration);
-    }
-
-
-    if let Some(level) = grain_max_level {
-        builder = builder.film_grain_max_level(level);
-    }
 
     let config = builder.build();
 
@@ -303,14 +286,11 @@ pub fn run_encode(
         Ok(ref results) => {
             successfully_encoded = results.clone();
             if successfully_encoded.is_empty() {
-                // Only show error if we're not in grain analysis only mode
-                if std::env::var("DRAPTO_STOP_AFTER_GRAIN_ANALYSIS").is_err() {
-                    terminal::print_error(
-                        "No files encoded",
-                        "No files were successfully encoded",
-                        Some("Check that your input files are valid .mkv files"),
-                    );
-                }
+                terminal::print_error(
+                    "No files encoded",
+                    "No files were successfully encoded",
+                    Some("Check that your input files are valid .mkv files"),
+                );
             } else {
                 terminal::print_section("ENCODING COMPLETE");
                 terminal::print_success(&format!(

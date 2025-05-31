@@ -16,20 +16,18 @@ pub struct FfmpegProgressHandler {
     last_progress_percent: f64,
     last_log_time: Instant,
     last_logged_percent_threshold: i32,
-    is_grain_sample: bool,
     stderr_buffer: String,
 }
 
 impl FfmpegProgressHandler {
     /// Creates a new `FFmpeg` progress handler
-    #[must_use] pub fn new(duration: Option<f64>, is_grain_sample: bool) -> Self {
+    #[must_use] pub fn new(duration: Option<f64>) -> Self {
         Self {
             duration,
             start_time: Instant::now(),
             last_progress_percent: -3.0,
             last_log_time: Instant::now(),
             last_logged_percent_threshold: -1,
-            is_grain_sample,
             stderr_buffer: String::new(),
         }
     }
@@ -52,9 +50,6 @@ impl FfmpegProgressHandler {
 
     /// Handles progress events
     fn handle_progress(&mut self, progress: FfmpegProgress) {
-        if self.is_grain_sample {
-                return;
-        }
 
         let current_secs = parse_ffmpeg_time(&progress.time).unwrap_or(0.0);
         let percent = self
@@ -95,7 +90,7 @@ impl FfmpegProgressHandler {
 
         let log_level = map_ffmpeg_log_level(&level);
 
-        if message.starts_with("Svt[info]:") && !self.is_grain_sample {
+        if message.starts_with("Svt[info]:") {
             crate::progress_reporting::debug(message);
         } else if log_level == log::Level::Info {
             log::debug!(target: "ffmpeg_log", "{message}");
@@ -141,13 +136,10 @@ impl FfmpegProgressHandler {
         eta_seconds: f64,
     ) {
         let current_threshold = (percent as i32 / 10) * 10;
-        let should_log = !self.is_grain_sample
-            && (
-                (current_threshold > self.last_logged_percent_threshold && current_threshold >= 10) ||
+        let should_log = (current_threshold > self.last_logged_percent_threshold && current_threshold >= 10) ||
             (percent >= 0.0 && self.last_logged_percent_threshold < 0) ||
             percent >= 100.0 ||
-            self.last_log_time.elapsed() >= Duration::from_secs(300)
-            );
+            self.last_log_time.elapsed() >= Duration::from_secs(300);
 
         if should_log {
             log::info!(

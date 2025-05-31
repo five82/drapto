@@ -51,7 +51,7 @@ impl FfmpegCommandBuilder {
         }
 
         if self.use_hw_decode {
-            add_hardware_decoding_to_command(&mut self.cmd, true, false);
+            add_hardware_decoding_to_command(&mut self.cmd, true);
         }
 
         self.cmd

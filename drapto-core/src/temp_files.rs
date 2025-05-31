@@ -47,20 +47,6 @@ pub fn create_temp_dir(config: &CoreConfig, prefix: &str) -> CoreResult<TempDir>
         .tempdir_in(temp_base_dir)?)
 }
 
-/// Creates a temporary directory for grain analysis samples.
-/// This is a convenience function that calls `create_temp_dir` with a specific prefix.
-///
-/// # Arguments
-///
-/// * `config` - The core configuration containing path information
-///
-/// # Returns
-///
-/// * `CoreResult<TempDir>` - A temporary directory that will be automatically
-///   cleaned up when dropped
-pub fn create_grain_analysis_dir(config: &CoreConfig) -> CoreResult<TempDir> {
-    create_temp_dir(config, "grain_analysis_")
-}
 
 /// Creates a temporary directory for analysis operations.
 /// This is a convenience function that calls `create_temp_dir` with the provided prefix.
@@ -189,7 +175,7 @@ pub fn cleanup_base_dirs(config: &CoreConfig) -> CoreResult<()> {
 
         if path.is_dir() {
             let dir_name = path.file_name().unwrap_or_default().to_string_lossy();
-            if dir_name.starts_with("grain_analysis_")
+            if dir_name.starts_with("analysis_")
                 || dir_name.starts_with("crop_analysis_")
                 || dir_name.starts_with("analysis_")
             {

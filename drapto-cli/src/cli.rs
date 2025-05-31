@@ -99,8 +99,6 @@ pub enum Commands {
 ///     preset: None,
 ///     disable_autocrop: false,
 ///     no_denoise: false,
-///     grain_sample_duration: None,
-///     grain_max_level: None,
 ///     ntfy: None,
 /// };
 /// ```
@@ -121,8 +119,6 @@ pub enum Commands {
 ///     preset: Some(6),
 ///     disable_autocrop: false,
 ///     no_denoise: true,
-///     grain_sample_duration: None,
-///     grain_max_level: None,
 ///     ntfy: None,
 /// };
 /// ```
@@ -192,18 +188,6 @@ pub struct EncodeArgs {
     #[arg(long, default_value_t = false)]
     pub no_denoise: bool,
 
-    // Grain Analysis Options
-    /// Sample duration for grain analysis in seconds.
-    /// Shorter samples process faster but may be less representative.
-    #[arg(long, value_name = "SECONDS")]
-    pub grain_sample_duration: Option<u32>,
-
-
-    /// Maximum allowed grain level for any analysis result.
-    /// This prevents excessive denoising even if analysis suggests it.
-    /// Options: Baseline, `VeryLight`, Light, Moderate, Elevated
-    #[arg(long, value_name = "LEVEL")]
-    pub grain_max_level: Option<String>,
 
     // Notification Options
     /// Optional: ntfy.sh topic URL for sending notifications.

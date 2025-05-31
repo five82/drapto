@@ -204,20 +204,7 @@ pub fn print_status(label: &str, value: &str, highlight: bool) {
 /// Print completion with associated status
 pub fn print_completion_with_status(success_message: &str, status_label: &str, status_value: &str) {
     print_success(success_message);
-
-    if should_use_color() && status_label.contains("grain") && status_value.contains(" - applying")
-    {
-        if let Some(dash_pos) = status_value.find(" - applying") {
-            let grain_level = &status_value[..dash_pos];
-            let rest = &status_value[dash_pos..];
-            let colored_value = format!("{}{}", grain_level.green(), rest);
-            print_status(status_label, &colored_value, false);
-        } else {
-            print_status(status_label, status_value, false);
-        }
-    } else {
-        print_status(status_label, status_value, false);
-    }
+    print_status(status_label, status_value, false);
 }
 
 /// Print an error message
@@ -408,12 +395,7 @@ impl drapto_core::progress_reporting::ProgressReporter for CliProgressReporter {
         }
     }
 
-    fn ffmpeg_command(&self, cmd_data: &str, is_sample: bool) {
-        if is_sample {
-            debug!("FFmpeg command (grain sample): {cmd_data}");
-            return;
-        }
-
+    fn ffmpeg_command(&self, cmd_data: &str) {
         debug!("    FFmpeg command:");
         if let Ok(args) = serde_json::from_str::<Vec<String>>(cmd_data) {
             debug!("      {}", format_ffmpeg_simple(&args));
@@ -542,31 +524,6 @@ pub fn print_daemon_starting() {
     eprintln!("Starting Drapto daemon in the background...");
 }
 
-/// Data structure for grain analysis table
-pub struct GrainAnalysisRow {
-    pub sample: String,
-    pub time: String,
-    pub size_mb: String,
-    pub quality: String,
-    pub selection: String,
-}
-
-/// Print grain analysis results
-pub fn print_grain_analysis_table(results: &[GrainAnalysisRow]) {
-    if results.is_empty() {
-        return;
-    }
-
-    info!("    Sample  Time      Size (MB)  Quality  Selection");
-    info!("    ------  --------  ---------  -------  ---------");
-
-    for result in results {
-        info!(
-            "    {:<6}  {:<8}  {:<9}  {:<7}  {}",
-            result.sample, result.time, result.size_mb, result.quality, result.selection
-        );
-    }
-}
 
 /// Data structure for encoding summary table
 pub struct EncodingSummaryRow {

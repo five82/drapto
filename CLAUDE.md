@@ -55,14 +55,14 @@ RUST_LOG=trace cargo run -- encode --interactive -i input.mkv -o output/
 
 ## Key Components
 
-### Film Grain Analysis System
+### Fixed Denoising System
 
-The film grain analysis system is a sophisticated component that:
+The project uses a conservative, fixed denoising approach:
 
-1. Extracts multiple samples from the video
-2. Tests different denoising strengths on each sample
-3. Uses a knee point detection algorithm to find the optimal balance
-4. Maps detected grain levels to appropriate denoising and synthetic grain parameters
+1. Applies VeryLight denoising (hqdn3d=0.5:0.4:2:2)
+2. Adds Level 4 film grain synthesis
+3. Provides modest file size reduction while preserving quality
+4. No complex analysis required - consistent results
 
 ### FFmpeg Integration
 

@@ -16,11 +16,7 @@ pub mod video_properties;
 /// Crop detection and analysis
 pub mod crop_detection;
 
-/// Film grain analysis for optimal denoising
-pub mod grain_analysis;
 
-/// Type definitions for grain analysis
-pub mod grain_types;
 
 pub use video::process_videos;
 pub use video_properties::VideoProperties;

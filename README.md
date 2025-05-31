@@ -4,8 +4,9 @@ Advanced ffmpeg video encoding wrapper with intelligent optimization for high-qu
 
 ## Features
 
-* **Intelligent Analysis**: Automatic black bar cropping, film grain detection with XPSNR quality metrics, HDR-aware processing
+* **Intelligent Analysis**: Automatic black bar cropping, HDR-aware processing
 * **Optimized Encoding**: AV1 video (libsvtav1), Opus audio with multi-stream support, resolution-based quality settings
+* **Conservative Denoising**: Light denoising with film grain synthesis for optimal quality/size balance
 * **Hardware Acceleration**: VideoToolbox decoding support on macOS (automatically detected)
 * **Flexible Workflow**: Daemon mode for background processing, interactive mode with progress bars, push notifications
 
@@ -60,30 +61,21 @@ drapto encode -v -i input.mkv -o output/
 * `-l, --log-dir <DIR>`: Directory for log files (defaults to OUTPUT_DIR/logs)
 * `--preset <0-13>`: SVT-AV1 encoder speed/quality (default: 6, lower = slower/better)
 * `--quality-sd/hd/uhd <CRF>`: Override quality settings (defaults: SD=25, HD=27, UHD=27)
-* `--no-denoise`: Disable grain analysis and denoising
+* `--no-denoise`: Disable denoising and film grain synthesis
 * `--disable-autocrop`: Disable black bar cropping
 * `--ntfy <URL>`: Send notifications to ntfy.sh
 
-**Advanced Grain Analysis Options:**
-* `--grain-sample-duration <SECONDS>`: Sample duration for analysis (default: 10)
-* `--grain-knee-threshold <0.0-1.0>`: Knee point detection threshold (default: 0.8)
-* `--grain-max-level <LEVEL>`: Maximum denoising level constraint
-
 ## Advanced Features
 
-### Intelligent Grain Processing
+### Conservative Denoising
 
-Drapto uses a sophisticated multi-step approach for optimal compression:
+Drapto applies a fixed, conservative denoising approach for optimal quality:
 
-1. **Multi-Sample Analysis**: Extracts random samples from the video
-2. **XPSNR Quality Metrics**: Measures quality at different denoising levels
-3. **Knee Point Detection**: Finds optimal balance between compression and quality
-4. **Adaptive Denoising**: Applies hqdn3d filter with calculated strength
-5. **Synthetic Grain**: Adds controlled grain during encoding for natural appearance
+1. **Light Denoising**: Uses hqdn3d=0.5:0.4:2:2 for subtle noise reduction
+2. **Film Grain Synthesis**: Adds level 4 synthetic grain to maintain natural appearance
+3. **Quality Preservation**: Conservative settings avoid visible quality loss at normal viewing distances
 
-Grain levels detected: Baseline, VeryLight, Light, LightModerate, Moderate, Elevated
-
-This achieves 20-40% file size reduction while maintaining visual quality.
+This achieves modest file size reduction while maintaining excellent visual quality.
 
 ### HDR Support
 
@@ -92,7 +84,7 @@ Automatically detects and preserves HDR content (BT.2020 color space) with adapt
 ### Hardware Acceleration
 
 * VideoToolbox hardware decoding on macOS (automatically enabled when available)
-* Disabled during grain analysis for consistency
+* Improves performance by hardware-accelerating video decoding
 
 ### Multi-Stream Audio
 
@@ -146,7 +138,7 @@ Drapto is built as a Rust workspace with two main components:
   * Terminal color support
 
 * **drapto-core**: Core video processing library
-  * Video analysis (crop detection, grain analysis)
+  * Video analysis (crop detection)
   * FFmpeg/FFprobe integration
   * Audio stream processing
   * Notification services

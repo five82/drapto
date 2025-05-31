@@ -29,11 +29,11 @@ Drapto CLI uses a consistent and well-defined visual hierarchy to organize infor
 
 2. **Secondary (Level 2)**: Logical groupings, operations, or completion messages
    - Formatting: Bold with leading symbol (» for operations, ✓ for success)
-   - Examples: `  » Analyzing grain levels`, `  ✓ Analysis complete`
+   - Examples: `  » Detecting black bars`, `  ✓ Analysis complete`
 
 3. **Tertiary (Level 3)**: Individual actions or progress items
    - Formatting: Regular with progress symbol
-   - Example: `    ◆ Processing sample 3/5`
+   - Example: `    ◆ Processing encoding step`
 
 4. **Quaternary (Level 4)**: Key-value pairs and primary information
    - Formatting: Regular text (bold values only for critical information)
@@ -70,8 +70,8 @@ Whitespace is a critical component of visual hierarchy. Use it consistently:
 | Level | Element Type | Formatting | Color | Indentation | Symbol/Prefix | Example |
 |-------|--------------|------------|-------|-------------|---------------|---------|
 | 1 | Main Sections | Bold, uppercase | Cyan (title only) | None | ===== | `===== VIDEO ANALYSIS =====` |
-| 2 | Subsections/Success | Bold | White | 2 spaces | » / ✓ | `  » Analyzing grain levels` / `  ✓ Analysis complete` |
-| 3 | Operations/Progress | Regular | White | 4 spaces | Text prefix | `    Sample 3/5: Processing...` / `    Progress: 45%` |
+| 2 | Subsections/Success | Bold | White | 2 spaces | » / ✓ | `  » Detecting black bars` / `  ✓ Analysis complete` |
+| 3 | Operations/Progress | Regular | White | 4 spaces | Text prefix | `    Processing...` / `    Progress: 45%` |
 | 4 | Primary Info | Regular | White/Green* | 6 spaces | None | `      Reduction:      65.2%` |
 | 5 | Details | Regular | White/Gray | 8 spaces | None | `        Speed: 2.5x, Avg FPS: 24.5` |
 | X | Critical Alert | Bold | Red/Yellow | Same as context | ✗ / ⚠ | `  ✗ Error: Encoding failed` |
@@ -113,9 +113,9 @@ Use to highlight positive outcomes and optimal selections:
 ✓ Encoding complete
   Reduction:       65.2%  ← Value in green (significant reduction)
 
-Grain Level Comparison:
-  Moderate (selected) 1.24 GB  ← "Moderate (selected)" in green
-  Light              1.42 GB
+Denoising Applied:
+  VeryLight (hqdn3d=0.5:0.4:2:2)  ← "VeryLight" in green
+  Film Grain: Level 4
 ```
 
 ##### Yellow/Amber (Accent - Attention & Caution)
@@ -189,21 +189,19 @@ Use for less important supplementary information:
   Speed: 0.5x
 ```
 
-##### Example 3: Selection Results
+##### Example 3: Applied Settings
 ```
-# Good - Clear visual indication of selection
-Grain analysis results:
-  Heavy:     8.0 MB
-  Moderate:  8.3 MB (selected)  ← "Moderate" and "(selected)" in green
-  Light:     10.5 MB
-  Baseline:  15.2 MB
+# Good - Clear visual indication of applied settings
+Processing Configuration:
+  Denoising:    VeryLight (applied)  ← "VeryLight (applied)" in green
+  Film Grain:   Level 4 (applied)   ← "Level 4 (applied)" in green
+  Crop Mode:    Auto
 
-# Poor - Selection not visually distinct
-Grain analysis results:
-  Heavy:     8.0 MB
-  Moderate:  8.3 MB (selected)  ← Same as other options
-  Light:     10.5 MB
-  Baseline:  15.2 MB
+# Poor - Applied settings not visually distinct
+Processing Configuration:
+  Denoising:    VeryLight (applied)  ← Same as other text
+  Film Grain:   Level 4 (applied)
+  Crop Mode:    Auto
 ```
 
 #### When NOT to Use Color
@@ -288,13 +286,12 @@ Shows essential information for normal operation:
 ```
 ===== VIDEO ANALYSIS =====
 
-  » Analyzing grain levels
-    Sample 3/5: 00:51:18
-    Progress: 45.2% [##########.................] (00:00:05 / 00:00:10)
+  » Detecting black bars
+    Progress: 100.0% [##############################] (00:00:10 / 00:00:10)
 
   ✓ Analysis complete
-    Detected Grain Level: Moderate
-    Estimated Size: 1.24 GB
+    Crop detected: None required
+    Processing: VeryLight denoising with film grain synthesis
 ```
 
 #### Verbose Output (Debug Level)
@@ -303,18 +300,19 @@ Includes technical details for troubleshooting:
 ```
 ===== VIDEO ANALYSIS =====
 
-  » Analyzing grain levels
-    Sample 3/5: 00:51:18
-    Progress: 45.2% [##########.................] (00:00:05 / 00:00:10)
+  » Detecting black bars
+    Progress: 100.0% [##############################] (00:00:10 / 00:00:10)
 
-[debug] Testing denoise strength: hqdn3d=3.5:3.5:4.5:4.5
-[debug] Sample encode size: 8.3 MB
-[debug] Knee point calculation: threshold=0.8, current=0.73
+[debug] Crop detection threshold: 0.1
+[debug] Black border detected: none
+[debug] Denoising parameters: hqdn3d=0.5:0.4:2:2
+[debug] Film grain synthesis: level 4
 
   ✓ Analysis complete
-    Detected Grain Level: Moderate
-    Estimated Size: 1.24 GB
-    Denoise Parameters: hqdn3d=3.5:3.5:4.5:4.5
+    Crop detected: None required
+    Processing: VeryLight denoising with film grain synthesis
+    Denoise Parameters: hqdn3d=0.5:0.4:2:2
+    Film Grain Level: 4
 ```
 
 ### Design Philosophy
@@ -484,10 +482,10 @@ Output should adapt based on the terminal environment:
 
 ```
 # Interactive mode (with spinner animation)
-⧖ Analyzing grain levels...
+⧖ Detecting black bars...
 
 # Non-interactive mode (e.g., when piped to a file)
-[INFO] Analyzing grain levels...
+[INFO] Detecting black bars...
 ```
 
 ### Progressive Disclosure
@@ -543,36 +541,30 @@ ffmpeg
   -hwaccel videotoolbox -hwaccel_output_format nv12
   -i movie.mkv
   -c:v libsvtav1 -preset 6 -crf 27 -g 240 -pix_fmt yuv420p10le
-  -svtav1-params film-grain=10
-  -vf hqdn3d=3.5:3.5:4.5:4.5
+  -svtav1-params film-grain=4
+  -vf hqdn3d=0.5:0.4:2:2
   -c:a libopus -b:a 128k -ac 6 -ar 48000
   -movflags +faststart
   -y movie.av1.mp4
 ```
 
-### Grain Analysis Output
+### Processing Configuration Output
 
-- Show clear comparison between grain levels
-- Use visual indicators (bars) to represent relative file sizes
-- Highlight the selected/optimal level
-- Include brief explanation of results
+- Show applied denoising and film grain settings
+- Highlight the applied configuration
+- Include brief explanation of conservative approach
 
 ```
-===== GRAIN ANALYSIS RESULTS =====
+===== PROCESSING CONFIGURATION =====
 
-✓ Analysis complete
+✓ Configuration applied
 
-  Detected Grain Level:   Moderate
-  Estimated Size:         1.24 GB
-  Estimated Savings:      65% vs. Baseline
+  Denoising:             VeryLight (hqdn3d=0.5:0.4:2:2)
+  Film Grain:            Level 4 (applied)  ← "Level 4 (applied)" in green
+  Estimated Size:        1.24 GB
+  Estimated Savings:     65% vs. no processing
 
-  Grain Level Comparison:
-    Moderate (selected) 1.24 GB  #####################  ← "Moderate (selected)" in green
-    Elevated           1.35 GB  #######################
-    Light              1.42 GB  ########################
-    Baseline           3.56 GB  ############################################################
-
-  Explanation: The optimal grain level provides the best balance between file size reduction and video quality.
+  Explanation: Conservative denoising with film grain synthesis provides modest file size reduction while preserving excellent visual quality.
 ```
 
 ### Encoding Progress
@@ -786,47 +778,22 @@ $ drapto encode -i movie.mkv -o output_dir/
   ✓ Crop detection complete
     Detected crop:    None required
 
-  » Analyzing grain levels
-    Extracting 5 samples for analysis...
+  » Applying processing configuration
+    Conservative denoising with film grain synthesis
 
-    ◆ Sample 1/5: 00:15:23
-    ⧖ Progress: 100.0% [##############################] (00:00:10 / 00:00:10)
-
-    ◆ Sample 2/5: 00:32:47
-    ⧖ Progress: 100.0% [##############################] (00:00:10 / 00:00:10)
-
-    ◆ Sample 3/5: 00:51:18
-    ⧖ Progress: 100.0% [##############################] (00:00:10 / 00:00:10)
-
-    ◆ Sample 4/5: 01:12:05
-    ⧖ Progress: 100.0% [##############################] (00:00:10 / 00:00:10)
-
-    ◆ Sample 5/5: 01:35:42
-    ⧖ Progress: 100.0% [##############################] (00:00:10 / 00:00:10)
-
-===== GRAIN ANALYSIS RESULTS =====
-
-  ✓ Analysis complete
-
-    Detected Grain Level:   Moderate
-    Estimated Size:         1.24 GB
-    Estimated Savings:      65% vs. Baseline
-
-    Grain Level Comparison:
-      Moderate (selected) 1.24 GB  #####################  ← "Moderate (selected)" in green
-      Elevated           1.35 GB  #######################
-      Light              1.42 GB  ########################
-      Baseline           3.56 GB  ############################################################
-
-    Explanation: The optimal grain level provides the best balance between file size reduction and video quality.
+  ✓ Processing configuration applied
+    Denoising:        VeryLight (hqdn3d=0.5:0.4:2:2)
+    Film Grain:       Level 4
+    Estimated Size:   1.24 GB
+    Estimated Savings: 65% vs. no processing
 
 ===== ENCODING CONFIGURATION =====
 
   Video:
     Preset:             medium (SVT-AV1 preset 6) (default)
     Quality:            27 (CRF)
-    Grain Level:        Moderate (hqdn3d=3.5:3.5:4.5:4.5)
-    Film Grain Synth:   Level 10 (default)
+    Denoising:          VeryLight (hqdn3d=0.5:0.4:2:2)
+    Film Grain Synth:   Level 4
 
   Hardware:
     Acceleration:       VideoToolbox (decode only)
@@ -867,72 +834,29 @@ $ drapto encode -i movie.mkv -o output_dir/
     The encoded file is ready at: /home/user/videos/movie.av1.mp4
 ```
 
-### Grain Analysis Detail Example
+### Processing Configuration Detail Example
 
 ```
-===== GRAIN ANALYSIS PHASE 1: INITIAL SAMPLING =====
+===== PROCESSING CONFIGURATION =====
 
-  » Testing baseline grain levels on 5 samples
+  » Applying conservative denoising configuration
 
-    ◆ Sample 1/5: 00:15:23
-    ⧖ Progress: 100.0% [##############################] (00:00:10 / 00:00:10)
+    ◆ Denoising: VeryLight (hqdn3d=0.5:0.4:2:2)
+    ◆ Film Grain: Level 4 synthesis
+    ◆ Estimated impact: ~10-15% size reduction
 
-    Results:
-      Baseline:         15.2 MB
-      Light:            10.8 MB
-      Moderate:          8.5 MB
-      Elevated:          8.2 MB
-      Heavy:             8.1 MB
+  ✓ Configuration applied
 
-    ◆ Sample 2/5: 00:32:47
-    ⧖ Progress: 100.0% [##############################] (00:00:10 / 00:00:10)
-
-    Results:
-      Baseline:         14.8 MB
-      Light:            10.5 MB
-      Moderate:          8.3 MB
-      Elevated:          8.1 MB
-      Heavy:             8.0 MB
-
-    [Additional samples omitted for brevity]
-
-===== GRAIN ANALYSIS PHASE 2: REFINEMENT =====
-
-  » Testing refined grain parameters
-
-    Testing interpolated level between Light and Moderate
-    ⧖ Progress: 100.0% [##############################] (00:00:10 / 00:00:10)
-
-    Results:
-      Light-Moderate:    9.2 MB
-
-    Testing interpolated level between Moderate and Elevated
-    ⧖ Progress: 100.0% [##############################] (00:00:10 / 00:00:10)
-
-    Results:
-      Moderate-Elevated: 8.3 MB
-
-===== GRAIN ANALYSIS RESULTS =====
-
-  ✓ Analysis complete
-
-    Detected Grain Level:   Moderate
-    Estimated Size:         1.24 GB
-    Estimated Savings:      65% vs. Baseline
-
-    Grain Level Comparison:
-      Moderate (selected) 1.24 GB  #####################  ← "Moderate (selected)" in green
-      Light-Moderate      1.38 GB  ######################
-      Elevated            1.35 GB  #######################
-      Light               1.42 GB  ########################
-      Moderate-Elevated   1.30 GB  ####################
-      Heavy               1.28 GB  ####################
-      Baseline            3.56 GB  ############################################################
+    Processing Settings:
+      Denoising:           VeryLight (hqdn3d=0.5:0.4:2:2)
+      Film Grain:          Level 4
+      Quality Impact:      Minimal (conservative settings)
+      Size Reduction:      Modest but reliable
 
     Technical Details:
-      hqdn3d filter:       3.5:3.5:4.5:4.5
-      Film grain synthesis: Level 10
-      Knee threshold:      0.8
+      hqdn3d filter:       0.5:0.4:2:2
+      Film grain synthesis: Level 4
+      Approach:            Conservative for quality preservation
 ```
 
 ### Error Handling Examples
@@ -1055,10 +979,10 @@ $ drapto encode -i movie.mkv -o output_dir/
 
 ```
 # Interactive mode (with spinner animation)
-⧖ Analyzing grain levels...
+⧖ Detecting black bars...
 
 # Non-interactive mode (e.g., when piped to a file)
-[INFO] Analyzing grain levels...
+[INFO] Detecting black bars...
 ```
 
 ### Width-Responsive Examples
@@ -1081,12 +1005,12 @@ $ drapto encode -i movie.mkv -o output_dir/
 
 ```
 # Entry point (clear intent)
-» Starting grain analysis on 5 samples...
+» Applying processing configuration...
 
 # Progress indicators (clear status)
-⧖ Analyzing sample 3/5... (60% complete)
+⧖ Configuring denoising and film grain... (80% complete)
 
 # Exit point (clear result and next steps)
-✓ Analysis complete: Moderate grain detected
-  Next: Beginning encoding with optimized settings
+✓ Configuration applied: VeryLight denoising with Level 4 film grain
+  Next: Beginning encoding with configured settings
 ```

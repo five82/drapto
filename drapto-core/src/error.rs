@@ -93,18 +93,6 @@ pub enum CoreError {
     #[error("Operation failed: {0}")]
     OperationFailed(String),
 
-    // Film Grain Analysis Errors
-    /// Errors that occur during film grain sample extraction or encoding
-    #[error("Film grain sample extraction/encoding failed: {0}")]
-    FilmGrainEncodingFailed(String),
-
-    /// Errors that occur during film grain analysis
-    #[error("Film grain analysis failed: {0}")]
-    FilmGrainAnalysisFailed(String),
-
-    /// Error indicating that grain analysis returned no data
-    #[error("Grain analysis using ffprobe returned no data for file: {0}")]
-    GrainAnalysisNoData(String),
 
     // Notification Errors
     /// Errors that occur when sending notifications

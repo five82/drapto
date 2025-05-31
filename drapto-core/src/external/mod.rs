@@ -16,11 +16,9 @@ pub mod ffmpeg_builder;
 pub mod ffprobe_executor;
 
 // Re-exports for convenience
-pub use ffmpeg::extract_sample;
-pub use ffmpeg::calculate_xpsnr;
 pub use ffmpeg_builder::{FfmpegCommandBuilder, SvtAv1ParamsBuilder, VideoFilterChain};
 pub use ffprobe_executor::{
-    MediaInfo, get_audio_channels, get_media_info, get_video_properties, run_ffprobe_bitplanenoise,
+    MediaInfo, get_audio_channels, get_media_info, get_video_properties,
 };
 
 

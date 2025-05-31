@@ -96,7 +96,6 @@ impl HardwareDecoding {
 ///
 /// * `cmd` - The `FFmpeg` command to add hardware decoding options to
 /// * `use_hw_decode` - Whether to use hardware decoding
-/// * `is_grain_analysis_sample` - Whether this is a grain analysis sample (hardware decoding is disabled for grain analysis)
 ///
 /// # Returns
 ///
@@ -104,11 +103,10 @@ impl HardwareDecoding {
 pub fn add_hardware_decoding_to_command(
     cmd: &mut FfmpegCommand,
     use_hw_decode: bool,
-    is_grain_analysis_sample: bool,
 ) -> bool {
     let hw_decode_available = is_hardware_decoding_available();
 
-    if use_hw_decode && hw_decode_available && !is_grain_analysis_sample {
+    if use_hw_decode && hw_decode_available {
         cmd.arg("-hwaccel");
         cmd.arg("videotoolbox");
         return true;

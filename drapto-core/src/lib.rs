@@ -1,7 +1,7 @@
 //! Core library for video processing and encoding tasks using ffmpeg and ffprobe.
 //!
 //! This crate provides video file discovery, property detection, crop analysis,
-//! grain/noise analysis, and encoding with optimized parameters.
+//! denoising, and encoding with optimized parameters.
 //!
 //! ## Usage Example
 //!
@@ -46,15 +46,14 @@ pub use error::{CoreError, CoreResult};
 pub use processing::process_videos;
 pub use utils::{format_bytes, format_duration, format_duration_seconds, parse_ffmpeg_time};
 pub use external::{
-    MediaInfo, extract_sample, get_audio_channels, get_file_size, get_media_info,
-    get_video_properties, run_ffprobe_bitplanenoise,
+    MediaInfo, get_audio_channels, get_file_size, get_media_info,
+    get_video_properties,
 };
 pub use progress_reporting::{LogLevel, OutputLevel, ProgressReporter};
 pub use notifications::{NotificationType, NtfyNotificationSender};
 pub use temp_files::{
     cleanup_base_dirs,
     create_analysis_dir,
-    create_grain_analysis_dir,
     create_temp_dir,
     create_temp_file,
     create_temp_file_path,

@@ -67,7 +67,7 @@ pub trait ProgressReporter: Send + Sync {
     fn log(&self, level: LogLevel, message: &str);
 
     /// Output raw `FFmpeg` command for debugging
-    fn ffmpeg_command(&self, cmd_data: &str, is_sample: bool);
+    fn ffmpeg_command(&self, cmd_data: &str);
 }
 
 
@@ -152,8 +152,8 @@ pub fn log(level: LogLevel, message: &str) {
 }
 
 /// Report `FFmpeg` command
-pub fn ffmpeg_command(cmd_data: &str, is_sample: bool) {
-    with_reporter(|r| r.ffmpeg_command(cmd_data, is_sample));
+pub fn ffmpeg_command(cmd_data: &str) {
+    with_reporter(|r| r.ffmpeg_command(cmd_data));
 }
 
 

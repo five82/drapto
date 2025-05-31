@@ -7,7 +7,6 @@
 use std::path::PathBuf;
 
 use super::CoreConfig;
-use crate::processing::grain_types::GrainLevel;
 
 /// Builder for creating `CoreConfig` instances.
 ///
@@ -19,7 +18,6 @@ use crate::processing::grain_types::GrainLevel;
 ///
 /// ```rust
 /// use drapto_core::config::CoreConfigBuilder;
-/// use drapto_core::processing::grain_types::GrainLevel;
 /// use std::path::PathBuf;
 ///
 /// let config = CoreConfigBuilder::new()
@@ -33,8 +31,6 @@ use crate::processing::grain_types::GrainLevel;
 ///     .quality_uhd(28)
 ///     .crop_mode("auto")
 ///     .ntfy_topic("https://ntfy.sh/my-topic")
-///     .film_grain_sample_duration(10)
-///     .film_grain_max_level(GrainLevel::Moderate)
 ///     .build();
 /// ```
 #[derive(Debug, Clone)]
@@ -50,14 +46,6 @@ pub struct CoreConfigBuilder {
     quality_uhd: u8,
     crop_mode: String,
     ntfy_topic: Option<String>,
-    film_grain_sample_duration: u32,
-    film_grain_max_level: GrainLevel,
-    xpsnr_threshold: f64,
-    grain_min_samples: usize,
-    grain_max_samples: usize,
-    grain_secs_per_sample: f64,
-    grain_sample_start_boundary: f64,
-    grain_sample_end_boundary: f64,
 }
 
 impl Default for CoreConfigBuilder {
@@ -81,14 +69,6 @@ impl CoreConfigBuilder {
             quality_uhd: super::DEFAULT_CORE_QUALITY_UHD,
             crop_mode: super::DEFAULT_CROP_MODE.to_string(),
             ntfy_topic: None,
-            film_grain_sample_duration: super::DEFAULT_GRAIN_SAMPLE_DURATION,
-            film_grain_max_level: super::DEFAULT_GRAIN_MAX_LEVEL,
-            xpsnr_threshold: super::DEFAULT_XPSNR_THRESHOLD,
-            grain_min_samples: super::DEFAULT_GRAIN_MIN_SAMPLES,
-            grain_max_samples: super::DEFAULT_GRAIN_MAX_SAMPLES,
-            grain_secs_per_sample: super::DEFAULT_GRAIN_SECS_PER_SAMPLE,
-            grain_sample_start_boundary: super::DEFAULT_GRAIN_SAMPLE_START_BOUNDARY,
-            grain_sample_end_boundary: super::DEFAULT_GRAIN_SAMPLE_END_BOUNDARY,
         }
     }
 
@@ -158,53 +138,6 @@ impl CoreConfigBuilder {
         self
     }
 
-    /// Sets the sample duration for grain analysis in seconds.
-    #[must_use] pub fn film_grain_sample_duration(mut self, duration: u32) -> Self {
-        self.film_grain_sample_duration = duration;
-        self
-    }
-
-    /// Sets the maximum grain level for grain analysis.
-    #[must_use] pub fn film_grain_max_level(mut self, level: GrainLevel) -> Self {
-        self.film_grain_max_level = level;
-        self
-    }
-
-    /// Sets the XPSNR threshold for grain analysis in decibels.
-    #[must_use] pub fn xpsnr_threshold(mut self, threshold: f64) -> Self {
-        self.xpsnr_threshold = threshold;
-        self
-    }
-
-    /// Sets the minimum number of samples for grain analysis.
-    #[must_use] pub fn grain_min_samples(mut self, min: usize) -> Self {
-        self.grain_min_samples = min;
-        self
-    }
-
-    /// Sets the maximum number of samples for grain analysis.
-    #[must_use] pub fn grain_max_samples(mut self, max: usize) -> Self {
-        self.grain_max_samples = max;
-        self
-    }
-
-    /// Sets the target seconds per sample for calculating sample count.
-    #[must_use] pub fn grain_secs_per_sample(mut self, secs: f64) -> Self {
-        self.grain_secs_per_sample = secs;
-        self
-    }
-
-    /// Sets the start boundary for sample extraction (fraction of video duration).
-    #[must_use] pub fn grain_sample_start_boundary(mut self, boundary: f64) -> Self {
-        self.grain_sample_start_boundary = boundary;
-        self
-    }
-
-    /// Sets the end boundary for sample extraction (fraction of video duration).
-    #[must_use] pub fn grain_sample_end_boundary(mut self, boundary: f64) -> Self {
-        self.grain_sample_end_boundary = boundary;
-        self
-    }
 
     /// Builds a `CoreConfig` instance from the builder.
     ///
@@ -228,14 +161,6 @@ impl CoreConfigBuilder {
             quality_uhd: self.quality_uhd,
             crop_mode: self.crop_mode,
             ntfy_topic: self.ntfy_topic,
-            film_grain_sample_duration: self.film_grain_sample_duration,
-            film_grain_max_level: self.film_grain_max_level,
-            xpsnr_threshold: self.xpsnr_threshold,
-            grain_min_samples: self.grain_min_samples,
-            grain_max_samples: self.grain_max_samples,
-            grain_secs_per_sample: self.grain_secs_per_sample,
-            grain_sample_start_boundary: self.grain_sample_start_boundary,
-            grain_sample_end_boundary: self.grain_sample_end_boundary,
         }
     }
 }

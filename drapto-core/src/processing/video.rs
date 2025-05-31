@@ -12,7 +12,7 @@
 //!    - Select quality settings based on resolution
 //!    - Perform crop detection if enabled
 //!    - Analyze audio streams and determine bitrates
-//!    - Perform grain analysis if denoising is enabled
+//!    - Apply denoising if enabled
 //!    - Execute ffmpeg with the determined parameters
 //!    - Handle results and send notifications
 
@@ -23,7 +23,7 @@ use crate::external::ffmpeg::{EncodeParams, run_ffmpeg_encode};
 use crate::external::get_file_size as external_get_file_size;
 use crate::notifications::{NotificationType, NtfyNotificationSender};
 use crate::processing::audio;
-use crate::processing::{crop_detection, grain_analysis};
+use crate::processing::crop_detection;
 use crate::EncodeResult;
 use crate::utils::format_duration;
 
@@ -55,7 +55,6 @@ use std::time::Instant;
 /// ```rust,no_run
 /// use drapto_core::{CoreConfig, process_videos, EncodeResult};
 /// use drapto_core::notifications::NtfyNotificationSender;
-/// use drapto_core::processing::grain_types::GrainLevel;
 /// use std::path::PathBuf;
 ///
 /// // Create dependencies
@@ -73,9 +72,6 @@ use std::time::Instant;
 ///     .quality_uhd(28)
 ///     .crop_mode("auto")
 ///     .ntfy_topic("https://ntfy.sh/my-topic")
-///     .film_grain_sample_duration(5)
-///     .film_grain_max_level(GrainLevel::Moderate)
-///     .xpsnr_threshold(1.2)
 ///     .build();
 ///
 /// // Find files to process
@@ -301,69 +297,14 @@ pub fn process_videos(
             hqdn3d_params: None,
         };
 
-        // Perform grain analysis to determine denoising parameters
-        let final_hqdn3d_params_result = if config.enable_denoise {
-            grain_analysis::analyze_grain(input_path, config, &initial_encode_params, duration_secs)
+        // Apply fixed denoising parameters if enabled
+        let final_hqdn3d_params = if config.enable_denoise {
+            Some(crate::config::FIXED_HQDN3D_PARAMS.to_string())
         } else {
-            // Skip grain analysis if denoising is disabled
             info!("Denoising disabled via config.");
-            Ok(None)
+            None
         };
 
-        // Process grain analysis results
-        let (final_grain_level, final_hqdn3d_params): (
-            Option<grain_analysis::GrainLevel>,
-            Option<String>,
-        ) = match final_hqdn3d_params_result {
-            // Case 1: Grain analysis completed successfully with a result
-            Ok(Some(result)) => {
-                // Grain level is already reported by the grain analysis module
-                // Return both the level and parameters (or None for Baseline videos)
-                let params = grain_analysis::determine_hqdn3d_params(result.detected_level);
-                (Some(result.detected_level), params)
-            }
-            // Case 2: Grain analysis was skipped or produced no result
-            Ok(None) => {
-                info!(
-                    "Grain analysis skipped or did not produce a result. Proceeding without denoising."
-                );
-                (None, None)
-            }
-            // Case 3: Grain analysis failed with an error
-            Err(e) => {
-                // Log the error and skip this file
-                error!("Grain analysis failed critically: {e}. Skipping file.");
-
-                // Send an error notification if notification_sender is provided
-                if let Some(sender) = notification_sender {
-                    let notification = NotificationType::EncodeError {
-                        input_path: input_path.clone(),
-                        message: "Grain analysis failed".to_string(),
-                    };
-
-                    if let Err(e) = sender.send_notification(&notification) {
-                        warn!("Failed to send error notification for {filename}: {e}");
-                    }
-                }
-
-                crate::progress_reporting::info("");
-                continue;
-            }
-        };
-
-        // Developer feature: Check if we should stop after grain analysis
-        if std::env::var("DRAPTO_STOP_AFTER_GRAIN_ANALYSIS").is_ok() {
-            crate::progress_reporting::info("");
-            crate::progress_reporting::success("Skipping encoding (DRAPTO_STOP_AFTER_GRAIN_ANALYSIS is set)");
-            
-            // If we detected a grain level, report it one more time for clarity
-            if let Some(level) = final_grain_level {
-                info!("Final grain level detected: {level:?}");
-            }
-            
-            // Skip to the next file instead of returning
-            continue;
-        }
 
         // Finalize encoding parameters
         initial_encode_params.hqdn3d_params = final_hqdn3d_params.clone();
@@ -374,21 +315,10 @@ pub fn process_videos(
         log::debug!("Preset: {preset_value} (SVT-AV1)");
         log::debug!("Quality: {quality} (CRF)");
 
-        match (final_grain_level, &final_hqdn3d_params) {
-            (Some(level), Some(hqdn3d)) => {
-                let grain_level_str = match level {
-                    grain_analysis::GrainLevel::Baseline => "Baseline",
-                    grain_analysis::GrainLevel::VeryLight => "VeryLight",
-                    grain_analysis::GrainLevel::Light => "Light",
-                    grain_analysis::GrainLevel::LightModerate => "LightModerate",
-                    grain_analysis::GrainLevel::Moderate => "Moderate",
-                    grain_analysis::GrainLevel::Elevated => "Elevated",
-                };
-                log::debug!("Grain Level: {grain_level_str} ({hqdn3d})");
-            }
-            _ => {
-                log::debug!("Grain Level: None (no denoising)");
-            }
+        if let Some(hqdn3d) = &final_hqdn3d_params {
+            log::debug!("Grain Level: VeryLight ({hqdn3d})");
+        } else {
+            log::debug!("Grain Level: None (no denoising)");
         }
 
         // Hardware info
@@ -406,25 +336,14 @@ pub fn process_videos(
         crate::progress_reporting::status("Preset", &format!("{preset_value} (SVT-AV1)"), false);
         crate::progress_reporting::status("Quality", &format!("{quality} (CRF)"), false);
 
-        match (final_grain_level, &final_hqdn3d_params) {
-            (Some(level), Some(hqdn3d)) => {
-                let grain_level_str = match level {
-                    grain_analysis::GrainLevel::Baseline => "Baseline",
-                    grain_analysis::GrainLevel::VeryLight => "VeryLight",
-                    grain_analysis::GrainLevel::Light => "Light",
-                    grain_analysis::GrainLevel::LightModerate => "LightModerate",
-                    grain_analysis::GrainLevel::Moderate => "Moderate",
-                    grain_analysis::GrainLevel::Elevated => "Elevated",
-                };
-                crate::progress_reporting::status(
-                    "Grain Level",
-                    &format!("{grain_level_str} ({hqdn3d})"),
-                    false,
-                );
-            }
-            _ => {
-                crate::progress_reporting::status("Grain Level", "None (no denoising)", false);
-            }
+        if let Some(hqdn3d) = &final_hqdn3d_params {
+            crate::progress_reporting::status(
+                "Grain Level",
+                &format!("VeryLight ({hqdn3d})"),
+                false,
+            );
+        } else {
+            crate::progress_reporting::status("Grain Level", "None (no denoising)", false);
         }
 
         // Hardware info
@@ -439,8 +358,7 @@ pub fn process_videos(
         let encode_result = run_ffmpeg_encode(
             &final_encode_params,
             false, // disable_audio: Keep audio in the output
-            false, // is_grain_analysis_sample: This is the main encode, not a sample
-            final_grain_level,  // grain_level: Pass the detected grain level for film grain synthesis
+            final_hqdn3d_params.is_some(),  // has_denoising: Whether denoising is applied
         );
 
         // Handle encoding results
@@ -524,11 +442,6 @@ pub fn process_videos(
             }
         }
 
-    // If we're in grain analysis only mode, report completion
-    if std::env::var("DRAPTO_STOP_AFTER_GRAIN_ANALYSIS").is_ok() && !files_to_process.is_empty() {
-        crate::progress_reporting::info("");
-        crate::progress_reporting::success("All grain analyses complete (DRAPTO_STOP_AFTER_GRAIN_ANALYSIS mode)");
-    }
 
     Ok(results)
 }
