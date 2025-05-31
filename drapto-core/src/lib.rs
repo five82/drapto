@@ -51,8 +51,6 @@ pub use external::{
 };
 pub use notifications::{NotificationType, NtfyNotificationSender};
 pub use temp_files::{
-    cleanup_base_dirs,
-    create_analysis_dir,
     create_temp_dir,
     create_temp_file,
     create_temp_file_path,

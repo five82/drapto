@@ -48,21 +48,6 @@ pub fn create_temp_dir(config: &CoreConfig, prefix: &str) -> CoreResult<TempDir>
 }
 
 
-/// Creates a temporary directory for analysis operations.
-/// This is a convenience function that calls `create_temp_dir` with the provided prefix.
-///
-/// # Arguments
-///
-/// * `config` - The core configuration containing path information
-/// * `prefix` - A prefix to use for the temporary directory name
-///
-/// # Returns
-///
-/// * `CoreResult<TempDir>` - A temporary directory that will be automatically
-///   cleaned up when dropped
-pub fn create_analysis_dir(config: &CoreConfig, prefix: &str) -> CoreResult<TempDir> {
-    create_temp_dir(config, prefix)
-}
 
 /// Creates a temporary file with the given prefix and extension.
 /// The file will be created in the specified directory and will be automatically
@@ -149,48 +134,3 @@ pub fn create_temp_file_path(dir: &Path, prefix: &str, extension: &str) -> PathB
     dir.join(filename)
 }
 
-/// Cleans up any empty temporary directories in the configured temp directory.
-/// This is optional and can be called at the end of processing.
-///
-/// Note: Most temporary directories are automatically cleaned up when their `TempDir`
-/// objects are dropped, so this function is mainly useful for cleaning up any
-/// directories that might have been left behind due to process crashes or other issues.
-///
-/// # Arguments
-///
-/// * `config` - The core configuration containing path information
-///
-/// # Returns
-///
-/// * `CoreResult<()>` - Ok if cleanup was successful, Err otherwise
-pub fn cleanup_base_dirs(config: &CoreConfig) -> CoreResult<()> {
-    let temp_base_dir = config.temp_dir.as_ref().unwrap_or(&config.output_dir);
-    if !temp_base_dir.exists() {
-        return Ok(());
-    }
-
-    for entry in std::fs::read_dir(temp_base_dir)? {
-        let entry = entry?;
-        let path = entry.path();
-
-        if path.is_dir() {
-            let dir_name = path.file_name().unwrap_or_default().to_string_lossy();
-            if dir_name.starts_with("analysis_")
-                || dir_name.starts_with("crop_analysis_")
-                || dir_name.starts_with("analysis_")
-            {
-                if std::fs::read_dir(&path)?.next().is_none() {
-                    log::debug!("Removing empty temporary directory: {}", path.display());
-                    std::fs::remove_dir(&path)?;
-                } else {
-                    log::debug!(
-                        "Temporary directory not empty, skipping cleanup: {}",
-                        path.display()
-                    );
-                }
-            }
-        }
-    }
-
-    Ok(())
-}

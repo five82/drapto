@@ -331,15 +331,6 @@ pub fn run_encode(
         }
     }
 
-    debug!("Cleaning up temporary directories");
-
-    if let Err(e) = drapto_core::temp_files::cleanup_base_dirs(&config)
-        .map_err(|e| CoreError::OperationFailed(
-            format!("Failed to clean up temporary directories: {}", e)
-        ))
-    {
-        terminal::print_error("Cleanup warning", &e.to_string(), None);
-    }
 
     if !successfully_encoded.is_empty() {
         terminal::print_section("Summary");
