@@ -102,7 +102,7 @@ pub fn process_videos(
             continue;
         }
 
-        crate::terminal_output::print_status("File", &filename, false);
+        crate::terminal::print_status("File", &filename, false);
 
         // Send encoding start notification
         if let Some(sender) = notification_sender {
@@ -168,17 +168,17 @@ pub fn process_videos(
         };
 
         // Report the detected resolution and selected quality as a status line
-        crate::terminal_output::print_status("Video quality", &format!("{} ({}) - CRF {}", video_width, category, quality), false);
-        crate::terminal_output::print_status("Duration", &format!("{:.2}s", duration_secs), false);
+        crate::terminal::print_status("Video quality", &format!("{} ({}) - CRF {}", video_width, category, quality), false);
+        crate::terminal::print_status("Duration", &format!("{:.2}s", duration_secs), false);
 
         // Detect and report HDR/SDR status based on color space
         let color_space = video_props.color_space.as_deref().unwrap_or("");
         let is_hdr = HDR_COLOR_SPACES.contains(&color_space);
         let dynamic_range = if is_hdr { "HDR" } else { "SDR" };
-        crate::terminal_output::print_status("Dynamic range", dynamic_range, false);
+        crate::terminal::print_status("Dynamic range", dynamic_range, false);
 
         // Perform crop detection
-        crate::terminal_output::print_processing("Detecting black bars");
+        crate::terminal::print_processing("Detecting black bars");
 
         let disable_crop = config.crop_mode == "off";
         let (crop_filter_opt, _is_hdr) =
@@ -195,7 +195,7 @@ pub fn process_videos(
             };
 
         // Analyze audio streams
-        crate::terminal_output::print_processing("Audio analysis");
+        crate::terminal::print_processing("Audio analysis");
 
         // Log information about audio streams (channels, bitrates)
         let _ = audio::log_audio_info(input_path);
@@ -231,7 +231,7 @@ pub fn process_videos(
         let final_hqdn3d_params = if config.enable_denoise {
             Some(crate::config::FIXED_HQDN3D_PARAMS.to_string())
         } else {
-            crate::terminal_output::print_sub_item("Denoising disabled via config.");
+            crate::terminal::print_sub_item("Denoising disabled via config.");
             None
         };
 
@@ -260,27 +260,27 @@ pub fn process_videos(
         };
         log::debug!("Acceleration: {hw_display}");
 
-        crate::terminal_output::print_section("ENCODING CONFIGURATION");
+        crate::terminal::print_section("ENCODING CONFIGURATION");
         
         // Video settings - Level 3 subsection within main section
-        crate::terminal_output::print_subsection_level3("Video:");
-        crate::terminal_output::print_status("Preset", &format!("{} (SVT-AV1)", preset_value), false);
-        crate::terminal_output::print_status("Quality", &format!("{} (CRF)", quality), false);
+        crate::terminal::print_subsection_level3("Video:");
+        crate::terminal::print_status("Preset", &format!("{} (SVT-AV1)", preset_value), false);
+        crate::terminal::print_status("Quality", &format!("{} (CRF)", quality), false);
 
         if let Some(hqdn3d) = &final_hqdn3d_params {
-            crate::terminal_output::print_status("Grain Level", &format!("VeryLight ({})", hqdn3d), false);
+            crate::terminal::print_status("Grain Level", &format!("VeryLight ({})", hqdn3d), false);
         } else {
-            crate::terminal_output::print_status("Grain Level", "None (no denoising)", false);
+            crate::terminal::print_status("Grain Level", "None (no denoising)", false);
         }
 
         // Hardware info - Level 3 subsection within main section
-        crate::terminal_output::print_subsection_level3_with_spacing("Hardware:");
+        crate::terminal::print_subsection_level3_with_spacing("Hardware:");
         let hw_info = crate::hardware_decode::get_hardware_decoding_info();
         let hw_display = match hw_info {
             Some(info) => format!("{info} (decode only)"),
             None => "No hardware decoder available".to_string(),
         };
-        crate::terminal_output::print_status("Acceleration", &hw_display, false);
+        crate::terminal::print_status("Acceleration", &hw_display, false);
 
         let encode_result = run_ffmpeg_encode(
             &final_encode_params,
@@ -303,7 +303,7 @@ pub fn process_videos(
                     output_size,
                 });
 
-                crate::terminal_output::print_completion_with_status(
+                crate::terminal::print_completion_with_status(
                     &format!("Encoding complete: {}", filename),
                     "Time",
                     &format_duration(file_elapsed_time.as_secs_f64())

@@ -39,7 +39,7 @@ pub mod utils;
 pub mod notifications;
 pub mod temp_files;
 pub mod hardware_decode;
-pub mod terminal_output;
+pub mod terminal;
 
 // Re-exports for public API
 pub use config::CoreConfig;

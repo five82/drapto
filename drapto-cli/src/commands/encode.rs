@@ -5,10 +5,10 @@
 
 use crate::cli::EncodeArgs;
 use crate::error::CliResult;
-use crate::terminal;
 
 use drapto_core::notifications::NtfyNotificationSender;
 use drapto_core::{CoreError, EncodeResult};
+use drapto_core::terminal;
 
 use std::fs;
 use std::path::PathBuf;

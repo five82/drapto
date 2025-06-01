@@ -53,9 +53,9 @@ pub fn build_ffmpeg_command(
 
     if let Some(ref filters) = filter_chain {
         cmd.args(["-vf", filters]);
-        crate::terminal_output::print_sub_item_with_spacing(&format!("Applying video filters: {}", filters));
+        crate::terminal::print_sub_item_with_spacing(&format!("Applying video filters: {}", filters));
     } else {
-        crate::terminal_output::print_sub_item_with_spacing("No video filters applied.");
+        crate::terminal::print_sub_item_with_spacing("No video filters applied.");
     }
 
     let film_grain_value = if has_denoising {
@@ -76,9 +76,9 @@ pub fn build_ffmpeg_command(
     cmd.args(["-svtav1-params", &svtav1_params]);
 
     if film_grain_value > 0 {
-        crate::terminal_output::print_sub_item(&format!("Applying film grain synthesis: level={}", film_grain_value));
+        crate::terminal::print_sub_item(&format!("Applying film grain synthesis: level={}", film_grain_value));
     } else {
-        crate::terminal_output::print_sub_item("No film grain synthesis applied (denoise level is None or 0).");
+        crate::terminal::print_sub_item("No film grain synthesis applied (denoise level is None or 0).");
     }
 
     if !disable_audio {
@@ -138,7 +138,7 @@ pub fn run_ffmpeg_encode(
     };
 
     if let Some(duration) = duration_secs {
-        crate::terminal_output::print_status("Progress duration", &crate::utils::format_duration(duration), false);
+        crate::terminal::print_status("Progress duration", &crate::utils::format_duration(duration), false);
     } else {
         warn!("Video duration not provided or zero; progress percentage will not be accurate.");
     }
@@ -182,7 +182,7 @@ pub fn run_ffmpeg_encode(
                         let speed = progress.speed;
                         let fps = progress.fps;
                         
-                        crate::terminal_output::print_progress_bar(
+                        crate::terminal::print_progress_bar(
                             percent as f32,
                             elapsed_secs,
                             total_duration,
@@ -200,7 +200,7 @@ pub fn run_ffmpeg_encode(
     }
     
     // Clear progress bar when done
-    crate::terminal_output::clear_progress_bar();
+    crate::terminal::clear_progress_bar();
 
     // FFmpeg finished - check status
     let status = std::process::ExitStatus::default();

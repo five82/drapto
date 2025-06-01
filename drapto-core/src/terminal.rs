@@ -1,8 +1,8 @@
-//! Terminal UI components and styling.
+//! Terminal UI components and styling for drapto.
 //!
-//! This module provides consistent terminal output styling according to the
-//! Drapto CLI Design Guide, using a hierarchical system with minimal symbols
-//! and consistent spacing.
+//! This module provides consistent terminal output styling using a hierarchical
+//! system with minimal symbols and consistent spacing. It consolidates functionality
+//! from both CLI and core components.
 
 use console::{Term, style};
 use indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
@@ -14,7 +14,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 use unicode_width::UnicodeWidthStr;
 
-use drapto_core::{format_bytes, format_duration};
+use crate::{format_bytes, format_duration};
 
 /// Represents the visual hierarchy levels in the CLI output
 #[derive(Debug, Clone, Copy)]
@@ -110,6 +110,25 @@ pub fn print_processing_no_spacing(message: &str) {
 /// Print a subsection header
 pub fn print_subsection(title: &str) {
     print_item(OutputLevel::Subsection, None, title, true);
+}
+
+/// Print a subsection header at Level 3 (4 spaces indentation - for use within sections)
+pub fn print_subsection_level3(title: &str) {
+    if should_use_color() {
+        info!("    {}", style(title).bold());
+    } else {
+        info!("    {}", title);
+    }
+}
+
+/// Print a subsection header at Level 3 with preceding blank line
+pub fn print_subsection_level3_with_spacing(title: &str) {
+    info!("");
+    if should_use_color() {
+        info!("    {}", style(title).bold());
+    } else {
+        info!("    {}", title);
+    }
 }
 
 /// Print a success message
@@ -216,6 +235,12 @@ pub fn print_sub_item(message: &str) {
     print_item(OutputLevel::Progress, None, message, false);
 }
 
+/// Print a sub-item with preceding blank line (Level 3 - Operations with spacing)
+pub fn print_sub_item_with_spacing(message: &str) {
+    info!("");
+    info!("    {}", message);
+}
+
 /// Print a progress indicator
 pub fn print_progress_indicator(message: &str) {
     print_item(
@@ -308,8 +333,6 @@ pub fn clear_progress_bar() {
     }
 }
 
-
-
 /// Print encoding summary
 pub fn print_encoding_summary(
     filename: &str,
@@ -380,7 +403,6 @@ pub fn print_daemon_log_info(log_path: &std::path::Path) {
 pub fn print_daemon_starting() {
     eprintln!("Starting Drapto daemon in the background...");
 }
-
 
 /// Data structure for encoding summary table
 pub struct EncodingSummaryRow {

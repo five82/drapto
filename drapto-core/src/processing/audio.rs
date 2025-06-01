@@ -38,7 +38,7 @@ pub fn log_audio_info(input_path: &Path) -> CoreResult<()> {
         }
     };
     if audio_channels.is_empty() {
-        crate::terminal_output::print_status("Audio streams", "None detected", false);
+        crate::terminal::print_status("Audio streams", "None detected", false);
         return Ok(());
     }
 
@@ -56,20 +56,20 @@ pub fn log_audio_info(input_path: &Path) -> CoreResult<()> {
                 .join(", ")
         )
     };
-    crate::terminal_output::print_status("Audio", &channel_summary, false);
+    crate::terminal::print_status("Audio", &channel_summary, false);
 
     let mut bitrate_parts = Vec::new();
     for (index, &num_channels) in audio_channels.iter().enumerate() {
         let bitrate = calculate_audio_bitrate(num_channels);
         if audio_channels.len() == 1 {
-            crate::terminal_output::print_status("Bitrate", &format!("{}kbps", bitrate), false);
+            crate::terminal::print_status("Bitrate", &format!("{}kbps", bitrate), false);
         } else {
             bitrate_parts.push(format!("Stream {index}: {bitrate}kbps"));
         }
     }
 
     if audio_channels.len() > 1 {
-        crate::terminal_output::print_status("Bitrates", &bitrate_parts.join(", "), false);
+        crate::terminal::print_status("Bitrates", &bitrate_parts.join(", "), false);
     }
 
     Ok(())

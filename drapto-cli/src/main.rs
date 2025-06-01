@@ -7,13 +7,13 @@
 use drapto_cli::commands::encode::discover_encode_files;
 use drapto_cli::error::CliResult;
 use drapto_cli::logging::{get_timestamp, setup_file_logging};
-use drapto_cli::terminal;
 use drapto_cli::{Cli, Commands, run_encode};
 
 use clap::Parser;
 use daemonize::Daemonize;
 use drapto_core::CoreError;
 use drapto_core::notifications::NtfyNotificationSender;
+use drapto_core::terminal;
 
 use std::io::{self, Write};
 use std::path::PathBuf;
@@ -98,9 +98,9 @@ fn main() -> CliResult<()> {
             if !interactive_mode {
                 // Display pre-daemonization info to stderr before forking
                 // These messages help users know the daemon started successfully
-                crate::terminal::print_daemon_file_list(&discovered_files);
-                crate::terminal::print_daemon_log_info(&main_log_path);
-                crate::terminal::print_daemon_starting();
+                terminal::print_daemon_file_list(&discovered_files);
+                terminal::print_daemon_log_info(&main_log_path);
+                terminal::print_daemon_starting();
 
                 if let Err(e) = io::stderr().flush() {
                     eprintln!("Warning: Failed to flush stderr before daemonizing: {e}");

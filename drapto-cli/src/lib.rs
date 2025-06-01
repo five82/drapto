@@ -16,9 +16,6 @@ pub mod error;
 /// Logging utilities and helper functions
 pub mod logging;
 
-/// Terminal UI components and styling
-pub mod terminal;
-
 // Re-exports for convenience
 pub use cli::{Cli, Commands, EncodeArgs};
 pub use commands::encode::run_encode;

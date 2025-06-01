@@ -54,3 +54,4 @@ ffprobe = "0.3.0"                # FFprobe media file analysis
 indicatif = { version = "0.17", features = ["improved_unicode"] }  # Progress bars
 console = "0.15"                 # Terminal utilities and color detection
 owo-colors = "4.1"               # Zero-allocation terminal colors
+unicode-width = "0.2"            # Accurate text width calculations
