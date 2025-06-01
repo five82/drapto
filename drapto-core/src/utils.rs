@@ -61,3 +61,15 @@ pub fn get_filename_safe(path: &std::path::Path) -> crate::CoreResult<String> {
         .to_string_lossy()
         .to_string())
 }
+
+/// Calculates the percentage size reduction from input to output.
+/// Returns 0 if input_size is 0 to avoid division by zero.
+#[must_use] pub fn calculate_size_reduction(input_size: u64, output_size: u64) -> u64 {
+    if input_size == 0 {
+        0
+    } else if output_size >= input_size {
+        0  // No reduction if output is larger
+    } else {
+        100 - ((output_size * 100) / input_size)
+    }
+}

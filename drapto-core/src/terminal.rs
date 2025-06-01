@@ -342,11 +342,7 @@ pub fn print_encoding_summary(
 ) {
     clear_progress_bar();
 
-    let reduction = if input_size > 0 {
-        100 - ((output_size * 100) / input_size)
-    } else {
-        0
-    };
+    let reduction = crate::utils::calculate_size_reduction(input_size, output_size);
 
     info!("");
     info!("{filename}");

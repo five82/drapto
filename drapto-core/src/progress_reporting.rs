@@ -169,11 +169,7 @@ pub fn encoding_summary(filename: &str, duration: Duration, input_size: u64, out
     status("Input size", &crate::format_bytes(input_size), false);
     status("Output size", &crate::format_bytes(output_size), false);
 
-    let reduction = if input_size > 0 {
-        ((input_size - output_size) as f64 / input_size as f64 * 100.0) as u64
-    } else {
-        0
-    };
+    let reduction = crate::utils::calculate_size_reduction(input_size, output_size);
     status("Reduction", &format!("{reduction}%"), reduction >= 50);
 }
 

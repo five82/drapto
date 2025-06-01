@@ -367,11 +367,7 @@ pub fn process_videos(
                 );
 
                 // Send success notification
-                let reduction = if input_size > 0 {
-                    100 - ((output_size * 100) / input_size)
-                } else {
-                    0
-                };
+                let reduction = crate::utils::calculate_size_reduction(input_size, output_size);
 
                 let duration_secs = file_elapsed_time.as_secs();
                 let duration_str = if duration_secs >= 3600 {

@@ -260,11 +260,7 @@ fn handle_encoding_results(
         ));
 
         for result in &results {
-            let reduction = if result.input_size > 0 {
-                100.0 - ((result.output_size as f64 / result.input_size as f64) * 100.0)
-            } else {
-                0.0
-            };
+            let reduction = drapto_core::utils::calculate_size_reduction(result.input_size, result.output_size) as f64;
 
             terminal::print_subsection(&result.filename);
             terminal::print_status(
@@ -281,11 +277,7 @@ fn handle_encoding_results(
         terminal::print_section("Summary");
 
         for result in &results {
-            let reduction = if result.input_size > 0 {
-                100u64.saturating_sub(result.output_size.saturating_mul(100) / result.input_size)
-            } else {
-                0
-            };
+            let reduction = drapto_core::utils::calculate_size_reduction(result.input_size, result.output_size);
 
             if results.len() > 1 {
                 terminal::print_subsection(&result.filename);
