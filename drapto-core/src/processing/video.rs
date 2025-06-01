@@ -193,16 +193,7 @@ pub fn process_videos(
     for input_path in files_to_process {
         let file_start_time = Instant::now();
 
-        let filename = input_path
-            .file_name()
-            .ok_or_else(|| {
-                CoreError::PathError(format!(
-                    "Failed to get filename for {}",
-                    input_path.display()
-                ))
-            })?
-            .to_string_lossy()
-            .to_string();
+        let filename = crate::utils::get_filename_safe(input_path)?;
 
         let _filename_noext = input_path
             .file_stem()

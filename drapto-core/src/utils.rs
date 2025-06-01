@@ -1,8 +1,8 @@
 //! Utility functions for formatting and file operations.
 //!
 //! This module provides general-purpose utility functions used throughout the
-//! drapto-core library. These include functions for duration formatting
-//! and byte formatting.
+//! drapto-core library. These include functions for duration formatting,
+//! byte formatting, and path manipulation.
 
 /// Formats seconds as HH:MM:SS (e.g., 3725.0 -> "01:02:05"). Returns "??:??:??" for invalid inputs.
 #[must_use] pub fn format_duration(seconds: f64) -> String {
@@ -46,4 +46,18 @@
     } else {
         None
     }
+}
+
+/// Safely extracts filename from a path with consistent error handling.
+/// Returns the filename as a String, or an error if the path has no filename component.
+pub fn get_filename_safe(path: &std::path::Path) -> crate::CoreResult<String> {
+    Ok(path.file_name()
+        .ok_or_else(|| {
+            crate::CoreError::PathError(format!(
+                "Failed to get filename for {}",
+                path.display()
+            ))
+        })?
+        .to_string_lossy()
+        .to_string())
 }

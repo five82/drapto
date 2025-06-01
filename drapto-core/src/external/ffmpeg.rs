@@ -204,12 +204,11 @@ pub fn run_ffmpeg_encode(
 
     // FFmpeg finished - check status
     let status = std::process::ExitStatus::default();
-    let filename_cow = params
-        .input_path
-        .file_name().map_or_else(|| params.input_path.to_string_lossy(), |name| name.to_string_lossy());
+    let filename = crate::utils::get_filename_safe(&params.input_path)
+        .unwrap_or_else(|_| params.input_path.display().to_string());
 
     if status.success() {
-        log::info!("Encode finished successfully for {}", filename_cow);
+        log::info!("Encode finished successfully for {}", filename);
         Ok(())
     } else {
         let error_message = format!(
@@ -218,14 +217,13 @@ pub fn run_ffmpeg_encode(
             stderr_buffer.trim()
         );
 
-        let filename = params.input_path
-            .file_name()
-            .map_or_else(|| params.input_path.display().to_string(), |n| n.to_string_lossy().to_string());
+        let filename = crate::utils::get_filename_safe(&params.input_path)
+        .unwrap_or_else(|_| params.input_path.display().to_string());
         error!("Error encoding {}: {}", filename, error_message);
 
         // Check for specific error types
         if stderr_buffer.contains("No streams found") {
-            Err(CoreError::NoStreamsFound(filename_cow.to_string()))
+            Err(CoreError::NoStreamsFound(filename.to_string()))
         } else {
             Err(command_failed_error(
                 "ffmpeg (sidecar)",

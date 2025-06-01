@@ -179,8 +179,8 @@ pub fn encoding_summary(filename: &str, duration: Duration, input_size: u64, out
 
 /// Report encode start
 pub fn encode_start(input_path: &Path, output_path: &Path) {
-    let filename = input_path
-        .file_name().map_or_else(|| input_path.display().to_string(), |n| n.to_string_lossy().to_string());
+    let filename = crate::utils::get_filename_safe(input_path)
+        .unwrap_or_else(|_| input_path.display().to_string());
 
     processing(&format!("Encoding: {filename}"));
     debug(&format!("Output: {}", output_path.display()));
@@ -188,8 +188,8 @@ pub fn encode_start(input_path: &Path, output_path: &Path) {
 
 /// Report encode error
 pub fn encode_error(input_path: &Path, message: &str) {
-    let filename = input_path
-        .file_name().map_or_else(|| input_path.display().to_string(), |n| n.to_string_lossy().to_string());
+    let filename = crate::utils::get_filename_safe(input_path)
+        .unwrap_or_else(|_| input_path.display().to_string());
 
     error(&format!("Error encoding {filename}: {message}"));
 }

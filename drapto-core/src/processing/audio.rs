@@ -25,8 +25,8 @@ pub(crate) fn calculate_audio_bitrate(channels: u32) -> u32 {
 /// Logs audio channel info and bitrates. Non-critical - continues on error.
 pub fn log_audio_info(input_path: &Path) -> CoreResult<()> {
     // Extract filename for logging purposes
-    let filename = input_path
-        .file_name().map_or_else(|| "unknown_file".to_string(), |s| s.to_string_lossy().to_string());
+    let filename = crate::utils::get_filename_safe(input_path)
+        .unwrap_or_else(|_| "unknown_file".to_string());
 
     let audio_channels = match get_audio_channels(input_path) {
         Ok(channels) => channels,
