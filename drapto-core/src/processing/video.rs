@@ -17,7 +17,7 @@
 //!    - Handle results and send notifications
 
 
-use crate::config::CoreConfig;
+use crate::config::{CoreConfig, UHD_WIDTH_THRESHOLD, HD_WIDTH_THRESHOLD, HDR_COLOR_SPACES};
 use crate::error::{CoreError, CoreResult};
 use crate::external::ffmpeg::{EncodeParams, run_ffmpeg_encode};
 use crate::external::get_file_size as external_get_file_size;
@@ -60,19 +60,20 @@ use std::time::Instant;
 /// // Create dependencies
 /// let notification_sender = NtfyNotificationSender::new("https://ntfy.sh/my-topic").unwrap();
 ///
-/// // Create configuration using the builder pattern
-/// let config = drapto_core::config::CoreConfigBuilder::new()
-///     .input_dir(PathBuf::from("/path/to/input"))
-///     .output_dir(PathBuf::from("/path/to/output"))
-///     .log_dir(PathBuf::from("/path/to/logs"))
-///     .enable_denoise(true)
-///     .encoder_preset(6)
-///     .quality_sd(24)
-///     .quality_hd(26)
-///     .quality_uhd(28)
-///     .crop_mode("auto")
-///     .ntfy_topic("https://ntfy.sh/my-topic")
-///     .build();
+/// // Create configuration
+/// let mut config = drapto_core::config::CoreConfig::new(
+///     PathBuf::from("/path/to/input"),
+///     PathBuf::from("/path/to/output"),
+///     PathBuf::from("/path/to/logs")
+/// );
+/// config.enable_denoise = true;
+/// config.encoder_preset = 6;
+/// config.quality_sd = 24;
+/// config.quality_hd = 26;
+/// config.quality_uhd = 28;
+/// config.crop_mode = "auto".to_string();
+/// config.ntfy_topic = Some("https://ntfy.sh/my-topic".to_string());
+/// config.validate().unwrap();
 ///
 /// // Find files to process
 /// let files = vec![PathBuf::from("/path/to/video.mkv")];
@@ -209,9 +210,6 @@ pub fn process_videos(
         let duration_secs = video_props.duration_secs;
 
         // Determine quality settings based on resolution
-        const UHD_WIDTH_THRESHOLD: u32 = 3840;
-        const HD_WIDTH_THRESHOLD: u32 = 1920;
-
         // Select quality (CRF) based on video resolution
         let quality = if video_width >= UHD_WIDTH_THRESHOLD {
             // UHD (4K) quality setting
@@ -239,7 +237,7 @@ pub fn process_videos(
 
         // Detect and report HDR/SDR status based on color space
         let color_space = video_props.color_space.as_deref().unwrap_or("");
-        let is_hdr = color_space == "bt2020nc" || color_space == "bt2020c";
+        let is_hdr = HDR_COLOR_SPACES.contains(&color_space);
         let dynamic_range = if is_hdr { "HDR" } else { "SDR" };
         crate::terminal_output::print_status("Dynamic range", dynamic_range, false);
 

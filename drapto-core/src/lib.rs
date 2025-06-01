@@ -10,12 +10,14 @@
 //! use drapto_core::notifications::NtfyNotificationSender;
 //! use std::path::PathBuf;
 //!
-//! let config = drapto_core::config::CoreConfigBuilder::new()
-//!     .input_dir(PathBuf::from("/path/to/input"))
-//!     .output_dir(PathBuf::from("/path/to/output"))
-//!     .enable_denoise(true)
-//!     .encoder_preset(6)
-//!     .build();
+//! let mut config = CoreConfig::new(
+//!     PathBuf::from("/path/to/input"),
+//!     PathBuf::from("/path/to/output"),
+//!     PathBuf::from("/path/to/logs")
+//! );
+//! config.enable_denoise = true;
+//! config.encoder_preset = 6;
+//! config.validate().unwrap();
 //!
 //! let files = drapto_core::find_processable_files(&config.input_dir).unwrap();
 //! let notification_sender = NtfyNotificationSender::new("https://ntfy.sh/my-topic").unwrap();

@@ -3,11 +3,8 @@
 //! This module provides the configuration system for video processing behavior,
 //! including encoding parameters, quality settings, and analysis options.
 
-mod builder;
-
 use std::path::PathBuf;
-
-pub use builder::CoreConfigBuilder;
+use crate::error::CoreError;
 
 // Default constants
 
@@ -39,6 +36,18 @@ pub const FIXED_HQDN3D_PARAMS: &str = "0.5:0.4:2:2";
 /// Range: 0-50, where 0 is no grain and 50 is maximum grain.
 pub const FIXED_FILM_GRAIN_VALUE: u8 = 4;
 
+/// Width threshold for Ultra High Definition (4K) videos.
+/// Videos with width >= this value are considered UHD.
+pub const UHD_WIDTH_THRESHOLD: u32 = 3840;
+
+/// Width threshold for High Definition videos.
+/// Videos with width >= this value (but < UHD threshold) are considered HD.
+pub const HD_WIDTH_THRESHOLD: u32 = 1920;
+
+/// HDR color spaces used for HDR detection.
+/// Videos with these color spaces are considered HDR.
+pub const HDR_COLOR_SPACES: &[&str] = &["bt2020nc", "bt2020c"];
+
 
 
 /// Main configuration structure for the drapto-core library.
@@ -54,21 +63,17 @@ pub const FIXED_FILM_GRAIN_VALUE: u8 = 4;
 /// # Examples
 ///
 /// ```rust,no_run
-/// use drapto_core::config::CoreConfigBuilder;
+/// use drapto_core::config::CoreConfig;
 /// use std::path::PathBuf;
 ///
-/// let config = CoreConfigBuilder::new()
-///     .input_dir(PathBuf::from("/path/to/input"))
-///     .output_dir(PathBuf::from("/path/to/output"))
-///     .log_dir(PathBuf::from("/path/to/logs"))
-///     .enable_denoise(true)
-///     .encoder_preset(6)
-///     .quality_sd(24)
-///     .quality_hd(26)
-///     .quality_uhd(28)
-///     .crop_mode("auto")
-///     .ntfy_topic("https://ntfy.sh/my-topic")
-///     .build();
+/// let mut config = CoreConfig::new(
+///     PathBuf::from("/path/to/input"),
+///     PathBuf::from("/path/to/output"),
+///     PathBuf::from("/path/to/logs")
+/// );
+/// config.quality_hd = 25;
+/// config.enable_denoise = false;
+/// config.validate().expect("Invalid config");
 /// ```
 #[derive(Debug, Clone)]
 pub struct CoreConfig {
@@ -124,5 +129,85 @@ impl Default for CoreConfig {
             ntfy_topic: None,
             enable_denoise: true,
         }
+    }
+}
+
+impl CoreConfig {
+    /// Create a new CoreConfig with required paths and default values for other fields.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `input_dir` - Directory containing input video files to process
+    /// * `output_dir` - Directory where encoded output files will be saved
+    /// * `log_dir` - Directory for log files and temporary files
+    /// 
+    /// # Examples
+    /// 
+    /// ```rust,no_run
+    /// use drapto_core::config::CoreConfig;
+    /// use std::path::PathBuf;
+    /// 
+    /// let config = CoreConfig::new(
+    ///     PathBuf::from("/input"),
+    ///     PathBuf::from("/output"),
+    ///     PathBuf::from("/logs")
+    /// );
+    /// ```
+    pub fn new(input_dir: PathBuf, output_dir: PathBuf, log_dir: PathBuf) -> Self {
+        Self {
+            input_dir,
+            output_dir,
+            log_dir,
+            ..Default::default()
+        }
+    }
+    
+    /// Validate that all configuration values are within acceptable ranges.
+    /// 
+    /// # Errors
+    /// 
+    /// Returns `CoreError::Config` if:
+    /// - `encoder_preset` is greater than 13
+    /// - Any quality value (sd/hd/uhd) is greater than 63
+    /// 
+    /// # Examples
+    /// 
+    /// ```rust,no_run
+    /// # use drapto_core::config::CoreConfig;
+    /// # use std::path::PathBuf;
+    /// let mut config = CoreConfig::new(
+    ///     PathBuf::from("/input"),
+    ///     PathBuf::from("/output"),
+    ///     PathBuf::from("/logs")
+    /// );
+    /// config.encoder_preset = 14; // Invalid!
+    /// assert!(config.validate().is_err());
+    /// ```
+    pub fn validate(&self) -> Result<(), CoreError> {
+        if self.encoder_preset > 13 {
+            return Err(CoreError::Config(
+                format!("encoder_preset must be 0-13, got {}", self.encoder_preset)
+            ));
+        }
+        
+        if self.quality_sd > 63 {
+            return Err(CoreError::Config(
+                format!("quality_sd must be 0-63, got {}", self.quality_sd)
+            ));
+        }
+        
+        if self.quality_hd > 63 {
+            return Err(CoreError::Config(
+                format!("quality_hd must be 0-63, got {}", self.quality_hd)
+            ));
+        }
+        
+        if self.quality_uhd > 63 {
+            return Err(CoreError::Config(
+                format!("quality_uhd must be 0-63, got {}", self.quality_uhd)
+            ));
+        }
+        
+        Ok(())
     }
 }

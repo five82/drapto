@@ -221,41 +221,41 @@ pub fn run_encode(
 
 
 
-    let mut builder = drapto_core::config::CoreConfigBuilder::new()
-        .input_dir(effective_input_dir)
-        .output_dir(actual_output_dir.clone())
-        .log_dir(log_dir.clone())
-        .enable_denoise(!args.no_denoise);
+    let mut config = drapto_core::config::CoreConfig::new(
+        effective_input_dir,
+        actual_output_dir.clone(),
+        log_dir.clone()
+    );
+    
+    config.enable_denoise = !args.no_denoise;
 
     if let Some(quality) = args.quality_sd {
-        builder = builder.quality_sd(quality);
+        config.quality_sd = quality;
     }
 
     if let Some(quality) = args.quality_hd {
-        builder = builder.quality_hd(quality);
+        config.quality_hd = quality;
     }
 
     if let Some(quality) = args.quality_uhd {
-        builder = builder.quality_uhd(quality);
+        config.quality_uhd = quality;
     }
 
-    let crop_mode = if args.disable_autocrop {
-        "none"
+    config.crop_mode = if args.disable_autocrop {
+        "none".to_string()
     } else {
-        drapto_core::config::DEFAULT_CROP_MODE
+        drapto_core::config::DEFAULT_CROP_MODE.to_string()
     };
-    builder = builder.crop_mode(crop_mode);
 
     if let Some(topic) = args.ntfy {
-        builder = builder.ntfy_topic(&topic);
+        config.ntfy_topic = Some(topic);
     }
 
     if let Some(preset) = args.preset {
-        builder = builder.encoder_preset(preset);
+        config.encoder_preset = preset;
     }
-
-
-    let config = builder.build();
+    
+    config.validate()?;
 
     // Progress reporting is handled automatically through the ProgressReporter trait
 

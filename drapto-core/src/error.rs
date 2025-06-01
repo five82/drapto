@@ -84,6 +84,11 @@ pub enum CoreError {
     #[error("Failed to extract video information: {0}")]
     VideoInfoError(String),
 
+    // Configuration Errors
+    /// Configuration validation error
+    #[error("Configuration error: {0}")]
+    Config(String),
+
     // Video Processing Errors
     /// Error indicating that no suitable video files were found
     #[error("No suitable video files found in input directory")]
