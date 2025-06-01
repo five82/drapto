@@ -6,21 +6,7 @@
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
-/// Main CLI structure that defines the application's command-line interface.
-///
-/// This structure is the entry point for the clap parser and contains:
-/// - Global flags that apply to all subcommands
-/// - The subcommand enum that contains command-specific arguments
-///
-/// # Example
-/// ```no_run
-/// // Command-line usage: drapto --interactive encode -i input_dir -o output_dir
-/// use drapto_cli::cli::Cli;
-/// use clap::Parser;
-///
-/// // This would parse command-line arguments in a real application
-/// // let cli = Cli::parse();
-/// ```
+/// Main CLI structure with global flags and subcommands.
 #[derive(Parser, Debug)]
 #[command(
     author,                                                      // Author from Cargo.toml
@@ -46,14 +32,7 @@ pub struct Cli {
 
 }
 
-/// Enum of available subcommands for the Drapto CLI application.
-///
-/// Each variant represents a different operation that the application can perform,
-/// and contains the arguments specific to that operation.
-///
-/// # Available Commands
-/// - `Encode`: Convert video files to AV1 format
-/// - (Future: analyze, config, etc.)
+/// Available CLI subcommands.
 #[derive(Subcommand, Debug)]
 pub enum Commands {
     /// Encodes video files from an input directory to an output directory.

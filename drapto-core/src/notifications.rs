@@ -68,15 +68,7 @@ pub struct NtfyNotificationSender {
 }
 
 impl NtfyNotificationSender {
-    /// Creates a new notification sender for the specified ntfy.sh topic URL.
-    ///
-    /// # Arguments
-    ///
-    /// * `topic_url` - The full URL of the notification topic (e.g., "https://ntfy.sh/your_topic")
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the topic URL is invalid.
+    /// Creates notification sender. URL must be https:// with non-empty host and topic.
     pub fn new(topic_url: &str) -> CoreResult<Self> {
         // Must start with https:// and have a topic path
         if !topic_url.starts_with("https://") {

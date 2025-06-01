@@ -29,21 +29,7 @@ pub struct EncodeParams {
     pub hqdn3d_params: Option<String>,
 }
 
-/// Builds and configures an `FFmpeg` command using ffmpeg-sidecar's builder pattern.
-///
-/// This function creates a complete `FFmpeg` command for video encoding with libsvtav1
-/// and audio encoding with libopus. It leverages ffmpeg-sidecar's builder methods
-/// for cleaner and more maintainable code.
-///
-/// # Arguments
-///
-/// * `params` - Encoding parameters, including quality, preset, and filters
-/// * `hqdn3d_override` - Optional override for the noise reduction filter parameters
-/// * `disable_audio` - Whether to disable audio encoding
-///
-/// # Returns
-///
-/// * `CoreResult<FfmpegCommand>` - The configured `FFmpeg` command ready for execution
+/// Builds FFmpeg command for libsvtav1 video and libopus audio encoding.
 pub fn build_ffmpeg_command(
     params: &EncodeParams,
     hqdn3d_override: Option<&str>,
@@ -117,23 +103,7 @@ pub fn build_ffmpeg_command(
     Ok(cmd)
 }
 
-/// Executes an `FFmpeg` encode operation.
-///
-/// This function handles the complete `FFmpeg` encoding process lifecycle, including:
-/// - Constructing and executing the `FFmpeg` command
-/// - Monitoring and reporting progress during encoding
-/// - Processing and filtering `FFmpeg` output and error messages
-/// - Determining encoding success or failure
-///
-/// # Arguments
-///
-/// * `params` - Encoding parameters for this operation
-/// * `disable_audio` - Whether to disable audio in the output
-/// * `has_denoising` - Whether denoising is applied
-///
-/// # Returns
-///
-/// * `CoreResult<()>` - Success or error with detailed information
+/// Executes FFmpeg encode with progress monitoring and error handling.
 pub fn run_ffmpeg_encode(
     params: &EncodeParams,
     disable_audio: bool,

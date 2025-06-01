@@ -11,22 +11,7 @@ use std::path::Path;
 use std::collections::HashMap;
 use rayon::prelude::*;
 
-/// Detect crop parameters by sampling multiple points in the video.
-///
-/// This function analyzes a video file every 0.5% from 15% to 85% (141 points)
-/// to detect black bars and determine the most common crop parameters.
-///
-/// # Arguments
-///
-/// * `input_file` - Path to the video file to analyze
-/// * `video_props` - Properties of the video (resolution, duration, color space)
-/// * `disable_crop` - Whether to skip crop detection
-///
-/// # Returns
-///
-/// * `Ok((Option<String>, bool))` - A tuple containing:
-///   - An optional crop filter string (e.g., "crop=1920:800:0:140")
-///   - A boolean indicating whether the content is HDR
+/// Detects black bars by sampling 141 points from 15-85% of video. Returns crop filter and HDR status.
 pub fn detect_crop(
     input_file: &Path,
     video_props: &VideoProperties,

@@ -50,31 +50,7 @@ pub const HDR_COLOR_SPACES: &[&str] = &["bt2020nc", "bt2020c"];
 
 
 
-/// Main configuration structure for the drapto-core library.
-///
-/// This structure holds all the parameters required for video processing,
-/// including paths, encoding settings, and analysis options. It is typically
-/// created by the consumer of the library (e.g., drapto-cli) and passed to
-/// the `process_videos` function.
-///
-/// All fields have sensible defaults, so only the required path fields need to be set.
-/// The builder pattern provides a convenient way to create and configure instances.
-///
-/// # Examples
-///
-/// ```rust,no_run
-/// use drapto_core::config::CoreConfig;
-/// use std::path::PathBuf;
-///
-/// let mut config = CoreConfig::new(
-///     PathBuf::from("/path/to/input"),
-///     PathBuf::from("/path/to/output"),
-///     PathBuf::from("/path/to/logs")
-/// );
-/// config.quality_hd = 25;
-/// config.enable_denoise = false;
-/// config.validate().expect("Invalid config");
-/// ```
+/// Configuration for video processing including paths and encoding settings.
 #[derive(Debug, Clone)]
 pub struct CoreConfig {
     /// Directory containing input video files to process
@@ -133,26 +109,7 @@ impl Default for CoreConfig {
 }
 
 impl CoreConfig {
-    /// Create a new CoreConfig with required paths and default values for other fields.
-    /// 
-    /// # Arguments
-    /// 
-    /// * `input_dir` - Directory containing input video files to process
-    /// * `output_dir` - Directory where encoded output files will be saved
-    /// * `log_dir` - Directory for log files and temporary files
-    /// 
-    /// # Examples
-    /// 
-    /// ```rust,no_run
-    /// use drapto_core::config::CoreConfig;
-    /// use std::path::PathBuf;
-    /// 
-    /// let config = CoreConfig::new(
-    ///     PathBuf::from("/input"),
-    ///     PathBuf::from("/output"),
-    ///     PathBuf::from("/logs")
-    /// );
-    /// ```
+    /// Creates config with required paths. Other fields use defaults.
     pub fn new(input_dir: PathBuf, output_dir: PathBuf, log_dir: PathBuf) -> Self {
         Self {
             input_dir,
@@ -162,27 +119,7 @@ impl CoreConfig {
         }
     }
     
-    /// Validate that all configuration values are within acceptable ranges.
-    /// 
-    /// # Errors
-    /// 
-    /// Returns `CoreError::Config` if:
-    /// - `encoder_preset` is greater than 13
-    /// - Any quality value (sd/hd/uhd) is greater than 63
-    /// 
-    /// # Examples
-    /// 
-    /// ```rust,no_run
-    /// # use drapto_core::config::CoreConfig;
-    /// # use std::path::PathBuf;
-    /// let mut config = CoreConfig::new(
-    ///     PathBuf::from("/input"),
-    ///     PathBuf::from("/output"),
-    ///     PathBuf::from("/logs")
-    /// );
-    /// config.encoder_preset = 14; // Invalid!
-    /// assert!(config.validate().is_err());
-    /// ```
+    /// Validates encoder_preset (0-13) and quality values (0-63).
     pub fn validate(&self) -> Result<(), CoreError> {
         if self.encoder_preset > 13 {
             return Err(CoreError::Config(

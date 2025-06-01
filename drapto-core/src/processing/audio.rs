@@ -10,30 +10,7 @@ use crate::external::get_audio_channels;
 use log::warn;
 use std::path::Path;
 
-/// Calculates the appropriate audio bitrate based on the number of channels.
-///
-/// This function determines the optimal audio bitrate for encoding based on
-/// the number of audio channels in the stream. It uses common bitrate values
-/// for standard channel configurations (mono, stereo, 5.1, 7.1) and falls back
-/// to a formula for non-standard configurations.
-///
-/// # Arguments
-///
-/// * `channels` - The number of audio channels
-///
-/// # Returns
-///
-/// * The recommended audio bitrate in kbps (kilobits per second)
-///
-/// # Examples
-///
-/// ```
-/// // This function is internal to the crate, so we can't call it directly in doctests
-/// // Example usage within the crate:
-/// // assert_eq!(calculate_audio_bitrate(1), 64);  // Mono
-/// // assert_eq!(calculate_audio_bitrate(2), 128); // Stereo
-/// // assert_eq!(calculate_audio_bitrate(6), 256); // 5.1 surround
-/// ```
+/// Returns audio bitrate in kbps based on channel count (mono:64, stereo:128, 5.1:256, 7.1:384).
 pub(crate) fn calculate_audio_bitrate(channels: u32) -> u32 {
     match channels {
         1 => 64,            // Mono
@@ -45,37 +22,7 @@ pub(crate) fn calculate_audio_bitrate(channels: u32) -> u32 {
 }
 
 
-/// Analyzes and logs information about audio streams in a video file.
-///
-/// This function detects the number of audio channels in each stream of the
-/// video file and calculates appropriate bitrates for encoding. It logs this
-/// information for user feedback and debugging purposes.
-///
-/// The function is designed to be non-critical - if it fails to get audio
-/// information, it logs a warning but doesn't prevent the encoding process
-/// from continuing.
-///
-/// # Arguments
-///
-/// * `ffprobe_executor` - Implementation of `FfprobeExecutor` for analyzing the video
-/// * `input_path` - Path to the input video file
-///
-/// # Returns
-///
-/// * `Ok(())` - If the analysis completes (even if no audio streams are found)
-/// * `Err(CoreError)` - This function generally handles errors internally and
-///   returns Ok, but may propagate critical errors from the ffprobe executor
-///
-/// # Examples
-///
-/// ```rust,no_run
-/// use drapto_core::processing::audio::log_audio_info;
-/// use std::path::Path;
-///
-/// let input_path = Path::new("/path/to/video.mkv");
-///
-/// log_audio_info(input_path).unwrap();
-/// ```
+/// Logs audio channel info and bitrates. Non-critical - continues on error.
 pub fn log_audio_info(input_path: &Path) -> CoreResult<()> {
     // Extract filename for logging purposes
     let filename = input_path

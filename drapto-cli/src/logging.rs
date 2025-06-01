@@ -3,21 +3,7 @@
 //! This module provides logging setup for both console and file output,
 //! with support for different log levels controlled by the RUST_LOG environment variable.
 
-/// Returns the current local timestamp formatted as "`YYYYMMDD_HHMMSS`".
-///
-/// This function is used to generate unique timestamps for log files,
-/// temporary directories, and other time-based operations.
-///
-/// # Returns
-/// A string containing the formatted timestamp (e.g., "`20240601_123045`")
-///
-/// # Example
-/// ```
-/// use drapto_cli::logging::get_timestamp;
-///
-/// let log_filename = format!("drapto_log_{}.txt", get_timestamp());
-/// // Result: "drapto_log_20240601_123045.txt"
-/// ```
+/// Returns current timestamp as YYYYMMDD_HHMMSS for unique file names.
 #[must_use] pub fn get_timestamp() -> String {
     chrono::Local::now().format("%Y%m%d_%H%M%S").to_string()
 }

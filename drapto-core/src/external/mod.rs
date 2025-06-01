@@ -22,16 +22,7 @@ pub use ffprobe_executor::{
 };
 
 
-/// Gets the size of the file at the given path in bytes.
-///
-/// # Arguments
-///
-/// * `path` - Path to the file to get the size of
-///
-/// # Returns
-///
-/// * `Ok(u64)` - The size of the file in bytes
-/// * `Err(CoreError)` - If an error occurs accessing the file
+/// Returns file size in bytes.
 pub fn get_file_size(path: &Path) -> CoreResult<u64> {
     Ok(std::fs::metadata(path)?.len())
 }
@@ -54,15 +45,7 @@ pub const NON_CRITICAL_FFMPEG_MESSAGES: &[&str] = &[
     "Skipping NAL unit",
 ];
 
-/// Determines if an FFmpeg error message is non-critical.
-/// 
-/// # Arguments
-/// 
-/// * `message` - The error message to check
-/// 
-/// # Returns
-/// 
-/// * `true` if the message is non-critical, `false` otherwise
+/// Checks if FFmpeg error message is non-critical.
 pub fn is_non_critical_ffmpeg_message(message: &str) -> bool {
     NON_CRITICAL_FFMPEG_MESSAGES
         .iter()

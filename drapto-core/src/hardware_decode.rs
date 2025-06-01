@@ -24,11 +24,7 @@ impl Default for HardwareDecoding {
 }
 
 impl HardwareDecoding {
-    /// Detects hardware decoding capabilities for the current platform.
-    ///
-    /// # Returns
-    ///
-    /// * `HardwareDecoding` - The detected hardware decoding capabilities
+    /// Detects hardware decoding capabilities.
     #[must_use] pub fn detect() -> Self {
         let videotoolbox_decode_available = is_macos();
 
@@ -37,10 +33,7 @@ impl HardwareDecoding {
         }
     }
 
-    /// Logs information about hardware decoding capabilities.
-    ///
-    /// This function logs information about the available hardware decoding
-    /// capabilities to the info log level.
+    /// Logs available hardware decoding capabilities.
     pub fn log_capabilities(&self) {
         if self.videotoolbox_decode_available {
             log::info!("Hardware decoding: VideoToolbox available");
@@ -49,11 +42,7 @@ impl HardwareDecoding {
         }
     }
 
-    /// Gets `FFmpeg` hardware decoding arguments for the current platform.
-    ///
-    /// # Returns
-    ///
-    /// * `Vec<String>` - The `FFmpeg` hardware decoding arguments
+    /// Returns FFmpeg hardware decoding arguments for the platform.
     #[must_use] pub fn get_ffmpeg_hwdecode_args(&self) -> Vec<String> {
         let mut args = Vec::new();
 
@@ -66,40 +55,17 @@ impl HardwareDecoding {
     }
 }
 
-/// Checks if the current platform is macOS.
-///
-/// # Returns
-///
-/// * `true` - If the current platform is macOS
-/// * `false` - Otherwise
+/// Returns true if running on macOS.
 #[must_use] pub fn is_macos() -> bool {
     env::consts::OS == "macos"
 }
 
-/// Checks if hardware decoding is available on the current platform.
-///
-/// Currently, this only checks for `VideoToolbox` on macOS.
-///
-/// # Returns
-///
-/// * `true` - If hardware decoding is available
-/// * `false` - Otherwise
+/// Returns true if VideoToolbox hardware decoding is available (macOS only).
 #[must_use] pub fn is_hardware_decoding_available() -> bool {
     is_macos()
 }
 
-/// Adds hardware decoding options to an `FFmpeg` command.
-///
-/// IMPORTANT: This must be called BEFORE adding the input file to the command.
-///
-/// # Arguments
-///
-/// * `cmd` - The `FFmpeg` command to add hardware decoding options to
-/// * `use_hw_decode` - Whether to use hardware decoding
-///
-/// # Returns
-///
-/// * `bool` - Whether hardware decoding was added
+/// Adds hardware decoding to FFmpeg command. Must be called BEFORE input file.
 pub fn add_hardware_decoding_to_command(
     cmd: &mut FfmpegCommand,
     use_hw_decode: bool,
@@ -115,10 +81,7 @@ pub fn add_hardware_decoding_to_command(
     false
 }
 
-/// Logs hardware decoding status.
-///
-/// This function logs information about the available hardware decoding
-/// capabilities to the info log level.
+/// Logs available hardware decoding status.
 pub fn log_hardware_decoding_status() {
     let hw_decode_available = is_hardware_decoding_available();
 
@@ -129,15 +92,7 @@ pub fn log_hardware_decoding_status() {
     }
 }
 
-/// Gets a human-readable string describing the hardware decoding capabilities.
-///
-/// This function is useful for displaying hardware decoding information
-/// in user interfaces.
-///
-/// # Returns
-///
-/// * `Option<String>` - A string describing the hardware decoding capabilities,
-///   or None if no hardware decoding is available
+/// Returns "VideoToolbox" on macOS, None otherwise.
 #[must_use] pub fn get_hardware_decoding_info() -> Option<String> {
     let hw_decode_available = is_hardware_decoding_available();
 

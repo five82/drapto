@@ -32,70 +32,7 @@ use log::{error, info, warn};
 use std::path::PathBuf;
 use std::time::Instant;
 
-/// Processes a list of video files according to the provided configuration.
-///
-/// This is the main entry point for the drapto-core library. It orchestrates
-/// the entire encoding workflow, from analyzing video properties to executing
-/// ffmpeg and reporting results.
-///
-/// # Arguments
-///
-/// * `notification_sender` - Implementation of `NotificationSender` for sending notifications
-/// * `config` - Core configuration containing encoding parameters and paths
-/// * `files_to_process` - List of paths to the video files to process
-/// * `target_filename_override` - Optional override for the output filename
-///
-/// # Returns
-///
-/// * `Ok(Vec<EncodeResult>)` - A vector of results for successfully processed files
-/// * `Err(CoreError)` - If a critical error occurs during processing
-///
-/// # Examples
-///
-/// ```rust,no_run
-/// use drapto_core::{CoreConfig, process_videos, EncodeResult};
-/// use drapto_core::notifications::NtfyNotificationSender;
-/// use std::path::PathBuf;
-///
-/// // Create dependencies
-/// let notification_sender = NtfyNotificationSender::new("https://ntfy.sh/my-topic").unwrap();
-///
-/// // Create configuration
-/// let mut config = drapto_core::config::CoreConfig::new(
-///     PathBuf::from("/path/to/input"),
-///     PathBuf::from("/path/to/output"),
-///     PathBuf::from("/path/to/logs")
-/// );
-/// config.enable_denoise = true;
-/// config.encoder_preset = 6;
-/// config.quality_sd = 24;
-/// config.quality_hd = 26;
-/// config.quality_uhd = 28;
-/// config.crop_mode = "auto".to_string();
-/// config.ntfy_topic = Some("https://ntfy.sh/my-topic".to_string());
-/// config.validate().unwrap();
-///
-/// // Find files to process
-/// let files = vec![PathBuf::from("/path/to/video.mkv")];
-///
-/// // Process videos
-/// match process_videos(
-///     Some(&notification_sender),
-///     &config,
-///     &files,
-///     None,
-/// ) {
-///     Ok(results) => {
-///         println!("Successfully processed {} files", results.len());
-///         for result in results {
-///             println!("File: {}, Duration: {}", result.filename, result.duration.as_secs());
-///         }
-///     },
-///     Err(e) => {
-///         eprintln!("Error processing videos: {}", e);
-///     }
-/// }
-/// ```
+/// Main entry point for video processing. Orchestrates analysis, encoding, and notifications.
 pub fn process_videos(
     notification_sender: Option<&NtfyNotificationSender>,
     config: &CoreConfig,
