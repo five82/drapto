@@ -157,3 +157,119 @@ impl CoreConfig {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_config() {
+        let config = CoreConfig::default();
+        
+        // Check default values
+        assert_eq!(config.encoder_preset, DEFAULT_ENCODER_PRESET);
+        assert_eq!(config.quality_sd, DEFAULT_CORE_QUALITY_SD);
+        assert_eq!(config.quality_hd, DEFAULT_CORE_QUALITY_HD);
+        assert_eq!(config.quality_uhd, DEFAULT_CORE_QUALITY_UHD);
+        assert_eq!(config.crop_mode, DEFAULT_CROP_MODE);
+        assert_eq!(config.encode_cooldown_secs, DEFAULT_ENCODE_COOLDOWN_SECS);
+        assert!(config.enable_denoise);
+        assert!(config.ntfy_topic.is_none());
+        assert!(config.temp_dir.is_none());
+        
+        // Validate default config should pass
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_new_config() {
+        let input = PathBuf::from("/input");
+        let output = PathBuf::from("/output");
+        let log = PathBuf::from("/log");
+        
+        let config = CoreConfig::new(input.clone(), output.clone(), log.clone());
+        
+        // Check paths are set correctly
+        assert_eq!(config.input_dir, input);
+        assert_eq!(config.output_dir, output);
+        assert_eq!(config.log_dir, log);
+        
+        // Check other fields use defaults
+        assert_eq!(config.encoder_preset, DEFAULT_ENCODER_PRESET);
+        assert_eq!(config.quality_sd, DEFAULT_CORE_QUALITY_SD);
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_encoder_preset() {
+        let mut config = CoreConfig::default();
+        
+        // Valid presets
+        for preset in 0..=13 {
+            config.encoder_preset = preset;
+            assert!(config.validate().is_ok());
+        }
+        
+        // Invalid presets
+        config.encoder_preset = 14;
+        assert!(config.validate().is_err());
+        
+        config.encoder_preset = 255;
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_validate_quality_values() {
+        let mut config = CoreConfig::default();
+        
+        // Valid quality values
+        for quality in 0..=63 {
+            config.quality_sd = quality;
+            config.quality_hd = quality;
+            config.quality_uhd = quality;
+            assert!(config.validate().is_ok());
+        }
+        
+        // Invalid SD quality
+        config = CoreConfig::default();
+        config.quality_sd = 64;
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("quality_sd"));
+        
+        // Invalid HD quality
+        config = CoreConfig::default();
+        config.quality_hd = 64;
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("quality_hd"));
+        
+        // Invalid UHD quality
+        config = CoreConfig::default();
+        config.quality_uhd = 64;
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("quality_uhd"));
+        
+        // Multiple invalid values (should fail on first)
+        config = CoreConfig::default();
+        config.encoder_preset = 14;
+        config.quality_sd = 64;
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("encoder_preset"));
+    }
+
+    #[test]
+    fn test_constants() {
+        // Verify constants are reasonable values
+        assert!(DEFAULT_CORE_QUALITY_SD <= 63);
+        assert!(DEFAULT_CORE_QUALITY_HD <= 63);
+        assert!(DEFAULT_CORE_QUALITY_UHD <= 63);
+        assert!(DEFAULT_ENCODER_PRESET <= 13);
+        assert!(FIXED_FILM_GRAIN_VALUE <= 50);
+        assert!(HD_WIDTH_THRESHOLD < UHD_WIDTH_THRESHOLD);
+        assert_eq!(HDR_COLOR_SPACES.len(), 2);
+        assert!(DEFAULT_ENCODE_COOLDOWN_SECS > 0);
+    }
+}

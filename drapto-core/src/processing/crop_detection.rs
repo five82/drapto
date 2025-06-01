@@ -209,3 +209,92 @@ fn is_valid_crop_format(crop: &str) -> bool {
     // All parts must be valid numbers
     parts.iter().all(|part| part.parse::<u32>().is_ok())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_valid_crop_format() {
+        // Valid formats
+        assert!(is_valid_crop_format("1920:1080:0:0"));
+        assert!(is_valid_crop_format("1920:800:0:140"));
+        assert!(is_valid_crop_format("3840:2160:0:0"));
+        assert!(is_valid_crop_format("100:200:10:20"));
+        
+        // Invalid formats - wrong number of parts
+        assert!(!is_valid_crop_format("1920:1080:0"));
+        assert!(!is_valid_crop_format("1920:1080:0:0:0"));
+        assert!(!is_valid_crop_format("1920"));
+        assert!(!is_valid_crop_format(""));
+        
+        // Invalid formats - non-numeric values
+        assert!(!is_valid_crop_format("1920:1080:0:a"));
+        assert!(!is_valid_crop_format("width:height:x:y"));
+        assert!(!is_valid_crop_format("1920:1080:0:-10"));
+        assert!(!is_valid_crop_format("1920.5:1080:0:0"));
+        
+        // Edge cases
+        assert!(is_valid_crop_format("0:0:0:0"));
+        assert!(is_valid_crop_format("4294967295:4294967295:4294967295:4294967295")); // max u32
+    }
+
+    #[test]
+    fn test_parse_crop_from_output() {
+        // Test with single crop value
+        let output = "[Parsed_cropdetect_0 @ 0x7f8] x1:0 x2:1919 y1:140 y2:939 w:1920 h:800 x:0 y:140 pts:0 t:0.000000 crop=1920:800:0:140\n";
+        assert_eq!(
+            parse_crop_from_output(output).unwrap(),
+            Some("crop=1920:800:0:140".to_string())
+        );
+        
+        // Test with multiple identical crop values
+        let output = "[Parsed_cropdetect_0 @ 0x7f8] crop=1920:800:0:140\n\
+                     [Parsed_cropdetect_0 @ 0x7f8] crop=1920:800:0:140\n\
+                     [Parsed_cropdetect_0 @ 0x7f8] crop=1920:800:0:140\n";
+        assert_eq!(
+            parse_crop_from_output(output).unwrap(),
+            Some("crop=1920:800:0:140".to_string())
+        );
+        
+        // Test with multiple different crop values (most common wins)
+        let output = "[Parsed_cropdetect_0 @ 0x7f8] crop=1920:800:0:140\n\
+                     [Parsed_cropdetect_0 @ 0x7f8] crop=1920:800:0:140\n\
+                     [Parsed_cropdetect_0 @ 0x7f8] crop=1920:1080:0:0\n\
+                     [Parsed_cropdetect_0 @ 0x7f8] crop=1920:800:0:140\n";
+        assert_eq!(
+            parse_crop_from_output(output).unwrap(),
+            Some("crop=1920:800:0:140".to_string())
+        );
+        
+        // Test with no crop values
+        let output = "[Parsed_cropdetect_0 @ 0x7f8] x1:0 x2:1919 y1:0 y2:1079\n\
+                     Some other ffmpeg output without crop\n";
+        assert_eq!(parse_crop_from_output(output).unwrap(), None);
+        
+        // Test with invalid crop formats (should be ignored)
+        let output = "[Parsed_cropdetect_0 @ 0x7f8] crop=invalid:format\n\
+                     [Parsed_cropdetect_0 @ 0x7f8] crop=1920:800:0:140\n";
+        assert_eq!(
+            parse_crop_from_output(output).unwrap(),
+            Some("crop=1920:800:0:140".to_string())
+        );
+        
+        // Test with crop value at end of line (no trailing space)
+        let output = "[Parsed_cropdetect_0 @ 0x7f8] crop=1920:800:0:140";
+        assert_eq!(
+            parse_crop_from_output(output).unwrap(),
+            Some("crop=1920:800:0:140".to_string())
+        );
+        
+        // Test with crop value followed by other parameters
+        let output = "[Parsed_cropdetect_0 @ 0x7f8] crop=1920:800:0:140 pts:1234 t:1.234";
+        assert_eq!(
+            parse_crop_from_output(output).unwrap(),
+            Some("crop=1920:800:0:140".to_string())
+        );
+        
+        // Test empty output
+        assert_eq!(parse_crop_from_output("").unwrap(), None);
+    }
+}

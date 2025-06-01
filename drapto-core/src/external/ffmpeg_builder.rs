@@ -153,3 +153,136 @@ impl Default for SvtAv1ParamsBuilder {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_video_filter_chain_empty() {
+        let chain = VideoFilterChain::new();
+        assert_eq!(chain.build(), None);
+    }
+
+    #[test]
+    fn test_video_filter_chain_single_filter() {
+        // Test crop filter
+        let chain = VideoFilterChain::new()
+            .add_crop("crop=1920:800:0:140");
+        assert_eq!(chain.build(), Some("crop=1920:800:0:140".to_string()));
+        
+        // Test denoise filter with full format
+        let chain = VideoFilterChain::new()
+            .add_denoise("hqdn3d=0.5:0.4:2:2");
+        assert_eq!(chain.build(), Some("hqdn3d=0.5:0.4:2:2".to_string()));
+        
+        // Test denoise filter without prefix
+        let chain = VideoFilterChain::new()
+            .add_denoise("0.5:0.4:2:2");
+        assert_eq!(chain.build(), Some("hqdn3d=0.5:0.4:2:2".to_string()));
+        
+        // Test custom filter
+        let chain = VideoFilterChain::new()
+            .add_filter("scale=1920:1080".to_string());
+        assert_eq!(chain.build(), Some("scale=1920:1080".to_string()));
+    }
+
+    #[test]
+    fn test_video_filter_chain_multiple_filters() {
+        let chain = VideoFilterChain::new()
+            .add_crop("crop=1920:800:0:140")
+            .add_denoise("0.5:0.4:2:2")
+            .add_filter("scale=1920:1080".to_string());
+        
+        assert_eq!(
+            chain.build(),
+            Some("crop=1920:800:0:140,hqdn3d=0.5:0.4:2:2,scale=1920:1080".to_string())
+        );
+    }
+
+    #[test]
+    fn test_video_filter_chain_empty_filters_ignored() {
+        let chain = VideoFilterChain::new()
+            .add_crop("")
+            .add_denoise("")
+            .add_filter("".to_string())
+            .add_crop("crop=1920:1080:0:0");
+        
+        assert_eq!(chain.build(), Some("crop=1920:1080:0:0".to_string()));
+    }
+
+    #[test]
+    fn test_svtav1_params_builder_default() {
+        let builder = SvtAv1ParamsBuilder::new();
+        assert_eq!(builder.build(), "tune=3");
+    }
+
+    #[test]
+    fn test_svtav1_params_builder_with_film_grain() {
+        // Test with film grain
+        let builder = SvtAv1ParamsBuilder::new()
+            .with_film_grain(4);
+        assert_eq!(builder.build(), "tune=3:film-grain=4:film-grain-denoise=0");
+        
+        // Test with no film grain (0)
+        let builder = SvtAv1ParamsBuilder::new()
+            .with_film_grain(0);
+        assert_eq!(builder.build(), "tune=3");
+        
+        // Test with max film grain
+        let builder = SvtAv1ParamsBuilder::new()
+            .with_film_grain(50);
+        assert_eq!(builder.build(), "tune=3:film-grain=50:film-grain-denoise=0");
+    }
+
+    #[test]
+    fn test_svtav1_params_builder_custom_params() {
+        let builder = SvtAv1ParamsBuilder::new()
+            .add_param("preset", "6")
+            .add_param("crf", "27")
+            .with_film_grain(4);
+        
+        assert_eq!(
+            builder.build(),
+            "tune=3:preset=6:crf=27:film-grain=4:film-grain-denoise=0"
+        );
+    }
+
+    #[test]
+    fn test_svtav1_params_builder_order() {
+        // Verify parameters maintain order
+        let builder = SvtAv1ParamsBuilder::new()
+            .add_param("a", "1")
+            .add_param("b", "2")
+            .add_param("c", "3");
+        
+        assert_eq!(builder.build(), "tune=3:a=1:b=2:c=3");
+    }
+
+    #[test]
+    fn test_ffmpeg_command_builder_defaults() {
+        let builder = FfmpegCommandBuilder::new();
+        assert_eq!(builder.hide_banner, true);
+        assert_eq!(builder.use_hw_decode, false);
+    }
+
+    #[test]
+    fn test_ffmpeg_command_builder_with_options() {
+        // Test with hardware acceleration
+        let builder = FfmpegCommandBuilder::new()
+            .with_hardware_accel(true);
+        assert_eq!(builder.use_hw_decode, true);
+        
+        // Test without hide banner
+        let builder = FfmpegCommandBuilder::new()
+            .with_hide_banner(false);
+        assert_eq!(builder.hide_banner, false);
+        
+        // Test chaining
+        let builder = FfmpegCommandBuilder::new()
+            .with_hardware_accel(true)
+            .with_hide_banner(false);
+        assert_eq!(builder.use_hw_decode, true);
+        assert_eq!(builder.hide_banner, false);
+    }
+}

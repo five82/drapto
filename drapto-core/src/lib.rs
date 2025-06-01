@@ -10,18 +10,28 @@
 //! use drapto_core::notifications::NtfyNotificationSender;
 //! use std::path::PathBuf;
 //!
+//! // Create configuration
 //! let mut config = CoreConfig::new(
 //!     PathBuf::from("/path/to/input"),
 //!     PathBuf::from("/path/to/output"),
 //!     PathBuf::from("/path/to/logs")
 //! );
+//! 
+//! // Configure encoding settings
 //! config.enable_denoise = true;
 //! config.encoder_preset = 6;
+//! config.quality_hd = 27;
+//! 
+//! // Validate configuration
 //! config.validate().unwrap();
 //!
+//! // Find video files to process
 //! let files = drapto_core::find_processable_files(&config.input_dir).unwrap();
+//! 
+//! // Optional: Set up notifications
 //! let notification_sender = NtfyNotificationSender::new("https://ntfy.sh/my-topic").unwrap();
 //!
+//! // Process videos
 //! let results = process_videos(
 //!     Some(&notification_sender),
 //!     &config,
