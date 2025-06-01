@@ -21,7 +21,7 @@ use crate::config::{CoreConfig, UHD_WIDTH_THRESHOLD, HD_WIDTH_THRESHOLD, HDR_COL
 use crate::error::{CoreError, CoreResult};
 use crate::external::ffmpeg::{EncodeParams, run_ffmpeg_encode};
 use crate::external::get_file_size as external_get_file_size;
-use crate::notifications::{NotificationType, NtfyNotificationSender};
+use crate::notifications::{Notification, NtfyNotificationSender};
 use crate::processing::audio;
 use crate::processing::crop_detection;
 use crate::EncodeResult;
@@ -148,17 +148,16 @@ pub fn process_videos(
 
             // Send a notification if notification_sender is provided
             if let Some(sender) = notification_sender {
-                let notification = NotificationType::Custom {
-                    title: "Drapto Encode Skipped".to_string(),
-                    message: format!(
+                let notification = Notification::new(
+                    "Drapto Encode Skipped",
+                    format!(
                         "Skipped encode for {}: Output file already exists at {}",
                         filename,
                         output_path.display()
-                    ),
-                    priority: 3,
-                };
+                    )
+                );
 
-                if let Err(e) = sender.send_notification(&notification) {
+                if let Err(e) = sender.send(&notification) {
                     warn!("Failed to send notification for {filename}: {e}");
                 }
             }
@@ -170,12 +169,12 @@ pub fn process_videos(
 
         // Send encoding start notification
         if let Some(sender) = notification_sender {
-            let notification = NotificationType::EncodeStart {
-                input_path: input_path.clone(),
-                output_path: output_path.clone(),
-            };
+            let notification = Notification::new(
+                "Encoding Started",
+                format!("Started encoding {filename}")
+            ).with_priority(3).with_tag("start");
 
-            if let Err(e) = sender.send_notification(&notification) {
+            if let Err(e) = sender.send(&notification) {
                 warn!("Failed to send start notification for {filename}: {e}");
             }
         }
@@ -191,12 +190,12 @@ pub fn process_videos(
 
                 // Send an error notification if notification_sender is provided
                 if let Some(sender) = notification_sender {
-                    let notification = NotificationType::EncodeError {
-                        input_path: input_path.clone(),
-                        message: "Failed to get video properties".to_string(),
-                    };
+                    let notification = Notification::new(
+                        "Encoding Error",
+                        format!("Error encoding {filename}: Failed to get video properties")
+                    ).with_priority(5).with_tag("error");
 
-                    if let Err(e) = sender.send_notification(&notification) {
+                    if let Err(e) = sender.send(&notification) {
                         warn!("Failed to send error notification for {filename}: {e}");
                     }
                 }
@@ -375,15 +374,27 @@ pub fn process_videos(
 
                 // Send success notification
                 if let Some(sender) = notification_sender {
-                    let notification = NotificationType::EncodeComplete {
-                        input_path: input_path.clone(),
-                        output_path: output_path.clone(),
-                        input_size,
-                        output_size,
-                        duration: file_elapsed_time,
+                    let reduction = if input_size > 0 {
+                        100 - ((output_size * 100) / input_size)
+                    } else {
+                        0
                     };
 
-                    if let Err(e) = sender.send_notification(&notification) {
+                    let duration_secs = file_elapsed_time.as_secs();
+                    let duration_str = if duration_secs >= 3600 {
+                        format!("{}h {}m {}s", duration_secs / 3600, (duration_secs % 3600) / 60, duration_secs % 60)
+                    } else if duration_secs >= 60 {
+                        format!("{}m {}s", duration_secs / 60, duration_secs % 60)
+                    } else {
+                        format!("{duration_secs}s")
+                    };
+
+                    let notification = Notification::new(
+                        "Encoding Complete",
+                        format!("Completed encoding {filename} in {duration_str}. Reduced by {reduction}%")
+                    ).with_priority(4).with_tag("complete");
+
+                    if let Err(e) = sender.send(&notification) {
                         warn!(
                             "Failed to send success notification for {filename}: {e}"
                         );
@@ -398,15 +409,12 @@ pub fn process_videos(
 
                 // Send a notification if notification_sender is provided
                 if let Some(sender) = notification_sender {
-                    let notification = NotificationType::Custom {
-                        title: "Drapto Encode Skipped".to_string(),
-                        message: format!(
-                            "Skipped encode for {filename}: No streams found."
-                        ),
-                        priority: 3,
-                    };
+                    let notification = Notification::new(
+                        "Drapto Encode Skipped",
+                        format!("Skipped encode for {filename}: No streams found.")
+                    );
 
-                    if let Err(err) = sender.send_notification(&notification) {
+                    if let Err(err) = sender.send(&notification) {
                         warn!("Failed to send skip notification for {filename}: {err}");
                     }
                 }
@@ -418,12 +426,12 @@ pub fn process_videos(
 
                 // Send an error notification if notification_sender is provided
                 if let Some(sender) = notification_sender {
-                    let notification = NotificationType::EncodeError {
-                        input_path: input_path.clone(),
-                        message: format!("ffmpeg failed: {e}"),
-                    };
+                    let notification = Notification::new(
+                        "Encoding Error",
+                        format!("Error encoding {filename}: ffmpeg failed: {e}")
+                    ).with_priority(5).with_tag("error");
 
-                    if let Err(err) = sender.send_notification(&notification) {
+                    if let Err(err) = sender.send(&notification) {
                         warn!(
                             "Failed to send error notification for {filename}: {err}"
                         );

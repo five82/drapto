@@ -51,7 +51,7 @@ pub use external::{
     MediaInfo, get_audio_channels, get_file_size, get_media_info,
     get_video_properties,
 };
-pub use notifications::{NotificationType, NtfyNotificationSender};
+pub use notifications::{Notification, NtfyNotificationSender};
 pub use temp_files::{
     create_temp_dir,
     create_temp_file,
