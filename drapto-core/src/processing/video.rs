@@ -310,20 +310,8 @@ pub fn process_videos(
         // Analyze audio streams
         crate::terminal::print_processing("Audio analysis");
 
-        // Log information about audio streams (channels, bitrates)
-        let _ = audio::log_audio_info(input_path);
-
-        // Get audio channel information for encoding
-        let audio_channels = match crate::external::get_audio_channels(input_path) {
-            Ok(channels) => channels,
-            Err(e) => {
-                // Log warning and continue with empty channel list
-                warn!(
-                    "Error getting audio channels for ffmpeg command build: {e}. Using empty list."
-                );
-                vec![] // Empty vector as fallback
-            }
-        };
+        // Analyze audio and get channel information for encoding
+        let audio_channels = audio::analyze_and_log_audio(input_path);
 
         // Setup encoding parameters
         let final_encode_params = setup_encoding_parameters(

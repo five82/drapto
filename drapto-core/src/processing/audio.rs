@@ -4,7 +4,6 @@
 //! detecting the number of channels and calculating appropriate bitrates for
 //! encoding.
 
-use crate::error::CoreResult;
 use crate::external::get_audio_channels;
 
 use log::warn;
@@ -22,8 +21,10 @@ pub(crate) fn calculate_audio_bitrate(channels: u32) -> u32 {
 }
 
 
-/// Logs audio channel info and bitrates. Non-critical - continues on error.
-pub fn log_audio_info(input_path: &Path) -> CoreResult<()> {
+/// Analyzes audio streams and returns channel information for encoding.
+/// Also logs audio stream details to the terminal.
+/// Returns empty vector on error (non-critical operation).
+pub fn analyze_and_log_audio(input_path: &Path) -> Vec<u32> {
     // Extract filename for logging purposes
     let filename = crate::utils::get_filename_safe(input_path)
         .unwrap_or_else(|_| "unknown_file".to_string());
@@ -32,14 +33,14 @@ pub fn log_audio_info(input_path: &Path) -> CoreResult<()> {
         Ok(channels) => channels,
         Err(e) => {
             // Audio info is non-critical - warn and continue
-            warn!("Error getting audio channels for {}: {}. Cannot log bitrate info.", filename, e);
-
-            return Ok(());
+            warn!("Error getting audio channels for {}: {}. Using empty list.", filename, e);
+            crate::terminal::print_status("Audio streams", "Error detecting audio", false);
+            return vec![];
         }
     };
     if audio_channels.is_empty() {
         crate::terminal::print_status("Audio streams", "None detected", false);
-        return Ok(());
+        return vec![];
     }
 
     let channel_summary = if audio_channels.len() == 1 {
@@ -72,5 +73,6 @@ pub fn log_audio_info(input_path: &Path) -> CoreResult<()> {
         crate::terminal::print_status("Bitrates", &bitrate_parts.join(", "), false);
     }
 
-    Ok(())
+    audio_channels
 }
+
