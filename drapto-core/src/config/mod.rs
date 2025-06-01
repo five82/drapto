@@ -48,6 +48,10 @@ pub const HD_WIDTH_THRESHOLD: u32 = 1920;
 /// Videos with these color spaces are considered HDR.
 pub const HDR_COLOR_SPACES: &[&str] = &["bt2020nc", "bt2020c"];
 
+/// Default cooldown period between encodes in seconds.
+/// This helps ensure notifications arrive in order when processing multiple files.
+pub const DEFAULT_ENCODE_COOLDOWN_SECS: u64 = 3;
+
 
 
 /// Configuration for video processing including paths and encoding settings.
@@ -88,6 +92,10 @@ pub struct CoreConfig {
     /// Whether to enable light video denoising (hqdn3d)
     /// When true, applies fixed VeryLight denoising with film grain synthesis
     pub enable_denoise: bool,
+
+    /// Cooldown period in seconds between encodes when processing multiple files.
+    /// Helps ensure notifications arrive in order.
+    pub encode_cooldown_secs: u64,
 }
 
 impl Default for CoreConfig {
@@ -104,6 +112,7 @@ impl Default for CoreConfig {
             crop_mode: DEFAULT_CROP_MODE.to_string(),
             ntfy_topic: None,
             enable_denoise: true,
+            encode_cooldown_secs: DEFAULT_ENCODE_COOLDOWN_SECS,
         }
     }
 }

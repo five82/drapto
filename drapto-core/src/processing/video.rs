@@ -54,16 +54,9 @@ fn send_notification_safe(
             notification = notification.with_tag(t);
         }
 
-        // Send notification synchronously and wait for completion
-        match sender.send(&notification) {
-            Ok(()) => {
-                // Add a small delay to ensure ntfy.sh processes notifications in order
-                // This helps prevent race conditions on the server side
-                std::thread::sleep(std::time::Duration::from_millis(100));
-            }
-            Err(e) => {
-                warn!("Failed to send {} notification: {e}", context);
-            }
+        // Send notification synchronously
+        if let Err(e) = sender.send(&notification) {
+            warn!("Failed to send {} notification: {e}", context);
         }
     }
 }
@@ -400,6 +393,14 @@ pub fn process_videos(
                 );
             }
             }
+
+        // Apply cooldown between encodes when processing multiple files
+        // This helps ensure notifications arrive in order
+        if files_to_process.len() > 1 && input_path != files_to_process.last().unwrap() {
+            if config.encode_cooldown_secs > 0 {
+                std::thread::sleep(std::time::Duration::from_secs(config.encode_cooldown_secs));
+            }
+        }
         }
 
 
