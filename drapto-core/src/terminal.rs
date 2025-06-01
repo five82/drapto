@@ -156,8 +156,35 @@ pub fn print_status(label: &str, value: &str, highlight: bool) {
                     value.to_string()
                 }
             }
+            () if label.contains("Reduction") && value.contains('%') => {
+                if let Some(reduction_str) = value.strip_suffix('%') {
+                    if let Ok(reduction) = reduction_str.parse::<u64>() {
+                        if reduction >= 50 {
+                            value.green().to_string()
+                        } else {
+                            value.to_string()
+                        }
+                    } else {
+                        value.to_string()
+                    }
+                } else {
+                    value.to_string()
+                }
+            }
             () if label.contains("Acceleration") && value.contains("None available") => {
                 value.yellow().to_string()
+            }
+            () if label.contains("Dynamic range") && value.contains("HDR") => {
+                value.bold().to_string()
+            }
+            () if label.contains("Quality") || label.contains("Video quality") => {
+                value.bold().to_string()
+            }
+            () if label.contains("Duration") && (value.contains("h") || value.contains("m")) => {
+                value.bold().to_string()
+            }
+            () if label.contains("Input size") && value.contains("GiB") => {
+                value.bold().to_string()
             }
             () if highlight => value.bold().to_string(),
             () => value.to_string(),

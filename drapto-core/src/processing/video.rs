@@ -266,9 +266,9 @@ pub fn process_videos(
 
         // Report video analysis results
         let dynamic_range = if is_hdr { "HDR" } else { "SDR" };
-        crate::progress_reporting::status("Video quality", &format!("{} ({}) - CRF {}", video_width, category, quality), false);
-        crate::progress_reporting::status("Duration", &format!("{:.2}s", duration_secs), false);
-        crate::progress_reporting::status("Dynamic range", dynamic_range, false);
+        crate::progress_reporting::status("Video quality", &format!("{} ({}) - CRF {}", video_width, category, quality), category == "UHD");
+        crate::progress_reporting::status("Duration", &format!("{:.2}s", duration_secs), duration_secs > 3600.0);
+        crate::progress_reporting::status("Dynamic range", dynamic_range, is_hdr);
 
         // Perform crop detection
         crate::progress_reporting::report_processing_step("Detecting black bars");

@@ -186,9 +186,9 @@ pub fn encoding_summary(filename: &str, duration: Duration, input_size: u64, out
     status(
         "Duration",
         &format!("{:.1}s", duration.as_secs_f64()),
-        false,
+        duration.as_secs() > 3600, // Bold for long encodes (>1 hour)
     );
-    status("Input size", &crate::format_bytes(input_size), false);
+    status("Input size", &crate::format_bytes(input_size), input_size > 1024*1024*1024); // Bold for >1GB
     status("Output size", &crate::format_bytes(output_size), false);
 
     let reduction = crate::utils::calculate_size_reduction(input_size, output_size);

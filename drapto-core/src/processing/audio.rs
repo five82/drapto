@@ -56,20 +56,21 @@ pub fn analyze_and_log_audio(input_path: &Path) -> Vec<u32> {
                 .join(", ")
         )
     };
-    crate::progress_reporting::status("Audio", &channel_summary, false);
+    crate::progress_reporting::status("Audio", &channel_summary, audio_channels.iter().any(|&ch| ch >= 6)); // Bold for 5.1+ audio
 
     let mut bitrate_parts = Vec::new();
     for (index, &num_channels) in audio_channels.iter().enumerate() {
         let bitrate = calculate_audio_bitrate(num_channels);
         if audio_channels.len() == 1 {
-            crate::progress_reporting::status("Bitrate", &format!("{}kbps", bitrate), false);
+            crate::progress_reporting::status("Bitrate", &format!("{}kbps", bitrate), bitrate >= 256); // Bold for high bitrates
         } else {
             bitrate_parts.push(format!("Stream {index}: {bitrate}kbps"));
         }
     }
 
     if audio_channels.len() > 1 {
-        crate::progress_reporting::status("Bitrates", &bitrate_parts.join(", "), false);
+        let has_high_quality = audio_channels.iter().any(|&ch| calculate_audio_bitrate(ch) >= 256);
+        crate::progress_reporting::status("Bitrates", &bitrate_parts.join(", "), has_high_quality);
     }
 
     audio_channels
