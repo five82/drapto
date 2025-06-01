@@ -24,6 +24,7 @@ use crate::external::get_file_size as external_get_file_size;
 use crate::notifications::{Notification, NtfyNotificationSender};
 use crate::processing::audio;
 use crate::processing::crop_detection;
+use crate::processing::video_properties::VideoProperties;
 use crate::EncodeResult;
 use crate::utils::format_duration;
 
@@ -31,6 +32,128 @@ use log::{error, info, warn};
 
 use std::path::PathBuf;
 use std::time::Instant;
+
+/// Determines quality settings based on video resolution and config.
+/// 
+/// Returns (quality, category, is_hdr)
+fn determine_quality_settings(video_props: &VideoProperties, config: &CoreConfig) -> (u32, &'static str, bool) {
+    let video_width = video_props.width;
+    
+    // Select quality (CRF) based on video resolution
+    let quality = if video_width >= UHD_WIDTH_THRESHOLD {
+        // UHD (4K) quality setting
+        config.quality_uhd
+    } else if video_width >= HD_WIDTH_THRESHOLD {
+        // HD (1080p) quality setting
+        config.quality_hd
+    } else {
+        // SD (below 1080p) quality setting
+        config.quality_sd
+    };
+
+    // Determine the category label for logging
+    let category = if video_width >= UHD_WIDTH_THRESHOLD {
+        "UHD"
+    } else if video_width >= HD_WIDTH_THRESHOLD {
+        "HD"
+    } else {
+        "SD"
+    };
+
+    // Detect HDR/SDR status based on color space
+    let color_space = video_props.color_space.as_deref().unwrap_or("");
+    let is_hdr = HDR_COLOR_SPACES.contains(&color_space);
+
+    (quality.into(), category, is_hdr)
+}
+
+/// Sets up encoding parameters from analysis results and config.
+fn setup_encoding_parameters(
+    input_path: &std::path::Path,
+    output_path: &std::path::Path,
+    quality: u32,
+    config: &CoreConfig,
+    crop_filter_opt: Option<String>,
+    audio_channels: Vec<u32>,
+    duration_secs: f64,
+) -> EncodeParams {
+    let preset_value = config.encoder_preset;
+
+    let mut initial_encode_params = EncodeParams {
+        input_path: input_path.to_path_buf(),
+        output_path: output_path.to_path_buf(),
+        quality: quality.into(),
+        preset: preset_value,
+        use_hw_decode: true,
+        crop_filter: crop_filter_opt,
+        audio_channels,
+        duration: duration_secs,
+        hqdn3d_params: None,
+    };
+
+    // Apply fixed denoising parameters if enabled
+    let final_hqdn3d_params = if config.enable_denoise {
+        Some(crate::config::FIXED_HQDN3D_PARAMS.to_string())
+    } else {
+        crate::terminal::print_sub_item("Denoising disabled via config.");
+        None
+    };
+
+    // Finalize encoding parameters
+    initial_encode_params.hqdn3d_params = final_hqdn3d_params;
+    initial_encode_params
+}
+
+/// Displays encoding configuration information to terminal and debug log.
+fn display_encoding_configuration(encode_params: &EncodeParams, _config: &CoreConfig) {
+    let preset_value = encode_params.preset;
+    let quality = encode_params.quality;
+    let final_hqdn3d_params = &encode_params.hqdn3d_params;
+
+    // Debug logging
+    log::debug!("ENCODING CONFIGURATION");
+    log::debug!("Video:");
+    log::debug!("Preset: {preset_value} (SVT-AV1)");
+    log::debug!("Quality: {quality} (CRF)");
+
+    if let Some(hqdn3d) = final_hqdn3d_params {
+        log::debug!("Grain Level: VeryLight ({hqdn3d})");
+    } else {
+        log::debug!("Grain Level: None (no denoising)");
+    }
+
+    // Hardware info
+    log::debug!("Hardware:");
+    let hw_info = crate::hardware_decode::get_hardware_decoding_info();
+    let hw_display = match hw_info {
+        Some(info) => format!("{info} (decode only)"),
+        None => "None available".to_string(),
+    };
+    log::debug!("Acceleration: {hw_display}");
+
+    // Terminal display
+    crate::terminal::print_section("ENCODING CONFIGURATION");
+    
+    // Video settings - Level 3 subsection within main section
+    crate::terminal::print_subsection_level3("Video:");
+    crate::terminal::print_status("Preset", &format!("{} (SVT-AV1)", preset_value), false);
+    crate::terminal::print_status("Quality", &format!("{} (CRF)", quality), false);
+
+    if let Some(hqdn3d) = final_hqdn3d_params {
+        crate::terminal::print_status("Grain Level", &format!("VeryLight ({})", hqdn3d), false);
+    } else {
+        crate::terminal::print_status("Grain Level", "None (no denoising)", false);
+    }
+
+    // Hardware info - Level 3 subsection within main section
+    crate::terminal::print_subsection_level3_with_spacing("Hardware:");
+    let hw_info = crate::hardware_decode::get_hardware_decoding_info();
+    let hw_display = match hw_info {
+        Some(info) => format!("{info} (decode only)"),
+        None => "No hardware decoder available".to_string(),
+    };
+    crate::terminal::print_status("Acceleration", &hw_display, false);
+}
 
 /// Main entry point for video processing. Orchestrates analysis, encoding, and notifications.
 pub fn process_videos(
@@ -146,34 +269,13 @@ pub fn process_videos(
         let duration_secs = video_props.duration_secs;
 
         // Determine quality settings based on resolution
-        // Select quality (CRF) based on video resolution
-        let quality = if video_width >= UHD_WIDTH_THRESHOLD {
-            // UHD (4K) quality setting
-            config.quality_uhd
-        } else if video_width >= HD_WIDTH_THRESHOLD {
-            // HD (1080p) quality setting
-            config.quality_hd
-        } else {
-            // SD (below 1080p) quality setting
-            config.quality_sd
-        };
-
-        // Determine the category label for logging
-        let category = if video_width >= UHD_WIDTH_THRESHOLD {
-            "UHD"
-        } else if video_width >= HD_WIDTH_THRESHOLD {
-            "HD"
-        } else {
-            "SD"
-        };
+        let (quality, category, is_hdr) = determine_quality_settings(&video_props, config);
 
         // Report the detected resolution and selected quality as a status line
         crate::terminal::print_status("Video quality", &format!("{} ({}) - CRF {}", video_width, category, quality), false);
         crate::terminal::print_status("Duration", &format!("{:.2}s", duration_secs), false);
 
-        // Detect and report HDR/SDR status based on color space
-        let color_space = video_props.color_space.as_deref().unwrap_or("");
-        let is_hdr = HDR_COLOR_SPACES.contains(&color_space);
+        // Report HDR/SDR status
         let dynamic_range = if is_hdr { "HDR" } else { "SDR" };
         crate::terminal::print_status("Dynamic range", dynamic_range, false);
 
@@ -212,80 +314,24 @@ pub fn process_videos(
             }
         };
 
-        // Prepare encoding parameters
-        let preset_value = config.encoder_preset;
+        // Setup encoding parameters
+        let final_encode_params = setup_encoding_parameters(
+            input_path,
+            &output_path,
+            quality,
+            config,
+            crop_filter_opt,
+            audio_channels,
+            duration_secs,
+        );
 
-        let mut initial_encode_params = EncodeParams {
-            input_path: input_path.clone(),
-            output_path: output_path.clone(),
-            quality: quality.into(),
-            preset: preset_value,
-            use_hw_decode: true,
-            crop_filter: crop_filter_opt.clone(),
-            audio_channels: audio_channels.clone(),
-            duration: duration_secs,
-            hqdn3d_params: None,
-        };
-
-        // Apply fixed denoising parameters if enabled
-        let final_hqdn3d_params = if config.enable_denoise {
-            Some(crate::config::FIXED_HQDN3D_PARAMS.to_string())
-        } else {
-            crate::terminal::print_sub_item("Denoising disabled via config.");
-            None
-        };
-
-
-        // Finalize encoding parameters
-        initial_encode_params.hqdn3d_params = final_hqdn3d_params.clone();
-        let final_encode_params = initial_encode_params;
-
-        log::debug!("ENCODING CONFIGURATION");
-        log::debug!("Video:");
-        log::debug!("Preset: {preset_value} (SVT-AV1)");
-        log::debug!("Quality: {quality} (CRF)");
-
-        if let Some(hqdn3d) = &final_hqdn3d_params {
-            log::debug!("Grain Level: VeryLight ({hqdn3d})");
-        } else {
-            log::debug!("Grain Level: None (no denoising)");
-        }
-
-        // Hardware info
-        log::debug!("Hardware:");
-        let hw_info = crate::hardware_decode::get_hardware_decoding_info();
-        let hw_display = match hw_info {
-            Some(info) => format!("{info} (decode only)"),
-            None => "None available".to_string(),
-        };
-        log::debug!("Acceleration: {hw_display}");
-
-        crate::terminal::print_section("ENCODING CONFIGURATION");
-        
-        // Video settings - Level 3 subsection within main section
-        crate::terminal::print_subsection_level3("Video:");
-        crate::terminal::print_status("Preset", &format!("{} (SVT-AV1)", preset_value), false);
-        crate::terminal::print_status("Quality", &format!("{} (CRF)", quality), false);
-
-        if let Some(hqdn3d) = &final_hqdn3d_params {
-            crate::terminal::print_status("Grain Level", &format!("VeryLight ({})", hqdn3d), false);
-        } else {
-            crate::terminal::print_status("Grain Level", "None (no denoising)", false);
-        }
-
-        // Hardware info - Level 3 subsection within main section
-        crate::terminal::print_subsection_level3_with_spacing("Hardware:");
-        let hw_info = crate::hardware_decode::get_hardware_decoding_info();
-        let hw_display = match hw_info {
-            Some(info) => format!("{info} (decode only)"),
-            None => "No hardware decoder available".to_string(),
-        };
-        crate::terminal::print_status("Acceleration", &hw_display, false);
+        // Display encoding configuration
+        display_encoding_configuration(&final_encode_params, config);
 
         let encode_result = run_ffmpeg_encode(
             &final_encode_params,
             false, // disable_audio: Keep audio in the output
-            final_hqdn3d_params.is_some(),  // has_denoising: Whether denoising is applied
+            final_encode_params.hqdn3d_params.is_some(),  // has_denoising: Whether denoising is applied
         );
 
         // Handle encoding results
