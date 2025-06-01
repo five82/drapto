@@ -131,40 +131,6 @@ fn setup_encoding_parameters(
     initial_encode_params
 }
 
-/// Displays encoding configuration information to terminal and debug log.
-fn display_encoding_configuration(encode_params: &EncodeParams, _config: &CoreConfig) {
-    let preset_value = encode_params.preset;
-    let quality = encode_params.quality;
-    let final_hqdn3d_params = &encode_params.hqdn3d_params;
-
-    // Debug logging
-    log::debug!("ENCODING CONFIGURATION");
-    log::debug!("Video:");
-    log::debug!("Preset: {preset_value} (SVT-AV1)");
-    log::debug!("Quality: {quality} (CRF)");
-
-    if let Some(hqdn3d) = final_hqdn3d_params {
-        log::debug!("Grain Level: VeryLight ({hqdn3d})");
-    } else {
-        log::debug!("Grain Level: None (no denoising)");
-    }
-
-
-    // Terminal display
-    crate::progress_reporting::section("ENCODING CONFIGURATION");
-    
-    // Video settings - Level 3 subsection within main section
-    crate::progress_reporting::processing_debug("Video:");
-    crate::progress_reporting::status_debug("Preset", &format!("{} (SVT-AV1)", preset_value), false);
-    crate::progress_reporting::status_debug("Quality", &format!("{} (CRF)", quality), false);
-
-    if let Some(hqdn3d) = final_hqdn3d_params {
-        crate::progress_reporting::status_debug("Grain Level", &format!("VeryLight ({})", hqdn3d), false);
-    } else {
-        crate::progress_reporting::status_debug("Grain Level", "None (no denoising)", false);
-    }
-
-}
 
 /// Main entry point for video processing. Orchestrates analysis, encoding, and notifications.
 pub fn process_videos(
@@ -225,8 +191,6 @@ pub fn process_videos(
             continue;
         }
 
-        crate::progress_reporting::status("File", &filename, false);
-
         // Send encoding start notification
         send_notification_safe(
             notification_sender,
@@ -259,16 +223,14 @@ pub fn process_videos(
         };
 
         let video_width = video_props.width;
+        let video_height = video_props.height;
         let duration_secs = video_props.duration_secs;
 
         // Determine quality settings based on resolution
         let (quality, category, is_hdr) = determine_quality_settings(&video_props, config);
 
-        // Report video analysis results
-        let dynamic_range = if is_hdr { "HDR" } else { "SDR" };
-        crate::progress_reporting::status("Video quality", &format!("{} ({}) - CRF {}", video_width, category, quality), category == "UHD");
-        crate::progress_reporting::status("Duration", &format!("{:.2}s", duration_secs), duration_secs > 3600.0);
-        crate::progress_reporting::status("Dynamic range", dynamic_range, is_hdr);
+        // Report consolidated file analysis
+        crate::progress_reporting::report_file_analysis(&filename, video_width, video_height, duration_secs, category, is_hdr);
 
         // Perform crop detection
         crate::progress_reporting::report_processing_step("Detecting black bars");
@@ -287,11 +249,8 @@ pub fn process_videos(
                 }
             };
 
-        // Analyze audio streams
-        crate::progress_reporting::report_processing_step("Audio analysis");
-
-        // Analyze audio and get channel information for encoding
-        let audio_channels = audio::analyze_and_log_audio(input_path);
+        // Analyze audio and get channel information for encoding (details shown in encoding config)
+        let audio_channels = audio::get_audio_channels_quiet(input_path);
 
         // Setup encoding parameters
         let final_encode_params = setup_encoding_parameters(
@@ -304,8 +263,13 @@ pub fn process_videos(
             duration_secs,
         );
 
-        // Display encoding configuration
-        display_encoding_configuration(&final_encode_params, config);
+        // Display consolidated encoding configuration
+        crate::progress_reporting::report_encoding_configuration(
+            final_encode_params.quality,
+            final_encode_params.preset,
+            &final_encode_params.audio_channels,
+            final_encode_params.hqdn3d_params.is_some()
+        );
 
         let encode_result = run_ffmpeg_encode(
             &final_encode_params,
@@ -328,10 +292,10 @@ pub fn process_videos(
                     output_size,
                 });
 
-                crate::progress_reporting::report_timed_completion(
-                    "Encoding complete",
-                    &filename,
-                    file_elapsed_time
+                crate::progress_reporting::report_final_results(
+                    file_elapsed_time,
+                    input_size,
+                    output_size
                 );
 
                 // Send success notification

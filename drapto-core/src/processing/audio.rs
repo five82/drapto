@@ -20,6 +20,12 @@ pub(crate) fn calculate_audio_bitrate(channels: u32) -> u32 {
 }
 
 
+/// Analyzes audio streams and returns channel information without logging.
+/// Returns empty vector on error (non-critical operation).
+pub fn get_audio_channels_quiet(input_path: &Path) -> Vec<u32> {
+    get_audio_channels(input_path).unwrap_or_default()
+}
+
 /// Analyzes audio streams and returns channel information for encoding.
 /// Also logs audio stream details to the terminal.
 /// Returns empty vector on error (non-critical operation).

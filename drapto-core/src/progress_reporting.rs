@@ -179,21 +179,6 @@ pub fn info_debug(message: &str) {
     }
 }
 
-/// Report encoding summary
-pub fn encoding_summary(filename: &str, duration: Duration, input_size: u64, output_size: u64) {
-    success("Encoding complete");
-    status("File", filename, false);
-    status(
-        "Duration",
-        &format!("{:.1}s", duration.as_secs_f64()),
-        duration.as_secs() > 3600, // Bold for long encodes (>1 hour)
-    );
-    status("Input size", &crate::format_bytes(input_size), input_size > 1024*1024*1024); // Bold for >1GB
-    status("Output size", &crate::format_bytes(output_size), false);
-
-    let reduction = crate::utils::calculate_size_reduction(input_size, output_size);
-    status("Reduction", &format!("{reduction}%"), reduction >= 50);
-}
 
 /// Report encode start
 pub fn encode_start(input_path: &Path, output_path: &Path) {
@@ -249,6 +234,62 @@ pub fn report_configuration_section(title: &str, items: &[(&str, String)]) {
 pub fn report_timed_completion(operation: &str, filename: &str, duration: Duration) {
     success(&format!("{}: {}", operation, filename));
     status("Time", &crate::utils::format_duration(duration.as_secs_f64()), false);
+}
+
+// Consolidated reporting functions for reducing redundancy
+
+/// Report file analysis in a consolidated format
+pub fn report_file_analysis(filename: &str, video_width: u32, video_height: u32, duration_secs: f64, category: &str, is_hdr: bool) {
+    section("FILE ANALYSIS");
+    status("File", filename, false);
+    status("Resolution", &format!("{}x{} ({})", video_width, video_height, category), category == "UHD");
+    status("Duration", &crate::utils::format_duration(duration_secs), duration_secs > 3600.0);
+    status("Dynamic range", if is_hdr { "HDR" } else { "SDR" }, is_hdr);
+}
+
+/// Report consolidated encoding configuration without duplication
+pub fn report_encoding_configuration(quality: u32, preset: u8, audio_channels: &[u32], has_denoising: bool) {
+    // Debug logging for detailed information
+    log::debug!("Encoding configuration - Quality: {}, Preset: {}, Audio channels: {:?}, Denoising: {}", 
+                quality, preset, audio_channels, has_denoising);
+    
+    section("ENCODING CONFIGURATION");
+    
+    // Video settings grouped together
+    status("Video codec", "SVT-AV1", false);
+    status("Quality (CRF)", &quality.to_string(), false);
+    status("Preset", &preset.to_string(), false);
+    
+    // Audio settings grouped together
+    if !audio_channels.is_empty() {
+        let audio_summary = if audio_channels.len() == 1 {
+            format!("{} channels", audio_channels[0])
+        } else {
+            format!("{} streams", audio_channels.len())
+        };
+        status("Audio codec", "Opus", false);
+        status("Audio", &audio_summary, audio_channels.iter().any(|&ch| ch >= 6));
+    }
+    
+    // Processing options
+    if has_denoising {
+        status("Denoising", "VeryLight", false);
+    } else {
+        status("Denoising", "Disabled", false);
+    }
+}
+
+/// Report final results without repeating file information
+pub fn report_final_results(duration: Duration, input_size: u64, output_size: u64) {
+    success("Encoding complete");
+    
+    // Group related metrics together
+    status("Time elapsed", &crate::utils::format_duration(duration.as_secs_f64()), duration.as_secs() > 3600);
+    status("Input size", &crate::format_bytes(input_size), input_size > 1024*1024*1024);
+    status("Output size", &crate::format_bytes(output_size), false);
+    
+    let reduction = crate::utils::calculate_size_reduction(input_size, output_size);
+    status("Size reduction", &format!("{}%", reduction), reduction >= 50);
 }
 
 /// Terminal-based implementation of ProgressReporter
