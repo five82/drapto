@@ -26,6 +26,9 @@ fn main() -> CliResult<()> {
     let cli_args = Cli::parse();
     let interactive_mode = cli_args.interactive;
 
+    // Initialize progress reporter for the core library
+    drapto_core::set_progress_reporter(Box::new(drapto_core::TerminalProgressReporter::new()));
+
     // Configure logging level based on --verbose flag
     // Only set RUST_LOG if it's not already set by the user
     if cli_args.verbose && std::env::var("RUST_LOG").is_err() {
@@ -103,7 +106,7 @@ fn main() -> CliResult<()> {
                 terminal::print_daemon_starting();
 
                 if let Err(e) = io::stderr().flush() {
-                    eprintln!("Warning: Failed to flush stderr before daemonizing: {e}");
+                    terminal::print_warning(&format!("Failed to flush stderr before daemonizing: {e}"));
                 }
 
                 std::fs::create_dir_all(&log_dir).map_err(|e| {
@@ -142,7 +145,7 @@ fn main() -> CliResult<()> {
                 match NtfyNotificationSender::new(topic) {
                     Ok(sender) => Some(sender),
                     Err(e) => {
-                        log::warn!("Warning: Failed to create notification sender: {e}");
+                        terminal::print_warning(&format!("Failed to create notification sender: {e}"));
                         None
                     }
                 }

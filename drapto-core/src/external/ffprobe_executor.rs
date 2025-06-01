@@ -48,19 +48,15 @@ pub fn get_audio_channels(input_path: &Path) -> CoreResult<Vec<u32>> {
                 })
                 .collect();
             if channels.is_empty() {
-                log::warn!(
+                crate::progress_reporting::warning(&format!(
                     "No audio streams found by ffprobe for {}",
                     input_path.display()
-                );
+                ));
             }
             Ok(channels)
         }
         Err(err) => {
-            log::error!(
-                "ffprobe (crate) failed for audio channels on {}: {:?}",
-                input_path.display(),
-                err
-            );
+            crate::progress_reporting::error(&format!("ffprobe failed for audio channels on {}: {:?}", input_path.display(), err));
             Err(map_ffprobe_error(err, "audio channels"))
         }
     }
@@ -126,11 +122,7 @@ pub fn get_video_properties(input_path: &Path) -> CoreResult<VideoProperties> {
             })
         }
         Err(err) => {
-            log::error!(
-                "ffprobe (crate) failed for video properties on {}: {:?}",
-                input_path.display(),
-                err
-            );
+            crate::progress_reporting::error(&format!("ffprobe failed for video properties on {}: {:?}", input_path.display(), err));
             Err(map_ffprobe_error(err, "video properties"))
         }
     }
@@ -167,7 +159,7 @@ pub fn get_media_info(input_path: &Path) -> CoreResult<MediaInfo> {
             Ok(info)
         }
         Err(err) => {
-            log::warn!("Failed to get media info: {err:?}");
+            crate::progress_reporting::warning(&format!("Failed to get media info: {err:?}"));
             Err(map_ffprobe_error(err, "media info"))
         }
     }

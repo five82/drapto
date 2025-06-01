@@ -77,17 +77,17 @@ pub fn detect_crop(
             (Some(most_common_crop.clone()), false)
         } else {
             // Multiple significant aspect ratios detected
-            log::info!(
-                "Multiple aspect ratios detected in {}:",
+            crate::progress_reporting::warning(&format!(
+                "Multiple aspect ratios detected in {}",
                 input_file.display()
-            );
+            ));
             for (crop, count) in &sorted_crops {
                 let percentage = (count * 100) / total_samples;
-                log::info!("  {} - {}% of samples", crop, percentage);
+                crate::progress_reporting::status(&format!("  {}", crop), &format!("{}% of samples", percentage), false);
             }
             
             // Conservative approach: don't crop at all for mixed aspect ratio content
-            log::info!("Using conservative approach - no cropping for mixed aspect ratio content");
+            crate::progress_reporting::info("Using conservative approach - no cropping for mixed aspect ratio content");
             (None, true)
         }
     };

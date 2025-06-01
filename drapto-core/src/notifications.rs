@@ -6,7 +6,6 @@
 use crate::error::{CoreError, CoreResult};
 use ntfy::DispatcherBuilder;
 use ntfy::payload::{Payload, Priority as NtfyPriority};
-use log;
 
 /// A simple notification structure for sending messages via ntfy.sh.
 #[derive(Debug, Clone)]
@@ -138,7 +137,7 @@ impl NtfyNotificationSender {
             4 => NtfyPriority::High,
             5 => NtfyPriority::Max,
             _ => {
-                log::warn!("Invalid ntfy priority value: {}, using default", notification.priority);
+                crate::progress_reporting::warning(&format!("Invalid ntfy priority value: {}, using default", notification.priority));
                 NtfyPriority::Default
             }
         };

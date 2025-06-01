@@ -7,7 +7,6 @@
 //! We use software encoding (libsvtav1) exclusively for output.
 
 use ffmpeg_sidecar::command::FfmpegCommand;
-use log;
 use std::env;
 
 /// Represents hardware decoding capabilities for the current platform.
@@ -36,9 +35,9 @@ impl HardwareDecoding {
     /// Logs available hardware decoding capabilities.
     pub fn log_capabilities(&self) {
         if self.videotoolbox_decode_available {
-            log::info!("Hardware decoding: VideoToolbox available");
+            crate::progress_reporting::status("Hardware", "VideoToolbox (decode only)", false);
         } else {
-            log::info!("Hardware decoding: None");
+            crate::progress_reporting::status("Hardware", "No hardware decoder available", false);
         }
     }
 
@@ -86,9 +85,9 @@ pub fn log_hardware_decoding_status() {
     let hw_decode_available = is_hardware_decoding_available();
 
     if hw_decode_available {
-        log::info!("Hardware decoding: VideoToolbox available");
+        crate::progress_reporting::status("Hardware", "VideoToolbox (decode only)", false);
     } else {
-        log::info!("Hardware decoding: None");
+        crate::progress_reporting::status("Hardware", "No hardware decoder available", false);
     }
 }
 

@@ -71,6 +71,10 @@ pub use temp_files::{
 pub use hardware_decode::{
     HardwareDecoding, add_hardware_decoding_to_command, is_hardware_decoding_available, is_macos,
 };
+pub use progress_reporting::{
+    TerminalProgressReporter, set_progress_reporter,
+    processing_debug, status_debug, info_debug
+};
 
 use std::time::Duration;
 

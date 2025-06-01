@@ -6,7 +6,6 @@
 
 use crate::external::get_audio_channels;
 
-use log::warn;
 use std::path::Path;
 
 /// Returns audio bitrate in kbps based on channel count (mono:64, stereo:128, 5.1:256, 7.1:384).
@@ -33,13 +32,13 @@ pub fn analyze_and_log_audio(input_path: &Path) -> Vec<u32> {
         Ok(channels) => channels,
         Err(e) => {
             // Audio info is non-critical - warn and continue
-            warn!("Error getting audio channels for {}: {}. Using empty list.", filename, e);
-            crate::terminal::print_status("Audio streams", "Error detecting audio", false);
+            crate::progress_reporting::warning(&format!("Error getting audio channels for {}: {}. Using empty list.", filename, e));
+            crate::progress_reporting::status("Audio streams", "Error detecting audio", false);
             return vec![];
         }
     };
     if audio_channels.is_empty() {
-        crate::terminal::print_status("Audio streams", "None detected", false);
+        crate::progress_reporting::status("Audio streams", "None detected", false);
         return vec![];
     }
 
@@ -57,20 +56,20 @@ pub fn analyze_and_log_audio(input_path: &Path) -> Vec<u32> {
                 .join(", ")
         )
     };
-    crate::terminal::print_status("Audio", &channel_summary, false);
+    crate::progress_reporting::status("Audio", &channel_summary, false);
 
     let mut bitrate_parts = Vec::new();
     for (index, &num_channels) in audio_channels.iter().enumerate() {
         let bitrate = calculate_audio_bitrate(num_channels);
         if audio_channels.len() == 1 {
-            crate::terminal::print_status("Bitrate", &format!("{}kbps", bitrate), false);
+            crate::progress_reporting::status("Bitrate", &format!("{}kbps", bitrate), false);
         } else {
             bitrate_parts.push(format!("Stream {index}: {bitrate}kbps"));
         }
     }
 
     if audio_channels.len() > 1 {
-        crate::terminal::print_status("Bitrates", &bitrate_parts.join(", "), false);
+        crate::progress_reporting::status("Bitrates", &bitrate_parts.join(", "), false);
     }
 
     audio_channels

@@ -361,7 +361,7 @@ pub fn run_encode(
 
     // Process videos
     let processing_result = if files_to_process.is_empty() {
-        warn!("Warning: No processable .mkv files found in the specified input path.");
+        terminal::print_warning("No processable .mkv files found in the specified input path.");
         Ok(Vec::new())
     } else {
         drapto_core::process_videos(

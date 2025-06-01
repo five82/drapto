@@ -14,7 +14,6 @@ use std::sync::Mutex;
 use std::time::Duration;
 use unicode_width::UnicodeWidthStr;
 
-use crate::{format_bytes, format_duration};
 
 /// Represents the visual hierarchy levels in the CLI output
 #[derive(Debug, Clone, Copy)]
@@ -67,13 +66,11 @@ fn should_use_color() -> bool {
 
 /// Print a section header for major workflow phases
 pub fn print_section(title: &str) {
-    let header = format!("===== {} =====", title.to_uppercase());
-
     info!("");
     if should_use_color() {
-        info!("===== {} =====", title.to_uppercase().cyan().bold());
+        info!("===== {} =====", title.to_uppercase().cyan());
     } else {
-        info!("{header}");
+        info!("===== {} =====", title.to_uppercase());
     }
     info!("");
 }
@@ -112,24 +109,6 @@ pub fn print_subsection(title: &str) {
     print_item(OutputLevel::Subsection, None, title, true);
 }
 
-/// Print a subsection header at Level 3 (4 spaces indentation - for use within sections)
-pub fn print_subsection_level3(title: &str) {
-    if should_use_color() {
-        info!("    {}", style(title).bold());
-    } else {
-        info!("    {}", title);
-    }
-}
-
-/// Print a subsection header at Level 3 with preceding blank line
-pub fn print_subsection_level3_with_spacing(title: &str) {
-    info!("");
-    if should_use_color() {
-        info!("    {}", style(title).bold());
-    } else {
-        info!("    {}", title);
-    }
-}
 
 /// Print a success message
 pub fn print_success(message: &str) {
@@ -196,11 +175,7 @@ pub fn print_status(label: &str, value: &str, highlight: bool) {
     }
 }
 
-/// Print completion with associated status
-pub fn print_completion_with_status(success_message: &str, status_label: &str, status_value: &str) {
-    print_success(success_message);
-    print_status(status_label, status_value, false);
-}
+
 
 /// Print an error message
 pub fn print_error(title: &str, message: &str, suggestion: Option<&str>) {
@@ -235,26 +210,7 @@ pub fn print_sub_item(message: &str) {
     print_item(OutputLevel::Progress, None, message, false);
 }
 
-/// Print a sub-item with preceding blank line (Level 3 - Operations with spacing)
-pub fn print_sub_item_with_spacing(message: &str) {
-    info!("");
-    info!("    {}", message);
-}
 
-/// Print a progress indicator
-pub fn print_progress_indicator(message: &str) {
-    print_item(
-        OutputLevel::Progress,
-        None,
-        &format!("Progress: {message}"),
-        false,
-    );
-}
-
-/// Print section separator (empty line)
-pub fn print_section_separator() {
-    info!("");
-}
 
 /// Initialize a progress bar with indicatif
 fn init_progress_bar(total_secs: f64) -> ProgressBar {
@@ -333,49 +289,7 @@ pub fn clear_progress_bar() {
     }
 }
 
-/// Print encoding summary
-pub fn print_encoding_summary(
-    filename: &str,
-    duration: std::time::Duration,
-    input_size: u64,
-    output_size: u64,
-) {
-    clear_progress_bar();
 
-    let reduction = crate::utils::calculate_size_reduction(input_size, output_size);
-
-    info!("");
-    info!("{filename}");
-    info!(
-        "  {:<13} {}",
-        "Encode time:",
-        format_duration(duration.as_secs_f64())
-    );
-    info!("  {:<13} {}", "Input size:", format_bytes(input_size));
-    info!("  {:<13} {}", "Output size:", format_bytes(output_size));
-
-    let reduction_str = format!("{reduction}%");
-    if should_use_color() && reduction >= 50 {
-        info!("  {:<13} {}", "Reduced by:", reduction_str.green());
-    } else {
-        info!("  {:<13} {}", "Reduced by:", reduction_str);
-    }
-
-    info!("");
-}
-
-/// Print file list
-pub fn print_file_list(header: &str, files: &[std::path::PathBuf]) {
-    if files.is_empty() {
-        info!("No files found to process.");
-        return;
-    }
-
-    info!("{header}");
-    for file in files {
-        info!("  - {}", file.display());
-    }
-}
 
 /// Print daemon file list (pre-daemonization)
 pub fn print_daemon_file_list(files: &[std::path::PathBuf]) {
@@ -400,27 +314,3 @@ pub fn print_daemon_starting() {
     eprintln!("Starting Drapto daemon in the background...");
 }
 
-/// Data structure for encoding summary table
-pub struct EncodingSummaryRow {
-    pub file: String,
-    pub input: String,
-    pub output: String,
-    pub reduction: String,
-    pub time: String,
-}
-
-/// Print encoding summary table
-pub fn print_encoding_summary_table(summaries: &[EncodingSummaryRow]) {
-    if summaries.is_empty() {
-        return;
-    }
-
-    print_section("ENCODING SUMMARY");
-
-    for summary in summaries {
-        info!(
-            "      {}: {} → {} ({}) in {}",
-            summary.file, summary.input, summary.output, summary.reduction, summary.time
-        );
-    }
-}

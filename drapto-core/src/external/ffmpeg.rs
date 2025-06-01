@@ -8,7 +8,7 @@ use crate::error::{CoreError, CoreResult, command_failed_error};
 use crate::processing::audio;
 
 use ffmpeg_sidecar::command::FfmpegCommand;
-use log::{debug, error, warn};
+use log::debug;
 
 use std::path::PathBuf;
 use std::time::Instant;
@@ -53,9 +53,9 @@ pub fn build_ffmpeg_command(
 
     if let Some(ref filters) = filter_chain {
         cmd.args(["-vf", filters]);
-        crate::terminal::print_sub_item_with_spacing(&format!("Applying video filters: {}", filters));
+        crate::progress_reporting::info_debug(&format!("Applying video filters: {}", filters));
     } else {
-        crate::terminal::print_sub_item_with_spacing("No video filters applied.");
+        crate::progress_reporting::info_debug("No video filters applied.");
     }
 
     let film_grain_value = if has_denoising {
@@ -76,9 +76,9 @@ pub fn build_ffmpeg_command(
     cmd.args(["-svtav1-params", &svtav1_params]);
 
     if film_grain_value > 0 {
-        crate::terminal::print_sub_item(&format!("Applying film grain synthesis: level={}", film_grain_value));
+        crate::progress_reporting::info_debug(&format!("Applying film grain synthesis: level={}", film_grain_value));
     } else {
-        crate::terminal::print_sub_item("No film grain synthesis applied (denoise level is None or 0).");
+        crate::progress_reporting::info_debug("No film grain synthesis applied (denoise level is None or 0).");
     }
 
     if !disable_audio {
@@ -138,9 +138,9 @@ pub fn run_ffmpeg_encode(
     };
 
     if let Some(duration) = duration_secs {
-        crate::terminal::print_status("Progress duration", &crate::utils::format_duration(duration), false);
+        crate::progress_reporting::status("Progress duration", &crate::utils::format_duration(duration), false);
     } else {
-        warn!("Video duration not provided or zero; progress percentage will not be accurate.");
+        crate::progress_reporting::warning("Video duration not provided or zero; progress percentage will not be accurate.");
     }
 
     let mut stderr_buffer = String::new();
@@ -179,16 +179,11 @@ pub fn run_ffmpeg_encode(
                     if percent >= last_progress_percent + 3.0 || 
                        (percent >= 100.0 && last_progress_percent < 100.0) {
                         
-                        let speed = progress.speed;
-                        let fps = progress.fps;
                         
-                        crate::terminal::print_progress_bar(
+                        crate::progress_reporting::progress(
                             percent as f32,
                             elapsed_secs,
-                            total_duration,
-                            Some(speed),
-                            Some(fps),
-                            None,
+                            total_duration
                         );
                         
                         last_progress_percent = percent;
@@ -200,7 +195,7 @@ pub fn run_ffmpeg_encode(
     }
     
     // Clear progress bar when done
-    crate::terminal::clear_progress_bar();
+    crate::progress_reporting::clear_progress();
 
     // FFmpeg finished - check status
     let status = std::process::ExitStatus::default();
@@ -208,7 +203,7 @@ pub fn run_ffmpeg_encode(
         .unwrap_or_else(|_| params.input_path.display().to_string());
 
     if status.success() {
-        log::info!("Encode finished successfully for {}", filename);
+        crate::progress_reporting::success(&format!("Encode finished successfully for {}", filename));
         Ok(())
     } else {
         let error_message = format!(
@@ -219,7 +214,7 @@ pub fn run_ffmpeg_encode(
 
         let filename = crate::utils::get_filename_safe(&params.input_path)
         .unwrap_or_else(|_| params.input_path.display().to_string());
-        error!("Error encoding {}: {}", filename, error_message);
+        crate::progress_reporting::error(&format!("FFmpeg error for {}: {}", filename, error_message));
 
         // Check for specific error types
         if stderr_buffer.contains("No streams found") {

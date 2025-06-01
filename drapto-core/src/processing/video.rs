@@ -27,7 +27,7 @@ use crate::processing::crop_detection;
 use crate::processing::video_properties::VideoProperties;
 use crate::EncodeResult;
 
-use log::{error, info, warn};
+use log::warn;
 
 use std::path::PathBuf;
 use std::time::Instant;
@@ -109,7 +109,7 @@ fn setup_encoding_parameters(
     let mut initial_encode_params = EncodeParams {
         input_path: input_path.to_path_buf(),
         output_path: output_path.to_path_buf(),
-        quality: quality.into(),
+        quality,
         preset: preset_value,
         use_hw_decode: true,
         crop_filter: crop_filter_opt,
@@ -122,7 +122,7 @@ fn setup_encoding_parameters(
     let final_hqdn3d_params = if config.enable_denoise {
         Some(crate::config::FIXED_HQDN3D_PARAMS.to_string())
     } else {
-        crate::terminal::print_sub_item("Denoising disabled via config.");
+        crate::progress_reporting::info_debug("Denoising disabled via config.");
         None
     };
 
@@ -151,17 +151,17 @@ fn display_encoding_configuration(encode_params: &EncodeParams, _config: &CoreCo
 
 
     // Terminal display
-    crate::terminal::print_section("ENCODING CONFIGURATION");
+    crate::progress_reporting::section("ENCODING CONFIGURATION");
     
     // Video settings - Level 3 subsection within main section
-    crate::terminal::print_subsection_level3("Video:");
-    crate::terminal::print_status("Preset", &format!("{} (SVT-AV1)", preset_value), false);
-    crate::terminal::print_status("Quality", &format!("{} (CRF)", quality), false);
+    crate::progress_reporting::processing_debug("Video:");
+    crate::progress_reporting::status_debug("Preset", &format!("{} (SVT-AV1)", preset_value), false);
+    crate::progress_reporting::status_debug("Quality", &format!("{} (CRF)", quality), false);
 
     if let Some(hqdn3d) = final_hqdn3d_params {
-        crate::terminal::print_status("Grain Level", &format!("VeryLight ({})", hqdn3d), false);
+        crate::progress_reporting::status_debug("Grain Level", &format!("VeryLight ({})", hqdn3d), false);
     } else {
-        crate::terminal::print_status("Grain Level", "None (no denoising)", false);
+        crate::progress_reporting::status_debug("Grain Level", "None (no denoising)", false);
     }
 
 }
@@ -206,7 +206,7 @@ pub fn process_videos(
                 "Output file already exists: {}. Skipping encode.",
                 output_path.display()
             );
-            error!("{error_msg}");
+            crate::progress_reporting::warning(&error_msg);
 
             // Send a notification if notification_sender is provided
             send_notification_safe(
@@ -225,7 +225,7 @@ pub fn process_videos(
             continue;
         }
 
-        crate::terminal::print_status("File", &filename, false);
+        crate::progress_reporting::status("File", &filename, false);
 
         // Send encoding start notification
         send_notification_safe(
@@ -242,9 +242,7 @@ pub fn process_videos(
             Ok(props) => props,
             Err(e) => {
                 // Log the error and skip this file
-                error!(
-                    "Failed to get video properties for {filename}: {e}. Skipping file."
-                );
+                crate::progress_reporting::error(&format!("Could not analyze {filename}: {e}"));
 
                 // Send an error notification if notification_sender is provided
                 send_notification_safe(
@@ -256,7 +254,6 @@ pub fn process_videos(
                     "error"
                 );
 
-                info!("");
                 continue;
             }
         };
@@ -269,9 +266,9 @@ pub fn process_videos(
 
         // Report video analysis results
         let dynamic_range = if is_hdr { "HDR" } else { "SDR" };
-        crate::terminal::print_status("Video quality", &format!("{} ({}) - CRF {}", video_width, category, quality), false);
-        crate::terminal::print_status("Duration", &format!("{:.2}s", duration_secs), false);
-        crate::terminal::print_status("Dynamic range", dynamic_range, false);
+        crate::progress_reporting::status("Video quality", &format!("{} ({}) - CRF {}", video_width, category, quality), false);
+        crate::progress_reporting::status("Duration", &format!("{:.2}s", duration_secs), false);
+        crate::progress_reporting::status("Dynamic range", dynamic_range, false);
 
         // Perform crop detection
         crate::progress_reporting::report_processing_step("Detecting black bars");
@@ -282,9 +279,9 @@ pub fn process_videos(
                 Ok(result) => result,
                 Err(e) => {
                     // Log warning and proceed without cropping
-                    warn!(
+                    crate::progress_reporting::warning(&format!(
                         "Crop detection failed for {filename}: {e}. Proceeding without cropping."
-                    );
+                    ));
                     // detect_crop returns Ok(None) for failures
                     (None, false)
                 }
@@ -360,9 +357,9 @@ pub fn process_videos(
             }
 
             Err(e) => if let CoreError::NoStreamsFound(path) = &e {
-                warn!(
+                crate::progress_reporting::warning(&format!(
                     "Skipping encode for {filename}: FFmpeg reported no processable streams found in '{path}'."
-                );
+                ));
 
                 // Send a notification if notification_sender is provided
                 send_notification_safe(
@@ -375,9 +372,7 @@ pub fn process_videos(
                 );
             } else {
                 // Log the error for all other error types
-                error!(
-                    "ffmpeg encode failed for {filename}: {e}. Check logs for details."
-                );
+                crate::progress_reporting::error(&format!("FFmpeg failed to encode {filename}: {e}"));
 
                 // Send an error notification if notification_sender is provided
                 send_notification_safe(
@@ -393,10 +388,8 @@ pub fn process_videos(
 
         // Apply cooldown between encodes when processing multiple files
         // This helps ensure notifications arrive in order
-        if files_to_process.len() > 1 && input_path != files_to_process.last().unwrap() {
-            if config.encode_cooldown_secs > 0 {
-                std::thread::sleep(std::time::Duration::from_secs(config.encode_cooldown_secs));
-            }
+        if files_to_process.len() > 1 && input_path != files_to_process.last().unwrap() && config.encode_cooldown_secs > 0 {
+            std::thread::sleep(std::time::Duration::from_secs(config.encode_cooldown_secs));
         }
         }
 
