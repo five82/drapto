@@ -232,12 +232,6 @@ fn display_analysis_info(files_to_process: &[PathBuf]) {
             files_to_process.len()
         ));
 
-        let decode_status = if drapto_core::hardware_decode::is_hardware_decoding_available() {
-            "Hardware (VideoToolbox)"
-        } else {
-            "Software"
-        };
-        terminal::print_status("Decoding", decode_status, false);
     }
 }
 

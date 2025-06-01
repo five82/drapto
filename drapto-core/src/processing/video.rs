@@ -148,14 +148,6 @@ fn display_encoding_configuration(encode_params: &EncodeParams, _config: &CoreCo
         log::debug!("Grain Level: None (no denoising)");
     }
 
-    // Hardware info
-    log::debug!("Hardware:");
-    let hw_info = crate::hardware_decode::get_hardware_decoding_info();
-    let hw_display = match hw_info {
-        Some(info) => format!("{info} (decode only)"),
-        None => "None available".to_string(),
-    };
-    log::debug!("Acceleration: {hw_display}");
 
     // Terminal display
     crate::terminal::print_section("ENCODING CONFIGURATION");
@@ -171,14 +163,6 @@ fn display_encoding_configuration(encode_params: &EncodeParams, _config: &CoreCo
         crate::terminal::print_status("Grain Level", "None (no denoising)", false);
     }
 
-    // Hardware info - Level 3 subsection within main section
-    crate::terminal::print_subsection_level3_with_spacing("Hardware:");
-    let hw_info = crate::hardware_decode::get_hardware_decoding_info();
-    let hw_display = match hw_info {
-        Some(info) => format!("{info} (decode only)"),
-        None => "No hardware decoder available".to_string(),
-    };
-    crate::terminal::print_status("Acceleration", &hw_display, false);
 }
 
 /// Main entry point for video processing. Orchestrates analysis, encoding, and notifications.
