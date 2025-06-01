@@ -33,6 +33,32 @@ use log::{error, info, warn};
 use std::path::PathBuf;
 use std::time::Instant;
 
+/// Helper function to safely send notifications with consistent error handling.
+fn send_notification_safe(
+    sender: Option<&NtfyNotificationSender>,
+    title: &str,
+    message: String,
+    priority: Option<u8>,
+    tag: Option<&str>,
+    context: &str,
+) {
+    if let Some(sender) = sender {
+        let mut notification = Notification::new(title, message);
+        
+        if let Some(p) = priority {
+            notification = notification.with_priority(p);
+        }
+        
+        if let Some(t) = tag {
+            notification = notification.with_tag(t);
+        }
+
+        if let Err(e) = sender.send(&notification) {
+            warn!("Failed to send {} notification: {e}", context);
+        }
+    }
+}
+
 /// Determines quality settings based on video resolution and config.
 /// 
 /// Returns (quality, category, is_hdr)
@@ -207,20 +233,18 @@ pub fn process_videos(
             error!("{error_msg}");
 
             // Send a notification if notification_sender is provided
-            if let Some(sender) = notification_sender {
-                let notification = Notification::new(
-                    "Drapto Encode Skipped",
-                    format!(
-                        "Skipped encode for {}: Output file already exists at {}",
-                        filename,
-                        output_path.display()
-                    )
-                );
-
-                if let Err(e) = sender.send(&notification) {
-                    warn!("Failed to send notification for {filename}: {e}");
-                }
-            }
+            send_notification_safe(
+                notification_sender,
+                "Drapto Encode Skipped",
+                format!(
+                    "Skipped encode for {}: Output file already exists at {}",
+                    filename,
+                    output_path.display()
+                ),
+                None,
+                None,
+                "skip"
+            );
 
             continue;
         }
@@ -228,16 +252,14 @@ pub fn process_videos(
         crate::terminal::print_status("File", &filename, false);
 
         // Send encoding start notification
-        if let Some(sender) = notification_sender {
-            let notification = Notification::new(
-                "Encoding Started",
-                format!("Started encoding {filename}")
-            ).with_priority(3).with_tag("start");
-
-            if let Err(e) = sender.send(&notification) {
-                warn!("Failed to send start notification for {filename}: {e}");
-            }
-        }
+        send_notification_safe(
+            notification_sender,
+            "Encoding Started",
+            format!("Started encoding {filename}"),
+            Some(3),
+            Some("start"),
+            "start"
+        );
 
         // Analyze video properties
         let video_props = match crate::external::get_video_properties(input_path) {
@@ -249,16 +271,14 @@ pub fn process_videos(
                 );
 
                 // Send an error notification if notification_sender is provided
-                if let Some(sender) = notification_sender {
-                    let notification = Notification::new(
-                        "Encoding Error",
-                        format!("Error encoding {filename}: Failed to get video properties")
-                    ).with_priority(5).with_tag("error");
-
-                    if let Err(e) = sender.send(&notification) {
-                        warn!("Failed to send error notification for {filename}: {e}");
-                    }
-                }
+                send_notification_safe(
+                    notification_sender,
+                    "Encoding Error",
+                    format!("Error encoding {filename}: Failed to get video properties"),
+                    Some(5),
+                    Some("error"),
+                    "error"
+                );
 
                 info!("");
                 continue;
@@ -356,33 +376,29 @@ pub fn process_videos(
                 );
 
                 // Send success notification
-                if let Some(sender) = notification_sender {
-                    let reduction = if input_size > 0 {
-                        100 - ((output_size * 100) / input_size)
-                    } else {
-                        0
-                    };
+                let reduction = if input_size > 0 {
+                    100 - ((output_size * 100) / input_size)
+                } else {
+                    0
+                };
 
-                    let duration_secs = file_elapsed_time.as_secs();
-                    let duration_str = if duration_secs >= 3600 {
-                        format!("{}h {}m {}s", duration_secs / 3600, (duration_secs % 3600) / 60, duration_secs % 60)
-                    } else if duration_secs >= 60 {
-                        format!("{}m {}s", duration_secs / 60, duration_secs % 60)
-                    } else {
-                        format!("{duration_secs}s")
-                    };
+                let duration_secs = file_elapsed_time.as_secs();
+                let duration_str = if duration_secs >= 3600 {
+                    format!("{}h {}m {}s", duration_secs / 3600, (duration_secs % 3600) / 60, duration_secs % 60)
+                } else if duration_secs >= 60 {
+                    format!("{}m {}s", duration_secs / 60, duration_secs % 60)
+                } else {
+                    format!("{duration_secs}s")
+                };
 
-                    let notification = Notification::new(
-                        "Encoding Complete",
-                        format!("Completed encoding {filename} in {duration_str}. Reduced by {reduction}%")
-                    ).with_priority(4).with_tag("complete");
-
-                    if let Err(e) = sender.send(&notification) {
-                        warn!(
-                            "Failed to send success notification for {filename}: {e}"
-                        );
-                    }
-                }
+                send_notification_safe(
+                    notification_sender,
+                    "Encoding Complete",
+                    format!("Completed encoding {filename} in {duration_str}. Reduced by {reduction}%"),
+                    Some(4),
+                    Some("complete"),
+                    "success"
+                );
             }
 
             Err(e) => if let CoreError::NoStreamsFound(path) = &e {
@@ -391,16 +407,14 @@ pub fn process_videos(
                 );
 
                 // Send a notification if notification_sender is provided
-                if let Some(sender) = notification_sender {
-                    let notification = Notification::new(
-                        "Drapto Encode Skipped",
-                        format!("Skipped encode for {filename}: No streams found.")
-                    );
-
-                    if let Err(err) = sender.send(&notification) {
-                        warn!("Failed to send skip notification for {filename}: {err}");
-                    }
-                }
+                send_notification_safe(
+                    notification_sender,
+                    "Drapto Encode Skipped",
+                    format!("Skipped encode for {filename}: No streams found."),
+                    None,
+                    None,
+                    "skip"
+                );
             } else {
                 // Log the error for all other error types
                 error!(
@@ -408,18 +422,14 @@ pub fn process_videos(
                 );
 
                 // Send an error notification if notification_sender is provided
-                if let Some(sender) = notification_sender {
-                    let notification = Notification::new(
-                        "Encoding Error",
-                        format!("Error encoding {filename}: ffmpeg failed: {e}")
-                    ).with_priority(5).with_tag("error");
-
-                    if let Err(err) = sender.send(&notification) {
-                        warn!(
-                            "Failed to send error notification for {filename}: {err}"
-                        );
-                    }
-                }
+                send_notification_safe(
+                    notification_sender,
+                    "Encoding Error",
+                    format!("Error encoding {filename}: ffmpeg failed: {e}"),
+                    Some(5),
+                    Some("error"),
+                    "error"
+                );
             }
             }
         }
