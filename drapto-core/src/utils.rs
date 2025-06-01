@@ -4,6 +4,19 @@
 //! drapto-core library. These include functions for duration formatting,
 //! byte formatting, and path manipulation.
 
+use std::path::Path;
+
+/// Checks if the given path is a valid video file that can be processed.
+/// Currently only supports .mkv files (case-insensitive).
+#[must_use]
+pub fn is_valid_video_file(path: &Path) -> bool {
+    path.is_file() && 
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext_str| ext_str.eq_ignore_ascii_case("mkv"))
+        .unwrap_or(false)
+}
+
 /// Formats seconds as HH:MM:SS (e.g., 3725.0 -> "01:02:05"). Returns "??:??:??" for invalid inputs.
 #[must_use] pub fn format_duration(seconds: f64) -> String {
     if seconds < 0.0 || !seconds.is_finite() {

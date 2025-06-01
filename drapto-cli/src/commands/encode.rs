@@ -39,10 +39,7 @@ pub fn discover_encode_files(args: &EncodeArgs) -> CliResult<(Vec<PathBuf>, Path
             Err(e) => Err(e),
         }
     } else if metadata.is_file() {
-        if input_path
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("mkv"))
-        {
+        if drapto_core::utils::is_valid_video_file(&input_path) {
             let parent_dir = input_path
                 .parent()
                 .ok_or_else(|| {

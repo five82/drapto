@@ -6,6 +6,7 @@
 
 
 use crate::error::{CoreError, CoreResult};
+use crate::utils::is_valid_video_file;
 
 use std::path::{Path, PathBuf};
 
@@ -17,14 +18,11 @@ pub fn find_processable_files(input_dir: &Path) -> CoreResult<Vec<PathBuf>> {
             let entry = entry.ok()?;
             let path = entry.path();
 
-            if !path.is_file() {
-                return None;
+            if is_valid_video_file(&path) {
+                Some(path)
+            } else {
+                None
             }
-
-            path.extension()
-                .and_then(|ext| ext.to_str())
-                .filter(|ext_str| ext_str.eq_ignore_ascii_case("mkv"))
-                .map(|_| path.clone())
         })
         .collect();
 
