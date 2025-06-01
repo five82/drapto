@@ -369,7 +369,7 @@ pub fn process_videos(
                 crate::terminal_output::print_completion_with_status(
                     &format!("Encoding complete: {}", filename),
                     "Time",
-                    &format_duration(file_elapsed_time)
+                    &format_duration(file_elapsed_time.as_secs_f64())
                 );
 
                 // Send success notification

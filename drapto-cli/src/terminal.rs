@@ -14,7 +14,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 use unicode_width::UnicodeWidthStr;
 
-use drapto_core::{format_bytes, format_duration_seconds};
+use drapto_core::{format_bytes, format_duration};
 
 /// Represents the visual hierarchy levels in the CLI output
 #[derive(Debug, Clone, Copy)]
@@ -330,7 +330,7 @@ pub fn print_encoding_summary(
     info!(
         "  {:<13} {}",
         "Encode time:",
-        format_duration_seconds(duration.as_secs_f64())
+        format_duration(duration.as_secs_f64())
     );
     info!("  {:<13} {}", "Input size:", format_bytes(input_size));
     info!("  {:<13} {}", "Output size:", format_bytes(output_size));

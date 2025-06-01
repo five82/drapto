@@ -316,7 +316,7 @@ pub fn run_encode(
                     terminal::print_subsection(&result.filename);
                     terminal::print_status(
                         "Encode time",
-                        &drapto_core::utils::format_duration(result.duration),
+                        &drapto_core::utils::format_duration(result.duration.as_secs_f64()),
                         false,
                     );
                     terminal::print_status("Input size", &format_bytes(result.input_size), false);
@@ -348,7 +348,7 @@ pub fn run_encode(
 
             terminal::print_status(
                 "Time",
-                &drapto_core::format_duration(result.duration),
+                &drapto_core::format_duration(result.duration.as_secs_f64()),
                 false,
             );
             terminal::print_status(
@@ -371,7 +371,7 @@ pub fn run_encode(
 
     terminal::print_status(
         "Total time",
-        &drapto_core::format_duration(total_elapsed_time),
+        &drapto_core::format_duration(total_elapsed_time.as_secs_f64()),
         true,
     );
 

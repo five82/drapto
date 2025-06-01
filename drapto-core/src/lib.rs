@@ -46,7 +46,7 @@ pub use config::CoreConfig;
 pub use discovery::find_processable_files;
 pub use error::{CoreError, CoreResult};
 pub use processing::process_videos;
-pub use utils::{format_bytes, format_duration, format_duration_seconds, parse_ffmpeg_time};
+pub use utils::{format_bytes, format_duration, parse_ffmpeg_time};
 pub use external::{
     MediaInfo, get_audio_channels, get_file_size, get_media_info,
     get_video_properties,

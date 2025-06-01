@@ -168,7 +168,7 @@ pub fn run_ffmpeg_encode(
     };
 
     if let Some(duration) = duration_secs {
-        crate::terminal_output::print_status("Progress duration", &crate::utils::format_duration_seconds(duration), false);
+        crate::terminal_output::print_status("Progress duration", &crate::utils::format_duration(duration), false);
     } else {
         warn!("Video duration not provided or zero; progress percentage will not be accurate.");
     }

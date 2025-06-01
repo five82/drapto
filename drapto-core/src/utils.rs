@@ -4,23 +4,22 @@
 //! drapto-core library. These include functions for duration formatting
 //! and byte formatting.
 
-
-use std::time::Duration;
-
-/// Formats a Duration into a human-readable string in HH:MM:SS format.
+/// Formats a duration into a human-readable string in HH:MM:SS format.
 ///
-/// This function converts a Duration into hours, minutes, and seconds and
-/// formats it as a string in the standard HH:MM:SS format. This format is
-/// consistent with the CLI design guide and provides a uniform way to display
-/// durations throughout the application.
+/// This function accepts a duration in seconds and formats it as a string 
+/// in the standard HH:MM:SS format. This format is consistent with the CLI 
+/// design guide and provides a uniform way to display durations throughout 
+/// the application.
 ///
 /// # Arguments
 ///
-/// * `duration` - The Duration to format
+/// * `seconds` - The duration in seconds. Can be obtained from Duration::as_secs_f64()
+///              or from external sources like FFmpeg
 ///
 /// # Returns
 ///
 /// * A String in the format "HH:MM:SS" (e.g., "01:30:45")
+/// * Returns "??:??:??" for negative or non-finite values
 ///
 /// # Examples
 ///
@@ -28,38 +27,16 @@ use std::time::Duration;
 /// use drapto_core::format_duration;
 /// use std::time::Duration;
 ///
+/// // From Duration
 /// let duration = Duration::from_secs(3725); // 1 hour, 2 minutes, 5 seconds
-/// let formatted = format_duration(duration);
+/// let formatted = format_duration(duration.as_secs_f64());
+/// assert_eq!(formatted, "01:02:05");
+///
+/// // From raw seconds
+/// let formatted = format_duration(3725.0);
 /// assert_eq!(formatted, "01:02:05");
 /// ```
-#[must_use] pub fn format_duration(duration: Duration) -> String {
-    format_duration_seconds(duration.as_secs_f64())
-}
-
-/// Formats a duration in seconds as HH:MM:SS.
-///
-/// This function converts a floating-point number of seconds into a
-/// formatted string in HH:MM:SS format. It's useful when working with
-/// duration values that come from external sources (like `FFmpeg`) as
-/// floating-point seconds.
-///
-/// # Arguments
-///
-/// * `seconds` - The duration in seconds
-///
-/// # Returns
-///
-/// * A String in the format "HH:MM:SS"
-///
-/// # Examples
-///
-/// ```rust
-/// use drapto_core::utils::format_duration_seconds;
-///
-/// let formatted = format_duration_seconds(3725.0);
-/// assert_eq!(formatted, "01:02:05");
-/// ```
-#[must_use] pub fn format_duration_seconds(seconds: f64) -> String {
+#[must_use] pub fn format_duration(seconds: f64) -> String {
     if seconds < 0.0 || !seconds.is_finite() {
         return "??:??:??".to_string();
     }
