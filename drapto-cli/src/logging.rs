@@ -12,12 +12,7 @@ use crate::error::CliResult;
 use drapto_core::CoreError;
 use std::path::Path;
 
-/// Setup logging for interactive mode that logs to both console and file
-///
-/// Logging is controlled by the `RUST_LOG` environment variable:
-/// - Default: info level (normal output)
-/// - With --verbose flag: debug level (detailed output)
-/// - Can be overridden by setting `RUST_LOG` explicitly
+/// Sets up dual console/file logging. RUST_LOG controls level (default: info).
 pub fn setup_file_logging(log_path: &Path) -> CliResult<()> {
     // Create parent directory if it doesn't exist
     if let Some(parent) = log_path.parent() {

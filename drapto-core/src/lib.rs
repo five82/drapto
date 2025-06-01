@@ -63,9 +63,7 @@ pub use hardware_decode::{
 
 use std::time::Duration;
 
-/// Result of an encoding operation, containing statistics about the process.
-///
-/// Returned by the `process_videos` function for each successfully processed video file.
+/// Encoding statistics returned by process_videos for each successful file.
 #[derive(Debug, Clone)]
 pub struct EncodeResult {
     pub filename: String,

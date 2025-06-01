@@ -18,25 +18,7 @@ use log::{debug, info, warn};
 
 use drapto_core::format_bytes;
 
-/// Discovers .mkv files to encode based on the provided arguments.
-///
-/// This function handles both file and directory inputs:
-/// - If the input is a directory, it finds all .mkv files in that directory
-/// - If the input is a file, it verifies that it's a .mkv file
-///
-/// # Arguments
-/// * `args` - The encode command arguments containing the input path
-///
-/// # Returns
-/// * `Ok((files, input_dir))` - A tuple containing:
-///   - A vector of paths to the discovered .mkv files
-///   - The effective input directory (parent directory if input is a file)
-/// * `Err(...)` - An error if the input path is invalid or contains no valid files
-///
-/// # Errors
-/// - If the input path doesn't exist or is inaccessible
-/// - If the input is a file but not a .mkv file
-/// - If the input is neither a file nor a directory
+/// Discovers .mkv files from input path (file or directory). Returns (files, effective_input_dir).
 pub fn discover_encode_files(args: &EncodeArgs) -> CliResult<(Vec<PathBuf>, PathBuf)> {
     let input_path = args
         .input_path
@@ -85,10 +67,7 @@ pub fn discover_encode_files(args: &EncodeArgs) -> CliResult<(Vec<PathBuf>, Path
     }
 }
 
-/// Main function that handles the encoding process.
-///
-/// Sets up output directories, configures encoding parameters, processes videos
-/// using drapto-core, and reports results.
+/// Runs the encoding process with configured parameters and reports results.
 pub fn run_encode(
     notification_sender: Option<&NtfyNotificationSender>,
     args: EncodeArgs,

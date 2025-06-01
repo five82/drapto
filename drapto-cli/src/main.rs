@@ -21,18 +21,7 @@ use std::path::PathBuf;
 use env_logger::Env;
 use log::Level;
 
-/// Main entry point for the Drapto CLI application.
-///
-/// This function:
-/// 1. Sets up logging with `env_logger`
-/// 2. Parses command-line arguments
-/// 3. Handles daemonization if requested
-/// 4. Dispatches to the appropriate command handler
-/// 5. Handles errors and returns appropriate exit codes
-///
-/// # Returns
-/// - `Ok(())` if the application completes successfully
-/// - `Err(...)` if an error occurs during execution
+/// Main entry point. Parses CLI args, sets up logging, handles daemonization, and runs commands.
 fn main() -> CliResult<()> {
     let cli_args = Cli::parse();
     let interactive_mode = cli_args.interactive;
