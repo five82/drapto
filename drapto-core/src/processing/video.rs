@@ -26,7 +26,6 @@ use crate::processing::audio;
 use crate::processing::crop_detection;
 use crate::processing::video_properties::VideoProperties;
 use crate::EncodeResult;
-use crate::utils::format_duration;
 
 use log::{error, info, warn};
 
@@ -268,16 +267,14 @@ pub fn process_videos(
         // Determine quality settings based on resolution
         let (quality, category, is_hdr) = determine_quality_settings(&video_props, config);
 
-        // Report the detected resolution and selected quality as a status line
+        // Report video analysis results
+        let dynamic_range = if is_hdr { "HDR" } else { "SDR" };
         crate::terminal::print_status("Video quality", &format!("{} ({}) - CRF {}", video_width, category, quality), false);
         crate::terminal::print_status("Duration", &format!("{:.2}s", duration_secs), false);
-
-        // Report HDR/SDR status
-        let dynamic_range = if is_hdr { "HDR" } else { "SDR" };
         crate::terminal::print_status("Dynamic range", dynamic_range, false);
 
         // Perform crop detection
-        crate::terminal::print_processing("Detecting black bars");
+        crate::progress_reporting::report_processing_step("Detecting black bars");
 
         let disable_crop = config.crop_mode == "off";
         let (crop_filter_opt, _is_hdr) =
@@ -294,7 +291,7 @@ pub fn process_videos(
             };
 
         // Analyze audio streams
-        crate::terminal::print_processing("Audio analysis");
+        crate::progress_reporting::report_processing_step("Audio analysis");
 
         // Analyze audio and get channel information for encoding
         let audio_channels = audio::analyze_and_log_audio(input_path);
@@ -334,10 +331,10 @@ pub fn process_videos(
                     output_size,
                 });
 
-                crate::terminal::print_completion_with_status(
-                    &format!("Encoding complete: {}", filename),
-                    "Time",
-                    &format_duration(file_elapsed_time.as_secs_f64())
+                crate::progress_reporting::report_timed_completion(
+                    "Encoding complete",
+                    &filename,
+                    file_elapsed_time
                 );
 
                 // Send success notification

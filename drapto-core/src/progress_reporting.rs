@@ -9,7 +9,7 @@
 //! - Direct reporter access instead of wrapper functions
 //! - No unsafe code or complex global state
 
-pub mod ffmpeg_handler;
+// pub mod ffmpeg_handler; // Module not found
 
 use std::path::Path;
 use std::sync::Mutex;
@@ -188,4 +188,46 @@ pub fn encode_error(input_path: &Path, message: &str) {
         .unwrap_or_else(|_| input_path.display().to_string());
 
     error(&format!("Error encoding {filename}: {message}"));
+}
+
+// Common progress reporting patterns
+
+/// Reports the start of a processing operation.
+/// Displays a processing indicator with the operation name.
+pub fn report_processing_step(operation: &str) {
+    crate::terminal::print_processing(operation);
+}
+
+/// Reports the completion of an operation with a single result.
+/// Shows a success message followed by the result status.
+pub fn report_operation_complete(operation: &str, result_label: &str, result_value: &str) {
+    crate::terminal::print_success(&format!("{} complete", operation));
+    crate::terminal::print_status(result_label, result_value, false);
+}
+
+/// Reports multiple analysis results as status lines.
+/// Each item is a tuple of (label, value, highlight).
+pub fn report_analysis_results(items: &[(&str, String, bool)]) {
+    for (label, value, highlight) in items {
+        crate::terminal::print_status(label, value, *highlight);
+    }
+}
+
+/// Reports a configuration section with a header and multiple status items.
+/// All items are displayed without highlighting.
+pub fn report_configuration_section(title: &str, items: &[(&str, String)]) {
+    crate::terminal::print_section(title);
+    for (label, value) in items {
+        crate::terminal::print_status(label, value, false);
+    }
+}
+
+/// Reports the completion of an operation with timing information.
+/// Shows a completion message with the duration.
+pub fn report_timed_completion(operation: &str, filename: &str, duration: Duration) {
+    crate::terminal::print_completion_with_status(
+        &format!("{}: {}", operation, filename),
+        "Time",
+        &crate::utils::format_duration(duration.as_secs_f64())
+    );
 }

@@ -19,8 +19,7 @@ pub fn detect_crop(
 ) -> CoreResult<(Option<String>, bool)> {
     // Check if crop detection is disabled
     if disable_crop {
-        crate::terminal::print_success("Crop detection complete");
-        crate::terminal::print_status("Detected crop", "Disabled", false);
+        crate::progress_reporting::report_operation_complete("Crop detection", "Detected crop", "Disabled");
         return Ok((None, false));
     }
 
@@ -96,17 +95,15 @@ pub fn detect_crop(
     // Report results
     match &best_crop {
         Some(crop) => {
-            crate::terminal::print_success("Crop detection complete");
-            crate::terminal::print_status("Detected crop", crop, false);
+            crate::progress_reporting::report_operation_complete("Crop detection", "Detected crop", crop);
             log::debug!("Applied crop filter: {}", crop);
         }
         None => {
-            crate::terminal::print_success("Crop detection complete");
             if has_multiple_ratios {
-                crate::terminal::print_status("Detected crop", "Multiple ratios (no crop)", false);
+                crate::progress_reporting::report_operation_complete("Crop detection", "Detected crop", "Multiple ratios (no crop)");
                 log::debug!("Multiple aspect ratios detected - no cropping applied");
             } else {
-                crate::terminal::print_status("Detected crop", "None required", false);
+                crate::progress_reporting::report_operation_complete("Crop detection", "Detected crop", "None required");
                 log::debug!("No cropping needed for {}", input_file.display());
             }
         }
