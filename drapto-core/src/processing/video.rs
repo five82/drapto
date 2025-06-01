@@ -34,6 +34,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 /// Helper function to safely send notifications with consistent error handling.
+/// This function blocks until the notification is sent to ensure proper ordering.
 fn send_notification_safe(
     sender: Option<&NtfyNotificationSender>,
     title: &str,
@@ -53,8 +54,16 @@ fn send_notification_safe(
             notification = notification.with_tag(t);
         }
 
-        if let Err(e) = sender.send(&notification) {
-            warn!("Failed to send {} notification: {e}", context);
+        // Send notification synchronously and wait for completion
+        match sender.send(&notification) {
+            Ok(()) => {
+                // Add a small delay to ensure ntfy.sh processes notifications in order
+                // This helps prevent race conditions on the server side
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+            Err(e) => {
+                warn!("Failed to send {} notification: {e}", context);
+            }
         }
     }
 }
