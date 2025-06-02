@@ -138,7 +138,7 @@ pub fn run_ffmpeg_encode(
     };
 
     if let Some(duration) = duration_secs {
-        crate::progress_reporting::status("Progress duration", &crate::utils::format_duration(duration), false);
+        crate::progress_reporting::status("Duration", &crate::utils::format_duration(duration), false);
     } else {
         crate::progress_reporting::warning("Video duration not provided or zero; progress percentage will not be accurate.");
     }
@@ -194,8 +194,11 @@ pub fn run_ffmpeg_encode(
         }
     }
     
-    // Clear progress bar when done
-    crate::progress_reporting::clear_progress();
+    // Show 100% completion and finish (leave visible)
+    if let Some(total_duration) = duration_secs {
+        crate::progress_reporting::progress(100.0, total_duration, total_duration);
+    }
+    crate::progress_reporting::finish_progress();
 
     // FFmpeg finished - check status
     let status = std::process::ExitStatus::default();
@@ -203,6 +206,7 @@ pub fn run_ffmpeg_encode(
         .unwrap_or_else(|_| params.input_path.display().to_string());
 
     if status.success() {
+        crate::progress_reporting::info(""); // Blank line after progress bar
         crate::progress_reporting::success(&format!("Encode finished successfully for {}", filename));
         Ok(())
     } else {

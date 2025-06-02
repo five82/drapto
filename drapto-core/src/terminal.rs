@@ -247,17 +247,17 @@ fn init_progress_bar(total_secs: f64) -> ProgressBar {
     let term_width = term.size().1 as usize;
     let style = if term_width >= 100 {
         ProgressStyle::default_bar()
-            .template("Encoding: {percent:>5.1}% [{bar:30}] ({elapsed_precise} / {eta_precise})")
+            .template("  ⧖ Encoding: {percent:>5.1}% [{bar:30}] ({elapsed_precise} / {eta_precise})")
             .unwrap()
             .progress_chars("##.")
     } else if term_width >= 60 {
         ProgressStyle::default_bar()
-            .template("Encoding: {percent:>5.1}% [{bar:20}]\n  {eta_precise}")
+            .template("  ⧖ Encoding: {percent:>5.1}% [{bar:20}]\n    ETA: {eta_precise}")
             .unwrap()
             .progress_chars("##.")
     } else {
         ProgressStyle::default_bar()
-            .template("{percent:>5.1}% [{bar:10}]")
+            .template("  ⧖ {percent:>5.1}% [{bar:10}]")
             .unwrap()
             .progress_chars("##.")
     };
@@ -286,6 +286,7 @@ pub fn print_progress_bar(
         let mut state = TERMINAL_STATE.lock().unwrap();
 
         if state.current_progress.is_none() {
+            info!(""); // Add blank line before first progress bar
             state.current_progress = Some(init_progress_bar(total_secs));
         }
 
@@ -303,6 +304,15 @@ pub fn print_progress_bar(
             }
 
             pb.tick();
+        }
+    }
+}
+
+/// Finish the current progress bar (leave final state visible)
+pub fn finish_progress_bar() {
+    if let Ok(mut state) = TERMINAL_STATE.lock() {
+        if let Some(pb) = state.current_progress.take() {
+            pb.finish();
         }
     }
 }

@@ -60,6 +60,9 @@ pub trait ProgressReporter: Send + Sync {
     /// Report progress with a progress bar
     fn progress_bar(&self, percent: f32, elapsed_secs: f64, total_secs: f64);
 
+    /// Finish progress bar (leave final state visible)
+    fn finish_progress_bar(&self);
+
     /// Clear any active progress bar
     fn clear_progress_bar(&self);
 
@@ -139,6 +142,11 @@ pub fn info(message: &str) {
 /// Report progress
 pub fn progress(percent: f32, elapsed_secs: f64, total_secs: f64) {
     with_reporter(|r| r.progress_bar(percent, elapsed_secs, total_secs));
+}
+
+/// Finish progress bar (leave final state visible)
+pub fn finish_progress() {
+    with_reporter(|r| r.finish_progress_bar());
 }
 
 /// Clear progress bar
@@ -238,9 +246,9 @@ pub fn report_timed_completion(operation: &str, filename: &str, duration: Durati
 
 // Consolidated reporting functions for reducing redundancy
 
-/// Report file analysis in a consolidated format
-pub fn report_file_analysis(filename: &str, video_width: u32, video_height: u32, duration_secs: f64, category: &str, is_hdr: bool) {
-    section("FILE ANALYSIS");
+/// Report video analysis in a consolidated format
+pub fn report_video_analysis(filename: &str, video_width: u32, video_height: u32, duration_secs: f64, category: &str, is_hdr: bool) {
+    section("VIDEO ANALYSIS");
     status("File", filename, false);
     status("Resolution", &format!("{}x{} ({})", video_width, video_height, category), category == "UHD");
     status("Duration", &crate::utils::format_duration(duration_secs), duration_secs > 3600.0);
@@ -292,6 +300,31 @@ pub fn report_final_results(duration: Duration, input_size: u64, output_size: u6
     status("Size reduction", &format!("{}%", reduction), reduction >= 50);
 }
 
+/// Report consolidated batch summary for multiple files
+pub fn report_batch_summary(results: &[crate::EncodeResult], total_duration: std::time::Duration) {
+    if results.len() <= 1 {
+        // Single file or no files - no additional summary needed
+        return;
+    }
+    
+    section("ENCODING SUMMARY");
+    
+    for result in results {
+        // Each file as a processing step (no spacing before first)
+        crate::terminal::print_processing_no_spacing(&result.filename);
+        status("Time", &crate::utils::format_duration(result.duration.as_secs_f64()), result.duration.as_secs() > 3600);
+        status("Input", &crate::format_bytes(result.input_size), result.input_size > 1024*1024*1024);
+        status("Output", &crate::format_bytes(result.output_size), false);
+        
+        let reduction = crate::utils::calculate_size_reduction(result.input_size, result.output_size);
+        status("Reduction", &format!("{}%", reduction), reduction >= 50);
+        info(""); // Spacing between files
+    }
+    
+    // Total time for all files
+    status("Total time", &crate::utils::format_duration(total_duration.as_secs_f64()), total_duration.as_secs() > 3600);
+}
+
 /// Terminal-based implementation of ProgressReporter
 pub struct TerminalProgressReporter;
 
@@ -333,6 +366,10 @@ impl ProgressReporter for TerminalProgressReporter {
 
     fn progress_bar(&self, percent: f32, elapsed_secs: f64, total_secs: f64) {
         crate::terminal::print_progress_bar(percent, elapsed_secs, total_secs, None, None, None);
+    }
+
+    fn finish_progress_bar(&self) {
+        crate::terminal::finish_progress_bar();
     }
 
     fn clear_progress_bar(&self) {

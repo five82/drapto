@@ -16,8 +16,6 @@ use std::time::Instant;
 
 use log::{debug, info, warn};
 
-use drapto_core::format_bytes;
-
 /// Discovers .mkv files from input path (file or directory). Returns (files, effective_input_dir).
 pub fn discover_encode_files(args: &EncodeArgs) -> CliResult<(Vec<PathBuf>, PathBuf)> {
     let input_path = args
@@ -150,67 +148,34 @@ fn create_core_config(
     Ok(config)
 }
 
-/// Displays initialization information including paths, duration, resolution, and hardware info.
-fn display_initialization_info(
+/// Displays process overview information including file count, directories, and hardware info.
+fn display_process_overview(
     args: &EncodeArgs,
-    file_info: Option<&drapto_core::MediaInfo>,
+    files_count: usize,
     actual_output_dir: &std::path::Path,
     target_filename_override: Option<&std::path::Path>,
 ) {
-    let input_path_display = args.input_path.display().to_string();
+    let input_source_display = {
+        let path_str = args.input_path.display().to_string();
+        if path_str.ends_with('/') { path_str } else { format!("{}/", path_str) }
+    };
     let output_display = if let Some(fname) = target_filename_override {
         fname.display().to_string()
     } else {
-        actual_output_dir.display().to_string()
+        format!("{}/", actual_output_dir.display())
     };
 
-    let duration_display = if let Some(info) = file_info {
-        if let Some(duration_secs) = info.duration {
-            let hours = (duration_secs / 3600.0) as u64;
-            let minutes = ((duration_secs % 3600.0) / 60.0) as u64;
-            let secs = (duration_secs % 60.0) as u64;
-            let formatted = format!("{hours:02}:{minutes:02}:{secs:02}");
-            Some(formatted)
-        } else {
-            None
-        }
-    } else {
-        None
+    // Create appropriate processing description
+    let processing_display = match files_count {
+        0 => "No video files found".to_string(),
+        1 => "1 video file".to_string(),
+        n => format!("{} video files", n),
     };
 
-    let resolution_display = if let Some(info) = file_info {
-        if let (Some(width), Some(height)) = (info.width, info.height) {
-            if width > 0 && height > 0 {
-                let resolution_type = if width >= 3840 {
-                    "(UHD)"
-                } else if width >= 1280 {
-                    "(HD)"
-                } else {
-                    "(SD)"
-                };
-
-                Some(format!("{width}x{height} {resolution_type}"))
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    } else {
-        None
-    };
-
-    terminal::print_section("INITIALIZATION");
-    terminal::print_status("Input file", &input_path_display, false);
-    terminal::print_status("Output file", &output_display, false);
-
-    if let Some(duration) = duration_display {
-        terminal::print_status("Duration", &duration, false);
-    }
-
-    if let Some(resolution) = resolution_display {
-        terminal::print_status("Resolution", &resolution, false);
-    }
+    terminal::print_section("PROCESS OVERVIEW");
+    terminal::print_status("Processing", &processing_display, files_count > 1);
+    terminal::print_status("Input source", &input_source_display, false);
+    terminal::print_status("Output", &output_display, false);
 
     let hw_decode_info = drapto_core::hardware_decode::get_hardware_decoding_info();
     let hw_display = match hw_decode_info {
@@ -220,22 +185,11 @@ fn display_initialization_info(
     terminal::print_status("Hardware", &hw_display, false);
 }
 
-/// Displays video analysis information.
-fn display_analysis_info(files_to_process: &[PathBuf]) {
-    if !files_to_process.is_empty() {
-        terminal::print_section("VIDEO ANALYSIS");
-        terminal::print_processing_no_spacing(&format!(
-            "Analyzing {} file(s)",
-            files_to_process.len()
-        ));
 
-    }
-}
-
-/// Handles and displays encoding results including success/failure status and summary.
+/// Handles encoding results - core library now manages all summary display
 fn handle_encoding_results(
     results: Vec<EncodeResult>,
-    total_start_time: Instant,
+    _total_start_time: Instant,
 ) -> CliResult<()> {
     if results.is_empty() {
         terminal::print_error(
@@ -243,63 +197,9 @@ fn handle_encoding_results(
             "No files were successfully encoded",
             Some("Check that your input files are valid .mkv files"),
         );
-    } else {
-        terminal::print_section("ENCODING COMPLETE");
-        terminal::print_success(&format!(
-            "Successfully encoded {} file(s)",
-            results.len()
-        ));
-
-        for result in &results {
-            let reduction = drapto_core::utils::calculate_size_reduction(result.input_size, result.output_size) as f64;
-
-            terminal::print_subsection(&result.filename);
-            terminal::print_status(
-                "Encode time",
-                &drapto_core::utils::format_duration(result.duration.as_secs_f64()),
-                false,
-            );
-            terminal::print_status("Input size", &format_bytes(result.input_size), false);
-            terminal::print_status("Output size", &format_bytes(result.output_size), false);
-            terminal::print_status("Reduced by", &format!("{reduction:.1}%"), true);
-        }
-
-        // Summary section
-        terminal::print_section("Summary");
-
-        for result in &results {
-            let reduction = drapto_core::utils::calculate_size_reduction(result.input_size, result.output_size);
-
-            if results.len() > 1 {
-                terminal::print_subsection(&result.filename);
-            }
-
-            terminal::print_status(
-                "Time",
-                &drapto_core::format_duration(result.duration.as_secs_f64()),
-                false,
-            );
-            terminal::print_status(
-                "Input",
-                &drapto_core::format_bytes(result.input_size),
-                false,
-            );
-            terminal::print_status(
-                "Output",
-                &drapto_core::format_bytes(result.output_size),
-                true,
-            );
-            terminal::print_status("Reduction", &format!("{reduction}%"), true);
-        }
     }
-
-    let total_elapsed_time = total_start_time.elapsed();
-    terminal::print_status(
-        "Total time",
-        &drapto_core::format_duration(total_elapsed_time.as_secs_f64()),
-        true,
-    );
-
+    // Core library now handles all success reporting and summaries
+    // No additional CLI summary needed
     Ok(())
 }
 
@@ -317,19 +217,14 @@ pub fn run_encode(
     let (actual_output_dir, target_filename_override, log_dir) = 
         setup_output_directories(&args, files_to_process.len())?;
 
-    // Create log file path and get file info for display
+    // Create log file path
     let main_log_filename = format!("drapto_encode_run_{}.log", crate::logging::get_timestamp());
     let main_log_path = log_dir.join(&main_log_filename);
-    let file_info = if files_to_process.is_empty() {
-        None
-    } else {
-        drapto_core::get_media_info(&files_to_process[0]).ok()
-    };
 
-    // Display initialization information
-    display_initialization_info(
+    // Display process overview
+    display_process_overview(
         &args,
-        file_info.as_ref(),
+        files_to_process.len(),
         &actual_output_dir,
         target_filename_override.as_deref(),
     );
@@ -355,9 +250,6 @@ pub fn run_encode(
 
     // Create and configure core config
     let config = create_core_config(args, effective_input_dir, actual_output_dir.to_path_buf(), log_dir.to_path_buf())?;
-
-    // Display video analysis information
-    display_analysis_info(&files_to_process);
 
     // Process videos
     let processing_result = if files_to_process.is_empty() {

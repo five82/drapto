@@ -30,7 +30,7 @@ use crate::EncodeResult;
 use log::warn;
 
 use std::path::PathBuf;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 /// Helper function to safely send notifications with consistent error handling.
 /// This function blocks until the notification is sent to ensure proper ordering.
@@ -229,8 +229,8 @@ pub fn process_videos(
         // Determine quality settings based on resolution
         let (quality, category, is_hdr) = determine_quality_settings(&video_props, config);
 
-        // Report consolidated file analysis
-        crate::progress_reporting::report_file_analysis(&filename, video_width, video_height, duration_secs, category, is_hdr);
+        // Report consolidated video analysis
+        crate::progress_reporting::report_video_analysis(&filename, video_width, video_height, duration_secs, category, is_hdr);
 
         // Perform crop detection
         crate::progress_reporting::report_processing_step("Detecting black bars");
@@ -357,6 +357,22 @@ pub fn process_videos(
         }
         }
 
+    // Generate appropriate summary based on number of files processed
+    let total_duration: Duration = results.iter().map(|r| r.duration).sum();
+    
+    match results.len() {
+        0 => {
+            crate::progress_reporting::warning("No files were successfully encoded");
+        }
+        1 => {
+            // Single file already has final results, just confirm overall success
+            crate::progress_reporting::success(&format!("Successfully encoded {}", results[0].filename));
+        }
+        _ => {
+            // Multiple files get consolidated summary
+            crate::progress_reporting::report_batch_summary(&results, total_duration);
+        }
+    }
 
     Ok(results)
 }
