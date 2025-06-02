@@ -1,10 +1,10 @@
 //! Configuration structures and constants for the drapto-core library.
-//! 
+//!
 //! This module provides the configuration system for video processing behavior,
 //! including encoding parameters, quality settings, and analysis options.
 
-use std::path::PathBuf;
 use crate::error::CoreError;
+use std::path::PathBuf;
 
 // Default constants
 
@@ -32,9 +32,15 @@ pub const DEFAULT_SVT_AV1_TUNE: u8 = 3;
 /// Default crop mode for the main encode.
 pub const DEFAULT_CROP_MODE: &str = "auto";
 
-/// Fixed denoising parameters for hqdn3d filter.
+/// Fixed denoising parameters for hqdn3d filter for HDR content.
 /// Format: spatial_luma:spatial_chroma:temporal_luma:temporal_chroma
-pub const FIXED_HQDN3D_PARAMS: &str = "0.5:0.4:2:2";
+/// HDR content requires lighter denoising to preserve detail
+pub const FIXED_HQDN3D_PARAMS_HDR: &str = "1:0.8:2.5:2";
+
+/// Fixed denoising parameters for hqdn3d filter for SDR content.
+/// Format: spatial_luma:spatial_chroma:temporal_luma:temporal_chroma
+/// SDR content can use slightly stronger denoising
+pub const FIXED_HQDN3D_PARAMS_SDR: &str = "2:1.5:3:2.5";
 
 /// Fixed film grain synthesis value for SVT-AV1.
 /// Range: 0-50, where 0 is no grain and 50 is maximum grain.
@@ -55,8 +61,6 @@ pub const HDR_COLOR_SPACES: &[&str] = &["bt2020nc", "bt2020c"];
 /// Default cooldown period between encodes in seconds.
 /// This helps ensure notifications arrive in order when processing multiple files.
 pub const DEFAULT_ENCODE_COOLDOWN_SECS: u64 = 3;
-
-
 
 /// Configuration for video processing including paths and encoding settings.
 #[derive(Debug, Clone)]
@@ -136,33 +140,37 @@ impl CoreConfig {
             ..Default::default()
         }
     }
-    
+
     /// Validates svt_av1_preset (0-13) and quality values (0-63).
     pub fn validate(&self) -> Result<(), CoreError> {
         if self.svt_av1_preset > 13 {
-            return Err(CoreError::Config(
-                format!("svt_av1_preset must be 0-13, got {}", self.svt_av1_preset)
-            ));
+            return Err(CoreError::Config(format!(
+                "svt_av1_preset must be 0-13, got {}",
+                self.svt_av1_preset
+            )));
         }
-        
+
         if self.quality_sd > 63 {
-            return Err(CoreError::Config(
-                format!("quality_sd must be 0-63, got {}", self.quality_sd)
-            ));
+            return Err(CoreError::Config(format!(
+                "quality_sd must be 0-63, got {}",
+                self.quality_sd
+            )));
         }
-        
+
         if self.quality_hd > 63 {
-            return Err(CoreError::Config(
-                format!("quality_hd must be 0-63, got {}", self.quality_hd)
-            ));
+            return Err(CoreError::Config(format!(
+                "quality_hd must be 0-63, got {}",
+                self.quality_hd
+            )));
         }
-        
+
         if self.quality_uhd > 63 {
-            return Err(CoreError::Config(
-                format!("quality_uhd must be 0-63, got {}", self.quality_uhd)
-            ));
+            return Err(CoreError::Config(format!(
+                "quality_uhd must be 0-63, got {}",
+                self.quality_uhd
+            )));
         }
-        
+
         Ok(())
     }
 }
@@ -174,7 +182,7 @@ mod tests {
     #[test]
     fn test_default_config() {
         let config = CoreConfig::default();
-        
+
         // Check default values
         assert_eq!(config.svt_av1_preset, DEFAULT_SVT_AV1_PRESET);
         assert_eq!(config.quality_sd, DEFAULT_CORE_QUALITY_SD);
@@ -185,7 +193,7 @@ mod tests {
         assert!(config.enable_denoise);
         assert!(config.ntfy_topic.is_none());
         assert!(config.temp_dir.is_none());
-        
+
         // Validate default config should pass
         assert!(config.validate().is_ok());
     }
@@ -195,14 +203,14 @@ mod tests {
         let input = PathBuf::from("/input");
         let output = PathBuf::from("/output");
         let log = PathBuf::from("/log");
-        
+
         let config = CoreConfig::new(input.clone(), output.clone(), log.clone());
-        
+
         // Check paths are set correctly
         assert_eq!(config.input_dir, input);
         assert_eq!(config.output_dir, output);
         assert_eq!(config.log_dir, log);
-        
+
         // Check other fields use defaults
         assert_eq!(config.svt_av1_preset, DEFAULT_SVT_AV1_PRESET);
         assert_eq!(config.quality_sd, DEFAULT_CORE_QUALITY_SD);
@@ -212,17 +220,17 @@ mod tests {
     #[test]
     fn test_validate_svt_av1_preset() {
         let mut config = CoreConfig::default();
-        
+
         // Valid presets
         for preset in 0..=13 {
             config.svt_av1_preset = preset;
             assert!(config.validate().is_ok());
         }
-        
+
         // Invalid presets
         config.svt_av1_preset = 14;
         assert!(config.validate().is_err());
-        
+
         config.svt_av1_preset = 255;
         assert!(config.validate().is_err());
     }
@@ -230,7 +238,7 @@ mod tests {
     #[test]
     fn test_validate_quality_values() {
         let mut config = CoreConfig::default();
-        
+
         // Valid quality values
         for quality in 0..=63 {
             config.quality_sd = quality;
@@ -238,28 +246,28 @@ mod tests {
             config.quality_uhd = quality;
             assert!(config.validate().is_ok());
         }
-        
+
         // Invalid SD quality
         config = CoreConfig::default();
         config.quality_sd = 64;
         let result = config.validate();
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("quality_sd"));
-        
+
         // Invalid HD quality
         config = CoreConfig::default();
         config.quality_hd = 64;
         let result = config.validate();
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("quality_hd"));
-        
+
         // Invalid UHD quality
         config = CoreConfig::default();
         config.quality_uhd = 64;
         let result = config.validate();
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("quality_uhd"));
-        
+
         // Multiple invalid values (should fail on first)
         config = CoreConfig::default();
         config.svt_av1_preset = 14;

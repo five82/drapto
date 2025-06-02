@@ -233,8 +233,139 @@ pub fn run_ffmpeg_encode(
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
 
+    /// Create test parameters with common defaults
+    fn create_test_params() -> EncodeParams {
+        EncodeParams {
+            input_path: PathBuf::from("/test/input.mkv"),
+            output_path: PathBuf::from("/test/output.mkv"),
+            quality: 27,
+            preset: 6,
+            tune: 3,
+            use_hw_decode: false,
+            crop_filter: None,
+            audio_channels: vec![6], // 5.1 audio
+            duration: 3600.0,
+            hqdn3d_params: Some(crate::config::FIXED_HQDN3D_PARAMS_SDR.to_string()),
+        }
+    }
 
+    #[test]
+    fn test_video_filter_chain_with_sdr_denoising() {
+        // Test that SDR denoising parameters are correctly included in video filters
+        let params = create_test_params();
+        
+        let hqdn3d_to_use = params.hqdn3d_params.as_deref();
+        let filter_chain = crate::external::VideoFilterChain::new()
+            .add_denoise(hqdn3d_to_use.unwrap_or(""))
+            .add_crop(params.crop_filter.as_deref().unwrap_or(""))
+            .build();
 
+        assert!(filter_chain.is_some(), "Should have video filters when denoising is enabled");
+        let filters = filter_chain.unwrap();
+        assert!(filters.contains(&format!("hqdn3d={}", crate::config::FIXED_HQDN3D_PARAMS_SDR)), 
+                "Video filters should contain SDR HQDN3D parameters: {}", crate::config::FIXED_HQDN3D_PARAMS_SDR);
+    }
+
+    #[test]
+    fn test_video_filter_chain_with_hdr_denoising() {
+        // Test that HDR denoising parameters are correctly used
+        let hdr_params = Some(crate::config::FIXED_HQDN3D_PARAMS_HDR.to_string());
+        
+        let filter_chain = crate::external::VideoFilterChain::new()
+            .add_denoise(hdr_params.as_deref().unwrap_or(""))
+            .build();
+
+        assert!(filter_chain.is_some(), "Should have video filters for HDR denoising");
+        let filters = filter_chain.unwrap();
+        assert!(filters.contains(&format!("hqdn3d={}", crate::config::FIXED_HQDN3D_PARAMS_HDR)), 
+                "Video filters should contain HDR HQDN3D parameters: {}", crate::config::FIXED_HQDN3D_PARAMS_HDR);
+    }
+
+    #[test]
+    fn test_svt_av1_params_with_film_grain() {
+        // Test that film grain synthesis is correctly applied when denoising is enabled
+        let svtav1_params = crate::external::SvtAv1ParamsBuilder::new()
+            .with_tune(3)
+            .with_film_grain(crate::config::FIXED_FILM_GRAIN_VALUE)
+            .build();
+
+        assert!(svtav1_params.contains("tune=3"), "SVT-AV1 params should contain tune=3");
+        assert!(svtav1_params.contains(&format!("film-grain={}", crate::config::FIXED_FILM_GRAIN_VALUE)), 
+                "SVT-AV1 params should contain film-grain={}", crate::config::FIXED_FILM_GRAIN_VALUE);
+        assert!(svtav1_params.contains("film-grain-denoise=0"), 
+                "SVT-AV1 params should disable built-in film grain denoising");
+    }
+
+    #[test]
+    fn test_svt_av1_params_without_film_grain() {
+        // Test that film grain is not applied when denoising is disabled
+        let svtav1_params = crate::external::SvtAv1ParamsBuilder::new()
+            .with_tune(3)
+            .with_film_grain(0) // No film grain
+            .build();
+
+        assert!(svtav1_params.contains("tune=3"), "SVT-AV1 params should contain tune=3");
+        assert!(!svtav1_params.contains("film-grain="), 
+                "SVT-AV1 params should not contain film-grain when disabled");
+    }
+
+    #[test]
+    fn test_audio_bitrate_calculation() {
+        // Test that audio bitrates match what's displayed in configuration
+        use crate::processing::audio::calculate_audio_bitrate;
+
+        // Test common channel configurations
+        assert_eq!(calculate_audio_bitrate(1), 64, "Mono should be 64kbps");
+        assert_eq!(calculate_audio_bitrate(2), 128, "Stereo should be 128kbps");  
+        assert_eq!(calculate_audio_bitrate(6), 256, "5.1 should be 256kbps");
+        assert_eq!(calculate_audio_bitrate(8), 384, "7.1 should be 384kbps");
+    }
+
+    #[test]
+    fn test_video_filter_chain_with_crop_and_denoise() {
+        // Test that both crop and denoise filters are properly combined
+        let filter_chain = crate::external::VideoFilterChain::new()
+            .add_denoise(crate::config::FIXED_HQDN3D_PARAMS_SDR)
+            .add_crop("crop=1920:800:0:140")
+            .build();
+
+        assert!(filter_chain.is_some(), "Should have video filters");
+        let filters = filter_chain.unwrap();
+        assert!(filters.contains("hqdn3d="), "Should contain HQDN3D filter");
+        assert!(filters.contains("crop=1920:800:0:140"), "Should contain crop filter");
+        assert!(filters.contains(","), "Filters should be comma-separated");
+    }
+
+    #[test]
+    fn test_configuration_constants_consistency() {
+        // Test that our configuration constants are reasonable values
+        
+        // HDR params should be lighter than SDR params
+        let hdr_parts: Vec<f32> = crate::config::FIXED_HQDN3D_PARAMS_HDR
+            .split(':')
+            .map(|s| s.parse().unwrap())
+            .collect();
+        let sdr_parts: Vec<f32> = crate::config::FIXED_HQDN3D_PARAMS_SDR
+            .split(':')
+            .map(|s| s.parse().unwrap())
+            .collect();
+            
+        assert_eq!(hdr_parts.len(), 4, "HDR params should have 4 components");
+        assert_eq!(sdr_parts.len(), 4, "SDR params should have 4 components");
+        
+        // HDR should generally have lower values (lighter denoising)
+        assert!(hdr_parts[0] <= sdr_parts[0], "HDR spatial luma should be <= SDR");
+        assert!(hdr_parts[1] <= sdr_parts[1], "HDR spatial chroma should be <= SDR");
+        
+        // Film grain should be reasonable
+        assert!(crate::config::FIXED_FILM_GRAIN_VALUE <= 50, "Film grain should be <= 50");
+        assert!(crate::config::FIXED_FILM_GRAIN_VALUE > 0, "Film grain should be > 0");
+    }
+}
 
 

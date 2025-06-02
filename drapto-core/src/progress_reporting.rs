@@ -248,7 +248,7 @@ pub fn report_timed_completion(operation: &str, filename: &str, duration: Durati
 
 /// Report video analysis in a consolidated format
 pub fn report_video_analysis(filename: &str, video_width: u32, video_height: u32, duration_secs: f64, category: &str, is_hdr: bool, audio_channels: &[u32]) {
-    section("FILE INFORMATION");
+    section("VIDEO INFO");
     status("File", filename, false);
     status("Resolution", &format!("{}x{} ({})", video_width, video_height, category), category == "UHD");
     status("Duration", &crate::utils::format_duration(duration_secs), duration_secs > 3600.0);
@@ -281,10 +281,10 @@ pub fn report_video_analysis(filename: &str, video_width: u32, video_height: u32
 }
 
 /// Report consolidated encoding configuration without duplication
-pub fn report_encoding_configuration(quality: u32, preset: u8, tune: u8, audio_channels: &[u32], has_denoising: bool) {
+pub fn report_encoding_configuration(quality: u32, preset: u8, tune: u8, audio_channels: &[u32], hqdn3d_params: Option<&str>) {
     // Debug logging for detailed information
-    log::debug!("Encoding configuration - Quality: {}, Preset: {}, Tune: {}, Audio channels: {:?}, Denoising: {}", 
-                quality, preset, tune, audio_channels, has_denoising);
+    log::debug!("Encoding configuration - Quality: {}, Preset: {}, Tune: {}, Audio channels: {:?}, Denoising: {:?}", 
+                quality, preset, tune, audio_channels, hqdn3d_params);
     
     section("ENCODING CONFIGURATION");
     
@@ -332,7 +332,13 @@ pub fn report_encoding_configuration(quality: u32, preset: u8, tune: u8, audio_c
     }
     
     // Processing options
-    status("Denoising", if has_denoising { "VeryLight" } else { "Disabled" }, false);
+    if let Some(params) = hqdn3d_params {
+        status("Denoising", &format!("{} (HQDN3D)", params), false);
+        status("Film grain", &format!("{} (synthesis)", crate::config::FIXED_FILM_GRAIN_VALUE), false);
+    } else {
+        status("Denoising", "Disabled", false);
+        status("Film grain", "0 (disabled)", false);
+    }
 }
 
 /// Report final results without repeating file information
@@ -367,7 +373,7 @@ pub fn report_batch_summary(results: &[crate::EncodeResult], total_duration: std
     
     status("Total input", &crate::utils::format_bytes(total_input), total_input > 1024*1024*1024*10);
     status("Total output", &crate::utils::format_bytes(total_output), false);
-    status("Overall reduction", &format!("{}%", total_reduction), total_reduction >= 50);
+    status("Reduction", &format!("{}% overall", total_reduction), total_reduction >= 50);
     
     // Individual file results
     info("");

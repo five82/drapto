@@ -103,6 +103,7 @@ fn setup_encoding_parameters(
     crop_filter_opt: Option<String>,
     audio_channels: Vec<u32>,
     duration_secs: f64,
+    is_hdr: bool,
 ) -> EncodeParams {
     let preset_value = config.svt_av1_preset;
     let tune_value = config.svt_av1_tune;
@@ -120,9 +121,14 @@ fn setup_encoding_parameters(
         hqdn3d_params: None,
     };
 
-    // Apply fixed denoising parameters if enabled
+    // Apply fixed denoising parameters if enabled, using HDR or SDR specific values
     let final_hqdn3d_params = if config.enable_denoise {
-        Some(crate::config::FIXED_HQDN3D_PARAMS.to_string())
+        let params = if is_hdr {
+            crate::config::FIXED_HQDN3D_PARAMS_HDR
+        } else {
+            crate::config::FIXED_HQDN3D_PARAMS_SDR
+        };
+        Some(params.to_string())
     } else {
         crate::progress_reporting::info_debug("Denoising disabled via config.");
         None
@@ -266,6 +272,7 @@ pub fn process_videos(
             crop_filter_opt,
             audio_channels,
             duration_secs,
+            is_hdr,
         );
 
         // Display consolidated encoding configuration
@@ -274,7 +281,7 @@ pub fn process_videos(
             final_encode_params.preset,
             final_encode_params.tune,
             &final_encode_params.audio_channels,
-            final_encode_params.hqdn3d_params.is_some()
+            final_encode_params.hqdn3d_params.as_deref()
         );
 
         let encode_result = run_ffmpeg_encode(
