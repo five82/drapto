@@ -21,9 +21,13 @@ pub const DEFAULT_CORE_QUALITY_HD: u8 = 27;
 /// Same as HD by default, but can be overridden separately.
 pub const DEFAULT_CORE_QUALITY_UHD: u8 = 27;
 
-/// Default encoder preset (0-13, lower is slower/better quality)
+/// Default SVT-AV1 preset (0-13, lower is slower/better quality)
 /// Value 6 provides a good balance between speed and quality.
-pub const DEFAULT_ENCODER_PRESET: u8 = 6;
+pub const DEFAULT_SVT_AV1_PRESET: u8 = 6;
+
+/// Default SVT-AV1 tune parameter
+/// Different SVT-AV1 forks may use this value differently
+pub const DEFAULT_SVT_AV1_TUNE: u8 = 3;
 
 /// Default crop mode for the main encode.
 pub const DEFAULT_CROP_MODE: &str = "auto";
@@ -69,9 +73,13 @@ pub struct CoreConfig {
     /// Optional directory for temporary files (defaults to `output_dir`)
     pub temp_dir: Option<PathBuf>,
 
-    /// Encoder preset (0-13, lower is slower/better quality)
+    /// SVT-AV1 preset (0-13, lower is slower/better quality)
     /// Default: 6 for balanced speed/quality
-    pub encoder_preset: u8,
+    pub svt_av1_preset: u8,
+
+    /// SVT-AV1 tune parameter
+    /// Different SVT-AV1 forks may use this value differently
+    pub svt_av1_tune: u8,
 
     /// CRF quality for Standard Definition videos (<1920 width)
     /// Lower values produce higher quality but larger files
@@ -105,7 +113,8 @@ impl Default for CoreConfig {
             output_dir: PathBuf::from("."),
             log_dir: PathBuf::from("."),
             temp_dir: None,
-            encoder_preset: DEFAULT_ENCODER_PRESET,
+            svt_av1_preset: DEFAULT_SVT_AV1_PRESET,
+            svt_av1_tune: DEFAULT_SVT_AV1_TUNE,
             quality_sd: DEFAULT_CORE_QUALITY_SD,
             quality_hd: DEFAULT_CORE_QUALITY_HD,
             quality_uhd: DEFAULT_CORE_QUALITY_UHD,
@@ -128,11 +137,11 @@ impl CoreConfig {
         }
     }
     
-    /// Validates encoder_preset (0-13) and quality values (0-63).
+    /// Validates svt_av1_preset (0-13) and quality values (0-63).
     pub fn validate(&self) -> Result<(), CoreError> {
-        if self.encoder_preset > 13 {
+        if self.svt_av1_preset > 13 {
             return Err(CoreError::Config(
-                format!("encoder_preset must be 0-13, got {}", self.encoder_preset)
+                format!("svt_av1_preset must be 0-13, got {}", self.svt_av1_preset)
             ));
         }
         
@@ -167,7 +176,7 @@ mod tests {
         let config = CoreConfig::default();
         
         // Check default values
-        assert_eq!(config.encoder_preset, DEFAULT_ENCODER_PRESET);
+        assert_eq!(config.svt_av1_preset, DEFAULT_SVT_AV1_PRESET);
         assert_eq!(config.quality_sd, DEFAULT_CORE_QUALITY_SD);
         assert_eq!(config.quality_hd, DEFAULT_CORE_QUALITY_HD);
         assert_eq!(config.quality_uhd, DEFAULT_CORE_QUALITY_UHD);
@@ -195,26 +204,26 @@ mod tests {
         assert_eq!(config.log_dir, log);
         
         // Check other fields use defaults
-        assert_eq!(config.encoder_preset, DEFAULT_ENCODER_PRESET);
+        assert_eq!(config.svt_av1_preset, DEFAULT_SVT_AV1_PRESET);
         assert_eq!(config.quality_sd, DEFAULT_CORE_QUALITY_SD);
         assert!(config.validate().is_ok());
     }
 
     #[test]
-    fn test_validate_encoder_preset() {
+    fn test_validate_svt_av1_preset() {
         let mut config = CoreConfig::default();
         
         // Valid presets
         for preset in 0..=13 {
-            config.encoder_preset = preset;
+            config.svt_av1_preset = preset;
             assert!(config.validate().is_ok());
         }
         
         // Invalid presets
-        config.encoder_preset = 14;
+        config.svt_av1_preset = 14;
         assert!(config.validate().is_err());
         
-        config.encoder_preset = 255;
+        config.svt_av1_preset = 255;
         assert!(config.validate().is_err());
     }
 
@@ -253,11 +262,11 @@ mod tests {
         
         // Multiple invalid values (should fail on first)
         config = CoreConfig::default();
-        config.encoder_preset = 14;
+        config.svt_av1_preset = 14;
         config.quality_sd = 64;
         let result = config.validate();
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("encoder_preset"));
+        assert!(result.unwrap_err().to_string().contains("svt_av1_preset"));
     }
 
     #[test]
@@ -266,7 +275,7 @@ mod tests {
         assert!(DEFAULT_CORE_QUALITY_SD <= 63);
         assert!(DEFAULT_CORE_QUALITY_HD <= 63);
         assert!(DEFAULT_CORE_QUALITY_UHD <= 63);
-        assert!(DEFAULT_ENCODER_PRESET <= 13);
+        assert!(DEFAULT_SVT_AV1_PRESET <= 13);
         assert!(FIXED_FILM_GRAIN_VALUE <= 50);
         assert!(HD_WIDTH_THRESHOLD < UHD_WIDTH_THRESHOLD);
         assert_eq!(HDR_COLOR_SPACES.len(), 2);

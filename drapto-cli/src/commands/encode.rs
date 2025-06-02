@@ -141,7 +141,7 @@ fn create_core_config(
     }
 
     if let Some(preset) = args.preset {
-        config.encoder_preset = preset;
+        config.svt_av1_preset = preset;
     }
     
     config.validate()?;

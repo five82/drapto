@@ -117,8 +117,14 @@ impl SvtAv1ParamsBuilder {
     /// Creates a new SVT-AV1 parameters builder
     #[must_use] pub fn new() -> Self {
         Self {
-            params: vec![("tune".to_string(), "3".to_string())],
+            params: vec![],
         }
+    }
+
+    /// Sets the tune parameter
+    #[must_use] pub fn with_tune(mut self, tune: u8) -> Self {
+        self.params.push(("tune".to_string(), tune.to_string()));
+        self
     }
 
     /// Sets the film grain synthesis level
@@ -214,23 +220,37 @@ mod tests {
     #[test]
     fn test_svtav1_params_builder_default() {
         let builder = SvtAv1ParamsBuilder::new();
+        assert_eq!(builder.build(), "");
+    }
+
+    #[test]
+    fn test_svtav1_params_builder_with_tune() {
+        let builder = SvtAv1ParamsBuilder::new()
+            .with_tune(3);
         assert_eq!(builder.build(), "tune=3");
+        
+        let builder = SvtAv1ParamsBuilder::new()
+            .with_tune(0);
+        assert_eq!(builder.build(), "tune=0");
     }
 
     #[test]
     fn test_svtav1_params_builder_with_film_grain() {
         // Test with film grain
         let builder = SvtAv1ParamsBuilder::new()
+            .with_tune(3)
             .with_film_grain(4);
         assert_eq!(builder.build(), "tune=3:film-grain=4:film-grain-denoise=0");
         
         // Test with no film grain (0)
         let builder = SvtAv1ParamsBuilder::new()
+            .with_tune(3)
             .with_film_grain(0);
         assert_eq!(builder.build(), "tune=3");
         
         // Test with max film grain
         let builder = SvtAv1ParamsBuilder::new()
+            .with_tune(3)
             .with_film_grain(50);
         assert_eq!(builder.build(), "tune=3:film-grain=50:film-grain-denoise=0");
     }
@@ -238,6 +258,7 @@ mod tests {
     #[test]
     fn test_svtav1_params_builder_custom_params() {
         let builder = SvtAv1ParamsBuilder::new()
+            .with_tune(3)
             .add_param("preset", "6")
             .add_param("crf", "27")
             .with_film_grain(4);
@@ -252,6 +273,7 @@ mod tests {
     fn test_svtav1_params_builder_order() {
         // Verify parameters maintain order
         let builder = SvtAv1ParamsBuilder::new()
+            .with_tune(3)
             .add_param("a", "1")
             .add_param("b", "2")
             .add_param("c", "3");

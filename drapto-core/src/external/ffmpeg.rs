@@ -20,6 +20,7 @@ pub struct EncodeParams {
     pub output_path: PathBuf,
     pub quality: u32,
     pub preset: u8,
+    pub tune: u8,
     /// Whether to use hardware decoding (when available)
     pub use_hw_decode: bool,
     pub crop_filter: Option<String>,
@@ -71,6 +72,7 @@ pub fn build_ffmpeg_command(
     cmd.args(["-preset", &params.preset.to_string()]);
 
     let svtav1_params = crate::external::SvtAv1ParamsBuilder::new()
+        .with_tune(params.tune)
         .with_film_grain(film_grain_value)
         .build();
     cmd.args(["-svtav1-params", &svtav1_params]);
@@ -137,9 +139,7 @@ pub fn run_ffmpeg_encode(
         None
     };
 
-    if let Some(duration) = duration_secs {
-        crate::progress_reporting::status("Duration", &crate::utils::format_duration(duration), false);
-    } else {
+    if duration_secs.is_none() || duration_secs == Some(0.0) {
         crate::progress_reporting::warning("Video duration not provided or zero; progress percentage will not be accurate.");
     }
 

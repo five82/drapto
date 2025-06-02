@@ -247,54 +247,102 @@ pub fn report_timed_completion(operation: &str, filename: &str, duration: Durati
 // Consolidated reporting functions for reducing redundancy
 
 /// Report video analysis in a consolidated format
-pub fn report_video_analysis(filename: &str, video_width: u32, video_height: u32, duration_secs: f64, category: &str, is_hdr: bool) {
-    section("VIDEO ANALYSIS");
+pub fn report_video_analysis(filename: &str, video_width: u32, video_height: u32, duration_secs: f64, category: &str, is_hdr: bool, audio_channels: &[u32]) {
+    section("FILE INFORMATION");
     status("File", filename, false);
     status("Resolution", &format!("{}x{} ({})", video_width, video_height, category), category == "UHD");
     status("Duration", &crate::utils::format_duration(duration_secs), duration_secs > 3600.0);
     status("Dynamic range", if is_hdr { "HDR" } else { "SDR" }, is_hdr);
+    
+    // Add audio information
+    if !audio_channels.is_empty() {
+        let audio_summary = if audio_channels.len() == 1 {
+            match audio_channels[0] {
+                1 => "Mono".to_string(),
+                2 => "Stereo".to_string(),
+                6 => "5.1 surround".to_string(),
+                8 => "7.1 surround".to_string(),
+                ch => format!("{} channels", ch),
+            }
+        } else {
+            let track_descriptions: Vec<String> = audio_channels.iter().map(|&ch| match ch {
+                1 => "Mono".to_string(),
+                2 => "Stereo".to_string(),
+                6 => "5.1".to_string(),
+                8 => "7.1".to_string(),
+                ch => format!("{}ch", ch),
+            }).collect();
+            format!("{} tracks ({})", audio_channels.len(), track_descriptions.join(", "))
+        };
+        status("Audio", &audio_summary, audio_channels.iter().any(|&ch| ch >= 6));
+    } else {
+        status("Audio", "None detected", false);
+    }
 }
 
 /// Report consolidated encoding configuration without duplication
-pub fn report_encoding_configuration(quality: u32, preset: u8, audio_channels: &[u32], has_denoising: bool) {
+pub fn report_encoding_configuration(quality: u32, preset: u8, tune: u8, audio_channels: &[u32], has_denoising: bool) {
     // Debug logging for detailed information
-    log::debug!("Encoding configuration - Quality: {}, Preset: {}, Audio channels: {:?}, Denoising: {}", 
-                quality, preset, audio_channels, has_denoising);
+    log::debug!("Encoding configuration - Quality: {}, Preset: {}, Tune: {}, Audio channels: {:?}, Denoising: {}", 
+                quality, preset, tune, audio_channels, has_denoising);
     
     section("ENCODING CONFIGURATION");
     
     // Video settings grouped together
-    status("Video codec", "SVT-AV1", false);
+    status("Encoder", "SVT-AV1", false);
     status("Quality (CRF)", &quality.to_string(), false);
     status("Preset", &preset.to_string(), false);
+    status("Tune", &tune.to_string(), false);  // SVT-AV1 tune parameter
     
-    // Audio settings grouped together
+    // Audio settings
     if !audio_channels.is_empty() {
-        let audio_summary = if audio_channels.len() == 1 {
-            format!("{} channels", audio_channels[0])
-        } else {
-            format!("{} streams", audio_channels.len())
-        };
         status("Audio codec", "Opus", false);
-        status("Audio", &audio_summary, audio_channels.iter().any(|&ch| ch >= 6));
+        
+        // Calculate bitrates for each stream
+        let bitrates: Vec<u32> = audio_channels.iter().map(|&ch| crate::processing::audio::calculate_audio_bitrate(ch)).collect();
+        
+        if audio_channels.len() == 1 {
+            // Single audio stream - show channel count and bitrate on one line
+            let ch_name = match audio_channels[0] {
+                1 => "Mono".to_string(),
+                2 => "Stereo".to_string(),
+                6 => "5.1".to_string(),
+                8 => "7.1".to_string(),
+                ch => format!("{} channels", ch),
+            };
+            status("Audio", &format!("{} @ {}kbps", ch_name, bitrates[0]), bitrates[0] >= 256);
+        } else {
+            // Multiple audio streams - show count summary first
+            status("Audio streams", &format!("{} tracks", audio_channels.len()), false);
+            
+            // Then show each track's details
+            for (i, (&channels, &bitrate)) in audio_channels.iter().zip(bitrates.iter()).enumerate() {
+                let ch_name = match channels {
+                    1 => "Mono".to_string(),
+                    2 => "Stereo".to_string(),
+                    6 => "5.1".to_string(),
+                    8 => "7.1".to_string(),
+                    ch => format!("{}ch", ch),
+                };
+                status(&format!("  Track {}", i + 1), &format!("{} @ {}kbps", ch_name, bitrate), bitrate >= 256);
+            }
+        }
+    } else {
+        status("Audio", "None", false);
     }
     
     // Processing options
-    if has_denoising {
-        status("Denoising", "VeryLight", false);
-    } else {
-        status("Denoising", "Disabled", false);
-    }
+    status("Denoising", if has_denoising { "VeryLight" } else { "Disabled" }, false);
 }
 
 /// Report final results without repeating file information
 pub fn report_final_results(duration: Duration, input_size: u64, output_size: u64) {
-    success("Encoding complete");
+    section("ENCODING RESULTS");
     
     // Group related metrics together
     status("Time elapsed", &crate::utils::format_duration(duration.as_secs_f64()), duration.as_secs() > 3600);
-    status("Input size", &crate::format_bytes(input_size), input_size > 1024*1024*1024);
-    status("Output size", &crate::format_bytes(output_size), false);
+    status("Input size", &crate::utils::format_bytes(input_size), input_size > 1024*1024*1024);
+    status("Output size", &crate::utils::format_bytes(output_size), false);
     
     let reduction = crate::utils::calculate_size_reduction(input_size, output_size);
     status("Size reduction", &format!("{}%", reduction), reduction >= 50);
@@ -307,22 +355,35 @@ pub fn report_batch_summary(results: &[crate::EncodeResult], total_duration: std
         return;
     }
     
-    section("ENCODING SUMMARY");
+    section("BATCH ENCODING SUMMARY");
+    
+    // Summary stats at the top
+    status("Files encoded", &results.len().to_string(), false);
+    status("Total time", &crate::utils::format_duration(total_duration.as_secs_f64()), total_duration.as_secs() > 3600);
+    
+    let total_input: u64 = results.iter().map(|r| r.input_size).sum();
+    let total_output: u64 = results.iter().map(|r| r.output_size).sum();
+    let total_reduction = crate::utils::calculate_size_reduction(total_input, total_output);
+    
+    status("Total input", &crate::utils::format_bytes(total_input), total_input > 1024*1024*1024*10);
+    status("Total output", &crate::utils::format_bytes(total_output), false);
+    status("Overall reduction", &format!("{}%", total_reduction), total_reduction >= 50);
+    
+    // Individual file results
+    info("");
+    with_reporter(|r| r.output(OutputLevel::Subsection, "Individual Results"));
     
     for result in results {
-        // Each file as a processing step (no spacing before first)
-        crate::terminal::print_processing_no_spacing(&result.filename);
-        status("Time", &crate::utils::format_duration(result.duration.as_secs_f64()), result.duration.as_secs() > 3600);
-        status("Input", &crate::format_bytes(result.input_size), result.input_size > 1024*1024*1024);
-        status("Output", &crate::format_bytes(result.output_size), false);
-        
+        // More compact display for individual files
         let reduction = crate::utils::calculate_size_reduction(result.input_size, result.output_size);
-        status("Reduction", &format!("{}%", reduction), reduction >= 50);
-        info(""); // Spacing between files
+        info(&format!("  {} - {} → {} (-{}%) in {}", 
+            result.filename,
+            crate::utils::format_bytes(result.input_size),
+            crate::utils::format_bytes(result.output_size),
+            reduction,
+            crate::utils::format_duration(result.duration.as_secs_f64())
+        ));
     }
-    
-    // Total time for all files
-    status("Total time", &crate::utils::format_duration(total_duration.as_secs_f64()), total_duration.as_secs() > 3600);
 }
 
 /// Terminal-based implementation of ProgressReporter
@@ -345,7 +406,7 @@ impl ProgressReporter for TerminalProgressReporter {
         match level {
             OutputLevel::Section => crate::terminal::print_section(text),
             OutputLevel::Subsection => crate::terminal::print_subsection(text),
-            OutputLevel::Processing => crate::terminal::print_processing(text),
+            OutputLevel::Processing => crate::terminal::print_processing_no_spacing(text),
             OutputLevel::Status => crate::terminal::print_sub_item(text),
             OutputLevel::Success => crate::terminal::print_success(text),
             OutputLevel::Error => crate::terminal::print_error("Error", text, None),

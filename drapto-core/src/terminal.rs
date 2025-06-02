@@ -122,7 +122,7 @@ pub fn print_success(message: &str) {
 
 /// Print a status line (key-value pair)
 pub fn print_status(label: &str, value: &str, highlight: bool) {
-    let label_width = 15;
+    let label_width = 16; // Increased to accommodate "Dynamic range"
     let padding = if label.width() < label_width {
         label_width - label.width()
     } else {

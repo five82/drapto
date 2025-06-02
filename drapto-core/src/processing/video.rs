@@ -104,13 +104,15 @@ fn setup_encoding_parameters(
     audio_channels: Vec<u32>,
     duration_secs: f64,
 ) -> EncodeParams {
-    let preset_value = config.encoder_preset;
+    let preset_value = config.svt_av1_preset;
+    let tune_value = config.svt_av1_tune;
 
     let mut initial_encode_params = EncodeParams {
         input_path: input_path.to_path_buf(),
         output_path: output_path.to_path_buf(),
         quality,
         preset: preset_value,
+        tune: tune_value,
         use_hw_decode: true,
         crop_filter: crop_filter_opt,
         audio_channels,
@@ -229,10 +231,14 @@ pub fn process_videos(
         // Determine quality settings based on resolution
         let (quality, category, is_hdr) = determine_quality_settings(&video_props, config);
 
-        // Report consolidated video analysis
-        crate::progress_reporting::report_video_analysis(&filename, video_width, video_height, duration_secs, category, is_hdr);
+        // Get audio channels early for consolidated reporting
+        let audio_channels = audio::get_audio_channels_quiet(input_path);
 
-        // Perform crop detection
+        // Report consolidated file information with audio info
+        crate::progress_reporting::report_video_analysis(&filename, video_width, video_height, duration_secs, category, is_hdr, &audio_channels);
+
+        // Perform video analysis (crop detection)
+        crate::progress_reporting::section("VIDEO ANALYSIS");
         crate::progress_reporting::report_processing_step("Detecting black bars");
 
         let disable_crop = config.crop_mode == "off";
@@ -249,8 +255,7 @@ pub fn process_videos(
                 }
             };
 
-        // Analyze audio and get channel information for encoding (details shown in encoding config)
-        let audio_channels = audio::get_audio_channels_quiet(input_path);
+        // Audio channels already analyzed above
 
         // Setup encoding parameters
         let final_encode_params = setup_encoding_parameters(
@@ -267,6 +272,7 @@ pub fn process_videos(
         crate::progress_reporting::report_encoding_configuration(
             final_encode_params.quality,
             final_encode_params.preset,
+            final_encode_params.tune,
             &final_encode_params.audio_channels,
             final_encode_params.hqdn3d_params.is_some()
         );

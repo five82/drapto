@@ -19,7 +19,7 @@
 //! 
 //! // Configure encoding settings
 //! config.enable_denoise = true;
-//! config.encoder_preset = 6;
+//! config.svt_av1_preset = 6;
 //! config.quality_hd = 27;
 //! 
 //! // Validate configuration
