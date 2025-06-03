@@ -115,7 +115,18 @@ pub fn print_subsection(title: &str) {
 
 /// Print a success message
 pub fn print_success(message: &str) {
+    // Add blank line before success message for proper spacing
     info!("");
+    
+    if should_use_color() {
+        info!("  ✓ {}", message.green());
+    } else {
+        info!("  ✓ {message}");
+    }
+}
+
+/// Print a success message without leading blank line (for use after progress bars)
+pub fn print_success_no_spacing(message: &str) {
     if should_use_color() {
         info!("  ✓ {}", message.green());
     } else {
@@ -361,7 +372,7 @@ pub fn print_progress_bar(
     }
 }
 
-/// Finish the current progress bar (leave final state visible)
+/// Finish and clear the current progress bar
 pub fn finish_progress_bar() {
     if let Ok(mut state) = TERMINAL_STATE.lock() {
         if let Some(pb) = state.current_progress.take() {
@@ -373,8 +384,8 @@ pub fn finish_progress_bar() {
                 pb.set_position(len);
             }
             
-            // Use finish_with_message to ensure clean completion
-            pb.finish_with_message("Complete");
+            // Clear the progress bar to allow proper spacing for subsequent output
+            pb.finish_and_clear();
         }
     }
     

@@ -195,7 +195,6 @@ pub fn run_ffmpeg_encode(
         .unwrap_or_else(|_| params.input_path.display().to_string());
 
     if status.success() {
-        crate::progress_reporting::info(""); // Blank line after progress bar
         crate::progress_reporting::success(&format!("Encode finished successfully for {}", filename));
         Ok(())
     } else {

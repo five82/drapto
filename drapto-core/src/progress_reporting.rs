@@ -13,6 +13,7 @@
 use std::path::Path;
 use std::sync::Mutex;
 use std::time::Duration;
+use std::io::IsTerminal;
 use log::{log_enabled, Level};
 
 
@@ -60,7 +61,7 @@ pub trait ProgressReporter: Send + Sync {
     /// Report progress with a progress bar
     fn progress_bar(&self, percent: f32, elapsed_secs: f64, total_secs: f64);
 
-    /// Finish progress bar (leave final state visible)
+    /// Finish and clear progress bar
     fn finish_progress_bar(&self);
 
     /// Clear any active progress bar
@@ -144,7 +145,7 @@ pub fn progress(percent: f32, elapsed_secs: f64, total_secs: f64) {
     with_reporter(|r| r.progress_bar(percent, elapsed_secs, total_secs));
 }
 
-/// Finish progress bar (leave final state visible)
+/// Finish and clear progress bar
 pub fn finish_progress() {
     with_reporter(|r| r.finish_progress_bar());
 }
@@ -414,7 +415,15 @@ impl ProgressReporter for TerminalProgressReporter {
             OutputLevel::Subsection => crate::terminal::print_subsection(text),
             OutputLevel::Processing => crate::terminal::print_processing_no_spacing(text),
             OutputLevel::Status => crate::terminal::print_sub_item(text),
-            OutputLevel::Success => crate::terminal::print_success(text),
+            OutputLevel::Success => {
+                if std::io::stderr().is_terminal() {
+                    // Terminal mode: use no spacing version (progress bar already provides spacing)
+                    crate::terminal::print_success_no_spacing(text);
+                } else {
+                    // Daemon/log mode: use normal version with spacing
+                    crate::terminal::print_success(text);
+                }
+            },
             OutputLevel::Error => crate::terminal::print_error("Error", text, None),
             OutputLevel::Warning => crate::terminal::print_warning(text),
             OutputLevel::Debug => {
