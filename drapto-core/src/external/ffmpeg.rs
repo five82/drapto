@@ -144,7 +144,6 @@ pub fn run_ffmpeg_encode(
     }
 
     let mut stderr_buffer = String::new();
-    let mut last_progress_percent = 0.0;
 
     for event in child.iter().map_err(|e| {
         command_failed_error(
@@ -175,29 +174,19 @@ pub fn run_ffmpeg_encode(
                         0.0
                     };
                     
-                    // Only report progress when it changes by at least 3% (like the original implementation)
-                    if percent >= last_progress_percent + 3.0 || 
-                       (percent >= 100.0 && last_progress_percent < 100.0) {
-                        
-                        
-                        crate::progress_reporting::progress(
-                            percent as f32,
-                            elapsed_secs,
-                            total_duration
-                        );
-                        
-                        last_progress_percent = percent;
-                    }
+                    // Always report progress (both for progress bar and logging)
+                    crate::progress_reporting::progress(
+                        percent as f32,
+                        elapsed_secs,
+                        total_duration
+                    );
                 }
             }
             _ => {}
         }
     }
     
-    // Show 100% completion and finish (leave visible)
-    if let Some(total_duration) = duration_secs {
-        crate::progress_reporting::progress(100.0, total_duration, total_duration);
-    }
+    // Just finish the progress bar - 100% will have been reported by the event loop
     crate::progress_reporting::finish_progress();
 
     // FFmpeg finished - check status
@@ -366,6 +355,7 @@ mod tests {
         assert!(crate::config::FIXED_FILM_GRAIN_VALUE <= 50, "Film grain should be <= 50");
         assert!(crate::config::FIXED_FILM_GRAIN_VALUE > 0, "Film grain should be > 0");
     }
+    
 }
 
 

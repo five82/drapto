@@ -62,6 +62,10 @@ pub const HDR_COLOR_SPACES: &[&str] = &["bt2020nc", "bt2020c"];
 /// This helps ensure notifications arrive in order when processing multiple files.
 pub const DEFAULT_ENCODE_COOLDOWN_SECS: u64 = 3;
 
+/// Progress logging interval in percent.
+/// Progress will be logged to file at this percentage interval (e.g., 5 = every 5%).
+pub const PROGRESS_LOG_INTERVAL_PERCENT: u8 = 5;
+
 /// Configuration for video processing including paths and encoding settings.
 #[derive(Debug, Clone)]
 pub struct CoreConfig {

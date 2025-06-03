@@ -13,7 +13,10 @@ use std::io::IsTerminal;
 use std::sync::Mutex;
 use std::time::Duration;
 use unicode_width::UnicodeWidthStr;
+use std::sync::atomic::{AtomicU8, Ordering};
 
+/// Track last logged threshold (0, 5, 10, 15, etc.) to avoid spam
+static LAST_LOGGED_THRESHOLD: AtomicU8 = AtomicU8::new(0);
 
 /// Represents the visual hierarchy levels in the CLI output
 #[derive(Debug, Clone, Copy)]
@@ -269,40 +272,90 @@ fn init_progress_bar(total_secs: f64) -> ProgressBar {
         pb.set_draw_target(ProgressDrawTarget::hidden());
     }
 
+    // Enable steady tick for smooth updates
     pb.enable_steady_tick(Duration::from_millis(100));
+    
     pb
 }
 
 /// Print a progress bar
 pub fn print_progress_bar(
-    _percent: f32,
+    percent: f32,
     elapsed_secs: f64,
     total_secs: f64,
     speed: Option<f32>,
     fps: Option<f32>,
     _eta: Option<Duration>,
 ) {
+    // Check if we should log this progress update
+    let percent_int = percent.min(100.0) as u8; // Ensure we don't exceed 100%
+    let interval = crate::config::PROGRESS_LOG_INTERVAL_PERCENT;
+    let current_threshold = (percent_int / interval) * interval;
+    let last_threshold = LAST_LOGGED_THRESHOLD.load(Ordering::Relaxed);
+    
+    // Don't try to detect new encodings - this can cause false resets
+    
+    // Log when we cross a new threshold or reach 100%
+    if current_threshold > last_threshold || (percent >= 100.0 && last_threshold < 100) {
+        let elapsed = crate::utils::format_duration(elapsed_secs);
+        let total = crate::utils::format_duration(total_secs);
+        
+        log::info!(target: "drapto::progress", 
+            "      Progress:         {:.0}% complete ({} / {})", 
+            percent, elapsed, total
+        );
+        
+        // Update the threshold, ensuring we don't go backwards
+        let new_threshold = if percent >= 100.0 { 100 } else { current_threshold };
+        LAST_LOGGED_THRESHOLD.store(new_threshold, Ordering::Relaxed);
+    }
+    
+    // Also show visual progress bar in terminal mode
     if std::io::stderr().is_terminal() {
         let mut state = TERMINAL_STATE.lock().unwrap();
 
         if state.current_progress.is_none() {
+            // Starting a new progress bar - reset the threshold
+            LAST_LOGGED_THRESHOLD.store(0, Ordering::Relaxed);
             info!(""); // Add blank line before first progress bar
             state.current_progress = Some(init_progress_bar(total_secs));
         }
 
         if let Some(pb) = state.current_progress.as_ref() {
-            pb.set_position((elapsed_secs * 1000.0) as u64);
-
-            let term_width = Term::stderr().size().1 as usize;
-            if let (Some(speed_val), Some(fps_val)) = (speed, fps) {
-                if term_width >= 100 {
-                    let msg = format!(
-                        "Encoding - Speed: {speed_val:.2}x, Avg FPS: {fps_val:.2}"
-                    );
-                    pb.set_message(msg);
+            // Calculate position in milliseconds
+            let new_position = (elapsed_secs * 1000.0) as u64;
+            let current_position = pb.position();
+            let max_position = pb.length().unwrap_or(u64::MAX);
+            
+            // Detect large jumps that might confuse ETA calculation
+            let position_jump = if new_position > current_position {
+                new_position - current_position
+            } else {
+                0
+            };
+            
+            // Reset ETA if we detect a large jump (more than 10 seconds)
+            if position_jump > 10000 {
+                pb.reset_eta();
+            }
+            
+            // Only update if moving forward and not exceeding total length
+            if new_position > current_position && new_position <= max_position {
+                pb.set_position(new_position);
+                
+                // Update message if we have speed/fps info
+                let term_width = Term::stderr().size().1 as usize;
+                if let (Some(speed_val), Some(fps_val)) = (speed, fps) {
+                    if term_width >= 100 {
+                        let msg = format!(
+                            "Encoding - Speed: {speed_val:.2}x, Avg FPS: {fps_val:.2}"
+                        );
+                        pb.set_message(msg);
+                    }
                 }
             }
-
+            
+            // Always tick to keep the bar responsive
             pb.tick();
         }
     }
@@ -312,9 +365,20 @@ pub fn print_progress_bar(
 pub fn finish_progress_bar() {
     if let Ok(mut state) = TERMINAL_STATE.lock() {
         if let Some(pb) = state.current_progress.take() {
-            pb.finish();
+            // Disable steady tick before finishing to prevent visual glitches
+            pb.disable_steady_tick();
+            
+            // Ensure we're at 100% before finishing
+            if let Some(len) = pb.length() {
+                pb.set_position(len);
+            }
+            
+            // Use finish_with_message to ensure clean completion
+            pb.finish_with_message("Complete");
         }
     }
+    
+    // Don't reset counters here - they'll be reset when starting a new progress bar
 }
 
 /// Clear the current progress bar
@@ -324,6 +388,8 @@ pub fn clear_progress_bar() {
             pb.finish_and_clear();
         }
     }
+    
+    // Don't reset counters here - they'll be reset when starting a new progress bar
 }
 
 
