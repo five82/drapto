@@ -174,6 +174,24 @@ fn render_completion_summary(title: &str, success_message: &str, groups: &[Group
     }
 }
 
+/// Format encoding speed with performance-based color coding
+/// 
+/// Color scheme:
+/// - ≤0.2x: Yellow (concerning - very slow encoding)
+/// - >0.2x to <2.0x: White (acceptable performance) 
+/// - ≥2.0x: Green (excellent performance)
+pub fn format_speed(speed: f32) -> String {
+    let speed_str = format!("{:.1}x", speed);
+    
+    if speed <= 0.2 {
+        style(speed_str).yellow().to_string()
+    } else if speed >= 2.0 {
+        style(speed_str).green().to_string()
+    } else {
+        speed_str // Default terminal color for acceptable performance
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -218,5 +236,24 @@ mod tests {
         });
         
         // Visual test - check output manually
+    }
+
+    #[test]
+    fn test_speed_formatting() {
+        // Test slow speed (yellow)
+        let slow_speed = format_speed(0.1);
+        assert!(slow_speed.contains("0.1x"));
+        
+        // Test acceptable speed (default color)
+        let normal_speed = format_speed(1.5);
+        assert_eq!(normal_speed, "1.5x");
+        
+        // Test excellent speed (green)
+        let fast_speed = format_speed(2.5);
+        assert!(fast_speed.contains("2.5x"));
+        
+        // Test boundary conditions
+        assert!(format_speed(0.2).contains("0.2x")); // At yellow threshold
+        assert!(format_speed(2.0).contains("2.0x")); // At green threshold
     }
 }

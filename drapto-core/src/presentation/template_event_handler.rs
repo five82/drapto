@@ -1,5 +1,6 @@
 use crate::events::{Event, EventHandler};
 use super::template_presenter::TemplatePresenter;
+use super::templates;
 use std::sync::Mutex;
 
 pub struct TemplateEventHandler {
@@ -138,7 +139,7 @@ impl EventHandler for TemplateEventHandler {
                         eta.as_secs() % 60
                     );
                     
-                    let message = format!("Speed: {:.1}x, ETA: {}", speed, eta_str);
+                    let message = format!("Speed: {}, ETA: {}", templates::format_speed(*speed), eta_str);
                     presenter.update_encoding_progress(progress_pos, Some(&message));
                 } else {
                     presenter.update_encoding_progress(progress_pos, None);
@@ -177,7 +178,7 @@ impl EventHandler for TemplateEventHandler {
                     video_stream,
                     audio_stream,
                     &total_time_str,
-                    &format!("{:.2}x", average_speed),
+                    &templates::format_speed(*average_speed),
                     output_path,
                     reduction > 50.0 // emphasize significant reductions
                 );
@@ -240,7 +241,7 @@ impl EventHandler for TemplateEventHandler {
                         (total_duration.as_secs() % 3600) / 60,
                         total_duration.as_secs() % 60
                     ),
-                    &format!("{:.2}x", average_speed),
+                    &templates::format_speed(*average_speed),
                     file_results
                 );
             }
