@@ -42,6 +42,7 @@ struct EncodingSetupParams<'a> {
     audio_channels: Vec<u32>,
     duration_secs: f64,
     is_hdr: bool,
+    video_props: &'a VideoProperties,
 }
 
 use std::path::PathBuf;
@@ -137,7 +138,7 @@ fn setup_encoding_parameters(params: EncodingSetupParams) -> EncodeParams {
         // Actual values that will be used in FFmpeg command
         video_codec: "libsvtav1".to_string(),
         pixel_format: "yuv420p10le".to_string(),
-        color_space: "bt709".to_string(),
+        color_space: params.video_props.color_space.clone().unwrap_or_else(|| "bt709".to_string()),
         audio_codec: "libopus".to_string(),
         film_grain_level: 0, // Will be set below
     };
@@ -359,6 +360,7 @@ pub fn process_videos(
             audio_channels: audio_channels.clone(),
             duration_secs,
             is_hdr,
+            video_props: &video_props,
         });
 
         // Format audio description for the config display
