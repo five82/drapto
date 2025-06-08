@@ -6,37 +6,33 @@
 
 use drapto_cli::commands::encode::discover_encode_files;
 use drapto_cli::error::CliResult;
-use drapto_cli::logging::{get_timestamp, setup_file_logging};
+use drapto_cli::logging::get_timestamp;
 use drapto_cli::{Cli, Commands, run_encode};
 
 use clap::Parser;
 use daemonize::Daemonize;
 use drapto_core::CoreError;
-use drapto_core::notifications::NtfyNotificationSender;
-use drapto_core::terminal;
+use drapto_core::events::{Event, EventDispatcher};
+use drapto_core::file_logging::{setup::setup_file_logging, FileLoggingHandler};
+use drapto_core::presentation::template_event_handler::TemplateEventHandler;
+use drapto_core::notifications::{NotificationSender, NtfyNotificationSender};
 
 use std::io::{self, Write};
 use std::path::PathBuf;
+use std::sync::Arc;
+use log::LevelFilter;
 
-use env_logger::Env;
-use log::Level;
-
-/// Main entry point. Parses CLI args, sets up logging, handles daemonization, and runs commands.
+/// Main entry point with clean separation of concerns
 fn main() -> CliResult<()> {
     let cli_args = Cli::parse();
     let interactive_mode = cli_args.interactive;
 
-    // Initialize progress reporter for the core library
-    drapto_core::set_progress_reporter(Box::new(drapto_core::TerminalProgressReporter::new()));
-
-    // Configure logging level based on --verbose flag
-    // Only set RUST_LOG if it's not already set by the user
-    if cli_args.verbose && std::env::var("RUST_LOG").is_err() {
-        unsafe {
-            std::env::set_var("RUST_LOG", "drapto=debug");
-        }
-    }
-
+    // Determine log level based on verbose flag
+    let log_level = if cli_args.verbose {
+        LevelFilter::Debug
+    } else {
+        LevelFilter::Info
+    };
 
     let _ = match cli_args.command {
         Commands::Encode(args) => {
@@ -45,11 +41,9 @@ fn main() -> CliResult<()> {
                     CoreError::OperationFailed(format!("Error during file discovery: {}", e))
                 )?;
 
-            // Calculate log path before daemonization to provide consistent user feedback
-            // This logic mirrors run_encode to predict the correct log path
+            // Calculate log path
             let (actual_output_dir, _target_filename_override_os) =
                 if discovered_files.len() == 1 && args.output_dir.extension().is_some() {
-                    // Single file mode: output_dir is treated as a target filename
                     let target_file = args.output_dir.clone();
                     let parent_dir = target_file
                         .parent()
@@ -59,7 +53,6 @@ fn main() -> CliResult<()> {
                     let filename_os = target_file.file_name().map(std::ffi::OsStr::to_os_string);
                     (parent_dir, filename_os)
                 } else {
-                    // Directory mode: output_dir is treated as a directory
                     (args.output_dir.clone(), None)
                 };
 
@@ -70,53 +63,54 @@ fn main() -> CliResult<()> {
 
             let main_log_filename = format!("drapto_encode_run_{}.log", get_timestamp());
             let main_log_path = log_dir.join(&main_log_filename);
-            if interactive_mode {
-                // Interactive mode: use fern to log to both console and file
-                setup_file_logging(&main_log_path).map_err(|e| {
-                    CoreError::OperationFailed(format!(
-                        "Failed to set up file logging to {}: {}",
-                        main_log_path.display(),
-                        e
-                    ))
-                })?;
-            } else {
-                // Daemon mode: use env_logger (stdout/stderr will be redirected to file)
-                env_logger::Builder::from_env(Env::default().default_filter_or("drapto=info"))
-                    .format(|buf, record| {
-                        if record.level() == Level::Info {
-                            writeln!(buf, "{}", record.args())
-                        } else {
-                            writeln!(buf, "[{}] {}", record.level(), record.args())
-                        }
-                    })
-                    .init();
-            }
 
-            if log::log_enabled!(log::Level::Trace) {
-                log::info!("Trace level logging enabled.");
-            } else if log::log_enabled!(log::Level::Debug) {
-                log::info!("Debug level logging enabled.");
+            // Create log directory
+            std::fs::create_dir_all(&log_dir).map_err(|e| {
+                CoreError::OperationFailed(format!(
+                    "Failed to create log directory: {}: {}",
+                    log_dir.display(),
+                    e
+                ))
+            })?;
+
+            // Set up file logging for both modes
+            setup_file_logging(&main_log_path, log_level).map_err(|e| {
+                CoreError::OperationFailed(format!(
+                    "Failed to set up file logging to {}: {}",
+                    main_log_path.display(),
+                    e
+                ))
+            })?;
+
+            // Create event dispatcher
+            let mut event_dispatcher = EventDispatcher::new();
+            
+            // Always add file logging handler
+            event_dispatcher.add_handler(Arc::new(FileLoggingHandler::new()));
+            
+            // Add terminal handler only in interactive mode
+            if interactive_mode {
+                event_dispatcher.add_handler(Arc::new(TemplateEventHandler::new()));
             }
 
             if !interactive_mode {
-                // Display pre-daemonization info to stderr before forking
-                // These messages help users know the daemon started successfully
-                terminal::print_daemon_file_list(&discovered_files);
-                terminal::print_daemon_log_info(&main_log_path);
-                terminal::print_daemon_starting();
+                // Pre-daemonization output
+                eprintln!("===== DAEMON MODE =====");
+                eprintln!();
+                eprintln!("Files to process: {}", discovered_files.len());
+                for (i, file) in discovered_files.iter().enumerate() {
+                    eprintln!("  {}. {}", i + 1, file.display());
+                }
+                eprintln!();
+                eprintln!("Log file: {}", main_log_path.display());
+                eprintln!();
+                eprintln!("Starting daemon process...");
 
                 if let Err(e) = io::stderr().flush() {
-                    terminal::print_warning(&format!("Failed to flush stderr before daemonizing: {e}"));
+                    eprintln!("Failed to flush stderr: {}", e);
                 }
 
-                std::fs::create_dir_all(&log_dir).map_err(|e| {
-                    CoreError::OperationFailed(format!(
-                        "Failed to create log directory: {}: {}",
-                        log_dir.display(),
-                        e
-                    ))
-                })?;
-
+                // Open log file for daemon stdout/stderr redirection
                 let log_file = std::fs::File::create(&main_log_path).map_err(|e| {
                     CoreError::OperationFailed(format!(
                         "Failed to create log file: {}: {}",
@@ -129,23 +123,24 @@ fn main() -> CliResult<()> {
                     CoreError::OperationFailed(format!("Failed to clone log file handle: {e}"))
                 })?;
 
-                // PID file is handled in run_encode after log setup
                 let daemonize = Daemonize::new()
                     .working_directory(".")
                     .stdout(log_file)
                     .stderr(log_file_stderr);
+                    
                 daemonize.start().map_err(|e| {
                     CoreError::OperationFailed(format!("Failed to start daemon process: {e}"))
                 })?;
-                // Parent process exits here, child continues below
             }
 
-            // Create notification sender if a topic is provided
+            // Create notification sender if provided
             let notification_sender = if let Some(ref topic) = args.ntfy {
                 match NtfyNotificationSender::new(topic) {
                     Ok(sender) => Some(sender),
                     Err(e) => {
-                        terminal::print_warning(&format!("Failed to create notification sender: {e}"));
+                        event_dispatcher.emit(Event::Warning {
+                            message: format!("Failed to create notification sender: {}", e),
+                        });
                         None
                     }
                 }
@@ -153,12 +148,21 @@ fn main() -> CliResult<()> {
                 None
             };
 
+            // Log startup information
+            log::info!("Drapto encoder starting in {} mode", 
+                if interactive_mode { "interactive" } else { "daemon" });
+            
+            if log_level == LevelFilter::Debug {
+                log::info!("Debug level logging enabled");
+            }
+
             run_encode(
-                notification_sender.as_ref(),
+                notification_sender.as_ref().map(|s| s as &dyn NotificationSender),
                 args,
                 interactive_mode,
                 discovered_files,
                 effective_input_dir,
+                event_dispatcher,
             )
         }
     };

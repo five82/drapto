@@ -2,6 +2,5 @@
 //!
 //! Each submodule contains the implementation of a specific command.
 
-/// Module containing the implementation of the `encode` command.
-/// This command converts video files to AV1 format with configurable settings.
+/// Encode command with event-based architecture
 pub mod encode;

@@ -25,6 +25,7 @@ chrono = "0.4"                   # Date and time utilities
 
 # ---- Error Handling ----
 thiserror = "1.0"                # Error definition and handling
+anyhow = "1.0"                   # Error handling and context
 
 # ---- Serialization ----
 serde = { version = "1.0", features = ["derive"] }  # Serialization/deserialization framework
@@ -32,6 +33,7 @@ serde_json = "1.0"               # JSON support for serde
 
 # ---- Logging ----
 log = "0.4"                      # Logging facade
+log4rs = "1.3"                   # Advanced logging configuration
 
 # ---- Synchronization ----
 once_cell = "1.19"               # Thread-safe lazy statics for the core library
@@ -48,10 +50,10 @@ ntfy = { version = "0.7.0", default-features = false, features = ["blocking"] } 
 
 # ---- FFmpeg Integration ----
 ffmpeg-sidecar = "2.0.5"         # FFmpeg process execution and management
-ffprobe = "0.3.0"                # FFprobe media file analysis
 
 # ---- Terminal UI ----
-indicatif = { version = "0.17", features = ["improved_unicode"] }  # Progress bars
 console = "0.15"                 # Terminal utilities and color detection
-owo-colors = "4.1"               # Zero-allocation terminal colors
-unicode-width = "0.2"            # Accurate text width calculations
+indicatif = { version = "0.17", features = ["improved_unicode"] }  # Progress bars and spinners
+
+# ---- Media Analysis ----
+ffprobe = "0.3.0"                # FFprobe media file analysis

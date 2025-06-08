@@ -16,8 +16,6 @@ pub mod video_properties;
 /// Crop detection and analysis
 pub mod crop_detection;
 
-
-
 pub use video::process_videos;
 pub use video_properties::VideoProperties;
 pub use crop_detection::detect_crop;

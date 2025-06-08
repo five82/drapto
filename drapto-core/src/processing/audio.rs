@@ -9,7 +9,7 @@ use crate::external::get_audio_channels;
 use std::path::Path;
 
 /// Returns audio bitrate in kbps based on channel count (mono:64, stereo:128, 5.1:256, 7.1:384).
-pub(crate) fn calculate_audio_bitrate(channels: u32) -> u32 {
+pub fn calculate_audio_bitrate(channels: u32) -> u32 {
     match channels {
         1 => 64,            // Mono
         2 => 128,           // Stereo
@@ -38,13 +38,13 @@ pub fn analyze_and_log_audio(input_path: &Path) -> Vec<u32> {
         Ok(channels) => channels,
         Err(e) => {
             // Audio info is non-critical - warn and continue
-            crate::progress_reporting::warning(&format!("Error getting audio channels for {}: {}. Using empty list.", filename, e));
-            crate::progress_reporting::status("Audio streams", "Error detecting audio", false);
+            log::warn!("Error getting audio channels for {}: {}. Using empty list.", filename, e);
+            log::info!("Audio streams: Error detecting audio");
             return vec![];
         }
     };
     if audio_channels.is_empty() {
-        crate::progress_reporting::status("Audio streams", "None detected", false);
+        log::info!("Audio streams: None detected");
         return vec![];
     }
 
@@ -62,21 +62,20 @@ pub fn analyze_and_log_audio(input_path: &Path) -> Vec<u32> {
                 .join(", ")
         )
     };
-    crate::progress_reporting::status("Audio", &channel_summary, audio_channels.iter().any(|&ch| ch >= 6)); // Bold for 5.1+ audio
+    log::info!("Audio: {}", channel_summary);
 
     let mut bitrate_parts = Vec::new();
     for (index, &num_channels) in audio_channels.iter().enumerate() {
         let bitrate = calculate_audio_bitrate(num_channels);
         if audio_channels.len() == 1 {
-            crate::progress_reporting::status("Bitrate", &format!("{}kbps", bitrate), bitrate >= 256); // Bold for high bitrates
+            log::info!("Bitrate: {}kbps", bitrate);
         } else {
             bitrate_parts.push(format!("Stream {index}: {bitrate}kbps"));
         }
     }
 
     if audio_channels.len() > 1 {
-        let has_high_quality = audio_channels.iter().any(|&ch| calculate_audio_bitrate(ch) >= 256);
-        crate::progress_reporting::status("Bitrates", &bitrate_parts.join(", "), has_high_quality);
+        log::info!("Bitrates: {}", bitrate_parts.join(", "));
     }
 
     audio_channels

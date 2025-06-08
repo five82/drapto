@@ -5,13 +5,14 @@
 //! progress reporting, and error handling.
 
 use crate::error::{CoreError, CoreResult, command_failed_error};
+use crate::events::{Event, EventDispatcher};
 use crate::processing::audio;
 
 use ffmpeg_sidecar::command::FfmpegCommand;
 use log::debug;
 
 use std::path::PathBuf;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 /// Parameters required for running an `FFmpeg` encode operation.
 #[derive(Debug, Clone)]
@@ -28,6 +29,12 @@ pub struct EncodeParams {
     pub duration: f64,
     /// The fixed hqdn3d parameters for VeryLight denoising (used if override is not provided).
     pub hqdn3d_params: Option<String>,
+    // Actual values that will be used in FFmpeg command (for display purposes)
+    pub video_codec: String,
+    pub pixel_format: String,
+    pub color_space: String,
+    pub audio_codec: String,
+    pub film_grain_level: u8,
 }
 
 /// Builds FFmpeg command for libsvtav1 video and libopus audio encoding.
@@ -46,7 +53,11 @@ pub fn build_ffmpeg_command(
     if !disable_audio {
         cmd.args(["-af", "aformat=channel_layouts=7.1|5.1|stereo|mono"]);
     }
-    let hqdn3d_to_use = hqdn3d_override.or(params.hqdn3d_params.as_deref());
+    let hqdn3d_to_use = if has_denoising {
+        hqdn3d_override.or(params.hqdn3d_params.as_deref())
+    } else {
+        None
+    };
     let filter_chain = crate::external::VideoFilterChain::new()
         .add_denoise(hqdn3d_to_use.unwrap_or(""))
         .add_crop(params.crop_filter.as_deref().unwrap_or(""))
@@ -54,20 +65,17 @@ pub fn build_ffmpeg_command(
 
     if let Some(ref filters) = filter_chain {
         cmd.args(["-vf", filters]);
-        crate::progress_reporting::info_debug(&format!("Applying video filters: {}", filters));
+        log::debug!("Applying video filters: {}", filters);
     } else {
-        crate::progress_reporting::info_debug("No video filters applied.");
+        log::debug!("No video filters applied.");
     }
 
-    let film_grain_value = if has_denoising {
-        crate::config::FIXED_FILM_GRAIN_VALUE
-    } else {
-        0
-    };
+    // Use film grain level from params (single source of truth)
+    let film_grain_value = params.film_grain_level;
 
-    // Video encoding configuration - always use software encoding (libsvtav1)
-    cmd.args(["-c:v", "libsvtav1"]);
-    cmd.args(["-pix_fmt", "yuv420p10le"]);
+    // Video encoding configuration - use actual codec from params
+    cmd.args(["-c:v", &params.video_codec]);
+    cmd.args(["-pix_fmt", &params.pixel_format]);
     cmd.args(["-crf", &params.quality.to_string()]);
     cmd.args(["-preset", &params.preset.to_string()]);
 
@@ -78,13 +86,13 @@ pub fn build_ffmpeg_command(
     cmd.args(["-svtav1-params", &svtav1_params]);
 
     if film_grain_value > 0 {
-        crate::progress_reporting::info_debug(&format!("Applying film grain synthesis: level={}", film_grain_value));
+        log::debug!("Applying film grain synthesis: level={}", film_grain_value);
     } else {
-        crate::progress_reporting::info_debug("No film grain synthesis applied (denoise level is None or 0).");
+        log::debug!("No film grain synthesis applied (denoise level is None or 0).");
     }
 
     if !disable_audio {
-        cmd.args(["-c:a", "libopus"]);
+        cmd.args(["-c:a", &params.audio_codec]);
         for (i, &channels) in params.audio_channels.iter().enumerate() {
             let bitrate = audio::calculate_audio_bitrate(channels);
             cmd.args([&format!("-b:a:{i}"), &format!("{bitrate}k")]);
@@ -110,6 +118,8 @@ pub fn run_ffmpeg_encode(
     params: &EncodeParams,
     disable_audio: bool,
     has_denoising: bool,
+    total_frames: u64,
+    event_dispatcher: Option<&EventDispatcher>,
 ) -> CoreResult<()> {
     debug!("Output: {}", params.output_path.display());
     log::info!(
@@ -140,7 +150,7 @@ pub fn run_ffmpeg_encode(
     };
 
     if duration_secs.is_none() || duration_secs == Some(0.0) {
-        crate::progress_reporting::warning("Video duration not provided or zero; progress percentage will not be accurate.");
+        log::warn!("Video duration not provided or zero; progress percentage will not be accurate.");
     }
 
     let mut stderr_buffer = String::new();
@@ -174,12 +184,36 @@ pub fn run_ffmpeg_encode(
                         0.0
                     };
                     
+                    // Parse additional progress information from FFmpeg
+                    let speed = progress.speed;
+                    let fps = progress.fps;
+                    let frame = progress.frame as u64;
+                    let bitrate = format!("{:.1}kbps", progress.bitrate_kbps);
+                    
+                    // Calculate ETA
+                    let eta = if speed > 0.0 {
+                        let remaining_duration = total_duration - elapsed_secs;
+                        let eta_seconds = (remaining_duration / speed as f64) as u64;
+                        Duration::from_secs(eta_seconds)
+                    } else {
+                        Duration::from_secs(0)
+                    };
+                    
+                    // Emit progress event
+                    if let Some(dispatcher) = event_dispatcher {
+                        dispatcher.emit(Event::EncodingProgress {
+                            current_frame: frame,
+                            total_frames,
+                            percent: percent as f32,
+                            speed,
+                            fps,
+                            eta,
+                            bitrate,
+                        });
+                    }
+                    
                     // Always report progress (both for progress bar and logging)
-                    crate::progress_reporting::progress(
-                        percent as f32,
-                        elapsed_secs,
-                        total_duration
-                    );
+                    log::debug!("Encoding progress: {:.1}% (elapsed: {:.1}s)", percent, elapsed_secs);
                 }
             }
             _ => {}
@@ -187,7 +221,7 @@ pub fn run_ffmpeg_encode(
     }
     
     // Just finish the progress bar - 100% will have been reported by the event loop
-    crate::progress_reporting::finish_progress();
+    log::debug!("Encoding progress finished");
 
     // FFmpeg finished - check status
     let status = std::process::ExitStatus::default();
@@ -195,7 +229,7 @@ pub fn run_ffmpeg_encode(
         .unwrap_or_else(|_| params.input_path.display().to_string());
 
     if status.success() {
-        crate::progress_reporting::success(&format!("Encode finished successfully for {}", filename));
+        log::info!("Encode finished successfully for {}", filename);
         Ok(())
     } else {
         let error_message = format!(
@@ -206,7 +240,7 @@ pub fn run_ffmpeg_encode(
 
         let filename = crate::utils::get_filename_safe(&params.input_path)
         .unwrap_or_else(|_| params.input_path.display().to_string());
-        crate::progress_reporting::error(&format!("FFmpeg error for {}: {}", filename, error_message));
+        log::error!("FFmpeg error for {}: {}", filename, error_message);
 
         // Check for specific error types
         if stderr_buffer.contains("No streams found") {
@@ -239,7 +273,20 @@ mod tests {
             audio_channels: vec![6], // 5.1 audio
             duration: 3600.0,
             hqdn3d_params: Some(crate::config::FIXED_HQDN3D_PARAMS_SDR.to_string()),
+            // Actual values used in FFmpeg command
+            video_codec: "libsvtav1".to_string(),
+            pixel_format: "yuv420p10le".to_string(),
+            color_space: "bt709".to_string(),
+            audio_codec: "libopus".to_string(),
+            film_grain_level: crate::config::FIXED_FILM_GRAIN_VALUE,
         }
+    }
+
+    /// Create test parameters with crop filter
+    fn create_test_params_with_crop(crop: Option<&str>) -> EncodeParams {
+        let mut params = create_test_params();
+        params.crop_filter = crop.map(|c| c.to_string());
+        params
     }
 
     #[test]
@@ -353,6 +400,159 @@ mod tests {
         // Film grain should be reasonable
         assert!(crate::config::FIXED_FILM_GRAIN_VALUE <= 50, "Film grain should be <= 50");
         assert!(crate::config::FIXED_FILM_GRAIN_VALUE > 0, "Film grain should be > 0");
+    }
+
+    #[test]
+    fn test_build_ffmpeg_command_with_crop_filter() {
+        // Test that crop filters are correctly included in the full FFmpeg command
+        let params = create_test_params_with_crop(Some("crop=1920:800:0:140"));
+        let cmd = build_ffmpeg_command(&params, None, false, true).unwrap();
+        let cmd_string = format!("{:?}", cmd);
+        
+        assert!(cmd_string.contains("-vf"), "Command should contain video filter argument");
+        assert!(cmd_string.contains("crop=1920:800:0:140"), "Command should contain crop filter");
+        assert!(cmd_string.contains("hqdn3d="), "Command should contain denoise filter when denoising enabled");
+    }
+
+    #[test]
+    fn test_build_ffmpeg_command_with_crop_and_denoise() {
+        // Test that crop and denoise filters are properly chained
+        let params = create_test_params_with_crop(Some("crop=1920:1036:0:22"));
+        let cmd = build_ffmpeg_command(&params, None, false, true).unwrap();
+        let cmd_string = format!("{:?}", cmd);
+        
+        // Should contain both filters properly chained
+        assert!(cmd_string.contains("crop=1920:1036:0:22"), "Command should contain crop filter");
+        assert!(cmd_string.contains("hqdn3d="), "Command should contain denoise filter");
+        assert!(cmd_string.contains("hqdn3d=2:1.5:3:2.5,crop=1920:1036:0:22"), 
+                "Filters should be properly chained in denoise,crop order");
+    }
+
+    #[test]
+    fn test_build_ffmpeg_command_without_crop_filter() {
+        // Test that FFmpeg command works correctly when no crop is needed
+        let params = create_test_params_with_crop(None);
+        let cmd = build_ffmpeg_command(&params, None, false, true).unwrap();
+        let cmd_string = format!("{:?}", cmd);
+        
+        assert!(!cmd_string.contains("crop="), "Command should not contain crop filter");
+        assert!(cmd_string.contains("hqdn3d="), "Command should still contain denoise filter");
+    }
+
+    #[test]
+    fn test_build_ffmpeg_command_crop_only_no_denoise() {
+        // Test crop filter without denoising
+        let params = create_test_params_with_crop(Some("crop=1920:800:0:140"));
+        let cmd = build_ffmpeg_command(&params, None, false, false).unwrap();
+        let cmd_string = format!("{:?}", cmd);
+        
+        assert!(cmd_string.contains("-vf"), "Command should contain video filter argument");
+        assert!(cmd_string.contains("crop=1920:800:0:140"), "Command should contain crop filter");
+        assert!(!cmd_string.contains("hqdn3d"), "Command should not contain denoise filter when denoising disabled");
+    }
+
+    #[test]
+    fn test_encode_params_match_ffmpeg_command() {
+        // Test that EncodeParams fields accurately reflect what's used in the FFmpeg command
+        let params = EncodeParams {
+            input_path: std::path::PathBuf::from("test_input.mkv"),
+            output_path: std::path::PathBuf::from("test_output.mkv"),
+            quality: 27,
+            preset: 6,
+            tune: 3,
+            use_hw_decode: false,
+            crop_filter: Some("crop=1920:1036:0:22".to_string()),
+            audio_channels: vec![6], // 5.1 surround
+            duration: 120.0,
+            hqdn3d_params: Some("2:1.5:3:2.5".to_string()),
+            // Test the actual values that should match FFmpeg command
+            video_codec: "libsvtav1".to_string(),
+            pixel_format: "yuv420p10le".to_string(),
+            color_space: "bt709".to_string(),
+            audio_codec: "libopus".to_string(),
+            film_grain_level: 4,
+        };
+
+        let cmd = build_ffmpeg_command(&params, None, false, true).unwrap();
+        let cmd_string = format!("{:?}", cmd);
+
+        // Validate video codec matches
+        assert!(cmd_string.contains("-c:v"), "Command should contain video codec flag");
+        assert!(cmd_string.contains(&params.video_codec), 
+                "Command should contain video codec: {}", params.video_codec);
+
+        // Validate pixel format matches
+        assert!(cmd_string.contains("-pix_fmt"), "Command should contain pixel format flag");
+        assert!(cmd_string.contains(&params.pixel_format),
+                "Command should contain pixel format: {}", params.pixel_format);
+
+        // Validate audio codec matches
+        assert!(cmd_string.contains("-c:a"), "Command should contain audio codec flag");
+        assert!(cmd_string.contains(&params.audio_codec),
+                "Command should contain audio codec: {}", params.audio_codec);
+
+        // Validate preset matches
+        assert!(cmd_string.contains("-preset"), "Command should contain preset flag");
+        assert!(cmd_string.contains(&params.preset.to_string()),
+                "Command should contain preset: {}", params.preset);
+
+        // Validate quality (CRF) matches
+        assert!(cmd_string.contains("-crf"), "Command should contain CRF flag");
+        assert!(cmd_string.contains(&params.quality.to_string()),
+                "Command should contain quality: {}", params.quality);
+
+        // Validate film grain level matches (in svtav1-params)
+        assert!(cmd_string.contains("-svtav1-params"), "Command should contain SVT-AV1 params");
+        assert!(cmd_string.contains(&format!("film-grain={}", params.film_grain_level)),
+                "Command should contain film grain level: {}", params.film_grain_level);
+
+        // Validate tune parameter matches (in svtav1-params)
+        assert!(cmd_string.contains(&format!("tune={}", params.tune)),
+                "Command should contain tune parameter: {}", params.tune);
+
+        // Validate hqdn3d params match
+        if let Some(ref hqdn3d) = params.hqdn3d_params {
+            assert!(cmd_string.contains(&format!("hqdn3d={}", hqdn3d)),
+                    "Command should contain hqdn3d params: {}", hqdn3d);
+        }
+
+        // Validate audio bitrate is calculated correctly for 5.1 (6 channels)
+        let expected_bitrate = crate::processing::audio::calculate_audio_bitrate(6); // 256 kbps for 5.1
+        assert!(cmd_string.contains(&format!("{}k", expected_bitrate)),
+                "Command should contain correct audio bitrate: {}k", expected_bitrate);
+    }
+
+    #[test]
+    fn test_encode_params_film_grain_disabled() {
+        // Test that film grain level 0 results in no film grain in FFmpeg command
+        let params = EncodeParams {
+            input_path: std::path::PathBuf::from("test_input.mkv"),
+            output_path: std::path::PathBuf::from("test_output.mkv"),
+            quality: 27,
+            preset: 6,
+            tune: 3,
+            use_hw_decode: false,
+            crop_filter: None,
+            audio_channels: vec![2], // Stereo
+            duration: 120.0,
+            hqdn3d_params: None, // No denoising
+            video_codec: "libsvtav1".to_string(),
+            pixel_format: "yuv420p10le".to_string(),
+            color_space: "bt709".to_string(),
+            audio_codec: "libopus".to_string(),
+            film_grain_level: 0, // Disabled
+        };
+
+        let cmd = build_ffmpeg_command(&params, None, false, false).unwrap();
+        let cmd_string = format!("{:?}", cmd);
+
+        // Film grain should not appear in command when disabled (level 0)
+        assert!(!cmd_string.contains("film-grain="),
+                "Command should not contain film-grain parameter when disabled. Command: {}", cmd_string);
+        
+        // Should not contain hqdn3d when denoising is disabled
+        assert!(!cmd_string.contains("hqdn3d"),
+                "Command should not contain hqdn3d when denoising disabled");
     }
     
 }

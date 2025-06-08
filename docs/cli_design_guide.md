@@ -24,8 +24,8 @@ Drapto CLI uses a consistent and well-defined visual hierarchy to organize infor
 #### Hierarchy Levels
 
 1. **Primary (Level 1)**: Major workflow phases and main section headers
-   - Formatting: Bold, uppercase, with separators
-   - Example: `===== VIDEO ANALYSIS =====`
+   - Formatting: Bold, uppercase, with dashes, full cyan color
+   - Example: `----- VIDEO ANALYSIS -----`
 
 2. **Secondary (Level 2)**: Logical groupings, operations, or completion messages
    - Formatting: Bold with leading symbol (» for operations, ✓ for success)
@@ -53,7 +53,7 @@ Whitespace is a critical component of visual hierarchy. Use it consistently:
 - **Logical grouping**: Single blank line to separate logical groups
 
 ```
-===== SECTION =====
+----- SECTION -----
 
   » Subsection One
     Operation in progress...
@@ -69,7 +69,9 @@ Whitespace is a critical component of visual hierarchy. Use it consistently:
 
 | Level | Element Type | Formatting | Color | Indentation | Symbol/Prefix | Example |
 |-------|--------------|------------|-------|-------------|---------------|---------|
-| 1 | Main Sections | Bold, uppercase | Cyan (title only) | None | ===== | `===== VIDEO ANALYSIS =====` |
+| -1 | Hardware Headers | Bold, uppercase | Blue (full) | None | ━━━━━ | `━━━━━ HARDWARE ━━━━━` |
+| 0 | Batch Headers | Bold, uppercase | Yellow (full) | None | ┌─────┐ | `┌───── BATCH ENCODING ─────┐` |
+| 1 | Main Sections | Bold, uppercase | Cyan (full) | None | ----- | `----- VIDEO ANALYSIS -----` |
 | 2 | Subsections/Success | Bold | White | 2 spaces | » / ✓ | `  » Detecting black bars` / `  ✓ Analysis complete` |
 | 3 | Operations/Progress | Regular | White | 4 spaces | Text prefix | `    Processing...` / `    Progress: 45%` |
 | 4 | Primary Info | Regular | White/Green* | 6 spaces | None | `      Reduction:      65.2%` |
@@ -93,13 +95,22 @@ Colors should be used sparingly and meaningfully to highlight important informat
 
 When colors are used, they should follow these guidelines:
 
-##### Cyan (Primary - Structural)
-Use for major structural elements only:
-- Section headers (the title text only, not the delimiters)
-- Major phase transitions
+##### Blue (System Information)
+Use for system and hardware information headers:
+- Hardware information section (appears at start of encoding)
+- System specifications and capabilities
 
 ```
-===== VIDEO ANALYSIS =====  ← "VIDEO ANALYSIS" in cyan
+━━━━━ HARDWARE ━━━━━  ← Entire header in blue
+```
+
+##### Cyan (Primary - Structural)
+Use for major structural elements only:
+- Section headers (entire header including delimiters)
+- Major phase transitions within a file
+
+```
+----- VIDEO ANALYSIS -----  ← Entire header in cyan
 ```
 
 ##### Green (Secondary - Success & Optimal Values)
@@ -118,16 +129,27 @@ Denoising Applied:
   Film Grain: Level 4
 ```
 
-##### Yellow/Amber (Accent - Attention & Caution)
-Use sparingly for information requiring attention:
+##### Yellow/Amber (Batch Operations & Warnings)
+Use for batch-level operations and attention-requiring information:
+- Batch operation headers (BATCH ENCODING, BATCH COMPLETE)
 - Warnings and cautions
 - Moderate performance metrics
 - Values approaching limits
 - Important but not optimal selections
 
 ```
+┌───── BATCH ENCODING ─────┐  ← Entire header in yellow
 ⚠ Hardware acceleration unavailable  ← Title in yellow
   Speed: 0.8x  ← Value in yellow (below real-time)
+```
+
+##### Magenta (Progress Indicators)
+Use for file progress within batch operations:
+- File progress headers in batch processing
+- Progress markers between files
+
+```
+────▶ FILE 1 OF 3 ────  ← Entire header in magenta
 ```
 
 ##### Red (Critical - Errors Only)
@@ -284,7 +306,7 @@ drapto encode --verbose -i input.mkv -o output/
 Shows essential information for normal operation:
 
 ```
-===== VIDEO ANALYSIS =====
+----- VIDEO ANALYSIS -----
 
   » Detecting black bars
     Progress: 100.0% [##############################] (00:00:10 / 00:00:10)
@@ -298,7 +320,7 @@ Shows essential information for normal operation:
 Includes technical details for troubleshooting:
 
 ```
-===== VIDEO ANALYSIS =====
+----- VIDEO ANALYSIS -----
 
   » Detecting black bars
     Progress: 100.0% [##############################] (00:00:10 / 00:00:10)
@@ -333,12 +355,12 @@ The visual design principles (hierarchy, color usage, symbols) apply regardless 
 Sections create visual separation between different parts of the output:
 
 ```
-===== SECTION TITLE =====
+----- SECTION TITLE -----
 
   Content goes here with consistent padding
   More content...
 
-===== NEXT SECTION =====
+----- NEXT SECTION -----
 ```
 
 Use a single blank line between major sections to enhance visual separation.
@@ -362,6 +384,33 @@ For constrained terminal widths, adapt appropriately:
 Encoding: 45.2% [###..]
   ETA: 00:02:22
 ```
+
+### Spinners
+
+For fast operations (typically under 5 seconds), use spinners instead of progress bars:
+
+- Use Braille Unicode patterns for smooth animation
+- Position at subsection level (2 spaces indentation)
+- Clear message describing the operation
+- Automatically disappear when operation completes
+
+**Recommended spinner pattern**: `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏` (Classic smooth rotation)
+
+```
+  ⠋ Detecting black bars...   ← Animates through smooth rotation
+  ⠙ Detecting black bars...   
+  ⠹ Detecting black bars...
+  
+  ✓ Crop detection complete   ← Replaces spinner when done
+    Detected crop: crop=1920:1036:0:22
+```
+
+**Spinner characteristics**:
+- 10-frame animation cycle for ultra-smooth motion
+- 120ms tick interval (optimized for SSH and remote connections)
+- Single-dot progression between frames (no visual jumps)
+- Circular clockwise rotation pattern
+- Industry standard used by npm, yarn, and other major CLI tools
 
 ### Status Lines
 
@@ -535,7 +584,7 @@ Encoding: 45.2%, ETA: 00:22:30
 - Show full commands in verbose mode, simplified in regular mode
 
 ```
-===== FFMPEG COMMAND =====
+----- FFMPEG COMMAND -----
 
 ffmpeg
   -hwaccel videotoolbox -hwaccel_output_format nv12
@@ -555,7 +604,7 @@ ffmpeg
 - Include brief explanation of conservative approach
 
 ```
-===== PROCESSING CONFIGURATION =====
+----- PROCESSING CONFIGURATION -----
 
 ✓ Configuration applied
 
@@ -575,7 +624,7 @@ ffmpeg
 - Provide summary upon completion
 
 ```
-===== ENCODING PROGRESS =====
+----- ENCODING PROGRESS -----
 
 ⧖ Encoding: 45.2% [##########.................] (00:46:23 / 01:42:35)
   Speed: 2.5x, Avg FPS: 24.5, ETA: 00:22:30
@@ -641,25 +690,81 @@ Document any adjustments made for specific combinations.
 
 ## Implementation Guidelines
 
-- Use the `terminal.rs` module for all user-facing output
-- Leverage the terminal module's styling functions for consistent colors and formatting
-- Follow the component-based approach for complex output
-- Test output in various terminal sizes and environments
-- Implement responsive output algorithms:
+### Template-Based Architecture
+
+Drapto uses a **template-based formatting system** to ensure consistent visual hierarchy and spacing across all terminal output. This approach eliminates formatting bugs and provides maintainable, predictable output.
+
+#### Core Principles
+
+1. **Centralized Formatting**: All output patterns are defined once as templates
+2. **Data-Driven Display**: Templates receive structured data, not formatting instructions
+3. **Consistent Spacing**: Templates handle all spacing and indentation automatically
+4. **Type Safety**: Each template expects specific data structures
+
+#### Template System Structure
 
 ```rust
-fn adjust_output_by_width(width: u16) -> OutputDetail {
-    match width {
-        0..=50 => OutputDetail::Minimal,
-        51..=80 => OutputDetail::Standard,
-        _ => OutputDetail::Full
-    }
+// Template definition
+pub enum TemplateData<'a> {
+    KeyValueList {
+        title: &'a str,
+        items: Vec<(&'a str, &'a str)>,
+    },
+    GroupedKeyValues {
+        title: &'a str,
+        groups: Vec<GroupData<'a>>,
+    },
+    // ... other templates
 }
+
+// Usage
+templates::render(TemplateData::KeyValueList {
+    title: "INITIALIZATION",
+    items: vec![("Input file", "movie.mkv"), ("Duration", "01:42:35")],
+});
 ```
 
-- Create a reusable style guide library to ensure consistency
-- Implement visual regression testing
-- Add user feedback mechanisms
+#### Available Templates
+
+1. **`SectionHeader`**: Main section headers with consistent spacing
+2. **`KeyValueList`**: Simple key-value pairs under a section
+3. **`GroupedKeyValues`**: Key-values organized into named groups
+4. **`ProgressBar`**: Progress indication with details
+5. **`SpinnerToResults`**: Spinner that transitions to results
+6. **`CompletionSummary`**: Success message with grouped results
+
+#### Template Formatting Rules
+
+- **Section headers**: Always include leading blank line, trailing blank line
+- **Groups**: Separated by single blank lines
+- **Key-value alignment**: Consistent 18-character label width
+- **Emphasis**: Green bold for significant values (>50% reductions)
+- **Indentation**: 2 spaces for all content under sections
+
+#### Implementation Benefits
+
+- **No manual spacing**: Templates handle all whitespace automatically
+- **Consistent output**: Same template = identical formatting everywhere
+- **Easy maintenance**: Fix formatting in one place, applies everywhere
+- **Future-proof**: Easy to add JSON output, different terminal widths, etc.
+- **Testable**: Template output is deterministic and verifiable
+
+#### Migration from Legacy System
+
+The template system replaces the previous `TerminalPresenter` with individual methods:
+
+```rust
+// Old approach (error-prone)
+presenter.section("TITLE");
+presenter.subsection("...");
+presenter.status("...");
+
+// New approach (bulletproof)
+templates::render(TemplateData::KeyValueList {
+    title: "TITLE",
+    items: vec![("Key", "Value")],
+});
+```
 
 ## Command Line Arguments
 
@@ -737,7 +842,7 @@ $ drapto encode -i large_file.mkv -o output/
 # Bad - Silent delay
 $ drapto encode -i large_file.mkv -o output/
 [5 second delay with no output]
-===== INITIALIZATION =====  ← User wonders if it's working
+----- INITIALIZATION -----  ← User wonders if it's working
 ```
 
 ## Anti-Patterns to Avoid
@@ -762,82 +867,68 @@ Below is an example of a complete workflow showing the proper terminal output fo
 ```
 $ drapto encode -i movie.mkv -o output_dir/
 
-===== INITIALIZATION =====
+━━━━━ HARDWARE ━━━━━
 
-  Input file:      movie.mkv
-  Output file:     movie.av1.mp4
-  Duration:        01:42:35
-  Resolution:      1920x1080 (HD)
-  Hardware:        VideoToolbox (decode only)
+  Hostname:          my-computer
+  CPU:               Intel Core i7-9750H
+  Memory:            16 GB
+  Decoder:           VideoToolbox
 
-===== VIDEO ANALYSIS =====
+----- VIDEO DETAILS -----
 
-  » Detecting black bars
-    ⧖ Progress: 100.0% [##############################] (00:00:10 / 00:00:10)
+  File:              movie.mkv
+  Duration:          01:42:35
+  Resolution:        1920x1080 (HD)
+  Dynamic range:     SDR
+  Audio:             5.1 surround
 
+----- VIDEO ANALYSIS -----
+
+  ⠋ Detecting black bars...
+  
   ✓ Crop detection complete
-    Detected crop:    None required
+  Detected crop:     None required
 
-  » Applying processing configuration
-    Conservative denoising with film grain synthesis
-
-  ✓ Processing configuration applied
-    Denoising:        VeryLight (hqdn3d=0.5:0.4:2:2)
-    Film Grain:       Level 4
-    Estimated Size:   1.24 GB
-    Estimated Savings: 65% vs. no processing
-
-===== ENCODING CONFIGURATION =====
+----- ENCODING CONFIGURATION -----
 
   Video:
-    Preset:             medium (SVT-AV1 preset 6) (default)
-    Quality:            27 (CRF)
-    Denoising:          VeryLight (hqdn3d=0.5:0.4:2:2)
-    Film Grain Synth:   Level 4
-
-  Hardware:
-    Acceleration:       VideoToolbox (decode only)
+    Preset:          SVT-AV1 preset 6
+    Quality:         CRF 27
+    Denoising:       VeryLight (hqdn3d=0.5:0.4:2:2)
+    Film Grain Synth: Level 4
 
   Advanced:
-    Pixel Format:       yuv420p10le (default)
-    Color Space:        bt709 (default)
+    Pixel Format:    yuv420p10le
+    Color Space:     bt709
 
-===== ENCODING PROGRESS =====
+----- ENCODING PROGRESS -----
 
-  ⧖ Encoding: 45.2% [##########.................] (00:46:23 / 01:42:35)
-    Speed: 2.5x, Avg FPS: 24.5, ETA: 00:22:30
+  Encoding: 45% [##########....................] (00:46:23 / 01:42:35)
+  Speed: 2.5x, ETA: 00:22:30
 
-    Pass:              1/1
-    Frames:            66,574 / 147,285
-    Bitrate:           1,245 kb/s
-    Size:              562.4 MB (current)
-
-    Press Ctrl+C to cancel encoding
-
-===== ENCODING COMPLETE =====
+----- ENCODING COMPLETE -----
 
   ✓ Encoding finished successfully
 
-    Input file:        movie.mkv
-    Output file:       movie.av1.mp4
-    Duration:          01:42:35
-    Original size:     3.56 GB
-    Encoded size:      1.24 GB
-    Reduction:         65.2%  ← Value in green (significant reduction)
+  Input file:        movie.mkv
+  Output file:       movie.av1.mp4
+  Original size:     3.56 GB
+  Encoded size:      1.24 GB
+  Reduction:         65.2%
 
-    Video stream:      AV1 (libsvtav1), 1920x1080, 1,145 kb/s
-    Audio stream:      Opus, 5.1 channels, 128 kb/s
+  Video stream:      AV1 (libsvtav1), 1920x1080
+  Audio stream:      Opus, 5.1 channels, 128 kb/s
 
-    Total time:        00:40:12
-    Average speed:     2.55x
+  Total time:        00:40:12
+  Average speed:     2.55x
 
-    The encoded file is ready at: /home/user/videos/movie.av1.mp4
+  The encoded file is ready at: /home/user/videos/movie.av1.mp4
 ```
 
 ### Processing Configuration Detail Example
 
 ```
-===== PROCESSING CONFIGURATION =====
+----- PROCESSING CONFIGURATION -----
 
   » Applying conservative denoising configuration
 
@@ -1014,3 +1105,59 @@ $ drapto encode -i movie.mkv -o output_dir/
 ✓ Configuration applied: VeryLight denoising with Level 4 film grain
   Next: Beginning encoding with configured settings
 ```
+
+### Batch Processing Output
+
+When processing multiple files, Drapto provides additional context and summary information using a distinct visual hierarchy:
+
+#### Batch Initialization
+
+```
+┌───── BATCH ENCODING ─────┐  ← Yellow batch header
+
+  Processing 3 files:
+    1. movie1.mkv
+    2. movie2.mkv
+    3. movie3.mkv
+
+  Output directory: /home/user/videos/output
+```
+
+#### File Progress Headers
+
+Between each file in a batch, a distinct progress header is shown:
+
+```
+────▶ FILE 1 OF 3 ────  ← Magenta progress header
+
+----- INITIALIZATION -----  ← Cyan section header
+...
+```
+
+The visual hierarchy uses three distinct header styles:
+- **Batch headers** (yellow, simple box `┌─────┐`): Highest level for batch operations
+- **File progress headers** (magenta, dashes with arrow `────▶`): Mid-level progress indicators
+- **Section headers** (cyan, dashes `-----`): Standard workflow phases within files
+
+Each header type uses consistent coloring (entire header, not just text) to create clear visual separation.
+
+#### Batch Completion Summary
+
+```
+┌───── BATCH COMPLETE ─────┐  ← Yellow batch header
+
+  ✓ Successfully encoded 3 files
+
+  Total original size:   10.68 GB
+  Total encoded size:    3.72 GB
+  Total reduction:       65.2%
+  Total encoding time:   02:05:33
+  Average speed:         2.45x
+
+  Files processed:
+    ✓ movie1.mkv (67.3% reduction)
+    ✓ movie2.mkv (62.8% reduction)
+    ✓ movie3.mkv (65.5% reduction)
+```
+
+Single file operations do not show batch headers, maintaining the existing clean output for individual encodes.

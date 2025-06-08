@@ -17,6 +17,8 @@ pub struct MediaInfo {
     pub width: Option<i64>,
     /// Height of the video stream
     pub height: Option<i64>,
+    /// Total number of frames in the video
+    pub total_frames: Option<u64>,
 }
 
 
@@ -48,15 +50,15 @@ pub fn get_audio_channels(input_path: &Path) -> CoreResult<Vec<u32>> {
                 })
                 .collect();
             if channels.is_empty() {
-                crate::progress_reporting::warning(&format!(
+                log::warn!(
                     "No audio streams found by ffprobe for {}",
                     input_path.display()
-                ));
+                );
             }
             Ok(channels)
         }
         Err(err) => {
-            crate::progress_reporting::error(&format!("ffprobe failed for audio channels on {}: {:?}", input_path.display(), err));
+            log::error!("ffprobe failed for audio channels on {}: {:?}", input_path.display(), err);
             Err(map_ffprobe_error(err, "audio channels"))
         }
     }
@@ -122,7 +124,7 @@ pub fn get_video_properties(input_path: &Path) -> CoreResult<VideoProperties> {
             })
         }
         Err(err) => {
-            crate::progress_reporting::error(&format!("ffprobe failed for video properties on {}: {:?}", input_path.display(), err));
+            log::error!("ffprobe failed for video properties on {}: {:?}", input_path.display(), err);
             Err(map_ffprobe_error(err, "video properties"))
         }
     }
@@ -154,12 +156,17 @@ pub fn get_media_info(input_path: &Path) -> CoreResult<MediaInfo> {
             {
                 info.width = video_stream.width;
                 info.height = video_stream.height;
+                
+                // Get total frames from nb_frames field if available
+                info.total_frames = video_stream.nb_frames
+                    .as_deref()
+                    .and_then(|f| f.parse::<u64>().ok());
             }
 
             Ok(info)
         }
         Err(err) => {
-            crate::progress_reporting::warning(&format!("Failed to get media info: {err:?}"));
+            log::warn!("Failed to get media info: {err:?}");
             Err(map_ffprobe_error(err, "media info"))
         }
     }

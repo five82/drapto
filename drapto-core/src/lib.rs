@@ -37,20 +37,23 @@
 //!     &config,
 //!     &files,
 //!     None,
+//!     None, // No event dispatcher for this example
 //! ).unwrap();
 //! ```
 
 pub mod config;
 pub mod discovery;
 pub mod error;
+pub mod events;
 pub mod external;
-pub mod processing;
-pub mod utils;
-pub mod notifications;
-pub mod temp_files;
+pub mod file_logging;
 pub mod hardware_decode;
-pub mod terminal;
-pub mod progress_reporting;
+pub mod notifications;
+pub mod presentation;
+pub mod processing;
+pub mod system_info;
+pub mod temp_files;
+pub mod utils;
 
 // Re-exports for public API
 pub use config::CoreConfig;
@@ -71,10 +74,6 @@ pub use temp_files::{
 pub use hardware_decode::{
     HardwareDecoding, add_hardware_decoding_to_command, is_hardware_decoding_available, is_macos,
 };
-pub use progress_reporting::{
-    TerminalProgressReporter, set_progress_reporter,
-    processing_debug, status_debug, info_debug
-};
 
 use std::time::Duration;
 
@@ -85,4 +84,6 @@ pub struct EncodeResult {
     pub duration: Duration,
     pub input_size: u64,
     pub output_size: u64,
+    pub video_duration_secs: f64,
+    pub encoding_speed: f32,
 }

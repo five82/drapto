@@ -1,121 +1,96 @@
-//! Implementation of the 'encode' subcommand.
-//!
-//! This module handles video file conversion to AV1 format, including file discovery,
-//! configuration setup, and delegation to the drapto-core library.
+//! Encode command implementation using event-based architecture
 
-use crate::cli::EncodeArgs;
 use crate::error::CliResult;
+use crate::EncodeArgs;
 
-use drapto_core::notifications::NtfyNotificationSender;
-use drapto_core::{CoreError, EncodeResult};
-use drapto_core::terminal;
+use drapto_core::{
+    CoreConfig, CoreError,
+    discovery::find_processable_files,
+    events::{Event, EventDispatcher},
+    notifications::NotificationSender,
+    processing::process_videos,
+};
 
-use std::fs;
-use std::path::PathBuf;
-use std::time::Instant;
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
-use log::{debug, info, warn};
-
-/// Discovers .mkv files from input path (file or directory). Returns (files, effective_input_dir).
+/// Discover video files to encode based on the provided arguments
 pub fn discover_encode_files(args: &EncodeArgs) -> CliResult<(Vec<PathBuf>, PathBuf)> {
-    let input_path = args
-        .input_path
-        .canonicalize()
-        .map_err(|e| CoreError::PathError(
-            format!("Invalid input path '{}': {}", args.input_path.display(), e)
-        ))?;
-
-    let metadata = fs::metadata(&input_path)
-        .map_err(|e| CoreError::PathError(
-            format!("Failed to access input path '{}': {}", input_path.display(), e)
-        ))?;
-
-    if metadata.is_dir() {
-        match drapto_core::find_processable_files(&input_path) {
-            Ok(files) => Ok((files, input_path.clone())),
-            Err(CoreError::NoFilesFound) => Ok((Vec::new(), input_path.clone())),
-            Err(e) => Err(e),
-        }
-    } else if metadata.is_file() {
-        if drapto_core::utils::is_valid_video_file(&input_path) {
-            let parent_dir = input_path
-                .parent()
-                .ok_or_else(|| {
-                    CoreError::OperationFailed(format!(
-                        "Could not determine parent directory for file '{}'",
-                        input_path.display()
-                    ))
-                })?
-                .to_path_buf();
-            Ok((vec![input_path.clone()], parent_dir))
-        } else {
-            Err(CoreError::OperationFailed(format!(
-                "Input file '{}' is not a .mkv file",
-                input_path.display()
-            )))
-        }
+    let input_path = &args.input_path;
+    
+    if input_path.is_file() {
+        // Single file input
+        let effective_input_dir = input_path.parent()
+            .unwrap_or_else(|| Path::new("."))
+            .to_path_buf();
+        Ok((vec![input_path.clone()], effective_input_dir))
+    } else if input_path.is_dir() {
+        // Directory input - find all processable files
+        let files = find_processable_files(input_path)?;
+        Ok((files, input_path.clone()))
     } else {
-        Err(CoreError::OperationFailed(format!(
-            "Input path '{}' is neither a file nor a directory",
-            input_path.display()
-        )))
+        Err(CoreError::PathError(
+            format!("Input path does not exist: {}", input_path.display())
+        ))
     }
 }
 
-/// Sets up output directories and determines target filename override.
-/// 
-/// Returns (actual_output_dir, target_filename_override, log_dir)
-fn setup_output_directories(args: &EncodeArgs, files_count: usize) -> CliResult<(PathBuf, Option<PathBuf>, PathBuf)> {
-    let (actual_output_dir, target_filename_override_os) =
-        if files_count == 1 && args.output_dir.extension().is_some() {
-            let target_file = args.output_dir.clone();
-            let parent_dir = target_file
-                .parent()
-                .map(std::path::Path::to_path_buf)
-                .filter(|p| !p.as_os_str().is_empty())
-                .unwrap_or_else(|| PathBuf::from("."));
-            let filename_os = target_file.file_name().map(std::ffi::OsStr::to_os_string);
-            (parent_dir, filename_os)
-        } else {
-            (args.output_dir.clone(), None)
-        };
-
-    let target_filename_override = target_filename_override_os.map(PathBuf::from);
-
-    let log_dir = args
-        .log_dir
-        .clone()
-        .unwrap_or_else(|| actual_output_dir.join("logs"));
-
-    // Create output directories (log dir may already exist in daemon mode)
-    fs::create_dir_all(&actual_output_dir).map_err(|e| {
-        CoreError::PathError(format!(
-            "Failed to create output directory '{}': {}",
-            actual_output_dir.display(),
-            e
-        ))
-    })?;
-    fs::create_dir_all(&log_dir)
-        .map_err(|e| CoreError::PathError(
-            format!("Failed to create log directory '{}': {}", log_dir.display(), e)
-        ))?;
-
-    Ok((actual_output_dir, target_filename_override, log_dir))
-}
-
-/// Creates and configures CoreConfig from CLI arguments.
-fn create_core_config(
+/// Run the encode command with the event-based architecture
+pub fn run_encode(
+    notification_sender: Option<&dyn NotificationSender>,
     args: EncodeArgs,
+    interactive_mode: bool,
+    discovered_files: Vec<PathBuf>,
     effective_input_dir: PathBuf,
-    actual_output_dir: PathBuf,
-    log_dir: PathBuf,
-) -> CliResult<drapto_core::CoreConfig> {
-    let mut config = drapto_core::config::CoreConfig::new(
-        effective_input_dir,
-        actual_output_dir,
-        log_dir
+    event_dispatcher: EventDispatcher,
+) -> CliResult<()> {
+    // PID file setup for daemon mode
+    let pid_file_path = if !interactive_mode {
+        let pid_filename = format!(
+            "drapto_encode_pid_{}.txt",
+            chrono::Local::now().format("%Y%m%d_%H%M%S")
+        );
+        let log_dir = args
+            .log_dir
+            .clone()
+            .unwrap_or_else(|| args.output_dir.join("logs"));
+        let pid_path = log_dir.join(pid_filename);
+        
+        // Write PID file
+        if let Ok(mut pid_file) = std::fs::File::create(&pid_path) {
+            let _ = writeln!(pid_file, "{}", std::process::id());
+            log::info!("PID file created: {}", pid_path.display());
+        }
+        
+        Some(pid_path)
+    } else {
+        None
+    };
+
+    // Notify about startup
+    if let Some(sender) = notification_sender {
+        let hostname = std::env::var("HOSTNAME")
+            .or_else(|_| std::env::var("COMPUTERNAME"))
+            .unwrap_or_else(|_| "local".to_string());
+            
+        let _ = sender.send(&format!(
+            "Drapto encoding started on {} - Processing {} files",
+            hostname,
+            discovered_files.len()
+        ));
+    }
+
+    let start_time = SystemTime::now();
+
+    // Convert args to CoreConfig
+    let mut config = CoreConfig::new(
+        effective_input_dir.clone(),
+        args.output_dir.clone(),
+        args.log_dir.clone().unwrap_or_else(|| args.output_dir.join("logs")),
     );
-    
+
+    // Apply command line arguments to config
     config.enable_denoise = !args.no_denoise;
 
     if let Some(quality) = args.quality_sd {
@@ -136,148 +111,102 @@ fn create_core_config(
         drapto_core::config::DEFAULT_CROP_MODE.to_string()
     };
 
-    if let Some(topic) = args.ntfy {
+    if let Some(topic) = args.ntfy.clone() {
         config.ntfy_topic = Some(topic);
     }
 
     if let Some(preset) = args.preset {
         config.svt_av1_preset = preset;
     }
-    
+
+    // Validate configuration
     config.validate()?;
-    Ok(config)
-}
 
-/// Displays process overview information including file count, directories, and hardware info.
-fn display_process_overview(
-    args: &EncodeArgs,
-    files_count: usize,
-    actual_output_dir: &std::path::Path,
-    target_filename_override: Option<&std::path::Path>,
-) {
-    let input_source_display = {
-        let path_str = args.input_path.display().to_string();
-        if path_str.ends_with('/') { path_str } else { format!("{}/", path_str) }
-    };
-    let output_display = if let Some(fname) = target_filename_override {
-        fname.display().to_string()
+    let results = if discovered_files.is_empty() {
+        event_dispatcher.emit(Event::Warning {
+            message: "No video files found to process".to_string(),
+        });
+        vec![]
     } else {
-        format!("{}/", actual_output_dir.display())
-    };
-
-    // Create appropriate processing description
-    let processing_display = match files_count {
-        0 => "No video files found".to_string(),
-        1 => "1 video file".to_string(),
-        n => format!("{} video files", n),
-    };
-
-    terminal::print_section("PROCESS OVERVIEW");
-    terminal::print_status("Processing", &processing_display, files_count > 1);
-    terminal::print_status("Input source", &input_source_display, false);
-    terminal::print_status("Output", &output_display, false);
-
-    let hw_decode_info = drapto_core::hardware_decode::get_hardware_decoding_info();
-    let hw_display = match hw_decode_info {
-        Some(info) => format!("{info} (decode only)"),
-        None => "No hardware decoder available".to_string(),
-    };
-    terminal::print_status("Hardware", &hw_display, false);
-}
-
-
-/// Handles encoding results - core library now manages all summary display
-fn handle_encoding_results(
-    results: Vec<EncodeResult>,
-    _total_start_time: Instant,
-) -> CliResult<()> {
-    if results.is_empty() {
-        terminal::print_error(
-            "No files encoded",
-            "No files were successfully encoded",
-            Some("Check that your input files are valid .mkv files"),
-        );
-    }
-    // Core library now handles all success reporting and summaries
-    // No additional CLI summary needed
-    Ok(())
-}
-
-/// Runs the encoding process with configured parameters and reports results.
-pub fn run_encode(
-    notification_sender: Option<&NtfyNotificationSender>,
-    args: EncodeArgs,
-    interactive: bool,
-    files_to_process: Vec<PathBuf>,
-    effective_input_dir: PathBuf,
-) -> CliResult<()> {
-    let total_start_time = Instant::now();
-
-    // Setup output directories and paths
-    let (actual_output_dir, target_filename_override, log_dir) = 
-        setup_output_directories(&args, files_to_process.len())?;
-
-    // Create log file path
-    let main_log_filename = format!("drapto_encode_run_{}.log", crate::logging::get_timestamp());
-    let main_log_path = log_dir.join(&main_log_filename);
-
-    // Display process overview
-    display_process_overview(
-        &args,
-        files_to_process.len(),
-        &actual_output_dir,
-        target_filename_override.as_deref(),
-    );
-
-    // Debug logging
-    debug!("Log file: {}", main_log_path.display());
-    debug!("Interactive: {interactive}");
-    debug!("Run started: {}", chrono::Local::now());
-
-    // Create PID file for daemon mode
-    if !interactive {
-        let pid_path = log_dir.join("drapto.pid");
-        if let Err(e) = std::fs::write(&pid_path, std::process::id().to_string()) {
-            warn!(
-                "Warning: Failed to create PID file at {}: {}",
-                pid_path.display(),
-                e
-            );
-        } else {
-            info!("PID file created at: {}", pid_path.display());
-        }
-    }
-
-    // Create and configure core config
-    let config = create_core_config(args, effective_input_dir, actual_output_dir.to_path_buf(), log_dir.to_path_buf())?;
-
-    // Process videos
-    let processing_result = if files_to_process.is_empty() {
-        terminal::print_warning("No processable .mkv files found in the specified input path.");
-        Ok(Vec::new())
-    } else {
-        drapto_core::process_videos(
+        // Process videos with the new event-based system
+        match process_videos(
             notification_sender,
             &config,
-            &files_to_process,
-            target_filename_override,
-        )
-        .map_err(|e| CoreError::OperationFailed(
-            format!("Video processing failed: {}", e)
-        ))
+            &discovered_files,
+            None,
+            Some(&event_dispatcher),
+        ) {
+            Ok(results) => results,
+            Err(e) => {
+                event_dispatcher.emit(Event::Error {
+                    title: "Processing failed".to_string(),
+                    message: e.to_string(),
+                    context: None,
+                    suggestion: None,
+                });
+                return Err(e);
+            }
+        }
     };
 
-    // Handle results
-    match processing_result {
-        Ok(results) => {
-            handle_encoding_results(results, total_start_time)?;
-        }
-        Err(e) => {
-            terminal::print_error("Fatal error during processing", &e.to_string(), None);
-            return Err(e);
+    // Summary
+    let elapsed = start_time.elapsed().unwrap_or_default();
+    let total_duration = format!(
+        "{:02}:{:02}:{:02}",
+        elapsed.as_secs() / 3600,
+        (elapsed.as_secs() % 3600) / 60,
+        elapsed.as_secs() % 60
+    );
+
+    if !results.is_empty() {
+        log::info!("");
+        log::info!("===== BATCH SUMMARY =====");
+        log::info!("");
+        log::info!("Total files processed: {}", results.len());
+        log::info!("Total time: {}", total_duration);
+        
+        let total_input_size: u64 = results.iter().map(|r| r.input_size).sum();
+        let total_output_size: u64 = results.iter().map(|r| r.output_size).sum();
+        let total_reduction = if total_input_size > 0 {
+            (total_input_size - total_output_size) as f64 / total_input_size as f64 * 100.0
+        } else {
+            0.0
+        };
+        
+        log::info!(
+            "Total size reduction: {:.1}% ({} → {})",
+            total_reduction,
+            drapto_core::format_bytes(total_input_size),
+            drapto_core::format_bytes(total_output_size)
+        );
+    }
+
+    // Send completion notification
+    if let Some(sender) = notification_sender {
+        let hostname = std::env::var("HOSTNAME")
+            .or_else(|_| std::env::var("COMPUTERNAME"))
+            .unwrap_or_else(|_| "local".to_string());
+            
+        let message = if results.is_empty() {
+            format!("Drapto encoding on {} completed - No files processed", hostname)
+        } else {
+            format!(
+                "Drapto encoding on {} completed - {} files processed in {}",
+                hostname,
+                results.len(),
+                total_duration
+            )
+        };
+        
+        let _ = sender.send(&message);
+    }
+
+    // Clean up PID file
+    if let Some(pid_path) = pid_file_path {
+        if let Err(e) = std::fs::remove_file(&pid_path) {
+            log::warn!("Failed to remove PID file: {}", e);
         }
     }
 
-    debug!("Finished at: {}", chrono::Local::now());
     Ok(())
 }

@@ -19,45 +19,69 @@
 
 use crate::config::{CoreConfig, UHD_WIDTH_THRESHOLD, HD_WIDTH_THRESHOLD, HDR_COLOR_SPACES};
 use crate::error::{CoreError, CoreResult};
+use crate::events::{Event, EventDispatcher};
 use crate::external::ffmpeg::{EncodeParams, run_ffmpeg_encode};
+use crate::external::ffprobe_executor::get_media_info;
 use crate::external::get_file_size as external_get_file_size;
-use crate::notifications::{Notification, NtfyNotificationSender};
+use crate::notifications::NotificationSender;
 use crate::processing::audio;
 use crate::processing::crop_detection;
 use crate::processing::video_properties::VideoProperties;
+use crate::system_info::SystemInfo;
 use crate::EncodeResult;
 
 use log::warn;
+
+/// Parameters for setting up encoding configuration
+struct EncodingSetupParams<'a> {
+    input_path: &'a std::path::Path,
+    output_path: &'a std::path::Path,
+    quality: u32,
+    config: &'a CoreConfig,
+    crop_filter_opt: Option<String>,
+    audio_channels: Vec<u32>,
+    duration_secs: f64,
+    is_hdr: bool,
+}
 
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 /// Helper function to safely send notifications with consistent error handling.
-/// This function blocks until the notification is sent to ensure proper ordering.
 fn send_notification_safe(
-    sender: Option<&NtfyNotificationSender>,
-    title: &str,
-    message: String,
-    priority: Option<u8>,
-    tag: Option<&str>,
+    sender: Option<&dyn NotificationSender>,
+    message: &str,
     context: &str,
 ) {
     if let Some(sender) = sender {
-        let mut notification = Notification::new(title, message);
-        
-        if let Some(p) = priority {
-            notification = notification.with_priority(p);
-        }
-        
-        if let Some(t) = tag {
-            notification = notification.with_tag(t);
-        }
-
-        // Send notification synchronously
-        if let Err(e) = sender.send(&notification) {
+        if let Err(e) = sender.send(message) {
             warn!("Failed to send {} notification: {e}", context);
         }
     }
+}
+
+/// Helper function to emit events if event dispatcher is available
+fn emit_event(event_dispatcher: Option<&EventDispatcher>, event: Event) {
+    if let Some(dispatcher) = event_dispatcher {
+        dispatcher.emit(event);
+    }
+}
+
+/// Calculate final output dimensions after crop is applied
+fn get_output_dimensions(original_width: u32, original_height: u32, crop_filter: Option<&str>) -> (u32, u32) {
+    if let Some(crop) = crop_filter {
+        // Parse crop filter format: crop=width:height:x:y
+        if let Some(params) = crop.strip_prefix("crop=") {
+            let parts: Vec<&str> = params.split(':').collect();
+            if parts.len() >= 2 {
+                if let (Ok(width), Ok(height)) = (parts[0].parse::<u32>(), parts[1].parse::<u32>()) {
+                    return (width, height);
+                }
+            }
+        }
+    }
+    // Return original dimensions if no crop or parsing fails
+    (original_width, original_height)
 }
 
 /// Determines quality settings based on video resolution and config.
@@ -95,62 +119,99 @@ fn determine_quality_settings(video_props: &VideoProperties, config: &CoreConfig
 }
 
 /// Sets up encoding parameters from analysis results and config.
-fn setup_encoding_parameters(
-    input_path: &std::path::Path,
-    output_path: &std::path::Path,
-    quality: u32,
-    config: &CoreConfig,
-    crop_filter_opt: Option<String>,
-    audio_channels: Vec<u32>,
-    duration_secs: f64,
-    is_hdr: bool,
-) -> EncodeParams {
-    let preset_value = config.svt_av1_preset;
-    let tune_value = config.svt_av1_tune;
+fn setup_encoding_parameters(params: EncodingSetupParams) -> EncodeParams {
+    let preset_value = params.config.svt_av1_preset;
+    let tune_value = params.config.svt_av1_tune;
 
     let mut initial_encode_params = EncodeParams {
-        input_path: input_path.to_path_buf(),
-        output_path: output_path.to_path_buf(),
-        quality,
+        input_path: params.input_path.to_path_buf(),
+        output_path: params.output_path.to_path_buf(),
+        quality: params.quality,
         preset: preset_value,
         tune: tune_value,
         use_hw_decode: true,
-        crop_filter: crop_filter_opt,
-        audio_channels,
-        duration: duration_secs,
+        crop_filter: params.crop_filter_opt,
+        audio_channels: params.audio_channels,
+        duration: params.duration_secs,
         hqdn3d_params: None,
+        // Actual values that will be used in FFmpeg command
+        video_codec: "libsvtav1".to_string(),
+        pixel_format: "yuv420p10le".to_string(),
+        color_space: "bt709".to_string(),
+        audio_codec: "libopus".to_string(),
+        film_grain_level: 0, // Will be set below
     };
 
     // Apply fixed denoising parameters if enabled, using HDR or SDR specific values
-    let final_hqdn3d_params = if config.enable_denoise {
-        let params = if is_hdr {
+    let final_hqdn3d_params = if params.config.enable_denoise {
+        let denoise_params = if params.is_hdr {
             crate::config::FIXED_HQDN3D_PARAMS_HDR
         } else {
             crate::config::FIXED_HQDN3D_PARAMS_SDR
         };
-        Some(params.to_string())
+        Some(denoise_params.to_string())
     } else {
-        crate::progress_reporting::info_debug("Denoising disabled via config.");
+        log::debug!("Denoising disabled via config.");
         None
+    };
+
+    // Set film grain level based on denoising
+    let film_grain_level = if params.config.enable_denoise {
+        crate::config::FIXED_FILM_GRAIN_VALUE
+    } else {
+        0
     };
 
     // Finalize encoding parameters
     initial_encode_params.hqdn3d_params = final_hqdn3d_params;
+    initial_encode_params.film_grain_level = film_grain_level;
     initial_encode_params
 }
 
 
 /// Main entry point for video processing. Orchestrates analysis, encoding, and notifications.
 pub fn process_videos(
-    notification_sender: Option<&NtfyNotificationSender>,
+    notification_sender: Option<&dyn NotificationSender>,
     config: &CoreConfig,
     files_to_process: &[PathBuf],
     target_filename_override: Option<PathBuf>,
+    event_dispatcher: Option<&EventDispatcher>,
 ) -> CoreResult<Vec<EncodeResult>> {
     let mut results: Vec<EncodeResult> = Vec::new();
 
-    for input_path in files_to_process {
+    // Emit hardware information at the very beginning
+    let system_info = SystemInfo::collect();
+    emit_event(event_dispatcher, Event::HardwareInfo {
+        hostname: system_info.hostname,
+        os: system_info.os,
+        cpu: system_info.cpu,
+        memory: system_info.memory,
+        decoder: system_info.decoder,
+    });
+
+    // Show batch initialization for multiple files
+    if files_to_process.len() > 1 {
+        emit_event(event_dispatcher, Event::BatchInitializationStarted {
+            total_files: files_to_process.len(),
+            file_list: files_to_process.iter()
+                .filter_map(|p| p.file_name())
+                .filter_map(|n| n.to_str())
+                .map(|s| s.to_string())
+                .collect(),
+            output_dir: config.output_dir.display().to_string(),
+        });
+    }
+
+    for (file_index, input_path) in files_to_process.iter().enumerate() {
         let file_start_time = Instant::now();
+
+        // Show file progress context for multiple files
+        if files_to_process.len() > 1 {
+            emit_event(event_dispatcher, Event::FileProgressContext {
+                current_file: file_index + 1,
+                total_files: files_to_process.len(),
+            });
+        }
 
         let filename = crate::utils::get_filename_safe(input_path)?;
 
@@ -175,24 +236,16 @@ pub fn process_videos(
 
         // Skip processing if the output file already exists
         if output_path.exists() {
-            // Log the error with details - always shown regardless of verbosity
-            let error_msg = format!(
+            let message = format!(
                 "Output file already exists: {}. Skipping encode.",
                 output_path.display()
             );
-            crate::progress_reporting::warning(&error_msg);
-
-            // Send a notification if notification_sender is provided
+            
+            emit_event(event_dispatcher, Event::Warning { message: message.clone() });
+            
             send_notification_safe(
                 notification_sender,
-                "Drapto Encode Skipped",
-                format!(
-                    "Skipped encode for {}: Output file already exists at {}",
-                    filename,
-                    output_path.display()
-                ),
-                None,
-                None,
+                &format!("Skipped encode for {}: Output file already exists at {}", filename, output_path.display()),
                 "skip"
             );
 
@@ -202,10 +255,7 @@ pub fn process_videos(
         // Send encoding start notification
         send_notification_safe(
             notification_sender,
-            "Encoding Started",
-            format!("Started encoding {filename}"),
-            Some(3),
-            Some("start"),
+            &format!("Started encoding {filename}"),
             "start"
         );
 
@@ -213,16 +263,17 @@ pub fn process_videos(
         let video_props = match crate::external::get_video_properties(input_path) {
             Ok(props) => props,
             Err(e) => {
-                // Log the error and skip this file
-                crate::progress_reporting::error(&format!("Could not analyze {filename}: {e}"));
+                let error_msg = format!("Could not analyze {filename}: {e}");
+                emit_event(event_dispatcher, Event::Error {
+                    title: "Analysis Error".to_string(),
+                    message: error_msg.clone(),
+                    context: Some(format!("File: {}", input_path.display())),
+                    suggestion: Some("Check if the file is a valid video format".to_string()),
+                });
 
-                // Send an error notification if notification_sender is provided
                 send_notification_safe(
                     notification_sender,
-                    "Encoding Error",
-                    format!("Error encoding {filename}: Failed to get video properties"),
-                    Some(5),
-                    Some("error"),
+                    &format!("Error encoding {filename}: Failed to get video properties"),
                     "error"
                 );
 
@@ -240,23 +291,58 @@ pub fn process_videos(
         // Get audio channels early for consolidated reporting
         let audio_channels = audio::get_audio_channels_quiet(input_path);
 
-        // Report consolidated file information with audio info
-        crate::progress_reporting::report_video_analysis(&filename, video_width, video_height, duration_secs, category, is_hdr, &audio_channels);
+        // Format audio description
+        let audio_description = match audio_channels.first() {
+            Some(1) => "Mono".to_string(),
+            Some(2) => "Stereo".to_string(),
+            Some(6) => "5.1 surround".to_string(),
+            Some(8) => "7.1 surround".to_string(),
+            Some(n) => format!("{} channels", n),
+            None => "No audio".to_string(),
+        };
+
+        // Emit initialization event
+        emit_event(event_dispatcher, Event::InitializationStarted {
+            input_file: filename.clone(),
+            output_file: output_path.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("unknown")
+                .to_string(),
+            duration: crate::utils::format_duration(duration_secs as f64),
+            resolution: format!("{}x{}", video_width, video_height),
+            category: category.to_string(),
+            dynamic_range: if is_hdr { "HDR".to_string() } else { "SDR".to_string() },
+            audio_description,
+            hardware: if crate::hardware_decode::is_hardware_decoding_available() {
+                Some("VideoToolbox (decode only)".to_string())
+            } else {
+                None
+            },
+        });
 
         // Perform video analysis (crop detection)
-        crate::progress_reporting::section("VIDEO ANALYSIS");
-        crate::progress_reporting::report_processing_step("Detecting black bars");
+        emit_event(event_dispatcher, Event::VideoAnalysisStarted);
+        emit_event(event_dispatcher, Event::BlackBarDetectionStarted);
 
         let disable_crop = config.crop_mode == "off";
         let (crop_filter_opt, _is_hdr) =
             match crop_detection::detect_crop(input_path, &video_props, disable_crop) {
-                Ok(result) => result,
+                Ok(result) => {
+                    emit_event(event_dispatcher, Event::BlackBarDetectionComplete {
+                        crop_required: result.0.is_some(),
+                        crop_params: result.0.clone(),
+                    });
+                    result
+                },
                 Err(e) => {
-                    // Log warning and proceed without cropping
-                    crate::progress_reporting::warning(&format!(
+                    let warning_msg = format!(
                         "Crop detection failed for {filename}: {e}. Proceeding without cropping."
-                    ));
-                    // detect_crop returns Ok(None) for failures
+                    );
+                    emit_event(event_dispatcher, Event::Warning { message: warning_msg });
+                    emit_event(event_dispatcher, Event::BlackBarDetectionComplete {
+                        crop_required: false,
+                        crop_params: None,
+                    });
                     (None, false)
                 }
             };
@@ -264,30 +350,93 @@ pub fn process_videos(
         // Audio channels already analyzed above
 
         // Setup encoding parameters
-        let final_encode_params = setup_encoding_parameters(
+        let final_encode_params = setup_encoding_parameters(EncodingSetupParams {
             input_path,
-            &output_path,
+            output_path: &output_path,
             quality,
             config,
             crop_filter_opt,
-            audio_channels,
+            audio_channels: audio_channels.clone(),
             duration_secs,
             is_hdr,
-        );
+        });
 
-        // Display consolidated encoding configuration
-        crate::progress_reporting::report_encoding_configuration(
-            final_encode_params.quality,
-            final_encode_params.preset,
-            final_encode_params.tune,
-            &final_encode_params.audio_channels,
-            final_encode_params.hqdn3d_params.as_deref()
-        );
+        // Format audio description for the config display
+        let audio_description = if let Some(first_channel_count) = audio_channels.first() {
+            let bitrate = crate::processing::audio::calculate_audio_bitrate(*first_channel_count);
+            let channel_desc = match *first_channel_count {
+                1 => "Mono".to_string(),
+                2 => "Stereo".to_string(), 
+                6 => "5.1".to_string(),
+                8 => "7.1".to_string(),
+                n => format!("{} channels", n), // fallback
+            };
+            format!("{} @ {}kbps", channel_desc, bitrate)
+        } else {
+            "No audio".to_string()
+        };
+
+        // Format film grain display
+        let film_grain_display = if final_encode_params.film_grain_level > 0 {
+            format!("Level {}", final_encode_params.film_grain_level)
+        } else {
+            "None".to_string()
+        };
+
+        // Convert video codec to display name
+        let encoder_display = match final_encode_params.video_codec.as_str() {
+            "libsvtav1" => "SVT-AV1",
+            other => other,
+        };
+
+        // Convert audio codec to display name  
+        let audio_codec_display = match final_encode_params.audio_codec.as_str() {
+            "libopus" => "Opus",
+            other => other,
+        };
+
+        // Emit encoding configuration event
+        emit_event(event_dispatcher, Event::EncodingConfigurationDisplayed {
+            encoder: encoder_display.to_string(),
+            preset: final_encode_params.preset.to_string(),
+            tune: final_encode_params.tune.to_string(), 
+            quality: format!("CRF {}", final_encode_params.quality),
+            denoising: final_encode_params.hqdn3d_params
+                .as_ref()
+                .map(|p| format!("hqdn3d={}", p))
+                .unwrap_or_else(|| "None".to_string()),
+            film_grain: film_grain_display,
+            hardware_accel: if crate::hardware_decode::is_hardware_decoding_available() {
+                Some("VideoToolbox (decode only)".to_string())
+            } else {
+                None
+            },
+            pixel_format: final_encode_params.pixel_format.clone(),
+            color_space: final_encode_params.color_space.clone(),
+            audio_codec: audio_codec_display.to_string(),
+            audio_description,
+        });
+
+        // Get total frame count for progress reporting
+        let total_frames = match get_media_info(&input_path) {
+            Ok(info) => info.total_frames.unwrap_or(0),
+            Err(e) => {
+                log::warn!("Failed to get media info for frame count: {}", e);
+                0
+            }
+        };
+
+        // Emit encoding started event
+        emit_event(event_dispatcher, Event::EncodingStarted {
+            total_frames,
+        });
 
         let encode_result = run_ffmpeg_encode(
             &final_encode_params,
             false, // disable_audio: Keep audio in the output
             final_encode_params.hqdn3d_params.is_some(),  // has_denoising: Whether denoising is applied
+            total_frames,
+            event_dispatcher,
         );
 
         // Handle encoding results
@@ -298,21 +447,45 @@ pub fn process_videos(
 
                 let input_size = external_get_file_size(input_path)?;
                 let output_size = external_get_file_size(&output_path)?;
+                let encoding_speed = duration_secs as f32 / file_elapsed_time.as_secs_f32();
+                
                 results.push(EncodeResult {
                     filename: filename.clone(),
                     duration: file_elapsed_time,
                     input_size,
                     output_size,
+                    video_duration_secs: duration_secs,
+                    encoding_speed,
                 });
 
-                crate::progress_reporting::report_final_results(
-                    file_elapsed_time,
-                    input_size,
-                    output_size
+                // Calculate final output dimensions (considering crop)
+                let (final_width, final_height) = get_output_dimensions(
+                    video_width, 
+                    video_height, 
+                    final_encode_params.crop_filter.as_deref()
                 );
 
+                // Emit encoding complete event
+                emit_event(event_dispatcher, Event::EncodingComplete {
+                    input_file: filename.clone(),
+                    output_file: output_path.file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("unknown")
+                        .to_string(),
+                    original_size: input_size,
+                    encoded_size: output_size,
+                    video_stream: format!("AV1 (libsvtav1), {}x{}", 
+                        final_width, final_height),
+                    audio_stream: format!("Opus, {} channels, {} kb/s", 
+                        audio_channels.first().unwrap_or(&2), 
+                        crate::processing::audio::calculate_audio_bitrate(*audio_channels.first().unwrap_or(&2))),
+                    total_time: file_elapsed_time,
+                    average_speed: duration_secs as f32 / file_elapsed_time.as_secs_f32(),
+                    output_path: output_path.display().to_string(),
+                });
+
                 // Send success notification
-                let reduction = crate::utils::calculate_size_reduction(input_size, output_size);
+                let reduction = ((input_size - output_size) as f64 / input_size as f64 * 100.0) as u32;
 
                 let duration_secs = file_elapsed_time.as_secs();
                 let duration_str = if duration_secs >= 3600 {
@@ -325,39 +498,34 @@ pub fn process_videos(
 
                 send_notification_safe(
                     notification_sender,
-                    "Encoding Complete",
-                    format!("Completed encoding {filename} in {duration_str}. Reduced by {reduction}%"),
-                    Some(4),
-                    Some("complete"),
+                    &format!("Completed encoding {filename} in {duration_str}. Reduced by {reduction}%"),
                     "success"
                 );
             }
 
             Err(e) => if let CoreError::NoStreamsFound(path) = &e {
-                crate::progress_reporting::warning(&format!(
+                let warning_msg = format!(
                     "Skipping encode for {filename}: FFmpeg reported no processable streams found in '{path}'."
-                ));
+                );
+                emit_event(event_dispatcher, Event::Warning { message: warning_msg });
 
-                // Send a notification if notification_sender is provided
                 send_notification_safe(
                     notification_sender,
-                    "Drapto Encode Skipped",
-                    format!("Skipped encode for {filename}: No streams found."),
-                    None,
-                    None,
+                    &format!("Skipped encode for {filename}: No streams found."),
                     "skip"
                 );
             } else {
-                // Log the error for all other error types
-                crate::progress_reporting::error(&format!("FFmpeg failed to encode {filename}: {e}"));
+                let error_msg = format!("FFmpeg failed to encode {filename}: {e}");
+                emit_event(event_dispatcher, Event::Error {
+                    title: "Encoding Error".to_string(),
+                    message: error_msg.clone(),
+                    context: Some(format!("File: {}", input_path.display())),
+                    suggestion: Some("Check FFmpeg logs for more details".to_string()),
+                });
 
-                // Send an error notification if notification_sender is provided
                 send_notification_safe(
                     notification_sender,
-                    "Encoding Error",
-                    format!("Error encoding {filename}: ffmpeg failed: {e}"),
-                    Some(5),
-                    Some("error"),
+                    &format!("Error encoding {filename}: ffmpeg failed: {e}"),
                     "error"
                 );
             }
@@ -371,19 +539,51 @@ pub fn process_videos(
         }
 
     // Generate appropriate summary based on number of files processed
-    let total_duration: Duration = results.iter().map(|r| r.duration).sum();
-    
     match results.len() {
         0 => {
-            crate::progress_reporting::warning("No files were successfully encoded");
+            emit_event(event_dispatcher, Event::Warning { 
+                message: "No files were successfully encoded".to_string() 
+            });
         }
         1 => {
-            // Single file already has final results, just confirm overall success
-            crate::progress_reporting::success(&format!("Successfully encoded {}", results[0].filename));
+            // Single file - keep existing behavior
+            emit_event(event_dispatcher, Event::OperationComplete {
+                message: format!("Successfully encoded {}", results[0].filename),
+            });
         }
         _ => {
-            // Multiple files get consolidated summary
-            crate::progress_reporting::report_batch_summary(&results, total_duration);
+            // Multiple files - emit detailed batch summary
+            let total_duration: Duration = results.iter().map(|r| r.duration).sum();
+            let total_original_size: u64 = results.iter().map(|r| r.input_size).sum();
+            let total_encoded_size: u64 = results.iter().map(|r| r.output_size).sum();
+            
+            // Calculate average speed across all files
+            let total_video_duration_secs: f64 = results.iter()
+                .map(|r| r.video_duration_secs)
+                .sum();
+            let average_speed = if total_duration.as_secs_f64() > 0.0 {
+                (total_video_duration_secs / total_duration.as_secs_f64()) as f32
+            } else {
+                0.0f32
+            };
+            
+            // Build per-file results for the summary
+            let file_results: Vec<(String, f64)> = results.iter()
+                .map(|r| {
+                    let reduction = (r.input_size - r.output_size) as f64 / r.input_size as f64 * 100.0;
+                    (r.filename.clone(), reduction)
+                })
+                .collect();
+            
+            emit_event(event_dispatcher, Event::BatchComplete {
+                successful_count: results.len(),
+                total_files: files_to_process.len(),
+                total_original_size,
+                total_encoded_size,
+                total_duration,
+                average_speed: average_speed as f32,
+                file_results,
+            });
         }
     }
 

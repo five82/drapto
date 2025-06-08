@@ -35,9 +35,9 @@ impl HardwareDecoding {
     /// Logs available hardware decoding capabilities.
     pub fn log_capabilities(&self) {
         if self.videotoolbox_decode_available {
-            crate::progress_reporting::status("Hardware", "VideoToolbox (decode only)", false);
+            log::info!("Hardware: VideoToolbox (decode only)");
         } else {
-            crate::progress_reporting::status("Hardware", "No hardware decoder available", false);
+            log::info!("Hardware: No hardware decoder available");
         }
     }
 
@@ -85,9 +85,9 @@ pub fn log_hardware_decoding_status() {
     let hw_decode_available = is_hardware_decoding_available();
 
     if hw_decode_available {
-        crate::progress_reporting::status("Hardware", "VideoToolbox (decode only)", false);
+        log::info!("Hardware: VideoToolbox (decode only)");
     } else {
-        crate::progress_reporting::status("Hardware", "No hardware decoder available", false);
+        log::info!("Hardware: No hardware decoder available");
     }
 }
 

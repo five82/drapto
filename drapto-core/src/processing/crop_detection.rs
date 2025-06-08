@@ -19,7 +19,7 @@ pub fn detect_crop(
 ) -> CoreResult<(Option<String>, bool)> {
     // Check if crop detection is disabled
     if disable_crop {
-        crate::progress_reporting::report_operation_complete("Crop detection", "Detected crop", "Disabled");
+        log::info!("Crop detection: Disabled");
         return Ok((None, false));
     }
 
@@ -77,17 +77,17 @@ pub fn detect_crop(
             (Some(most_common_crop.clone()), false)
         } else {
             // Multiple significant aspect ratios detected
-            crate::progress_reporting::warning(&format!(
+            log::warn!(
                 "Multiple aspect ratios detected in {}",
                 input_file.display()
-            ));
+            );
             for (crop, count) in &sorted_crops {
                 let percentage = (count * 100) / total_samples;
-                crate::progress_reporting::status(&format!("  {}", crop), &format!("{}% of samples", percentage), false);
+                log::debug!("  {}: {}% of samples", crop, percentage);
             }
             
             // Conservative approach: don't crop at all for mixed aspect ratio content
-            crate::progress_reporting::info("Using conservative approach - no cropping for mixed aspect ratio content");
+            log::info!("Using conservative approach - no cropping for mixed aspect ratio content");
             (None, true)
         }
     };
@@ -95,15 +95,15 @@ pub fn detect_crop(
     // Report results
     match &best_crop {
         Some(crop) => {
-            crate::progress_reporting::report_operation_complete("Crop detection", "Detected crop", crop);
+            log::info!("Crop detection: {}", crop);
             log::debug!("Applied crop filter: {}", crop);
         }
         None => {
             if has_multiple_ratios {
-                crate::progress_reporting::report_operation_complete("Crop detection", "Detected crop", "Multiple ratios (no crop)");
+                log::info!("Crop detection: Multiple ratios (no crop)");
                 log::debug!("Multiple aspect ratios detected - no cropping applied");
             } else {
-                crate::progress_reporting::report_operation_complete("Crop detection", "Detected crop", "None required");
+                log::info!("Crop detection: None required");
                 log::debug!("No cropping needed for {}", input_file.display());
             }
         }

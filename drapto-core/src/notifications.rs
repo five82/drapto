@@ -4,6 +4,11 @@
 //! progress and status using the ntfy.sh service.
 
 use crate::error::{CoreError, CoreResult};
+
+/// Trait for sending simple string notifications
+pub trait NotificationSender {
+    fn send(&self, message: &str) -> CoreResult<()>;
+}
 use ntfy::DispatcherBuilder;
 use ntfy::payload::{Payload, Priority as NtfyPriority};
 
@@ -137,7 +142,7 @@ impl NtfyNotificationSender {
             4 => NtfyPriority::High,
             5 => NtfyPriority::Max,
             _ => {
-                crate::progress_reporting::warning(&format!("Invalid ntfy priority value: {}, using default", notification.priority));
+                log::warn!("Invalid ntfy priority value: {}, using default", notification.priority);
                 NtfyPriority::Default
             }
         };
@@ -156,5 +161,11 @@ impl NtfyNotificationSender {
 
         Ok(())
     }
+}
 
+impl NotificationSender for NtfyNotificationSender {
+    fn send(&self, message: &str) -> CoreResult<()> {
+        let notification = Notification::new("Drapto", message);
+        self.send(&notification)
+    }
 }

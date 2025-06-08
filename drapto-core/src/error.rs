@@ -47,6 +47,10 @@ pub enum CoreError {
     #[error("{}", format_command_error(.0))]
     Command(CommandError),
 
+    /// FFmpeg execution errors
+    #[error("FFmpeg error: {0}")]
+    FfmpegError(String),
+
     /// FFprobe output parsing errors
     #[error("ffprobe output parsing error: {0}")]
     FfprobeParse(String),
@@ -79,6 +83,10 @@ pub enum CoreError {
     /// Error indicating that ffmpeg reported no streams found
     #[error("FFmpeg reported 'No streams found' for input file: {0}")]
     NoStreamsFound(String),
+
+    /// Operation was cancelled by the user
+    #[error("Operation was cancelled by the user")]
+    OperationCancelled,
 }
 
 /// Result type alias for drapto-core operations.
