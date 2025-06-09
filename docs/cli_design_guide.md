@@ -346,14 +346,13 @@ Icons should maintain the same color as their accompanying text to create a clea
 
 ### Icons and Symbols
 
-Use a minimal, consistent set of monochrome symbols with the same color as the text they accompany:
+Use a minimal, consistent set of symbols that match their semantic meaning:
 
-- **✓**: Success or completion
-- **»**: Processing step or subsection  
-- **✗**: Error or failure
-- **⚠**: Warning
+- **✓**: Success or completion (green for major milestones, dimmed for minor status)
+- **✗**: Error or failure (red)
+- **⚠**: Warning (yellow)
 
-Icons should not be colored differently than their accompanying text to maintain a clean, consistent appearance. This creates a more professional look and reduces visual distraction.
+For in-progress operations, use spinners instead of static symbols. This provides better visual feedback and follows modern CLI conventions.
 
 Note: Progress indicators and sample markers can use simple text formatting (e.g., "Sample 3/5:", "Progress:") instead of dedicated symbols to reduce visual complexity.
 
