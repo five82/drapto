@@ -162,7 +162,7 @@ impl EventHandler for TemplateEventHandler {
                 let reduction = (*original_size - *encoded_size) as f64 / *original_size as f64 * 100.0;
                 let original_size_str = format_bytes(*original_size);
                 let encoded_size_str = format_bytes(*encoded_size);
-                let reduction_str = format!("{:.1}%", reduction);
+                let reduction_str = templates::format_reduction(reduction);
                 
                 let total_time_str = format!("{:02}:{:02}:{:02}",
                     total_time.as_secs() / 3600,
@@ -180,7 +180,7 @@ impl EventHandler for TemplateEventHandler {
                     &total_time_str,
                     &templates::format_speed(*average_speed),
                     output_path,
-                    reduction > 50.0 // emphasize significant reductions
+                    false // color formatting handled by format_reduction
                 );
             }
             
@@ -235,7 +235,7 @@ impl EventHandler for TemplateEventHandler {
                     *total_files,
                     &format_bytes(*total_original_size),
                     &format_bytes(*total_encoded_size),
-                    &format!("{:.1}%", total_reduction),
+                    total_reduction,
                     &format!("{:02}:{:02}:{:02}", 
                         total_duration.as_secs() / 3600,
                         (total_duration.as_secs() % 3600) / 60,

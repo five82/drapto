@@ -313,7 +313,7 @@ impl TemplatePresenter {
         _total_files: usize,
         total_original_size: &str,
         total_encoded_size: &str,
-        total_reduction: &str,
+        total_reduction_percent: f64,
         total_time: &str,
         average_speed: &str,
         file_results: &[(String, f64)],
@@ -326,13 +326,13 @@ impl TemplatePresenter {
         println!();
         println!("  Total original size:   {}", total_original_size);
         println!("  Total encoded size:    {}", total_encoded_size);
-        println!("  Total reduction:       {}", total_reduction);
+        println!("  Total reduction:       {}", templates::format_reduction(total_reduction_percent));
         println!("  Total encoding time:   {}", total_time);
         println!("  Average speed:         {}", average_speed);
         println!();
         println!("  Files processed:");
         for (filename, reduction) in file_results {
-            println!("    ✓ {} ({:.1}% reduction)", filename, reduction);
+            println!("    ✓ {} ({} reduction)", filename, templates::format_reduction(*reduction));
         }
         println!();
     }

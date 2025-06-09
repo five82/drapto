@@ -189,7 +189,7 @@ Use for less important supplementary information:
 ✓ Encoding complete
   Input size:      3.56 GB
   Output size:     1.24 GB
-  Reduction:       65.2%     ← Green for significant reduction
+  Reduction:       65.2%     ← Green for significant reduction (≥50%)
 
 # Poor - No emphasis on the important metric
 ✓ Encoding complete

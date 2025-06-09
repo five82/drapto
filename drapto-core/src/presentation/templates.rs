@@ -192,6 +192,25 @@ pub fn format_speed(speed: f32) -> String {
     }
 }
 
+/// Format file size reduction percentage with three-tier color coding
+/// 
+/// Color scheme:
+/// - ≥50%: Green (significant savings - excellent result)
+/// - 31-49%: Default white (modest but acceptable savings)
+/// - ≤30%: Yellow (disappointing - minimal savings)
+pub fn format_reduction(reduction: f64) -> String {
+    let reduction_str = format!("{:.1}%", reduction);
+    
+    if reduction >= 50.0 {
+        style(reduction_str).green().to_string()
+    } else if reduction <= 30.0 {
+        style(reduction_str).yellow().to_string()
+    } else {
+        reduction_str // Default terminal color for modest but acceptable savings
+    }
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -255,5 +274,26 @@ mod tests {
         // Test boundary conditions
         assert!(format_speed(0.2).contains("0.2x")); // At yellow threshold
         assert!(format_speed(2.0).contains("2.0x")); // At green threshold
+    }
+
+    #[test]
+    fn test_reduction_formatting() {
+        // Test excellent reduction (green)
+        let excellent_reduction = format_reduction(65.2);
+        assert!(excellent_reduction.contains("65.2%"));
+        
+        // Test modest reduction (default color)
+        let modest_reduction = format_reduction(35.5);
+        assert_eq!(modest_reduction, "35.5%");
+        
+        // Test disappointing reduction (yellow)
+        let poor_reduction = format_reduction(15.3);
+        assert!(poor_reduction.contains("15.3%"));
+        
+        // Test boundary conditions
+        assert!(format_reduction(50.0).contains("50.0%")); // At green threshold
+        assert_eq!(format_reduction(31.0), "31.0%"); // Just above yellow (should be default)
+        assert!(format_reduction(30.0).contains("30.0%")); // At yellow threshold
+        assert_eq!(format_reduction(30.1), "30.1%"); // Just above yellow (should be default)
     }
 }
