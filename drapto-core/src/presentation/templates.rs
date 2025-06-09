@@ -127,7 +127,17 @@ fn render_grouped_key_values(title: &str, groups: &[GroupData]) {
             let styled_value = if *emphasize {
                 style(value).green().bold().to_string()
             } else {
-                value.to_string()
+                // Apply contextual formatting based on key type
+                match key.as_ref() {
+                    // Applied processing settings (purple)
+                    "Denoising" | "Film grain" => format_applied_setting(value),
+                    // Encoder settings (amber/yellow)
+                    "Encoder" | "Preset" | "Tune" | "Quality" | "Audio codec" | "Audio" => format_encoder_setting(value),
+                    // Technical information (blue)
+                    "Color Space" | "Pixel Format" => format_technical_info(value),
+                    // Default formatting
+                    _ => value.to_string(),
+                }
             };
             println!("    {:<16} {}", format!("{}:", key), styled_value);
         }
@@ -208,6 +218,57 @@ pub fn format_reduction(reduction: f64) -> String {
     } else {
         reduction_str // Default terminal color for modest but acceptable savings
     }
+}
+
+/// Format technical information with blue highlighting for key specs
+/// 
+/// Highlights entire values that contain technical information:
+/// - Dynamic range: HDR/SDR
+/// - Resolution categories: HD/UHD/4K  
+/// - Audio channels: 5.1, 7.1, channel counts
+/// - Codecs: AV1, Opus, H.264, etc.
+/// - Color spaces: bt709, bt2020nc, etc.
+/// - Pixel formats: yuv420p, yuv420p10le, etc.
+pub fn format_technical_info(value: &str) -> String {
+    // Check if this is technical info that should be entirely blue
+    if value.contains("HDR") || value.contains("SDR") ||
+       value.contains("(HD)") || value.contains("(UHD)") || value.contains("(4K)") ||
+       value.contains("5.1") || value.contains("7.1") || value.contains(" channels") ||
+       value.contains("AV1") || value.contains("Opus") || value.contains("H.264") ||
+       value.contains("bt709") || value.contains("bt2020nc") ||
+       value.contains("yuv") || value.contains("p10le") || value.contains("p8") {
+        style(value).blue().to_string()
+    } else {
+        value.to_string()
+    }
+}
+
+/// Format applied processing settings with purple highlighting
+/// 
+/// Highlights entire values that represent applied processing:
+/// - Film grain levels: Level 4 (synthesis)
+/// - Denoising parameters: hqdn3d values
+/// - Applied indicators: (applied)
+pub fn format_applied_setting(value: &str) -> String {
+    // Check if this is an applied setting that should be entirely purple
+    if value.contains("Level ") || value.contains("hqdn3d=") || value.contains("(applied)") {
+        style(value).magenta().to_string()
+    } else {
+        value.to_string()
+    }
+}
+
+/// Format encoder settings with light blue highlighting
+/// 
+/// Highlights entire values that represent encoding parameters:
+/// - Encoder: SVT-AV1
+/// - Preset: 6
+/// - Quality: CRF 27
+/// - Tune: 3
+/// - Audio codec settings
+pub fn format_encoder_setting(value: &str) -> String {
+    // Always color encoder settings in light blue to distinguish from processing filters
+    style(value).color256(117).to_string() // Light blue color
 }
 
 
@@ -320,5 +381,114 @@ mod tests {
         assert!(!green_styled.is_empty());
         assert!(!dim_styled.is_empty());
         assert!(!default_styled.is_empty());
+    }
+
+    #[test]
+    fn test_technical_info_formatting() {
+        // Test resolution categories
+        let hd_resolution = format_technical_info("1920x1080 (HD)");
+        assert!(hd_resolution.contains("HD"));
+        
+        let uhd_resolution = format_technical_info("3840x2160 (UHD)");
+        assert!(uhd_resolution.contains("UHD"));
+        
+        // Test dynamic range
+        let sdr_range = format_technical_info("SDR");
+        assert!(sdr_range.contains("SDR"));
+        
+        let hdr_range = format_technical_info("HDR");
+        assert!(hdr_range.contains("HDR"));
+        
+        // Test audio channels
+        let surround_51 = format_technical_info("5.1 surround");
+        assert!(surround_51.contains("5.1"));
+        
+        let surround_71 = format_technical_info("7.1 surround");
+        assert!(surround_71.contains("7.1"));
+        
+        let opus_channels = format_technical_info("Opus, 6 channels, 256 kb/s");
+        assert!(opus_channels.contains("Opus"));
+        assert!(opus_channels.contains("channels"));
+        
+        // Test codecs
+        let av1_stream = format_technical_info("AV1 (libsvtav1), 1920x1036");
+        assert!(av1_stream.contains("AV1"));
+        
+        // Test color spaces
+        let bt709_space = format_technical_info("bt709");
+        assert!(bt709_space.contains("bt709"));
+        
+        let bt2020_space = format_technical_info("bt2020nc");
+        assert!(bt2020_space.contains("bt2020nc"));
+        
+        // Test pixel formats
+        let yuv420p10le = format_technical_info("yuv420p10le");
+        assert!(yuv420p10le.contains("yuv420p10le"));
+        
+        let yuv420p = format_technical_info("yuv420p");
+        assert!(yuv420p.contains("yuv420p"));
+        
+        // Test that non-technical values are unchanged
+        let regular_text = format_technical_info("regular text");
+        assert_eq!(regular_text, "regular text");
+    }
+
+    #[test]
+    fn test_applied_setting_formatting() {
+        // Test film grain levels
+        let grain_level = format_applied_setting("Level 4 (synthesis)");
+        assert!(grain_level.contains("Level"));
+        assert!(grain_level.contains("4"));
+        assert!(grain_level.contains("synthesis"));
+        
+        // Test denoising parameters
+        let denoise_param = format_applied_setting("hqdn3d=2:1.5:3:2.5");
+        assert!(denoise_param.contains("hqdn3d=2:1.5:3:2.5"));
+        
+        let another_denoise = format_applied_setting("hqdn3d=1:0.8:2.5:2");
+        assert!(another_denoise.contains("hqdn3d=1:0.8:2.5:2"));
+        
+        // Test applied indicators
+        let applied_indicator = format_applied_setting("VeryLight (applied)");
+        assert!(applied_indicator.contains("applied"));
+        
+        let synthesis_indicator = format_applied_setting("Level 4 (synthesis)");
+        assert!(synthesis_indicator.contains("synthesis"));
+        
+        // Test that non-applied settings are unchanged
+        let regular_setting = format_applied_setting("regular setting");
+        assert_eq!(regular_setting, "regular setting");
+        
+        // Test that encoder settings without parameters are unchanged
+        let encoder_name = format_applied_setting("SVT-AV1");
+        assert_eq!(encoder_name, "SVT-AV1");
+    }
+
+    #[test]
+    fn test_encoder_setting_formatting() {
+        // Test various encoder settings
+        let encoder = format_encoder_setting("SVT-AV1");
+        assert!(encoder.contains("SVT-AV1"));
+        
+        let preset = format_encoder_setting("6");
+        assert!(preset.contains("6"));
+        
+        let quality = format_encoder_setting("CRF 27");
+        assert!(quality.contains("CRF 27"));
+        
+        let tune = format_encoder_setting("3");
+        assert!(tune.contains("3"));
+        
+        let audio_codec = format_encoder_setting("Opus");
+        assert!(audio_codec.contains("Opus"));
+        
+        let audio_settings = format_encoder_setting("5.1 @ 256kbps");
+        assert!(audio_settings.contains("5.1 @ 256kbps"));
+        
+        // All encoder settings should be colored (can't test exact color in unit tests)
+        // But verify they're not empty and contain the original text
+        assert!(!encoder.is_empty());
+        assert!(!preset.is_empty());
+        assert!(!quality.is_empty());
     }
 }

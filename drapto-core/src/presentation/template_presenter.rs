@@ -44,14 +44,16 @@ impl TemplatePresenter {
 
     /// Render file analysis section with comprehensive file information
     pub fn render_file_analysis(&self, input_file: &str, duration: &str, resolution: &str, category: &str, dynamic_range: &str, audio_description: &str, hardware: Option<&str>) {
-        let resolution_with_category = format!("{} ({})", resolution, category);
+        let resolution_with_category = templates::format_technical_info(&format!("{} ({})", resolution, category));
+        let formatted_dynamic_range = templates::format_technical_info(dynamic_range);
+        let formatted_audio = templates::format_technical_info(audio_description);
         
         let mut items = vec![
             ("File", input_file),
             ("Duration", duration),
             ("Resolution", &resolution_with_category),
-            ("Dynamic range", dynamic_range),
-            ("Audio", audio_description),
+            ("Dynamic range", &formatted_dynamic_range),
+            ("Audio", &formatted_audio),
         ];
         
         if let Some(hw) = hardware {
@@ -130,11 +132,13 @@ impl TemplatePresenter {
             });
         }
         
+        let formatted_color_space = templates::format_technical_info(color_space);
+        
         groups.push(GroupData {
             name: "Advanced",
             items: vec![
                 ("Pixel Format", pixel_format, false),
-                ("Color Space", color_space, false),
+                ("Color Space", &formatted_color_space, false),
             ],
         });
         
@@ -204,6 +208,9 @@ impl TemplatePresenter {
         output_path: &str,
         emphasize_reduction: bool,
     ) {
+        let formatted_video_stream = templates::format_technical_info(video_stream);
+        let formatted_audio_stream = templates::format_technical_info(audio_stream);
+        
         let groups = vec![
             GroupData {
                 name: "Results",
@@ -217,8 +224,8 @@ impl TemplatePresenter {
             GroupData {
                 name: "Streams",
                 items: vec![
-                    ("Video stream", video_stream, false),
-                    ("Audio stream", audio_stream, false),
+                    ("Video stream", &formatted_video_stream, false),
+                    ("Audio stream", &formatted_audio_stream, false),
                 ],
             },
             GroupData {

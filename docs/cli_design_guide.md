@@ -95,17 +95,19 @@ Colors should be used sparingly and meaningfully to highlight important informat
 
 When colors are used, they should follow these guidelines:
 
-##### Blue (System Information)
-Use for system and hardware information headers:
-- Hardware information section (appears at start of encoding)
-- System specifications and capabilities
+#### Structural Colors (Headers and Layout)
+
+##### Blue (Hardware Information Headers)
+Use for hardware and system information section headers:
+- Hardware information section headers
+- System specifications sections
 
 ```
 ━━━━━ HARDWARE ━━━━━  ← Entire header in blue
 ```
 
-##### Cyan (Primary - Structural)
-Use for major structural elements only:
+##### Cyan (Primary Section Headers)
+Use for major workflow phase headers:
 - Section headers (entire header including delimiters)
 - Major phase transitions within a file
 
@@ -113,129 +115,224 @@ Use for major structural elements only:
 ----- VIDEO ANALYSIS -----  ← Entire header in cyan
 ```
 
-##### Green (Secondary - Success & Optimal Values)
-Use to highlight positive outcomes and optimal selections:
-- Significant file size reductions (>50%)
-- Optimal/selected values in comparisons
-- Success completion messages (not just the symbol)
-- Performance metrics when notably good
-
-```
-✓ Encoding complete
-  Reduction:       65.2%  ← Value in green (significant reduction)
-
-Denoising Applied:
-  VeryLight (hqdn3d=0.5:0.4:2:2)  ← "VeryLight" in green
-  Film Grain: Level 4
-```
-
-##### Yellow/Amber (Batch Operations & Warnings)
-Use for batch-level operations and attention-requiring information:
+##### Yellow (Batch Operation Headers)
+Use for batch-level operation headers:
 - Batch operation headers (BATCH ENCODING, BATCH COMPLETE)
-- Warnings and cautions
-- Moderate performance metrics
-- Values approaching limits
-- Important but not optimal selections
+- Multi-file operation indicators
 
 ```
 ┌───── BATCH ENCODING ─────┐  ← Entire header in yellow
-⚠ Hardware acceleration unavailable  ← Title in yellow
-  Speed: 0.8x  ← Value in yellow (below real-time)
 ```
 
-##### Magenta (Progress Indicators)
-Use for file progress within batch operations:
-- File progress headers in batch processing
-- Progress markers between files
+##### Magenta (File Progress Headers)
+Use for individual file progress within batch operations:
+- File progress markers in batch processing
+- Progress indicators between files
 
 ```
 ────▶ FILE 1 OF 3 ────  ← Entire header in magenta
 ```
 
-##### Red (Critical - Errors Only)
+#### Status and Performance Colors
+
+##### Green (Success and Excellent Performance)
+Use for positive outcomes and excellent performance:
+- Major milestone completion checkmarks
+- Significant file size reductions (≥50%)
+- Excellent encoding speed (≥2.0x)
+- Success completion messages
+
+```
+✓ Encoding complete     ← Green checkmark (major milestone)
+  Reduction:    67.9%   ← Green value (significant reduction)
+  Speed: 2.4x           ← Green value (excellent performance)
+```
+
+##### Yellow (Warnings and Poor Performance)
+Use for warnings and performance issues:
+- Poor encoding speed (≤0.2x)
+- Disappointing file size reductions (≤30%)
+- Warning messages and cautions
+- Performance metrics requiring attention
+
+```
+⚠ Hardware acceleration unavailable  ← Yellow warning
+  Speed: 0.1x          ← Yellow value (very slow)
+  Reduction: 15.3%     ← Yellow value (disappointing)
+```
+
+##### Red (Critical Errors Only)
 Reserve exclusively for error conditions:
 - Error messages and titles
 - Failed operations
 - Critical failures
 
 ```
-✗ Error: Encoding failed  ← "Error: Encoding failed" in red
+✗ Error: Encoding failed  ← Red error message
 ```
 
-##### White/Default (Standard)
+#### Contextual Information Colors
+
+##### Blue (Technical Information)
+Use for technical specifications and properties:
+- Video/audio format specifications
+- Resolution categories (HD/UHD)
+- Dynamic range indicators (HDR/SDR)
+- Codec information (AV1, Opus)
+- Color spaces and pixel formats
+
+```
+  Resolution:       1920x1080 (HD)    ← Blue (technical spec)
+  Dynamic range:    HDR                ← Blue (technical spec)
+  Audio:            5.1 surround       ← Blue (technical spec)
+  Color Space:      bt709              ← Blue (technical spec)
+  Pixel Format:     yuv420p10le        ← Blue (technical spec)
+```
+
+##### Light Blue (Encoder Settings)
+Use for encoding configuration parameters:
+- Encoder selection (SVT-AV1, Opus)
+- Quality settings (CRF, presets)
+- Bitrate configurations
+- Encoding method choices
+
+```
+  Encoder:          SVT-AV1            ← Light blue (encoder setting)
+  Preset:           6                  ← Light blue (encoder setting)
+  Quality:          CRF 27             ← Light blue (encoder setting)
+  Audio codec:      Opus               ← Light blue (encoder setting)
+```
+
+##### Purple (Applied Processing)
+Use for active content processing settings:
+- Denoising parameters and filters
+- Film grain synthesis settings
+- Content enhancement filters
+- Applied processing indicators
+
+```
+  Denoising:        hqdn3d=2:1.5:3:2.5    ← Purple (applied processing)
+  Film grain:       Level 4 (synthesis)   ← Purple (applied processing)
+```
+
+#### Neutral and De-emphasis Colors
+
+##### White/Default (Standard Information)
 Use for most text to maintain readability:
 - Labels and descriptions
-- Standard values
-- Regular status messages
-- Non-critical information
+- Standard values and measurements
+- Regular informational content
+- Non-critical data
+
+##### Gray/Dim (Minor Status and De-emphasis)
+Use for less important information:
+- Minor status completions (crop detection)
+- Debug output in verbose mode
+- Supplementary details
+- Background information
+
+```
+✓ Crop detection complete  ← Dimmed checkmark (minor status)
+```
 
 ##### Bold (Emphasis without Color)
 Use bold formatting for emphasis when color isn't appropriate:
-- Important values that don't fit other categories
+- Important values that don't fit color categories
 - Headers and subsection titles
 - Key metrics in monochrome mode
 
-##### Gray/Dim (De-emphasis)
-Use for less important supplementary information:
-- Debug output (in verbose mode)
-- Supplementary details
-- Already-processed items
-
 #### Practical Color Usage Examples
 
-##### Example 1: File Size Reduction
+##### Example 1: Status Significance Indicators
 ```
-# Good - Highlights the key metric users care about
-✓ Encoding complete
-  Input size:      3.56 GB
-  Output size:     1.24 GB
-  Reduction:       65.2%     ← Green for significant reduction (≥50%)
+# Good - Color indicates milestone importance
+✓ Encoding complete               ← Green checkmark (major milestone)
+✓ Successfully encoded 2 files    ← Green checkmark (major milestone)
+✓ Crop detection complete         ← Dimmed checkmark (minor status)
 
-# Poor - No emphasis on the important metric
-✓ Encoding complete
-  Input size:      3.56 GB
-  Output size:     1.24 GB
-  Reduction:       65.2%     ← Same as other text
+# Poor - All status looks equally important
+✓ Encoding complete               ← All same color/emphasis
+✓ Successfully encoded 2 files
+✓ Crop detection complete
 ```
 
-##### Example 2: Performance Metrics
+##### Example 2: Performance-Based Color Coding
 ```
 # Good - Color indicates performance quality
-  Speed: 2.5x      ← Green (good performance)
-  Speed: 1.0x      ← White (acceptable)
-  Speed: 0.5x      ← Yellow (poor performance)
+  Speed: 2.5x      ← Green (excellent: ≥2.0x)
+  Speed: 1.0x      ← White (acceptable: 0.2x-2.0x)
+  Speed: 0.1x      ← Yellow (concerning: ≤0.2x)
+
+# Reduction percentages
+  Reduction: 67.9% ← Green (significant: ≥50%)
+  Reduction: 37.7% ← White (modest: 31-49%)
+  Reduction: 15.3% ← Yellow (disappointing: ≤30%)
 
 # Poor - No indication of performance quality
   Speed: 2.5x      ← All speeds look the same
   Speed: 1.0x
-  Speed: 0.5x
+  Speed: 0.1x
 ```
 
-##### Example 3: Applied Settings
+##### Example 3: Contextual Value Emphasis
 ```
-# Good - Clear visual indication of applied settings
-Processing Configuration:
-  Denoising:    VeryLight (applied)  ← "VeryLight (applied)" in green
-  Film Grain:   Level 4 (applied)   ← "Level 4 (applied)" in green
-  Crop Mode:    Auto
+# Good - Color indicates information type
+----- VIDEO DETAILS -----
+  Resolution:       1920x1080 (HD)    ← Blue (technical information)
+  Dynamic range:    HDR                ← Blue (technical information)
+  Audio:            5.1 surround       ← Blue (technical information)
 
-# Poor - Applied settings not visually distinct
-Processing Configuration:
-  Denoising:    VeryLight (applied)  ← Same as other text
-  Film Grain:   Level 4 (applied)
-  Crop Mode:    Auto
+----- ENCODING CONFIGURATION -----
+  Video:
+    Encoder:        SVT-AV1            ← Light blue (encoder setting)
+    Preset:         6                  ← Light blue (encoder setting)
+    Quality:        CRF 27             ← Light blue (encoder setting)
+    Denoising:      hqdn3d=2:1.5:3:2.5 ← Purple (applied processing)
+    Film grain:     Level 4 (synthesis) ← Purple (applied processing)
+  
+  Advanced:
+    Pixel Format:   yuv420p10le        ← Blue (technical information)
+    Color Space:    bt709              ← Blue (technical information)
+
+# Poor - No contextual distinction
+  Resolution:       1920x1080 (HD)    ← All values look the same
+  Encoder:          SVT-AV1
+  Denoising:        hqdn3d=2:1.5:3:2.5
+  Color Space:      bt709
 ```
+
+#### Complete Color System Summary
+
+**Structural Colors (Headers):**
+- 🔵 Blue: Hardware information headers
+- 🩵 Cyan: Primary section headers  
+- 🟡 Yellow: Batch operation headers
+- 🟣 Magenta: File progress headers
+
+**Status and Performance Colors:**
+- 🟢 Green: Success, major milestones, excellent performance (≥2.0x speed, ≥50% reduction)
+- 🟡 Yellow: Warnings, poor performance (≤0.2x speed, ≤30% reduction)
+- 🔴 Red: Critical errors and failures
+- ⚫ Gray/Dim: Minor status updates, de-emphasized information
+
+**Contextual Information Colors:**
+- 🔵 Blue: Technical specifications (resolution, dynamic range, codecs, formats)
+- 🩵 Light Blue: Encoder settings (SVT-AV1, presets, quality, codecs)
+- 🟣 Purple: Applied processing (denoising parameters, film grain settings)
+- ⚪ White/Default: Standard information and labels
 
 #### When NOT to Use Color
 
 Avoid using color for:
-- Decorative purposes
-- Every piece of data
+- Decorative purposes without semantic meaning
+- Every piece of data (causes color fatigue)
 - Information that's already clear from context
-- Symbols and icons (keep them monochrome)
+- Labels and descriptions (use for values instead)
 - Delimiters and separators (===, ---, etc.)
 
-Most terminal text should remain uncolored (default terminal color), with color applied selectively to guide the user's attention to what matters most.
+**Key Principle:** Most terminal text should remain uncolored (default terminal color), with color applied strategically to create meaningful distinctions and guide user attention to what matters most.
+
+Each color should have consistent semantic meaning throughout the interface - users should be able to learn what each color represents and rely on that meaning across all contexts.
 
 Icons should maintain the same color as their accompanying text to create a clean, professional, monochrome appearance that reduces visual distraction.
 
