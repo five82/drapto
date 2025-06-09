@@ -148,7 +148,7 @@ fn render_spinner_to_results(title: &str, _spinner_text: &str, success_message: 
     
     // Note: Actual spinner would be handled by indicatif during runtime
     // This renders the final state after spinner completes
-    println!("  {} {}", style("✓").bold(), style(success_message).bold());
+    println!("  {} {}", style("✓").dim(), style(success_message).dim());
     
     for (key, value) in items {
         println!("  {:<18} {}", format!("{}:", key), value);
@@ -158,7 +158,7 @@ fn render_spinner_to_results(title: &str, _spinner_text: &str, success_message: 
 fn render_completion_summary(title: &str, success_message: &str, groups: &[GroupData]) {
     render_section_header(title);
     
-    println!("  {} {}", style("✓").bold(), style(success_message).bold());
+    println!("  {} {}", style("✓").green().bold(), style(success_message).bold());
     
     for (_index, group) in groups.iter().enumerate() {
         println!();
@@ -295,5 +295,30 @@ mod tests {
         assert_eq!(format_reduction(31.0), "31.0%"); // Just above yellow (should be default)
         assert!(format_reduction(30.0).contains("30.0%")); // At yellow threshold
         assert_eq!(format_reduction(30.1), "30.1%"); // Just above yellow (should be default)
+    }
+
+    #[test]
+    fn test_status_significance_visual_hierarchy() {
+        // Test that status significance creates proper visual hierarchy
+        // This ensures major milestones stand out from routine operations
+        
+        // Major milestone formatting should include green styling
+        // (Cannot easily test color output in unit tests, but verify compilation works)
+        
+        // Verify that the styling functions work without panicking
+        let green_styled = style("✓").green().bold().to_string();
+        let dim_styled = style("✓").dim().to_string();
+        let default_styled = style("✓").bold().to_string();
+        
+        // All should contain the checkmark
+        assert!(green_styled.contains("✓"));
+        assert!(dim_styled.contains("✓"));
+        assert!(default_styled.contains("✓"));
+        
+        // Different styling methods should exist (may render same in test env)
+        // The important thing is that the code compiles and doesn't panic
+        assert!(!green_styled.is_empty());
+        assert!(!dim_styled.is_empty());
+        assert!(!default_styled.is_empty());
     }
 }

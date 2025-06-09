@@ -1,5 +1,6 @@
 use super::templates::{self, TemplateData, GroupData};
 use indicatif::{ProgressBar, ProgressStyle};
+use console;
 use std::time::Duration;
 
 /// Template-based presenter that handles all terminal output through consistent templates
@@ -78,8 +79,8 @@ impl TemplatePresenter {
             "None required"
         };
         
-        // Just render the success message and result, no section header
-        println!("  {} {}", console::style("✓").bold(), console::style(success_message).bold());
+        // Just render the success message and result, no section header - dimmed for minor status
+        println!("  {} {}", console::style("✓").dim(), console::style(success_message).dim());
         println!("  {:<18} {}", "Detected crop:", crop_value);
     }
 
@@ -322,7 +323,7 @@ impl TemplatePresenter {
             title: "BATCH COMPLETE",
         });
         
-        println!("  ✓ Successfully encoded {} files", successful_count);
+        println!("  {} Successfully encoded {} files", console::style("✓").green().bold(), successful_count);
         println!();
         println!("  Total original size:   {}", total_original_size);
         println!("  Total encoded size:    {}", total_encoded_size);
@@ -332,7 +333,7 @@ impl TemplatePresenter {
         println!();
         println!("  Files processed:");
         for (filename, reduction) in file_results {
-            println!("    ✓ {} ({} reduction)", filename, templates::format_reduction(*reduction));
+            println!("    {} {} ({} reduction)", console::style("✓").green(), filename, templates::format_reduction(*reduction));
         }
         println!();
     }
