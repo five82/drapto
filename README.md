@@ -12,13 +12,13 @@ Advanced ffmpeg video encoding wrapper with intelligent optimization for high-qu
 
 ## Installation
 
-1. **Prerequisites**: Install ffmpeg with libsvtav1 and libopus support
+1. **Prerequisites**: Install ffmpeg (with libsvtav1 and libopus support) and mediainfo
    ```bash
    # Ubuntu/Debian
-   sudo apt install ffmpeg
+   sudo apt install ffmpeg mediainfo
 
    # macOS
-   brew install ffmpeg
+   brew install ffmpeg mediainfo
    ```
 
 2. **Install Drapto**:
