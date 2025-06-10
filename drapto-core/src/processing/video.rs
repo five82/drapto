@@ -292,14 +292,33 @@ pub fn process_videos(
         // Get audio channels early for consolidated reporting
         let audio_channels = audio::get_audio_channels_quiet(input_path);
 
-        // Format audio description
-        let audio_description = match audio_channels.first() {
-            Some(1) => "Mono".to_string(),
-            Some(2) => "Stereo".to_string(),
-            Some(6) => "5.1 surround".to_string(),
-            Some(8) => "7.1 surround".to_string(),
-            Some(n) => format!("{} channels", n),
-            None => "No audio".to_string(),
+        // Format audio description - each track on its own line for multiple tracks
+        let audio_description = if audio_channels.is_empty() {
+            "No audio".to_string()
+        } else if audio_channels.len() == 1 {
+            match audio_channels[0] {
+                1 => "Mono".to_string(),
+                2 => "Stereo".to_string(),
+                6 => "5.1 surround".to_string(),
+                8 => "7.1 surround".to_string(),
+                n => format!("{} channels", n),
+            }
+        } else {
+            // Multiple audio tracks - format each on a new line
+            let track_descriptions: Vec<String> = audio_channels.iter()
+                .enumerate()
+                .map(|(i, &channels)| {
+                    let desc = match channels {
+                        1 => "Mono".to_string(),
+                        2 => "Stereo".to_string(),
+                        6 => "5.1 surround".to_string(),
+                        8 => "7.1 surround".to_string(),
+                        n => format!("{} channels", n),
+                    };
+                    format!("Track {}: {}", i + 1, desc)
+                })
+                .collect();
+            track_descriptions.join("\n                     ")  // Indent continuation lines
         };
 
         // Emit initialization event
@@ -364,9 +383,11 @@ pub fn process_videos(
         });
 
         // Format audio description for the config display
-        let audio_description = if let Some(first_channel_count) = audio_channels.first() {
-            let bitrate = crate::processing::audio::calculate_audio_bitrate(*first_channel_count);
-            let channel_desc = match *first_channel_count {
+        let audio_description = if audio_channels.is_empty() {
+            "No audio".to_string()
+        } else if audio_channels.len() == 1 {
+            let bitrate = crate::processing::audio::calculate_audio_bitrate(audio_channels[0]);
+            let channel_desc = match audio_channels[0] {
                 1 => "Mono".to_string(),
                 2 => "Stereo".to_string(), 
                 6 => "5.1".to_string(),
@@ -375,7 +396,22 @@ pub fn process_videos(
             };
             format!("{} @ {}kbps", channel_desc, bitrate)
         } else {
-            "No audio".to_string()
+            // Multiple audio tracks - show each on its own line
+            let track_descriptions: Vec<String> = audio_channels.iter()
+                .enumerate()
+                .map(|(i, &channels)| {
+                    let bitrate = crate::processing::audio::calculate_audio_bitrate(channels);
+                    let desc = match channels {
+                        1 => "Mono".to_string(),
+                        2 => "Stereo".to_string(),
+                        6 => "5.1".to_string(),
+                        8 => "7.1".to_string(),
+                        n => format!("{} channels", n),
+                    };
+                    format!("Track {}: {} @ {}kbps", i + 1, desc, bitrate)
+                })
+                .collect();
+            track_descriptions.join("\n                     ")  // Indent continuation lines
         };
 
         // Format film grain display
@@ -478,9 +514,37 @@ pub fn process_videos(
                     encoded_size: output_size,
                     video_stream: format!("AV1 (libsvtav1), {}x{}", 
                         final_width, final_height),
-                    audio_stream: format!("Opus, {} channels, {} kb/s", 
-                        audio_channels.first().unwrap_or(&2), 
-                        crate::processing::audio::calculate_audio_bitrate(*audio_channels.first().unwrap_or(&2))),
+                    audio_stream: if audio_channels.is_empty() {
+                        "No audio".to_string()
+                    } else if audio_channels.len() == 1 {
+                        let channel_desc = match audio_channels[0] {
+                            1 => "Mono".to_string(),
+                            2 => "Stereo".to_string(),
+                            6 => "5.1 surround".to_string(),
+                            8 => "7.1 surround".to_string(),
+                            n => format!("{} channels", n),
+                        };
+                        format!("Opus, {}, {} kb/s", 
+                            channel_desc, 
+                            crate::processing::audio::calculate_audio_bitrate(audio_channels[0]))
+                    } else {
+                        // Multiple audio tracks - show each on its own line
+                        let track_descriptions: Vec<String> = audio_channels.iter()
+                            .enumerate()
+                            .map(|(i, &channels)| {
+                                let bitrate = crate::processing::audio::calculate_audio_bitrate(channels);
+                                let desc = match channels {
+                                    1 => "Mono".to_string(),
+                                    2 => "Stereo".to_string(),
+                                    6 => "5.1 surround".to_string(),
+                                    8 => "7.1 surround".to_string(),
+                                    n => format!("{} channels", n),
+                                };
+                                format!("Track {}: Opus, {}, {} kb/s", i + 1, desc, bitrate)
+                            })
+                            .collect();
+                        track_descriptions.join("\n                     ")  // Indent continuation lines
+                    },
                     total_time: file_elapsed_time,
                     average_speed: duration_secs as f32 / file_elapsed_time.as_secs_f32(),
                     output_path: output_path.display().to_string(),
