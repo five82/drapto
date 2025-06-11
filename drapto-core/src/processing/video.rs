@@ -488,8 +488,15 @@ pub fn process_videos(
                 let output_size = external_get_file_size(&output_path)?;
                 let encoding_speed = duration_secs as f32 / file_elapsed_time.as_secs_f32();
 
+                // Calculate expected dimensions after crop for validation
+                let expected_dimensions = if let Some(ref crop_filter) = final_encode_params.crop_filter {
+                    Some(get_output_dimensions(video_width, video_height, Some(crop_filter)))
+                } else {
+                    Some((video_width, video_height))
+                };
+
                 // Perform post-encode validation
-                let (validation_passed, validation_steps) = match validate_output_video(&output_path) {
+                let (validation_passed, validation_steps) = match validate_output_video(&output_path, expected_dimensions) {
                     Ok(validation_result) => {
                         let steps = validation_result.get_validation_steps();
                         
@@ -540,6 +547,7 @@ pub fn process_videos(
                         let error_steps = vec![
                             ("Video codec".to_string(), false, "Validation error".to_string()),
                             ("Bit depth".to_string(), false, "Validation error".to_string()),
+                            ("Crop detection".to_string(), false, "Validation error".to_string()),
                         ];
                         (false, error_steps)
                     }

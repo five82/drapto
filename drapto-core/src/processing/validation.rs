@@ -14,18 +14,26 @@ pub struct ValidationResult {
     pub is_av1: bool,
     /// Whether the video is 10-bit
     pub is_10_bit: bool,
+    /// Whether crop was applied correctly (if crop was expected)
+    pub is_crop_correct: bool,
     /// The actual codec found
     pub codec_name: Option<String>,
     /// The actual pixel format found
     pub pixel_format: Option<String>,
     /// The actual bit depth found
     pub bit_depth: Option<u32>,
+    /// The actual video dimensions found
+    pub actual_dimensions: Option<(u32, u32)>,
+    /// The expected dimensions after crop
+    pub expected_dimensions: Option<(u32, u32)>,
+    /// Crop validation message
+    pub crop_message: Option<String>,
 }
 
 impl ValidationResult {
     /// Returns true if all validations pass
     pub fn is_valid(&self) -> bool {
-        self.is_av1 && self.is_10_bit
+        self.is_av1 && self.is_10_bit && self.is_crop_correct
     }
 
     /// Returns a list of validation failures
@@ -41,6 +49,14 @@ impl ValidationResult {
             let pix_fmt = self.pixel_format.as_deref().unwrap_or("unknown");
             let bit_depth = self.bit_depth.map_or("unknown".to_string(), |d| d.to_string());
             failures.push(format!("Expected 10-bit depth, found: {} bit (pixel format: {})", bit_depth, pix_fmt));
+        }
+        
+        if !self.is_crop_correct {
+            if let Some(msg) = &self.crop_message {
+                failures.push(format!("Crop validation failed: {}", msg));
+            } else {
+                failures.push("Crop validation failed".to_string());
+            }
         }
         
         failures
@@ -68,12 +84,27 @@ impl ValidationResult {
         };
         steps.push(("Bit depth".to_string(), self.is_10_bit, bit_depth_result));
         
+        // Crop validation
+        let crop_result = if self.is_crop_correct {
+            self.crop_message.as_ref()
+                .map(|msg| msg.clone())
+                .unwrap_or_else(|| "Crop applied correctly".to_string())
+        } else {
+            self.crop_message.as_ref()
+                .map(|msg| msg.clone())
+                .unwrap_or_else(|| "Crop validation failed".to_string())
+        };
+        steps.push(("Crop detection".to_string(), self.is_crop_correct, crop_result));
+        
         steps
     }
 }
 
-/// Validates that the output video file has AV1 codec and 10-bit depth
-pub fn validate_output_video(output_path: &Path) -> CoreResult<ValidationResult> {
+/// Validates that the output video file has AV1 codec, 10-bit depth, and correct crop dimensions
+pub fn validate_output_video(
+    output_path: &Path, 
+    expected_dimensions: Option<(u32, u32)>
+) -> CoreResult<ValidationResult> {
     log::debug!("Validating output video: {}", output_path.display());
     
     let metadata = ffprobe(output_path).map_err(|e| {
@@ -108,12 +139,51 @@ pub fn validate_output_video(output_path: &Path) -> CoreResult<ValidationResult>
     let bit_depth = get_bit_depth_from_stream(video_stream);
     let is_10_bit = bit_depth.map_or(false, |depth| depth == 10);
 
+    // Get actual video dimensions
+    let actual_width = video_stream.width;
+    let actual_height = video_stream.height;
+    let actual_dimensions = match (actual_width, actual_height) {
+        (Some(w), Some(h)) => Some((w as u32, h as u32)),
+        _ => None,
+    };
+
+    // Validate crop dimensions
+    let (is_crop_correct, crop_message) = match (expected_dimensions, actual_dimensions) {
+        (Some((expected_w, expected_h)), Some((actual_w, actual_h))) => {
+            if expected_w == actual_w && expected_h == actual_h {
+                (true, Some(format!("Crop applied correctly ({}x{})", actual_w, actual_h)))
+            } else {
+                (false, Some(format!(
+                    "Expected {}x{}, found {}x{}", 
+                    expected_w, expected_h, actual_w, actual_h
+                )))
+            }
+        }
+        (None, Some((actual_w, actual_h))) => {
+            // No crop expected, check if video was cropped anyway
+            (true, Some(format!("No crop expected, dimensions: {}x{}", actual_w, actual_h)))
+        }
+        (Some((expected_w, expected_h)), None) => {
+            (false, Some(format!(
+                "Expected dimensions {}x{}, but could not read actual dimensions", 
+                expected_w, expected_h
+            )))
+        }
+        (None, None) => {
+            (false, Some("Could not read video dimensions".to_string()))
+        }
+    };
+
     let result = ValidationResult {
         is_av1,
         is_10_bit,
+        is_crop_correct,
         codec_name,
         pixel_format,
         bit_depth,
+        actual_dimensions,
+        expected_dimensions,
+        crop_message,
     };
 
     log::debug!("Validation result: {:?}", result);
@@ -186,14 +256,57 @@ mod tests {
         let result = ValidationResult {
             is_av1: false,
             is_10_bit: true,
+            is_crop_correct: true,
             codec_name: Some("h264".to_string()),
             pixel_format: Some("yuv420p10le".to_string()),
             bit_depth: Some(10),
+            actual_dimensions: Some((1920, 1080)),
+            expected_dimensions: Some((1920, 1080)),
+            crop_message: Some("No crop expected, dimensions: 1920x1080".to_string()),
         };
         
         let failures = result.get_failures();
         assert_eq!(failures.len(), 1);
         assert!(failures[0].contains("Expected AV1 codec"));
         assert!(failures[0].contains("h264"));
+    }
+
+    #[test]
+    fn test_crop_validation_steps() {
+        // Test successful crop validation
+        let result = ValidationResult {
+            is_av1: true,
+            is_10_bit: true,
+            is_crop_correct: true,
+            codec_name: Some("av01".to_string()),
+            pixel_format: Some("yuv420p10le".to_string()),
+            bit_depth: Some(10),
+            actual_dimensions: Some((1856, 1044)),
+            expected_dimensions: Some((1856, 1044)),
+            crop_message: Some("Crop applied correctly (1856x1044)".to_string()),
+        };
+        
+        let steps = result.get_validation_steps();
+        assert_eq!(steps.len(), 3);
+        assert_eq!(steps[2].0, "Crop detection");
+        assert_eq!(steps[2].1, true);
+        assert!(steps[2].2.contains("Crop applied correctly"));
+
+        // Test failed crop validation
+        let result_failed = ValidationResult {
+            is_av1: true,
+            is_10_bit: true,
+            is_crop_correct: false,
+            codec_name: Some("av01".to_string()),
+            pixel_format: Some("yuv420p10le".to_string()),
+            bit_depth: Some(10),
+            actual_dimensions: Some((1920, 1080)),
+            expected_dimensions: Some((1856, 1044)),
+            crop_message: Some("Expected 1856x1044, found 1920x1080".to_string()),
+        };
+        
+        let steps_failed = result_failed.get_validation_steps();
+        assert_eq!(steps_failed[2].1, false);
+        assert!(steps_failed[2].2.contains("Expected 1856x1044, found 1920x1080"));
     }
 }
