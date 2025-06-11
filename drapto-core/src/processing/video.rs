@@ -496,59 +496,49 @@ pub fn process_videos(
                 };
 
                 // Perform post-encode validation
-                let (validation_passed, validation_steps) = match validate_output_video(&output_path, expected_dimensions) {
+                let (validation_passed, validation_steps) = match validate_output_video(&output_path, expected_dimensions, Some(duration_secs)) {
                     Ok(validation_result) => {
                         let steps = validation_result.get_validation_steps();
                         
-                        if !validation_result.is_valid() {
+                        let validation_passed = validation_result.is_valid();
+                        
+                        if !validation_passed {
                             let failures = validation_result.get_failures();
-                            let error_msg = format!(
-                                "Post-encode validation failed for {}: {}",
+                            log::warn!(
+                                "Post-encode validation failed for {}: {} (continuing processing)",
                                 filename,
                                 failures.join(", ")
                             );
                             
-                            emit_event(event_dispatcher, Event::Error {
-                                title: "Validation Error".to_string(),
-                                message: error_msg.clone(),
-                                context: Some(format!("Output file: {}", output_path.display())),
-                                suggestion: Some("Check encoding configuration and try again".to_string()),
-                            });
-
                             send_notification_safe(
                                 notification_sender,
-                                &format!("Validation failed for {}: {}", filename, failures.join(", ")),
-                                "validation_error"
+                                &format!("Validation failed for {}: {} (encoding completed)", filename, failures.join(", ")),
+                                "validation_warning"
                             );
-
-                            continue;
                         } else {
                             log::debug!(
-                                "Post-encode validation passed for {}: AV1 codec with 10-bit depth confirmed",
+                                "Post-encode validation passed for {}: All validation checks confirmed",
                                 filename
                             );
-                            
-                            (true, steps)
                         }
+                        
+                        (validation_passed, steps)
                     }
                     Err(validation_error) => {
-                        let error_msg = format!(
-                            "Post-encode validation error for {}: {}",
-                            filename,
-                            validation_error
-                        );
-                        
-                        emit_event(event_dispatcher, Event::Warning { 
-                            message: error_msg.clone() 
-                        });
-
-                        log::warn!("{}", error_msg);
                         // Continue processing even if validation fails due to technical issues
                         let error_steps = vec![
                             ("Video codec".to_string(), false, "Validation error".to_string()),
                             ("Bit depth".to_string(), false, "Validation error".to_string()),
                             ("Crop detection".to_string(), false, "Validation error".to_string()),
+                            ("Video duration".to_string(), false, "Validation error".to_string()),
                         ];
+                        
+                        log::warn!(
+                            "Post-encode validation error for {}: {} (continuing processing)",
+                            filename,
+                            validation_error
+                        );
+                        
                         (false, error_steps)
                     }
                 };

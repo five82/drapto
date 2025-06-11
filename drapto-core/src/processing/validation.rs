@@ -16,6 +16,8 @@ pub struct ValidationResult {
     pub is_10_bit: bool,
     /// Whether crop was applied correctly (if crop was expected)
     pub is_crop_correct: bool,
+    /// Whether duration matches the input duration
+    pub is_duration_correct: bool,
     /// The actual codec found
     pub codec_name: Option<String>,
     /// The actual pixel format found
@@ -28,12 +30,18 @@ pub struct ValidationResult {
     pub expected_dimensions: Option<(u32, u32)>,
     /// Crop validation message
     pub crop_message: Option<String>,
+    /// The actual duration found (in seconds)
+    pub actual_duration: Option<f64>,
+    /// The expected duration (in seconds)
+    pub expected_duration: Option<f64>,
+    /// Duration validation message
+    pub duration_message: Option<String>,
 }
 
 impl ValidationResult {
     /// Returns true if all validations pass
     pub fn is_valid(&self) -> bool {
-        self.is_av1 && self.is_10_bit && self.is_crop_correct
+        self.is_av1 && self.is_10_bit && self.is_crop_correct && self.is_duration_correct
     }
 
     /// Returns a list of validation failures
@@ -56,6 +64,14 @@ impl ValidationResult {
                 failures.push(format!("Crop validation failed: {}", msg));
             } else {
                 failures.push("Crop validation failed".to_string());
+            }
+        }
+        
+        if !self.is_duration_correct {
+            if let Some(msg) = &self.duration_message {
+                failures.push(format!("Duration validation failed: {}", msg));
+            } else {
+                failures.push("Duration validation failed".to_string());
             }
         }
         
@@ -96,14 +112,27 @@ impl ValidationResult {
         };
         steps.push(("Crop detection".to_string(), self.is_crop_correct, crop_result));
         
+        // Duration validation
+        let duration_result = if self.is_duration_correct {
+            self.duration_message.as_ref()
+                .map(|msg| msg.clone())
+                .unwrap_or_else(|| "Duration matches input".to_string())
+        } else {
+            self.duration_message.as_ref()
+                .map(|msg| msg.clone())
+                .unwrap_or_else(|| "Duration validation failed".to_string())
+        };
+        steps.push(("Video duration".to_string(), self.is_duration_correct, duration_result));
+        
         steps
     }
 }
 
-/// Validates that the output video file has AV1 codec, 10-bit depth, and correct crop dimensions
+/// Validates that the output video file has AV1 codec, 10-bit depth, correct crop dimensions, and matching duration
 pub fn validate_output_video(
     output_path: &Path, 
-    expected_dimensions: Option<(u32, u32)>
+    expected_dimensions: Option<(u32, u32)>,
+    expected_duration: Option<f64>
 ) -> CoreResult<ValidationResult> {
     log::debug!("Validating output video: {}", output_path.display());
     
@@ -174,21 +203,112 @@ pub fn validate_output_video(
         }
     };
 
+    // Get actual video duration - try multiple sources
+    let actual_duration = get_duration_from_metadata(&metadata, video_stream);
+
+    // Validate duration (allow for small encoding differences - within 1 second tolerance)
+    let duration_tolerance = 1.0; // seconds
+    let (is_duration_correct, duration_message) = match (expected_duration, actual_duration) {
+        (Some(expected), Some(actual)) => {
+            let duration_diff = (expected - actual).abs();
+            if duration_diff <= duration_tolerance {
+                (true, Some(format!(
+                    "Duration matches input ({:.1}s)", 
+                    actual
+                )))
+            } else {
+                (false, Some(format!(
+                    "Expected {:.1}s, found {:.1}s (diff: {:.1}s)", 
+                    expected, actual, duration_diff
+                )))
+            }
+        }
+        (None, Some(actual)) => {
+            // No expected duration provided, just report what we found
+            (true, Some(format!("Duration: {:.1}s", actual)))
+        }
+        (Some(expected), None) => {
+            (false, Some(format!(
+                "Expected duration {:.1}s, but could not read actual duration", 
+                expected
+            )))
+        }
+        (None, None) => {
+            (false, Some("Could not read video duration".to_string()))
+        }
+    };
+
     let result = ValidationResult {
         is_av1,
         is_10_bit,
         is_crop_correct,
+        is_duration_correct,
         codec_name,
         pixel_format,
         bit_depth,
         actual_dimensions,
         expected_dimensions,
         crop_message,
+        actual_duration,
+        expected_duration,
+        duration_message,
     };
 
     log::debug!("Validation result: {:?}", result);
     
     Ok(result)
+}
+
+/// Extract duration from metadata using multiple methods
+fn get_duration_from_metadata(metadata: &ffprobe::FfProbe, video_stream: &ffprobe::Stream) -> Option<f64> {
+    // Method 1: Try video stream duration
+    if let Some(duration_str) = &video_stream.duration {
+        if let Ok(duration) = duration_str.parse::<f64>() {
+            if duration > 0.0 {
+                log::debug!("Duration from video stream: {}", duration);
+                return Some(duration);
+            }
+        }
+    }
+
+    // Method 2: Try format duration
+    if let Some(duration_str) = &metadata.format.duration {
+        if let Ok(duration) = duration_str.parse::<f64>() {
+            if duration > 0.0 {
+                log::debug!("Duration from format: {}", duration);
+                return Some(duration);
+            }
+        }
+    }
+
+    // Method 3: Calculate from video stream if we have frame count and frame rate
+    if let (Some(nb_frames_str), r_frame_rate_str) = (&video_stream.nb_frames, &video_stream.r_frame_rate) {
+        if let (Ok(nb_frames), Ok(frame_rate)) = (nb_frames_str.parse::<u64>(), parse_frame_rate(r_frame_rate_str)) {
+            if frame_rate > 0.0 && nb_frames > 0 {
+                let duration = nb_frames as f64 / frame_rate;
+                log::debug!("Duration calculated from frames: {} frames / {} fps = {} seconds", nb_frames, frame_rate, duration);
+                return Some(duration);
+            }
+        }
+    }
+
+    log::debug!("Could not determine duration from any source");
+    None
+}
+
+/// Parse frame rate string (e.g., "30000/1001" or "30.0")
+fn parse_frame_rate(frame_rate_str: &str) -> Result<f64, std::num::ParseFloatError> {
+    if frame_rate_str.contains('/') {
+        let parts: Vec<&str> = frame_rate_str.split('/').collect();
+        if parts.len() == 2 {
+            let numerator: f64 = parts[0].parse()?;
+            let denominator: f64 = parts[1].parse()?;
+            if denominator != 0.0 {
+                return Ok(numerator / denominator);
+            }
+        }
+    }
+    frame_rate_str.parse()
 }
 
 /// Extract bit depth from video stream using multiple methods
@@ -257,12 +377,16 @@ mod tests {
             is_av1: false,
             is_10_bit: true,
             is_crop_correct: true,
+            is_duration_correct: true,
             codec_name: Some("h264".to_string()),
             pixel_format: Some("yuv420p10le".to_string()),
             bit_depth: Some(10),
             actual_dimensions: Some((1920, 1080)),
             expected_dimensions: Some((1920, 1080)),
             crop_message: Some("No crop expected, dimensions: 1920x1080".to_string()),
+            actual_duration: Some(6155.0),
+            expected_duration: Some(6155.0),
+            duration_message: Some("Duration matches input (6155.0s)".to_string()),
         };
         
         let failures = result.get_failures();
@@ -278,16 +402,20 @@ mod tests {
             is_av1: true,
             is_10_bit: true,
             is_crop_correct: true,
+            is_duration_correct: true,
             codec_name: Some("av01".to_string()),
             pixel_format: Some("yuv420p10le".to_string()),
             bit_depth: Some(10),
             actual_dimensions: Some((1856, 1044)),
             expected_dimensions: Some((1856, 1044)),
             crop_message: Some("Crop applied correctly (1856x1044)".to_string()),
+            actual_duration: Some(6155.0),
+            expected_duration: Some(6155.0),
+            duration_message: Some("Duration matches input (6155.0s)".to_string()),
         };
         
         let steps = result.get_validation_steps();
-        assert_eq!(steps.len(), 3);
+        assert_eq!(steps.len(), 4);
         assert_eq!(steps[2].0, "Crop detection");
         assert_eq!(steps[2].1, true);
         assert!(steps[2].2.contains("Crop applied correctly"));
@@ -297,16 +425,77 @@ mod tests {
             is_av1: true,
             is_10_bit: true,
             is_crop_correct: false,
+            is_duration_correct: true,
             codec_name: Some("av01".to_string()),
             pixel_format: Some("yuv420p10le".to_string()),
             bit_depth: Some(10),
             actual_dimensions: Some((1920, 1080)),
             expected_dimensions: Some((1856, 1044)),
             crop_message: Some("Expected 1856x1044, found 1920x1080".to_string()),
+            actual_duration: Some(6155.0),
+            expected_duration: Some(6155.0),
+            duration_message: Some("Duration matches input (6155.0s)".to_string()),
         };
         
         let steps_failed = result_failed.get_validation_steps();
         assert_eq!(steps_failed[2].1, false);
         assert!(steps_failed[2].2.contains("Expected 1856x1044, found 1920x1080"));
+    }
+
+    #[test]
+    fn test_duration_validation_steps() {
+        // Test successful duration validation
+        let result = ValidationResult {
+            is_av1: true,
+            is_10_bit: true,
+            is_crop_correct: true,
+            is_duration_correct: true,
+            codec_name: Some("av01".to_string()),
+            pixel_format: Some("yuv420p10le".to_string()),
+            bit_depth: Some(10),
+            actual_dimensions: Some((1920, 1080)),
+            expected_dimensions: Some((1920, 1080)),
+            crop_message: Some("No crop expected, dimensions: 1920x1080".to_string()),
+            actual_duration: Some(6155.0),
+            expected_duration: Some(6155.0),
+            duration_message: Some("Duration matches input (6155.0s)".to_string()),
+        };
+        
+        let steps = result.get_validation_steps();
+        assert_eq!(steps.len(), 4);
+        assert_eq!(steps[3].0, "Video duration");
+        assert_eq!(steps[3].1, true);
+        assert!(steps[3].2.contains("Duration matches input"));
+
+        // Test failed duration validation
+        let result_failed = ValidationResult {
+            is_av1: true,
+            is_10_bit: true,
+            is_crop_correct: true,
+            is_duration_correct: false,
+            codec_name: Some("av01".to_string()),
+            pixel_format: Some("yuv420p10le".to_string()),
+            bit_depth: Some(10),
+            actual_dimensions: Some((1920, 1080)),
+            expected_dimensions: Some((1920, 1080)),
+            crop_message: Some("No crop expected, dimensions: 1920x1080".to_string()),
+            actual_duration: Some(6150.0),
+            expected_duration: Some(6155.0),
+            duration_message: Some("Expected 6155.0s, found 6150.0s (diff: 5.0s)".to_string()),
+        };
+        
+        let steps_failed = result_failed.get_validation_steps();
+        assert_eq!(steps_failed[3].1, false);
+        assert!(steps_failed[3].2.contains("Expected 6155.0s, found 6150.0s"));
+    }
+
+    #[test]
+    fn test_frame_rate_parsing() {
+        assert_eq!(parse_frame_rate("30").unwrap(), 30.0);
+        assert_eq!(parse_frame_rate("29.97").unwrap(), 29.97);
+        assert_eq!(parse_frame_rate("30000/1001").unwrap(), 30000.0 / 1001.0);
+        assert_eq!(parse_frame_rate("25/1").unwrap(), 25.0);
+        assert!(parse_frame_rate("invalid").is_err());
+        assert!(parse_frame_rate("30/0").is_err()); // Division by zero should be handled by parse
     }
 }
