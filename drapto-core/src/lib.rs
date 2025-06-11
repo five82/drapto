@@ -86,4 +86,6 @@ pub struct EncodeResult {
     pub output_size: u64,
     pub video_duration_secs: f64,
     pub encoding_speed: f32,
+    pub validation_passed: bool,
+    pub validation_steps: Vec<(String, bool, String)>, // (step_name, passed, details)
 }

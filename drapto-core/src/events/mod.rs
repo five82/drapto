@@ -85,6 +85,12 @@ pub enum Event {
         average_speed: f32,
         output_path: String,
     },
+
+    ValidationComplete {
+        validation_passed: bool,
+        validation_steps: Vec<(String, bool, String)>, // (step_name, passed, details)
+    },
+
     
     // Error events
     Error {
@@ -133,6 +139,8 @@ pub enum Event {
         total_duration: Duration,
         average_speed: f32,
         file_results: Vec<(String, f64)>, // (filename, reduction_percentage)
+        validation_passed_count: usize,
+        validation_failed_count: usize,
     },
 }
 

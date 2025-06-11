@@ -185,6 +185,22 @@ impl EventHandler for FileLoggingHandler {
                 }
             }
             
+            Event::ValidationComplete { validation_passed, validation_steps } => {
+                if *validation_passed {
+                    info!("Post-encode validation completed successfully");
+                } else {
+                    warn!("Post-encode validation failed");
+                }
+                
+                for (step_name, passed, details) in validation_steps {
+                    if *passed {
+                        info!("Validation - {}: Passed ({})", step_name, details);
+                    } else {
+                        warn!("Validation - {}: Failed ({})", step_name, details);
+                    }
+                }
+            }
+
             Event::EncodingComplete {
                 input_file,
                 output_file,
@@ -254,7 +270,9 @@ impl EventHandler for FileLoggingHandler {
                 total_encoded_size, 
                 total_duration, 
                 average_speed,
-                file_results 
+                file_results,
+                validation_passed_count,
+                validation_failed_count,
             } => {
                 let total_reduction = if *total_original_size > 0 {
                     (*total_original_size - *total_encoded_size) as f64 / *total_original_size as f64 * 100.0
@@ -263,6 +281,7 @@ impl EventHandler for FileLoggingHandler {
                 };
                 
                 info!("Batch encoding complete: {} of {} files successful", successful_count, total_files);
+                info!("Validation summary: {} passed, {} failed", validation_passed_count, validation_failed_count);
                 info!("Total original size: {} bytes", total_original_size);
                 info!("Total encoded size: {} bytes", total_encoded_size);
                 info!("Total reduction: {:.1}%", total_reduction);

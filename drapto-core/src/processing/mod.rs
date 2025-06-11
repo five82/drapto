@@ -16,6 +16,10 @@ pub mod video_properties;
 /// Crop detection and analysis
 pub mod crop_detection;
 
+/// Post-encode validation
+pub mod validation;
+
 pub use video::process_videos;
 pub use video_properties::VideoProperties;
 pub use crop_detection::detect_crop;
+pub use validation::{validate_output_video, ValidationResult};

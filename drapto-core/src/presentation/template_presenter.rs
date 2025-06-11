@@ -194,6 +194,48 @@ impl TemplatePresenter {
         }
     }
 
+    /// Render validation completion summary
+    pub fn render_validation_complete(&self, validation_passed: bool, validation_steps: &[(String, bool, String)]) {
+        // Add validation group with individual steps using proper colors per design guide
+        let validation_results: Vec<String> = validation_steps.iter()
+            .map(|(_, passed, details)| {
+                if *passed {
+                    // Green checkmark for successful validation (major milestone)
+                    format!("{} {}", console::style("✓").green().bold(), details)
+                } else {
+                    // Red X for failed validation (critical error)
+                    format!("{} {}", console::style("✗").red().bold(), details)
+                }
+            })
+            .collect();
+        
+        let validation_items: Vec<(&str, &str, bool)> = validation_steps.iter()
+            .zip(validation_results.iter())
+            .map(|((step_name, _, _), formatted_result)| {
+                (step_name.as_str(), formatted_result.as_str(), false)
+            })
+            .collect();
+
+        let groups = vec![
+            GroupData {
+                name: "Post-encode validation",
+                items: validation_items,
+            },
+        ];
+
+        let success_message = if validation_passed {
+            "Validation passed"
+        } else {
+            "Validation failed"
+        };
+        
+        templates::render(TemplateData::CompletionSummary {
+            title: "VALIDATION RESULTS",
+            success_message,
+            groups,
+        });
+    }
+
     /// Render encoding completion summary
     pub fn render_encoding_complete(
         &self,
@@ -325,12 +367,26 @@ impl TemplatePresenter {
         total_time: &str,
         average_speed: &str,
         file_results: &[(String, f64)],
+        validation_passed_count: usize,
+        validation_failed_count: usize,
     ) {
         templates::render(TemplateData::BatchHeader {
             title: "BATCH COMPLETE",
         });
         
         println!("  {} Successfully encoded {} files", console::style("✓").green().bold(), successful_count);
+        
+        // Display validation summary
+        if validation_failed_count == 0 {
+            println!("  {} All {} files passed validation", console::style("✓").green().bold(), validation_passed_count);
+        } else {
+            println!("  {} {} files passed validation, {} failed", 
+                console::style("⚠").yellow().bold(), 
+                validation_passed_count, 
+                validation_failed_count
+            );
+        }
+        
         println!();
         println!("  Total original size:   {}", total_original_size);
         println!("  Total encoded size:    {}", total_encoded_size);
@@ -340,7 +396,7 @@ impl TemplatePresenter {
         println!();
         println!("  Files processed:");
         for (filename, reduction) in file_results {
-            println!("    {} {} ({} reduction)", console::style("✓").green(), filename, templates::format_reduction(*reduction));
+            println!("    {} {} ({} reduction)", console::style("✓").dim(), filename, templates::format_reduction(*reduction));
         }
         println!();
     }

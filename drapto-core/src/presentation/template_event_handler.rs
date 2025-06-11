@@ -146,6 +146,11 @@ impl EventHandler for TemplateEventHandler {
                 }
             }
             
+            Event::ValidationComplete { validation_passed, validation_steps } => {
+                presenter.finish_encoding_progress();
+                presenter.render_validation_complete(*validation_passed, validation_steps);
+            }
+
             Event::EncodingComplete {
                 input_file,
                 output_file: _,
@@ -157,7 +162,6 @@ impl EventHandler for TemplateEventHandler {
                 average_speed,
                 output_path,
             } => {
-                presenter.finish_encoding_progress();
                 
                 let reduction = (*original_size - *encoded_size) as f64 / *original_size as f64 * 100.0;
                 let original_size_str = format_bytes(*original_size);
@@ -180,7 +184,7 @@ impl EventHandler for TemplateEventHandler {
                     &total_time_str,
                     &templates::format_speed(*average_speed),
                     output_path,
-                    false // color formatting handled by format_reduction
+                    false, // color formatting handled by format_reduction
                 );
             }
             
@@ -222,7 +226,9 @@ impl EventHandler for TemplateEventHandler {
                 total_encoded_size, 
                 total_duration, 
                 average_speed,
-                file_results 
+                file_results,
+                validation_passed_count,
+                validation_failed_count,
             } => {
                 let total_reduction = if *total_original_size > 0 {
                     (*total_original_size - *total_encoded_size) as f64 / *total_original_size as f64 * 100.0
@@ -242,7 +248,9 @@ impl EventHandler for TemplateEventHandler {
                         total_duration.as_secs() % 60
                     ),
                     &templates::format_speed(*average_speed),
-                    file_results
+                    file_results,
+                    *validation_passed_count,
+                    *validation_failed_count,
                 );
             }
         }

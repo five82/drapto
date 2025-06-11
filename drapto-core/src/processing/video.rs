@@ -27,6 +27,7 @@ use crate::notifications::NotificationSender;
 use crate::processing::audio;
 use crate::processing::crop_detection;
 use crate::processing::video_properties::VideoProperties;
+use crate::processing::validation::validate_output_video;
 use crate::system_info::SystemInfo;
 use crate::EncodeResult;
 
@@ -486,6 +487,63 @@ pub fn process_videos(
                 let input_size = external_get_file_size(input_path)?;
                 let output_size = external_get_file_size(&output_path)?;
                 let encoding_speed = duration_secs as f32 / file_elapsed_time.as_secs_f32();
+
+                // Perform post-encode validation
+                let (validation_passed, validation_steps) = match validate_output_video(&output_path) {
+                    Ok(validation_result) => {
+                        let steps = validation_result.get_validation_steps();
+                        
+                        if !validation_result.is_valid() {
+                            let failures = validation_result.get_failures();
+                            let error_msg = format!(
+                                "Post-encode validation failed for {}: {}",
+                                filename,
+                                failures.join(", ")
+                            );
+                            
+                            emit_event(event_dispatcher, Event::Error {
+                                title: "Validation Error".to_string(),
+                                message: error_msg.clone(),
+                                context: Some(format!("Output file: {}", output_path.display())),
+                                suggestion: Some("Check encoding configuration and try again".to_string()),
+                            });
+
+                            send_notification_safe(
+                                notification_sender,
+                                &format!("Validation failed for {}: {}", filename, failures.join(", ")),
+                                "validation_error"
+                            );
+
+                            continue;
+                        } else {
+                            log::debug!(
+                                "Post-encode validation passed for {}: AV1 codec with 10-bit depth confirmed",
+                                filename
+                            );
+                            
+                            (true, steps)
+                        }
+                    }
+                    Err(validation_error) => {
+                        let error_msg = format!(
+                            "Post-encode validation error for {}: {}",
+                            filename,
+                            validation_error
+                        );
+                        
+                        emit_event(event_dispatcher, Event::Warning { 
+                            message: error_msg.clone() 
+                        });
+
+                        log::warn!("{}", error_msg);
+                        // Continue processing even if validation fails due to technical issues
+                        let error_steps = vec![
+                            ("Video codec".to_string(), false, "Validation error".to_string()),
+                            ("Bit depth".to_string(), false, "Validation error".to_string()),
+                        ];
+                        (false, error_steps)
+                    }
+                };
                 
                 results.push(EncodeResult {
                     filename: filename.clone(),
@@ -494,6 +552,14 @@ pub fn process_videos(
                     output_size,
                     video_duration_secs: duration_secs,
                     encoding_speed,
+                    validation_passed,
+                    validation_steps: validation_steps.clone(),
+                });
+
+                // Emit validation complete event
+                emit_event(event_dispatcher, Event::ValidationComplete {
+                    validation_passed,
+                    validation_steps: validation_steps.clone(),
                 });
 
                 // Calculate final output dimensions (considering crop)
@@ -641,6 +707,10 @@ pub fn process_videos(
                 })
                 .collect();
             
+            // Count validation results
+            let validation_passed_count = results.iter().filter(|r| r.validation_passed).count();
+            let validation_failed_count = results.len() - validation_passed_count;
+            
             emit_event(event_dispatcher, Event::BatchComplete {
                 successful_count: results.len(),
                 total_files: files_to_process.len(),
@@ -649,6 +719,8 @@ pub fn process_videos(
                 total_duration,
                 average_speed: average_speed as f32,
                 file_results,
+                validation_passed_count,
+                validation_failed_count,
             });
         }
     }
