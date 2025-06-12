@@ -1,29 +1,10 @@
-// ============================================================================
-// drapto-core/src/external/mod.rs
-// ============================================================================
-//
-// EXTERNAL TOOLS: Interactions with External CLI Tools and File System
-//
-// This module encapsulates direct interactions with external command-line tools
-// like ffmpeg and ffprobe, as well as file system operations. It provides
-// simple functions without trait abstractions for cleaner, more direct code.
-//
-// KEY COMPONENTS:
-// - Direct ffmpeg and ffprobe functions
-// - File metadata access functions
-// - Platform detection utilities
-//
-// AI-ASSISTANT-INFO: External tool interactions and abstractions for ffmpeg/ffprobe
+//! External tool integrations for `FFmpeg` and `FFprobe`
+//!
+//! This module provides direct interactions with external command-line tools
+//! like ffmpeg and ffprobe, as well as file system operations.
 
-// ---- Internal crate imports ----
 use crate::error::CoreResult;
-
-// ---- Standard library imports ----
 use std::path::Path;
-
-// ============================================================================
-// SUBMODULES
-// ============================================================================
 
 /// Contains ffmpeg argument building logic and encoding parameter structures
 pub mod ffmpeg;
@@ -34,46 +15,39 @@ pub mod ffmpeg_builder;
 /// Contains traits and implementations for executing ffprobe commands
 pub mod ffprobe_executor;
 
-// ============================================================================
-// RE-EXPORTS
-// ============================================================================
-// These items are re-exported to make them directly accessible to consumers
-// without requiring explicit imports from submodules
+// Re-exports for convenience
+pub use ffmpeg_builder::{FfmpegCommandBuilder, SvtAv1ParamsBuilder, VideoFilterChain};
+pub use ffprobe_executor::{
+    MediaInfo, get_audio_channels, get_media_info, get_video_properties,
+};
 
-// ----- FFmpeg Sample Extraction -----
-/// Function for extracting video samples
-pub use ffmpeg::extract_sample;
 
-// ----- FFmpeg Command Building -----
-/// Builder utilities for FFmpeg commands
-pub use ffmpeg_builder::{FfmpegCommandBuilder, VideoFilterChain, SvtAv1ParamsBuilder};
-
-// ----- FFprobe Execution -----
-/// Functions for executing ffprobe commands
-pub use ffprobe_executor::{get_audio_channels, get_video_properties, run_ffprobe_bitplanenoise, get_media_info, MediaInfo};
-
-// ============================================================================
-// FILE METADATA ACCESS
-// ============================================================================
-
-/// Gets the size of the file at the given path in bytes.
-///
-/// # Arguments
-///
-/// * `path` - Path to the file to get the size of
-///
-/// # Returns
-///
-/// * `Ok(u64)` - The size of the file in bytes
-/// * `Err(CoreError)` - If an error occurs accessing the file
+/// Returns file size in bytes.
 pub fn get_file_size(path: &Path) -> CoreResult<u64> {
     Ok(std::fs::metadata(path)?.len())
 }
 
-// ============================================================================
-// PLATFORM DETECTION
-// ============================================================================
+// Re-export platform detection for backward compatibility
+pub use crate::hardware_decode::is_macos;
 
-// Platform detection has been moved to the hardware_accel module
-// Re-export the is_macos function for backward compatibility
-pub use crate::hardware_accel::is_macos;
+/// List of FFmpeg error messages that should be treated as non-critical.
+/// These messages appear in stderr but don't indicate actual problems.
+pub const NON_CRITICAL_FFMPEG_MESSAGES: &[&str] = &[
+    "deprecated pixel format",
+    "No accelerated colorspace conversion",
+    "Stream map",
+    "automatically inserted filter",
+    "Timestamps are unset",
+    "does not match the corresponding codec",
+    "Queue input is backward",
+    "No streams found",
+    "first frame is no keyframe",
+    "Skipping NAL unit",
+];
+
+/// Checks if FFmpeg error message is non-critical.
+pub fn is_non_critical_ffmpeg_message(message: &str) -> bool {
+    NON_CRITICAL_FFMPEG_MESSAGES
+        .iter()
+        .any(|pattern| message.contains(pattern))
+}

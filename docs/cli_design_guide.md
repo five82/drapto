@@ -24,57 +24,58 @@ Drapto CLI uses a consistent and well-defined visual hierarchy to organize infor
 #### Hierarchy Levels
 
 1. **Primary (Level 1)**: Major workflow phases and main section headers
-   - Formatting: Bold, uppercase, with separators
-   - Example: `===== VIDEO ANALYSIS =====`
+   - Formatting: Bold, uppercase, with dashes, full cyan color
+   - Example: `----- VIDEO ANALYSIS -----`
 
 2. **Secondary (Level 2)**: Logical groupings, operations, or completion messages
    - Formatting: Bold with leading symbol (» for operations, ✓ for success)
-   - Examples: `  » Analyzing grain levels`, `  ✓ Analysis complete`
+   - Examples: `  » Detecting black bars`, `  ✓ Analysis complete`
 
 3. **Tertiary (Level 3)**: Individual actions or progress items
    - Formatting: Regular with progress symbol
-   - Example: `    ⧖ Processing sample 3/5`
+   - Example: `    ◆ Processing encoding step`
 
 4. **Quaternary (Level 4)**: Key-value pairs and primary information
    - Formatting: Regular text (bold values only for critical information)
-   - Example: `    Input file:      movie.mkv`
+   - Example: `      Input file:      movie.mkv`
 
 5. **Supporting (Level 5)**: Details, metrics, and secondary information
    - Formatting: Regular or dimmed text
-   - Example: `    Speed: 2.5x, Avg FPS: 24.5, ETA: 00:22:30`
+   - Example: `        Speed: 2.5x, Avg FPS: 24.5, ETA: 00:22:30`
 
 #### Whitespace Strategy
 
 Whitespace is a critical component of visual hierarchy. Use it consistently:
 
-- **Between major sections**: Single line break
-- **Between subsections**: Single line break
+- **Between all sections and subsections**: Single line break (standardized)
 - **Between related items**: No line break
 - **Indentation**: 2 spaces per level of hierarchy
-- **Logical grouping**: Use blank lines to separate logical groups of information
+- **Logical grouping**: Single blank line to separate logical groups
 
 ```
-===== SECTION =====
+----- SECTION -----
 
   » Subsection One
-    ⧖ Operation in progress
+    Operation in progress...
     ✓ Operation complete
       Key:              Value
       Another key:      Value
 
   » Subsection Two
-    ⧖ Another operation
+    Another operation...
 ```
 
 #### Visual Hierarchy Implementation Matrix
 
-| Level | Element Type | Formatting | Color | Indentation | Symbol | Example |
-|-------|--------------|------------|-------|-------------|--------|---------|
-| 1 | Main Sections | Bold, uppercase | Cyan (title only) | None | ===== | `===== VIDEO ANALYSIS =====` |
-| 2 | Subsections/Success | Bold | White | 2 spaces | » / ✓ | `  » Analyzing grain levels` / `  ✓ Analysis complete` |
-| 3 | Operations/Progress | Regular | White | 4 spaces | ⧖ / ◆ | `    ⧖ Processing sample 3/5` |
-| 4 | Primary Info | Regular | White/Green* | 4 spaces | None | `    Reduction:      65.2%` |
-| 5 | Details | Regular | White/Gray | 4-6 spaces | None | `    Speed: 2.5x, Avg FPS: 24.5` |
+| Level | Element Type | Formatting | Color | Indentation | Symbol/Prefix | Example |
+|-------|--------------|------------|-------|-------------|---------------|---------|
+| -1 | Hardware Headers | Bold, uppercase | Blue (full) | None | ━━━━━ | `━━━━━ HARDWARE ━━━━━` |
+| 0 | Batch Headers | Bold, uppercase | Yellow (full) | None | ┌─────┐ | `┌───── BATCH ENCODING ─────┐` |
+| 1 | Main Sections | Bold, uppercase | Cyan (full) | None | ----- | `----- VIDEO ANALYSIS -----` |
+| 2 | Subsections/Success | Bold | White | 2 spaces | » / ✓ | `  » Detecting black bars` / `  ✓ Analysis complete` |
+| 3 | Operations/Progress | Regular | White | 4 spaces | Text prefix | `    Processing...` / `    Progress: 45%` |
+| 4 | Primary Info | Regular | White/Green* | 6 spaces | None | `      Reduction:      65.2%` |
+| 5 | Details | Regular | White/Gray | 8 spaces | None | `        Speed: 2.5x, Avg FPS: 24.5` |
 | X | Critical Alert | Bold | Red/Yellow | Same as context | ✗ / ⚠ | `  ✗ Error: Encoding failed` |
 
 *Green for significant values (>50% reductions, optimal selections, good performance)
@@ -94,129 +95,244 @@ Colors should be used sparingly and meaningfully to highlight important informat
 
 When colors are used, they should follow these guidelines:
 
-##### Cyan (Primary - Structural)
-Use for major structural elements only:
-- Section headers (the title text only, not the delimiters)
-- Major phase transitions
+#### Structural Colors (Headers and Layout)
+
+##### Blue (Hardware Information Headers)
+Use for hardware and system information section headers:
+- Hardware information section headers
+- System specifications sections
 
 ```
-===== VIDEO ANALYSIS =====  ← "VIDEO ANALYSIS" in cyan
+━━━━━ HARDWARE ━━━━━  ← Entire header in blue
 ```
 
-##### Green (Secondary - Success & Optimal Values)
-Use to highlight positive outcomes and optimal selections:
-- Significant file size reductions (>50%)
-- Optimal/selected values in comparisons
-- Success completion messages (not just the symbol)
-- Performance metrics when notably good
+##### Cyan (Primary Section Headers)
+Use for major workflow phase headers:
+- Section headers (entire header including delimiters)
+- Major phase transitions within a file
 
 ```
-✓ Encoding complete
-  Reduction:       65.2%  ← Value in green (significant reduction)
-
-Grain Level Comparison:
-  Moderate (selected) 1.24 GB  ← "Moderate (selected)" in green
-  Light              1.42 GB
+----- VIDEO ANALYSIS -----  ← Entire header in cyan
 ```
 
-##### Yellow/Amber (Accent - Attention & Caution)
-Use sparingly for information requiring attention:
-- Warnings and cautions
-- Moderate performance metrics
-- Values approaching limits
-- Important but not optimal selections
+##### Yellow (Batch Operation Headers)
+Use for batch-level operation headers:
+- Batch operation headers (BATCH ENCODING, BATCH COMPLETE)
+- Multi-file operation indicators
 
 ```
-⚠ Hardware acceleration unavailable  ← Title in yellow
-  Speed: 0.8x  ← Value in yellow (below real-time)
+┌───── BATCH ENCODING ─────┐  ← Entire header in yellow
 ```
 
-##### Red (Critical - Errors Only)
+##### Magenta (File Progress Headers)
+Use for individual file progress within batch operations:
+- File progress markers in batch processing
+- Progress indicators between files
+
+```
+────▶ FILE 1 OF 3 ────  ← Entire header in magenta
+```
+
+#### Status and Performance Colors
+
+##### Green (Success and Excellent Performance)
+Use for positive outcomes and excellent performance:
+- Major milestone completion checkmarks
+- Significant file size reductions (≥50%)
+- Excellent encoding speed (≥2.0x)
+- Success completion messages
+
+```
+✓ Encoding complete     ← Green checkmark (major milestone)
+  Reduction:    67.9%   ← Green value (significant reduction)
+  Speed: 2.4x           ← Green value (excellent performance)
+```
+
+##### Yellow (Warnings and Poor Performance)
+Use for warnings and performance issues:
+- Poor encoding speed (≤0.2x)
+- Disappointing file size reductions (≤30%)
+- Warning messages and cautions
+- Performance metrics requiring attention
+
+```
+⚠ Hardware acceleration unavailable  ← Yellow warning
+  Speed: 0.1x          ← Yellow value (very slow)
+  Reduction: 15.3%     ← Yellow value (disappointing)
+```
+
+##### Red (Critical Errors Only)
 Reserve exclusively for error conditions:
 - Error messages and titles
 - Failed operations
 - Critical failures
 
 ```
-✗ Error: Encoding failed  ← "Error: Encoding failed" in red
+✗ Error: Encoding failed  ← Red error message
 ```
 
-##### White/Default (Standard)
+#### Contextual Information Colors
+
+##### Blue (Technical Information)
+Use for technical specifications and properties:
+- Video/audio format specifications
+- Resolution categories (HD/UHD)
+- Dynamic range indicators (HDR/SDR)
+- Codec information (AV1, Opus)
+- Color spaces and pixel formats
+
+```
+  Resolution:       1920x1080 (HD)    ← Blue (technical spec)
+  Dynamic range:    HDR                ← Blue (technical spec)
+  Audio:            5.1 surround       ← Blue (technical spec)
+  Color Space:      bt709              ← Blue (technical spec)
+  Pixel Format:     yuv420p10le        ← Blue (technical spec)
+```
+
+##### Light Blue (Encoder Settings)
+Use for encoding configuration parameters:
+- Encoder selection (SVT-AV1, Opus)
+- Quality settings (CRF, presets)
+- Bitrate configurations
+- Encoding method choices
+
+```
+  Encoder:          SVT-AV1            ← Light blue (encoder setting)
+  Preset:           6                  ← Light blue (encoder setting)
+  Quality:          CRF 27             ← Light blue (encoder setting)
+  Audio codec:      Opus               ← Light blue (encoder setting)
+```
+
+##### Purple (Applied Processing)
+Use for active content processing settings:
+- Denoising parameters and filters
+- Film grain synthesis settings
+- Content enhancement filters
+- Applied processing indicators
+
+```
+  Denoising:        hqdn3d=2:1.5:3:2.5    ← Purple (applied processing)
+  Film grain:       Level 4 (synthesis)   ← Purple (applied processing)
+```
+
+#### Neutral and De-emphasis Colors
+
+##### White/Default (Standard Information)
 Use for most text to maintain readability:
 - Labels and descriptions
-- Standard values
-- Regular status messages
-- Non-critical information
+- Standard values and measurements
+- Regular informational content
+- Non-critical data
+
+##### Gray/Dim (Minor Status and De-emphasis)
+Use for less important information:
+- Minor status completions (crop detection)
+- Debug output in verbose mode
+- Supplementary details
+- Background information
+
+```
+✓ Crop detection complete  ← Dimmed checkmark (minor status)
+```
 
 ##### Bold (Emphasis without Color)
 Use bold formatting for emphasis when color isn't appropriate:
-- Important values that don't fit other categories
+- Important values that don't fit color categories
 - Headers and subsection titles
 - Key metrics in monochrome mode
 
-##### Gray/Dim (De-emphasis)
-Use for less important supplementary information:
-- Debug output (in verbose mode)
-- Supplementary details
-- Already-processed items
-
 #### Practical Color Usage Examples
 
-##### Example 1: File Size Reduction
+##### Example 1: Status Significance Indicators
 ```
-# Good - Highlights the key metric users care about
-✓ Encoding complete
-  Input size:      3.56 GB
-  Output size:     1.24 GB
-  Reduction:       65.2%     ← Green for significant reduction
+# Good - Color indicates milestone importance
+✓ Encoding complete               ← Green checkmark (major milestone)
+✓ Successfully encoded 2 files    ← Green checkmark (major milestone)
+✓ Crop detection complete         ← Dimmed checkmark (minor status)
 
-# Poor - No emphasis on the important metric
-✓ Encoding complete
-  Input size:      3.56 GB
-  Output size:     1.24 GB
-  Reduction:       65.2%     ← Same as other text
+# Poor - All status looks equally important
+✓ Encoding complete               ← All same color/emphasis
+✓ Successfully encoded 2 files
+✓ Crop detection complete
 ```
 
-##### Example 2: Performance Metrics
+##### Example 2: Performance-Based Color Coding
 ```
 # Good - Color indicates performance quality
-  Speed: 2.5x      ← Green (good performance)
-  Speed: 1.0x      ← White (acceptable)
-  Speed: 0.5x      ← Yellow (poor performance)
+  Speed: 2.5x      ← Green (excellent: ≥2.0x)
+  Speed: 1.0x      ← White (acceptable: 0.2x-2.0x)
+  Speed: 0.1x      ← Yellow (concerning: ≤0.2x)
+
+# Reduction percentages
+  Reduction: 67.9% ← Green (significant: ≥50%)
+  Reduction: 37.7% ← White (modest: 31-49%)
+  Reduction: 15.3% ← Yellow (disappointing: ≤30%)
 
 # Poor - No indication of performance quality
   Speed: 2.5x      ← All speeds look the same
   Speed: 1.0x
-  Speed: 0.5x
+  Speed: 0.1x
 ```
 
-##### Example 3: Selection Results
+##### Example 3: Contextual Value Emphasis
 ```
-# Good - Clear visual indication of selection
-Grain analysis results:
-  Heavy:     8.0 MB
-  Moderate:  8.3 MB (selected)  ← "Moderate" and "(selected)" in green
-  Light:     10.5 MB
-  Baseline:  15.2 MB
+# Good - Color indicates information type
+----- VIDEO DETAILS -----
+  Resolution:       1920x1080 (HD)    ← Blue (technical information)
+  Dynamic range:    HDR                ← Blue (technical information)
+  Audio:            5.1 surround       ← Blue (technical information)
 
-# Poor - Selection not visually distinct
-Grain analysis results:
-  Heavy:     8.0 MB
-  Moderate:  8.3 MB (selected)  ← Same as other options
-  Light:     10.5 MB
-  Baseline:  15.2 MB
+----- ENCODING CONFIGURATION -----
+  Video:
+    Encoder:        SVT-AV1            ← Light blue (encoder setting)
+    Preset:         6                  ← Light blue (encoder setting)
+    Quality:        CRF 27             ← Light blue (encoder setting)
+    Denoising:      hqdn3d=2:1.5:3:2.5 ← Purple (applied processing)
+    Film grain:     Level 4 (synthesis) ← Purple (applied processing)
+  
+  Advanced:
+    Pixel Format:   yuv420p10le        ← Blue (technical information)
+    Color Space:    bt709              ← Blue (technical information)
+
+# Poor - No contextual distinction
+  Resolution:       1920x1080 (HD)    ← All values look the same
+  Encoder:          SVT-AV1
+  Denoising:        hqdn3d=2:1.5:3:2.5
+  Color Space:      bt709
 ```
+
+#### Complete Color System Summary
+
+**Structural Colors (Headers):**
+- 🔵 Blue: Hardware information headers
+- 🩵 Cyan: Primary section headers  
+- 🟡 Yellow: Batch operation headers
+- 🟣 Magenta: File progress headers
+
+**Status and Performance Colors:**
+- 🟢 Green: Success, major milestones, excellent performance (≥2.0x speed, ≥50% reduction)
+- 🟡 Yellow: Warnings, poor performance (≤0.2x speed, ≤30% reduction)
+- 🔴 Red: Critical errors and failures
+- ⚫ Gray/Dim: Minor status updates, de-emphasized information
+
+**Contextual Information Colors:**
+- 🔵 Blue: Technical specifications (resolution, dynamic range, codecs, formats)
+- 🩵 Light Blue: Encoder settings (SVT-AV1, presets, quality, codecs)
+- 🟣 Purple: Applied processing (denoising parameters, film grain settings)
+- ⚪ White/Default: Standard information and labels
 
 #### When NOT to Use Color
 
 Avoid using color for:
-- Decorative purposes
-- Every piece of data
+- Decorative purposes without semantic meaning
+- Every piece of data (causes color fatigue)
 - Information that's already clear from context
-- Symbols and icons (keep them monochrome)
+- Labels and descriptions (use for values instead)
 - Delimiters and separators (===, ---, etc.)
 
-Most terminal text should remain uncolored (default terminal color), with color applied selectively to guide the user's attention to what matters most.
+**Key Principle:** Most terminal text should remain uncolored (default terminal color), with color applied strategically to create meaningful distinctions and guide user attention to what matters most.
+
+Each color should have consistent semantic meaning throughout the interface - users should be able to learn what each color represents and rely on that meaning across all contexts.
 
 Icons should maintain the same color as their accompanying text to create a clean, professional, monochrome appearance that reduces visual distraction.
 
@@ -230,18 +346,15 @@ Icons should maintain the same color as their accompanying text to create a clea
 
 ### Icons and Symbols
 
-Use a consistent set of monochrome symbols with the same color as the text they accompany:
+Use a minimal, consistent set of symbols that match their semantic meaning:
 
-- **✓**: Success or completion
-- **⧖**: In-progress or waiting
-- **»**: Processing step or subsection
-- **◎**: Phase indicator
-- **◆**: Sample indicator
-- **✗**: Error or failure
-- **⚠**: Warning
-- **ℹ**: Information
+- **✓**: Success or completion (green for major milestones, dimmed for minor status)
+- **✗**: Error or failure (red)
+- **⚠**: Warning (yellow)
 
-Icons should not be colored differently than their accompanying text to maintain a clean, consistent appearance. This creates a more professional look and reduces visual distraction.
+For in-progress operations, use spinners instead of static symbols. This provides better visual feedback and follows modern CLI conventions.
+
+Note: Progress indicators and sample markers can use simple text formatting (e.g., "Sample 3/5:", "Progress:") instead of dedicated symbols to reduce visual complexity.
 
 ### Focus Techniques
 
@@ -256,39 +369,80 @@ Use these techniques to draw attention to the most important information:
   Reduction: 65.2% (3.56 GB → 1.24 GB)  ← Important metric stands out
   ```
 
-## Information Density Guidelines
+## Logging and Output Control
 
-Balance information density appropriately based on context and user needs:
+Drapto uses Rust's standard logging levels to control output verbosity, keeping the interface simple and well-understood:
 
-### Low Density (For Critical Information)
-Use for alerts, errors, and key status updates that need immediate attention.
+### Logging Levels
 
-```
-✗ Error: Encoding failed
-  Try using a different preset or check system resources
-```
+The application uses standard Rust log levels controlled by the `RUST_LOG` environment variable:
 
-### Medium Density (For Standard Output)
-Use for most terminal output where users are actively watching.
+- **Error**: Critical failures only
+- **Warn**: Warnings and errors
+- **Info** (default): Normal operation output
+- **Debug**: Detailed technical information (enabled with `--verbose`)
+- **Trace**: Very detailed debugging information
 
-```
-⧖ Encoding: 45.2% [##########.................]
-  Speed: 2.5x, ETA: 00:22:30
-  Pass: 1/1, Frames: 66,574 / 147,285
-```
+### Command-Line Flags
 
-### High Density (For Detailed Analysis)
-Use when users request comprehensive information, such as with `--verbose`.
+```bash
+# Default output (info level)
+drapto encode -i input.mkv -o output/
 
-```
-⧖ Encoding: 45.2% [##########.................] (00:46:23 / 01:42:35)
-  Speed: 2.5x, Avg FPS: 24.5, ETA: 00:22:30
-  Pass: 1/1, Frames: 66,574 / 147,285, Bitrate: 1,245 kb/s
-  Buffer: 256MB, Queue: 24 frames, GOP: 240, Ref frames: 4
-  CPU: 87%, Memory: 1.2GB, Temp: 75°C, Power: Medium
+# Verbose output (debug level)
+drapto encode --verbose -i input.mkv -o output/
+
+# Future: Quiet mode (warn level)
+# drapto encode --quiet -i input.mkv -o output/
 ```
 
-Always allow users to control the information density with flags like `--quiet`, `--normal` (default), and `--verbose`.
+### Output Examples by Level
+
+#### Standard Output (Info Level - Default)
+Shows essential information for normal operation:
+
+```
+----- VIDEO ANALYSIS -----
+
+  » Detecting black bars
+    Progress: 100.0% [##############################] (00:00:10 / 00:00:10)
+
+  ✓ Analysis complete
+    Crop detected: None required
+    Processing: VeryLight denoising with film grain synthesis
+```
+
+#### Verbose Output (Debug Level)
+Includes technical details for troubleshooting:
+
+```
+----- VIDEO ANALYSIS -----
+
+  » Detecting black bars
+    Progress: 100.0% [##############################] (00:00:10 / 00:00:10)
+
+[debug] Crop detection threshold: 0.1
+[debug] Black border detected: none
+[debug] Denoising parameters: hqdn3d=0.5:0.4:2:2
+[debug] Film grain synthesis: level 4
+
+  ✓ Analysis complete
+    Crop detected: None required
+    Processing: VeryLight denoising with film grain synthesis
+    Denoise Parameters: hqdn3d=0.5:0.4:2:2
+    Film Grain Level: 4
+```
+
+### Design Philosophy
+
+This approach balances simplicity with functionality:
+
+1. **Standard conventions**: Uses familiar Rust logging levels
+2. **Minimal flags**: One verbosity flag keeps the interface simple
+3. **Progressive disclosure**: Debug information is available when needed
+4. **Clean output**: Visual hierarchy and formatting remain consistent across all levels
+
+The visual design principles (hierarchy, color usage, symbols) apply regardless of the logging level, ensuring a consistent and professional appearance.
 
 ## Terminal Components
 
@@ -297,11 +451,12 @@ Always allow users to control the information density with flags like `--quiet`,
 Sections create visual separation between different parts of the output:
 
 ```
-===== SECTION TITLE =====
+----- SECTION TITLE -----
+
   Content goes here with consistent padding
   More content...
 
-===== NEXT SECTION =====
+----- NEXT SECTION -----
 ```
 
 Use a single blank line between major sections to enhance visual separation.
@@ -316,13 +471,42 @@ Progress bars should:
 - Update at an appropriate frequency (not too fast, not too slow)
 
 ```
-Encoding: 45.2% [#########.......] (01:23 / 03:45), Speed: 2.5x, ETA: 02:22
+Encoding: 45.2% [#########.......] (00:01:23 / 00:03:45)
+  Speed: 2.5x, ETA: 00:02:22
 ```
 
 For constrained terminal widths, adapt appropriately:
 ```
 Encoding: 45.2% [###..]
+  ETA: 00:02:22
 ```
+
+### Spinners
+
+For fast operations (typically under 5 seconds), use spinners instead of progress bars:
+
+- Use Braille Unicode patterns for smooth animation
+- Position at subsection level (2 spaces indentation)
+- Clear message describing the operation
+- Automatically disappear when operation completes
+
+**Recommended spinner pattern**: `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏` (Classic smooth rotation)
+
+```
+  ⠋ Detecting black bars...   ← Animates through smooth rotation
+  ⠙ Detecting black bars...   
+  ⠹ Detecting black bars...
+  
+  ✓ Crop detection complete   ← Replaces spinner when done
+    Detected crop: crop=1920:1036:0:22
+```
+
+**Spinner characteristics**:
+- 10-frame animation cycle for ultra-smooth motion
+- 120ms tick interval (optimized for SSH and remote connections)
+- Single-dot progression between frames (no visual jumps)
+- Circular clockwise rotation pattern
+- Industry standard used by npm, yarn, and other major CLI tools
 
 ### Status Lines
 
@@ -371,7 +555,7 @@ FPS: 24.5
 ETA: 00:22:30
 
 # After: Organized grouping with visual separators
-Frame: 66,574/147,285 │ Speed: 2.5x │ FPS: 24.5 │ ETA: 00:22:30
+Frames: 66,574/147,285 │ Speed: 2.5x │ FPS: 24.5 │ ETA: 00:22:30
 ```
 
 ## Interaction Patterns
@@ -379,8 +563,8 @@ Frame: 66,574/147,285 │ Speed: 2.5x │ FPS: 24.5 │ ETA: 00:22:30
 ### Command Structure
 
 - Use consistent command structure: `drapto [global options] command [command options] [arguments]`
-- Group related commands under topics (e.g., `grain analyze`, `encode`)
-- Use verbs for commands and nouns for topics
+- Use clear, descriptive command names (e.g., `encode`)
+- Keep command structure simple and intuitive
 
 ### Error Handling
 
@@ -443,28 +627,31 @@ Output should adapt based on the terminal environment:
 
 ```
 # Interactive mode (with spinner animation)
-⧖ Analyzing grain levels...
+⧖ Detecting black bars...
 
 # Non-interactive mode (e.g., when piped to a file)
-[INFO] Analyzing grain levels...
+[INFO] Detecting black bars...
 ```
 
 ### Progressive Disclosure
 
-Implement progressive disclosure to show the most important information first:
+Use Rust's standard logging levels to progressively reveal technical details:
 
 ```
-# Basic output (default)
-✓ Encoding complete: 1.24 GB (65.2% reduction)
-
-# Detailed output (-v or --verbose)
+# Standard output (info level - default)
 ✓ Encoding complete
   Input:           movie.mkv (3.56 GB)
   Output:          movie.av1.mp4 (1.24 GB)
   Reduction:       65.2%
 
-  Video stream:    AV1 (libsvtav1), 1920x1080, 1,145 kb/s
-  Audio stream:    Opus, 5.1 channels, 128 kb/s
+# Verbose output (debug level - with --verbose)
+✓ Encoding complete
+  Input:           movie.mkv (3.56 GB)
+  Output:          movie.av1.mp4 (1.24 GB)
+  Reduction:       65.2%
+
+[debug] Filter chain:    hqdn3d=3.5:3.5:4.5:4.5
+[debug] Encoder params:  preset=6, crf=27
 ```
 
 ### Context-Aware Displays
@@ -493,42 +680,36 @@ Encoding: 45.2%, ETA: 00:22:30
 - Show full commands in verbose mode, simplified in regular mode
 
 ```
-===== FFMPEG COMMAND =====
+----- FFMPEG COMMAND -----
 
 ffmpeg
   -hwaccel videotoolbox -hwaccel_output_format nv12
   -i movie.mkv
   -c:v libsvtav1 -preset 6 -crf 27 -g 240 -pix_fmt yuv420p10le
-  -svtav1-params film-grain=10
-  -vf hqdn3d=3.5:3.5:4.5:4.5
+  -svtav1-params film-grain=4
+  -vf hqdn3d=0.5:0.4:2:2
   -c:a libopus -b:a 128k -ac 6 -ar 48000
   -movflags +faststart
   -y movie.av1.mp4
 ```
 
-### Grain Analysis Output
+### Processing Configuration Output
 
-- Show clear comparison between grain levels
-- Use visual indicators (bars) to represent relative file sizes
-- Highlight the selected/optimal level
-- Include brief explanation of results
+- Show applied denoising and film grain settings
+- Highlight the applied configuration
+- Include brief explanation of conservative approach
 
 ```
-===== GRAIN ANALYSIS RESULTS =====
+----- PROCESSING CONFIGURATION -----
 
-✓ Analysis complete
+✓ Configuration applied
 
-  Detected Grain Level:   Moderate
-  Estimated Size:         1.24 GB
-  Estimated Savings:      65% vs. Baseline
+  Denoising:             VeryLight (hqdn3d=0.5:0.4:2:2)
+  Film Grain:            Level 4 (applied)  ← "Level 4 (applied)" in green
+  Estimated Size:        1.24 GB
+  Estimated Savings:     65% vs. no processing
 
-  Grain Level Comparison:
-    Moderate (selected) 1.24 GB  #####################
-    Elevated           1.35 GB  #######################
-    Light              1.42 GB  ########################
-    Baseline           3.56 GB  ############################################################
-
-  Explanation: The optimal grain level provides the best balance between file size reduction and video quality.
+  Explanation: Conservative denoising with film grain synthesis provides modest file size reduction while preserving excellent visual quality.
 ```
 
 ### Encoding Progress
@@ -539,7 +720,7 @@ ffmpeg
 - Provide summary upon completion
 
 ```
-===== ENCODING PROGRESS =====
+----- ENCODING PROGRESS -----
 
 ⧖ Encoding: 45.2% [##########.................] (00:46:23 / 01:42:35)
   Speed: 2.5x, Avg FPS: 24.5, ETA: 00:22:30
@@ -554,35 +735,10 @@ ffmpeg
 
 ## Scriptability
 
-- Support machine-readable output with `--json` flag
 - Ensure all output is grep-friendly
-- Provide quiet mode with `-q` or `--quiet` flag
+- Future: Provide quiet mode with `-q` or `--quiet` flag
 - Exit with appropriate status codes
-
-### JSON Output Format
-
-```json
-{
-  "status": "in_progress",
-  "operation": "encoding",
-  "progress": {
-    "percent": 45.2,
-    "current_time": "00:46:23",
-    "total_time": "01:42:35",
-    "eta": "00:22:30",
-    "speed": 2.5,
-    "fps": 24.5
-  },
-  "details": {
-    "pass": 1,
-    "total_passes": 1,
-    "frames_processed": 66574,
-    "total_frames": 147285,
-    "bitrate": 1245,
-    "current_size_mb": 562.4
-  }
-}
-```
+- Consider machine-readable output formats for future implementation
 
 ## Accessibility Considerations
 
@@ -591,7 +747,6 @@ ffmpeg
 - Provide verbose mode for additional context
 - Support different terminal sizes and capabilities
 - Ensure readability in both light and dark terminal themes
-- Add optional descriptions for screen readers with `--screen-reader` flag
 
 ## Terminal Testing Grid
 
@@ -616,10 +771,7 @@ To ensure consistent visual hierarchy across environments, test your CLI in the 
 - Remote shell environments (SSH sessions)
 
 ### Accessibility Scenarios
-- High contrast mode
-- Screen readers (test with descriptions)
 - No color mode (`NO_COLOR=1` environment variable)
-- Different color schemes (light/dark terminals)
 
 ### Test Case Example
 
@@ -634,25 +786,81 @@ Document any adjustments made for specific combinations.
 
 ## Implementation Guidelines
 
-- Use the `terminal.rs` module for all user-facing output
-- Leverage the `styling.rs` module for consistent colors and formatting
-- Follow the component-based approach for complex output
-- Test output in various terminal sizes and environments
-- Implement responsive output algorithms:
+### Template-Based Architecture
+
+Drapto uses a **template-based formatting system** to ensure consistent visual hierarchy and spacing across all terminal output. This approach eliminates formatting bugs and provides maintainable, predictable output.
+
+#### Core Principles
+
+1. **Centralized Formatting**: All output patterns are defined once as templates
+2. **Data-Driven Display**: Templates receive structured data, not formatting instructions
+3. **Consistent Spacing**: Templates handle all spacing and indentation automatically
+4. **Type Safety**: Each template expects specific data structures
+
+#### Template System Structure
 
 ```rust
-fn adjust_output_by_width(width: u16) -> OutputDetail {
-    match width {
-        0..=50 => OutputDetail::Minimal,
-        51..=80 => OutputDetail::Standard,
-        _ => OutputDetail::Full
-    }
+// Template definition
+pub enum TemplateData<'a> {
+    KeyValueList {
+        title: &'a str,
+        items: Vec<(&'a str, &'a str)>,
+    },
+    GroupedKeyValues {
+        title: &'a str,
+        groups: Vec<GroupData<'a>>,
+    },
+    // ... other templates
 }
+
+// Usage
+templates::render(TemplateData::KeyValueList {
+    title: "INITIALIZATION",
+    items: vec![("Input file", "movie.mkv"), ("Duration", "01:42:35")],
+});
 ```
 
-- Create a reusable style guide library to ensure consistency
-- Implement visual regression testing
-- Add user feedback mechanisms
+#### Available Templates
+
+1. **`SectionHeader`**: Main section headers with consistent spacing
+2. **`KeyValueList`**: Simple key-value pairs under a section
+3. **`GroupedKeyValues`**: Key-values organized into named groups
+4. **`ProgressBar`**: Progress indication with details
+5. **`SpinnerToResults`**: Spinner that transitions to results
+6. **`CompletionSummary`**: Success message with grouped results
+
+#### Template Formatting Rules
+
+- **Section headers**: Always include leading blank line, trailing blank line
+- **Groups**: Separated by single blank lines
+- **Key-value alignment**: Consistent 18-character label width
+- **Emphasis**: Green bold for significant values (>50% reductions)
+- **Indentation**: 2 spaces for all content under sections
+
+#### Implementation Benefits
+
+- **No manual spacing**: Templates handle all whitespace automatically
+- **Consistent output**: Same template = identical formatting everywhere
+- **Easy maintenance**: Fix formatting in one place, applies everywhere
+- **Future-proof**: Easy to add JSON output, different terminal widths, etc.
+- **Testable**: Template output is deterministic and verifiable
+
+#### Migration from Legacy System
+
+The template system replaces the previous `TerminalPresenter` with individual methods:
+
+```rust
+// Old approach (error-prone)
+presenter.section("TITLE");
+presenter.subsection("...");
+presenter.status("...");
+
+// New approach (bulletproof)
+templates::render(TemplateData::KeyValueList {
+    title: "TITLE",
+    items: vec![("Key", "Value")],
+});
+```
 
 ## Command Line Arguments
 
@@ -661,27 +869,88 @@ Drapto follows these conventions for command line arguments:
 - **Short flags**: Single-letter flags prefixed with a single dash (`-v`)
 - **Long flags**: Full word flags prefixed with double dash (`--verbose`)
 - **Arguments**: Values that follow flags (`--output video.mp4`)
-- **Positional arguments**: Required values without flags (`drapto encode video.mp4`)
+- **Explicit flags preferred**: Use flags for clarity (`-i input.mkv` rather than positional arguments)
 
 ### Standard Flags
 
 | Short | Long | Description |
 |-------|------|-------------|
 | `-h` | `--help` | Show help text |
-| `-v` | `--verbose` | Show detailed output |
-| `-q` | `--quiet` | Suppress non-essential output |
+| `-v` | `--verbose` | Enable debug-level output |
+| `-V` | `--version` | Show version information |
+| `-i` | `--input` | Specify input file |
 | `-o` | `--output` | Specify output file |
-| `-f` | `--force` | Force operation without confirmation |
-| | `--json` | Output in JSON format |
 | | `--no-color` | Disable colored output |
-| | `--width` | Override detected terminal width |
-| | `--screen-reader` | Enable screen reader descriptions |
+| | `--interactive` | Run in foreground instead of as daemon |
+
+Future flags that may be added:
+- `-q` / `--quiet`: Show only warnings and errors
+- `--width`: Override detected terminal width
+
+### Special Conventions
+
+- **Stdin/Stdout**: Support `-` as a filename to read from stdin or write to stdout
+  ```bash
+  # Read from stdin
+  cat video.mkv | drapto encode -i - -o output.mp4
+  
+  # Write to stdout
+  drapto encode -i input.mkv -o - | another-command
+  ```
 
 ## Help
 
 - Help should be available via `drapto --help` and `drapto command --help`
 - Each command should have a concise description, usage information, and examples
 - Help text should follow the same visual hierarchy principles
+- Include 1-2 practical example invocations in help text
+
+## Configuration (Future)
+
+When configuration support is added, follow this precedence order:
+
+1. **Command-line flags** (highest priority)
+2. **Environment variables** (e.g., `DRAPTO_OUTPUT_DIR`)
+3. **Project-level configuration** (e.g., `.drapto.toml` in project directory)
+4. **User-level configuration** (e.g., `~/.config/drapto/config.toml`)
+5. **System-wide configuration** (lowest priority)
+
+Configuration files should:
+- Use TOML format for human readability
+- Follow XDG Base Directory specification
+- Be optional - the tool should work without any configuration
+
+## Responsive Feedback
+
+Following the "responsive is more important than fast" principle:
+
+- **Show something within 100ms** - Even just "Starting..." is better than silence
+- **Use progressive detail** for long operations (see Progress Feedback section)
+- **Validate input early** and fail fast with helpful messages
+- **Print status before heavy operations** so users know the tool is working
+
+```
+# Good - Immediate feedback
+$ drapto encode -i large_file.mkv -o output/
+» Initializing encoder...  ← Appears immediately
+» Analyzing video properties...  ← Updates as work progresses
+
+# Bad - Silent delay
+$ drapto encode -i large_file.mkv -o output/
+[5 second delay with no output]
+----- INITIALIZATION -----  ← User wonders if it's working
+```
+
+## Anti-Patterns to Avoid
+
+Based on CLI best practices, avoid these patterns:
+
+1. **Don't require interactive prompts** - All functionality should be accessible via flags
+2. **Don't create time bombs** - Avoid hard dependencies on external services
+3. **Don't abbreviate subcommands** - Be explicit rather than clever
+4. **Don't output developer-centric information by default** - Use debug mode for internals
+5. **Don't ignore TTY detection** - Adapt output for piping vs. interactive use
+6. **Don't overuse color** - Use it intentionally for emphasis, not decoration
 
 ## Detailed Examples
 
@@ -692,171 +961,89 @@ This section provides comprehensive examples of proper terminal output following
 Below is an example of a complete workflow showing the proper terminal output for a video encoding process:
 
 ```
-$ drapto encode movie.mkv -i input_dir/ -o output_dir/
+$ drapto encode -i movie.mkv -o output_dir/
 
-===== INITIALIZATION =====
+━━━━━ HARDWARE ━━━━━
 
-  Input file:      movie.mkv
-  Output file:     movie.av1.mp4
-  Duration:        01:42:35
-  Resolution:      1920x1080 (HD)
-  Hardware:        VideoToolbox (decode only)
+  Hostname:          my-computer
+  CPU:               Intel Core i7-9750H
+  Memory:            16 GB
+  Decoder:           VideoToolbox
 
-===== VIDEO ANALYSIS =====
+----- VIDEO DETAILS -----
 
-  » Detecting black bars
-    ⧖ Progress: 100.0% [##############################] (10.0 / 10.0s)
+  File:              movie.mkv
+  Duration:          01:42:35
+  Resolution:        1920x1080 (HD)
+  Dynamic range:     SDR
+  Audio:             5.1 surround
 
+----- VIDEO ANALYSIS -----
+
+  ⠋ Detecting black bars...
+  
   ✓ Crop detection complete
-    Detected crop:    None required
+  Detected crop:     None required
 
-  » Analyzing grain levels
-    Extracting 5 samples for analysis...
-
-    Sample 1/5: 00:15:23
-    ⧖ Progress: 100.0% [##############################] (10.0 / 10.0s)
-
-    Sample 2/5: 00:32:47
-    ⧖ Progress: 100.0% [##############################] (10.0 / 10.0s)
-
-    Sample 3/5: 00:51:18
-    ⧖ Progress: 100.0% [##############################] (10.0 / 10.0s)
-
-    Sample 4/5: 01:12:05
-    ⧖ Progress: 100.0% [##############################] (10.0 / 10.0s)
-
-    Sample 5/5: 01:35:42
-    ⧖ Progress: 100.0% [##############################] (10.0 / 10.0s)
-
-===== GRAIN ANALYSIS RESULTS =====
-
-  ✓ Analysis complete
-
-    Detected Grain Level:   Moderate
-    Estimated Size:         1.24 GB
-    Estimated Savings:      65% vs. Baseline
-
-    Grain Level Comparison:
-      Moderate (selected) 1.24 GB  #####################
-      Elevated           1.35 GB  #######################
-      Light              1.42 GB  ########################
-      Baseline           3.56 GB  ############################################################
-
-    Explanation: The optimal grain level provides the best balance between file size reduction and video quality.
-
-===== ENCODING CONFIGURATION =====
+----- ENCODING CONFIGURATION -----
 
   Video:
-    Preset:             medium (SVT-AV1 preset 6) (default)
-    Quality:            27 (CRF)
-    Grain Level:        Moderate (hqdn3d=3.5:3.5:4.5:4.5)
-    Film Grain Synth:   Level 10 (default)
-
-  Hardware:
-    Acceleration:       VideoToolbox (decode only)
+    Preset:          SVT-AV1 preset 6
+    Quality:         CRF 27
+    Denoising:       VeryLight (hqdn3d=0.5:0.4:2:2)
+    Film Grain Synth: Level 4
 
   Advanced:
-    Pixel Format:       yuv420p10le (default)
-    Color Space:        bt709 (default)
+    Pixel Format:    yuv420p10le
+    Color Space:     bt709
 
-===== ENCODING PROGRESS =====
+----- ENCODING PROGRESS -----
 
-  ⧖ Encoding: 45.2% [##########.................] (00:46:23 / 01:42:35)
-    Speed: 2.5x, Avg FPS: 24.5, ETA: 00:22:30
+  Encoding: 45% [##########....................] (00:46:23 / 01:42:35)
+  Speed: 2.5x, ETA: 00:22:30
 
-    Pass:              1/1
-    Frames:            66,574 / 147,285
-    Bitrate:           1,245 kb/s
-    Size:              562.4 MB (current)
-
-    Press Ctrl+C to cancel encoding
-
-===== ENCODING COMPLETE =====
+----- ENCODING COMPLETE -----
 
   ✓ Encoding finished successfully
 
-    Input file:        movie.mkv
-    Output file:       movie.av1.mp4
-    Duration:          01:42:35
-    Original size:     3.56 GB
-    Encoded size:      1.24 GB
-    Reduction:         65.2%
+  Input file:        movie.mkv
+  Output file:       movie.av1.mp4
+  Original size:     3.56 GB
+  Encoded size:      1.24 GB
+  Reduction:         65.2%
 
-    Video stream:      AV1 (libsvtav1), 1920x1080, 1,145 kb/s
-    Audio stream:      Opus, 5.1 channels, 128 kb/s
+  Video stream:      AV1 (libsvtav1), 1920x1080
+  Audio stream:      Opus, 5.1 channels, 128 kb/s
 
-    Total time:        00:40:12
-    Average speed:     2.55x
+  Total time:        00:40:12
+  Average speed:     2.55x
 
-    The encoded file is ready at: /home/user/videos/movie.av1.mp4
+  The encoded file is ready at: /home/user/videos/movie.av1.mp4
 ```
 
-### Grain Analysis Detail Example
+### Processing Configuration Detail Example
 
 ```
-===== GRAIN ANALYSIS PHASE 1: INITIAL SAMPLING =====
+----- PROCESSING CONFIGURATION -----
 
-  » Testing baseline grain levels on 5 samples
+  » Applying conservative denoising configuration
 
-    Sample 1/5: 00:15:23
-    ⧖ Progress: 100.0% [##############################] (10.0 / 10.0s)
+    ◆ Denoising: VeryLight (hqdn3d=0.5:0.4:2:2)
+    ◆ Film Grain: Level 4 synthesis
+    ◆ Estimated impact: ~10-15% size reduction
 
-    Results:
-      Baseline:         15.2 MB
-      Light:            10.8 MB
-      Moderate:          8.5 MB
-      Elevated:          8.2 MB
-      Heavy:             8.1 MB
+  ✓ Configuration applied
 
-    Sample 2/5: 00:32:47
-    ⧖ Progress: 100.0% [##############################] (10.0 / 10.0s)
-
-    Results:
-      Baseline:         14.8 MB
-      Light:            10.5 MB
-      Moderate:          8.3 MB
-      Elevated:          8.1 MB
-      Heavy:             8.0 MB
-
-    [Additional samples omitted for brevity]
-
-===== GRAIN ANALYSIS PHASE 2: REFINEMENT =====
-
-  » Testing refined grain parameters
-
-    Testing interpolated level between Light and Moderate
-    ⧖ Progress: 100.0% [##############################] (10.0 / 10.0s)
-
-    Results:
-      Light-Moderate:    9.2 MB
-
-    Testing interpolated level between Moderate and Elevated
-    ⧖ Progress: 100.0% [##############################] (10.0 / 10.0s)
-
-    Results:
-      Moderate-Elevated: 8.3 MB
-
-===== GRAIN ANALYSIS RESULTS =====
-
-  ✓ Analysis complete
-
-    Detected Grain Level:   Moderate
-    Estimated Size:         1.24 GB
-    Estimated Savings:      65% vs. Baseline
-
-    Grain Level Comparison:
-      Moderate (selected) 1.24 GB  #####################
-      Light-Moderate      1.38 GB  ######################
-      Elevated            1.35 GB  #######################
-      Light               1.42 GB  ########################
-      Moderate-Elevated   1.30 GB  ####################
-      Heavy               1.28 GB  ####################
-      Baseline            3.56 GB  ############################################################
+    Processing Settings:
+      Denoising:           VeryLight (hqdn3d=0.5:0.4:2:2)
+      Film Grain:          Level 4
+      Quality Impact:      Minimal (conservative settings)
+      Size Reduction:      Modest but reliable
 
     Technical Details:
-      hqdn3d filter:       3.5:3.5:4.5:4.5
-      Film grain synthesis: Level 10
-      Knee threshold:      0.8
+      hqdn3d filter:       0.5:0.4:2:2
+      Film grain synthesis: Level 4
+      Approach:            Conservative for quality preservation
 ```
 
 ### Error Handling Examples
@@ -903,24 +1090,9 @@ $ drapto encode movie.mkv -i input_dir/ -o output_dir/
               Run with --verbose for more detailed FFmpeg output
 ```
 
-### Progressive Disclosure Examples
+### Logging Level Examples
 
-#### Basic Output (Default)
-
-```
-✓ Encoding complete: 1.24 GB (65.2% reduction)
-```
-
-#### Standard Output
-
-```
-✓ Encoding complete
-  Input:           movie.mkv (3.56 GB)
-  Output:          movie.av1.mp4 (1.24 GB)
-  Reduction:       65.2%
-```
-
-#### Detailed Output (--verbose)
+#### Standard Output (Info Level - Default)
 
 ```
 ✓ Encoding complete
@@ -931,11 +1103,30 @@ $ drapto encode movie.mkv -i input_dir/ -o output_dir/
   Video stream:    AV1 (libsvtav1), 1920x1080, 1,145 kb/s
   Audio stream:    Opus, 5.1 channels, 128 kb/s
 
-  Processing:      00:40:12 at 2.55x speed
-  Encoder:         libsvtav1 (SVT-AV1 v1.2.1)
-  Filter chain:    hqdn3d=3.5:3.5:4.5:4.5
+  Total time:      00:40:12
+  Average speed:   2.55x
+```
 
-  The encoded file is ready at: /home/user/videos/movie.av1.mp4
+#### Verbose Output (Debug Level - with --verbose flag)
+
+```
+✓ Encoding complete
+  Input:           movie.mkv (3.56 GB)
+  Output:          movie.av1.mp4 (1.24 GB)
+  Reduction:       65.2%
+
+  Video stream:    AV1 (libsvtav1), 1920x1080, 1,145 kb/s
+  Audio stream:    Opus, 5.1 channels, 128 kb/s
+
+  Total time:      00:40:12
+  Average speed:   2.55x
+
+[debug] Encoder:         libsvtav1 (SVT-AV1 v1.2.1)
+[debug] Filter chain:    hqdn3d=3.5:3.5:4.5:4.5
+[debug] Pixel format:    yuv420p10le
+[debug] Color space:     bt709
+[debug] Peak memory:     2.3 GB
+[debug] Temp files cleaned: 5 (562.4 MB)
 ```
 
 ### Visual Alignment Examples
@@ -967,7 +1158,7 @@ $ drapto encode movie.mkv -i input_dir/ -o output_dir/
 » Encoding: 12% [##...............]
 
 # After 30 seconds
-» Encoding: 45.2% [##########.................]
+» Encoding: 45.2% [##########.................] (00:46:23 / 01:42:35)
   Speed: 2.5x, ETA: 00:22:30
 ```
 
@@ -975,20 +1166,21 @@ $ drapto encode movie.mkv -i input_dir/ -o output_dir/
 
 ```
 # Interactive mode (with spinner animation)
-⧖ Analyzing grain levels...
+⧖ Detecting black bars...
 
 # Non-interactive mode (e.g., when piped to a file)
-[INFO] Analyzing grain levels...
+[INFO] Detecting black bars...
 ```
 
 ### Width-Responsive Examples
 
 ```
 # Wide terminal (120+ columns)
-⧖ Encoding: 45.2% [###########.................................] (00:46:23 / 01:42:35) Speed: 2.5x, ETA: 00:22:30
+⧖ Encoding: 45.2% [###########.................................] (00:46:23 / 01:42:35)
+  Speed: 2.5x, ETA: 00:22:30
 
 # Standard terminal (80 columns)
-⧖ Encoding: 45.2% [##########.................]
+⧖ Encoding: 45.2% [##########.................] (00:46:23 / 01:42:35)
   Speed: 2.5x, ETA: 00:22:30
 
 # Narrow terminal (60 columns or less)
@@ -1000,12 +1192,68 @@ $ drapto encode movie.mkv -i input_dir/ -o output_dir/
 
 ```
 # Entry point (clear intent)
-» Starting grain analysis on 5 samples...
+» Applying processing configuration...
 
 # Progress indicators (clear status)
-⧖ Analyzing sample 3/5... (60% complete)
+⧖ Configuring denoising and film grain... (80% complete)
 
 # Exit point (clear result and next steps)
-✓ Analysis complete: Moderate grain detected
-  Next: Beginning encoding with optimized settings
+✓ Configuration applied: VeryLight denoising with Level 4 film grain
+  Next: Beginning encoding with configured settings
 ```
+
+### Batch Processing Output
+
+When processing multiple files, Drapto provides additional context and summary information using a distinct visual hierarchy:
+
+#### Batch Initialization
+
+```
+┌───── BATCH ENCODING ─────┐  ← Yellow batch header
+
+  Processing 3 files:
+    1. movie1.mkv
+    2. movie2.mkv
+    3. movie3.mkv
+
+  Output directory: /home/user/videos/output
+```
+
+#### File Progress Headers
+
+Between each file in a batch, a distinct progress header is shown:
+
+```
+────▶ FILE 1 OF 3 ────  ← Magenta progress header
+
+----- INITIALIZATION -----  ← Cyan section header
+...
+```
+
+The visual hierarchy uses three distinct header styles:
+- **Batch headers** (yellow, simple box `┌─────┐`): Highest level for batch operations
+- **File progress headers** (magenta, dashes with arrow `────▶`): Mid-level progress indicators
+- **Section headers** (cyan, dashes `-----`): Standard workflow phases within files
+
+Each header type uses consistent coloring (entire header, not just text) to create clear visual separation.
+
+#### Batch Completion Summary
+
+```
+┌───── BATCH COMPLETE ─────┐  ← Yellow batch header
+
+  ✓ Successfully encoded 3 files
+
+  Total original size:   10.68 GB
+  Total encoded size:    3.72 GB
+  Total reduction:       65.2%
+  Total encoding time:   02:05:33
+  Average speed:         2.45x
+
+  Files processed:
+    ✓ movie1.mkv (67.3% reduction)
+    ✓ movie2.mkv (62.8% reduction)
+    ✓ movie3.mkv (65.5% reduction)
+```
+
+Single file operations do not show batch headers, maintaining the existing clean output for individual encodes.

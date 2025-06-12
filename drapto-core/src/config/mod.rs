@@ -1,47 +1,12 @@
-// ============================================================================
-// drapto-core/src/config/mod.rs
-// ============================================================================
-//
-// CONFIGURATION: Core Configuration Structures and Constants
-//
-// This module defines the configuration structures and constants used throughout
-// the drapto-core library. It provides a flexible way to configure the video
-// processing behavior, including encoding parameters, quality settings, and
-// analysis options.
-//
-// KEY COMPONENTS:
-// - CoreConfig: Main configuration structure for the library
-// - CoreConfigBuilder: Builder pattern for creating CoreConfig instances
-// - FilmGrainMetricType: Enum for different grain analysis strategies
-// - Default constants: Predefined values for common settings
-//
-// USAGE:
-// Instances of CoreConfig are created by consumers of the library (like drapto-cli)
-// and passed to the process_videos function to control encoding behavior.
-//
-// DESIGN PHILOSOPHY:
-// The configuration is designed to be flexible and extensible, with sensible
-// defaults for most parameters. Optional fields allow for fine-tuning specific
-// aspects of the encoding process when needed.
-//
-// AI-ASSISTANT-INFO: Configuration structures and constants for the drapto-core library
+//! Configuration structures and constants for the drapto-core library.
+//!
+//! This module provides the configuration system for video processing behavior,
+//! including encoding parameters, quality settings, and analysis options.
 
-// ---- Module declarations ----
-mod builder;
-
-// ---- Standard library imports ----
+use crate::error::CoreError;
 use std::path::PathBuf;
 
-// ---- Internal module imports ----
-use crate::processing::detection::grain_analysis::GrainLevel;
-
-// ---- Re-exports ----
-pub use builder::CoreConfigBuilder;
-
-
-// ============================================================================
-// DEFAULT CONSTANTS
-// ============================================================================
+// Default constants
 
 /// Default CRF (Constant Rate Factor) quality value for Standard Definition videos (<1920 width).
 /// Lower values produce higher quality but larger files.
@@ -56,64 +21,54 @@ pub const DEFAULT_CORE_QUALITY_HD: u8 = 27;
 /// Same as HD by default, but can be overridden separately.
 pub const DEFAULT_CORE_QUALITY_UHD: u8 = 27;
 
-/// Default encoder preset (0-13, lower is slower/better quality)
+/// Default SVT-AV1 preset (0-13, lower is slower/better quality)
 /// Value 6 provides a good balance between speed and quality.
-pub const DEFAULT_ENCODER_PRESET: u8 = 6;
+pub const DEFAULT_SVT_AV1_PRESET: u8 = 6;
+
+/// Default SVT-AV1 tune parameter
+/// Different SVT-AV1 forks may use this value differently
+pub const DEFAULT_SVT_AV1_TUNE: u8 = 3;
 
 /// Default crop mode for the main encode.
 pub const DEFAULT_CROP_MODE: &str = "auto";
 
-/// Default sample duration for grain analysis in seconds.
-pub const DEFAULT_GRAIN_SAMPLE_DURATION: u32 = 10;
+/// Fixed denoising parameters for hqdn3d filter for HDR content.
+/// Format: spatial_luma:spatial_chroma:temporal_luma:temporal_chroma
+/// HDR content requires lighter denoising to preserve detail
+pub const FIXED_HQDN3D_PARAMS_HDR: &str = "1:0.8:2.5:2";
 
-/// Default knee point threshold for grain analysis (0.0-1.0).
-/// This represents the point of diminishing returns in denoising strength.
-pub const DEFAULT_GRAIN_KNEE_THRESHOLD: f64 = 0.8;
+/// Fixed denoising parameters for hqdn3d filter for SDR content.
+/// Format: spatial_luma:spatial_chroma:temporal_luma:temporal_chroma
+/// SDR content can use slightly stronger denoising
+pub const FIXED_HQDN3D_PARAMS_SDR: &str = "2:1.5:3:2.5";
 
-/// Default maximum allowed grain level for any analysis result.
-pub const DEFAULT_GRAIN_MAX_LEVEL: GrainLevel = GrainLevel::Elevated;
+/// Fixed film grain synthesis value for SVT-AV1.
+/// Range: 0-50, where 0 is no grain and 50 is maximum grain.
+pub const FIXED_FILM_GRAIN_VALUE: u8 = 4;
 
-/// Default number of refinement points to test during adaptive refinement.
-pub const DEFAULT_GRAIN_REFINEMENT_POINTS: usize = 5;
+/// Width threshold for Ultra High Definition (4K) videos.
+/// Videos with width >= this value are considered UHD.
+pub const UHD_WIDTH_THRESHOLD: u32 = 3840;
 
-// ============================================================================
-// CORE CONFIGURATION
-// ============================================================================
+/// Width threshold for High Definition videos.
+/// Videos with width >= this value (but < UHD threshold) are considered HD.
+pub const HD_WIDTH_THRESHOLD: u32 = 1920;
 
-/// Main configuration structure for the drapto-core library.
-///
-/// This structure holds all the parameters required for video processing,
-/// including paths, encoding settings, and analysis options. It is typically
-/// created by the consumer of the library (e.g., drapto-cli) and passed to
-/// the process_videos function.
-///
-/// All fields have sensible defaults, so only the required path fields need to be set.
-/// The builder pattern provides a convenient way to create and configure instances.
-///
-/// # Examples
-///
-/// ```rust,no_run
-/// use drapto_core::config::CoreConfigBuilder;
-/// use drapto_core::processing::detection::grain_analysis::GrainLevel;
-/// use std::path::PathBuf;
-///
-/// let config = CoreConfigBuilder::new()
-///     .input_dir(PathBuf::from("/path/to/input"))
-///     .output_dir(PathBuf::from("/path/to/output"))
-///     .log_dir(PathBuf::from("/path/to/logs"))
-///     .enable_denoise(true)
-///     .encoder_preset(6)
-///     .quality_sd(24)
-///     .quality_hd(26)
-///     .quality_uhd(28)
-///     .crop_mode("auto")
-///     .ntfy_topic("https://ntfy.sh/my-topic")
-///     .film_grain_max_level(GrainLevel::Moderate)
-///     .build();
-/// ```
+/// HDR color spaces used for HDR detection.
+/// Videos with these color spaces are considered HDR.
+pub const HDR_COLOR_SPACES: &[&str] = &["bt2020nc", "bt2020c"];
+
+/// Default cooldown period between encodes in seconds.
+/// This helps ensure notifications arrive in order when processing multiple files.
+pub const DEFAULT_ENCODE_COOLDOWN_SECS: u64 = 3;
+
+/// Progress logging interval in percent.
+/// Progress will be logged to file at this percentage interval (e.g., 5 = every 5%).
+pub const PROGRESS_LOG_INTERVAL_PERCENT: u8 = 5;
+
+/// Configuration for video processing including paths and encoding settings.
 #[derive(Debug, Clone)]
 pub struct CoreConfig {
-    // ---- Path Configuration ----
     /// Directory containing input video files to process
     pub input_dir: PathBuf,
 
@@ -123,13 +78,16 @@ pub struct CoreConfig {
     /// Directory for log files and temporary files
     pub log_dir: PathBuf,
 
-    /// Optional directory for temporary files (defaults to output_dir)
+    /// Optional directory for temporary files (defaults to `output_dir`)
     pub temp_dir: Option<PathBuf>,
 
-    // ---- Encoder Settings ----
-    /// Encoder preset (0-13, lower is slower/better quality)
-    /// Default value is 6, which provides a good balance between speed and quality
-    pub encoder_preset: u8,
+    /// SVT-AV1 preset (0-13, lower is slower/better quality)
+    /// Default: 6 for balanced speed/quality
+    pub svt_av1_preset: u8,
+
+    /// SVT-AV1 tune parameter
+    /// Different SVT-AV1 forks may use this value differently
+    pub svt_av1_tune: u8,
 
     /// CRF quality for Standard Definition videos (<1920 width)
     /// Lower values produce higher quality but larger files
@@ -144,62 +102,195 @@ pub struct CoreConfig {
     /// Crop mode for the main encode ("auto", "none", etc.)
     pub crop_mode: String,
 
-    // ---- Notification Settings ----
     /// Optional ntfy.sh topic URL for sending notifications
     pub ntfy_topic: Option<String>,
 
-    // ---- Processing Options ----
     /// Whether to enable light video denoising (hqdn3d)
-    /// When true, grain analysis will be performed to determine optimal parameters
+    /// When true, applies fixed VeryLight denoising with film grain synthesis
     pub enable_denoise: bool,
 
-    // ---- Grain Analysis Configuration ----
-    /// Sample duration for grain analysis in seconds
-    /// Shorter samples process faster but may be less representative
-    pub film_grain_sample_duration: u32,
-
-    /// Knee point threshold for grain analysis (0.0-1.0)
-    /// This represents the point of diminishing returns in denoising strength
-    /// A value of 0.8 means we look for the point where we achieve 80% of the
-    /// maximum possible file size reduction
-    pub film_grain_knee_threshold: f64,
-
-    /// Maximum allowed grain level for any analysis result
-    /// This prevents excessive denoising even if analysis suggests it
-    pub film_grain_max_level: GrainLevel,
-
-    /// Number of refinement points to test during adaptive refinement
-    /// More points provide more accurate results but increase processing time
-    pub film_grain_refinement_points_count: usize,
+    /// Cooldown period in seconds between encodes when processing multiple files.
+    /// Helps ensure notifications arrive in order.
+    pub encode_cooldown_secs: u64,
 }
 
 impl Default for CoreConfig {
     fn default() -> Self {
         Self {
-            // Path Configuration
             input_dir: PathBuf::from("."),
             output_dir: PathBuf::from("."),
             log_dir: PathBuf::from("."),
             temp_dir: None,
-
-            // Encoder Settings
-            encoder_preset: DEFAULT_ENCODER_PRESET,
+            svt_av1_preset: DEFAULT_SVT_AV1_PRESET,
+            svt_av1_tune: DEFAULT_SVT_AV1_TUNE,
             quality_sd: DEFAULT_CORE_QUALITY_SD,
             quality_hd: DEFAULT_CORE_QUALITY_HD,
             quality_uhd: DEFAULT_CORE_QUALITY_UHD,
             crop_mode: DEFAULT_CROP_MODE.to_string(),
-
-            // Notification Settings
             ntfy_topic: None,
-
-            // Processing Options
             enable_denoise: true,
-
-            // Grain Analysis Configuration
-            film_grain_sample_duration: DEFAULT_GRAIN_SAMPLE_DURATION,
-            film_grain_knee_threshold: DEFAULT_GRAIN_KNEE_THRESHOLD,
-            film_grain_max_level: DEFAULT_GRAIN_MAX_LEVEL,
-            film_grain_refinement_points_count: DEFAULT_GRAIN_REFINEMENT_POINTS,
+            encode_cooldown_secs: DEFAULT_ENCODE_COOLDOWN_SECS,
         }
+    }
+}
+
+impl CoreConfig {
+    /// Creates config with required paths. Other fields use defaults.
+    pub fn new(input_dir: PathBuf, output_dir: PathBuf, log_dir: PathBuf) -> Self {
+        Self {
+            input_dir,
+            output_dir,
+            log_dir,
+            ..Default::default()
+        }
+    }
+
+    /// Validates svt_av1_preset (0-13) and quality values (0-63).
+    pub fn validate(&self) -> Result<(), CoreError> {
+        if self.svt_av1_preset > 13 {
+            return Err(CoreError::Config(format!(
+                "svt_av1_preset must be 0-13, got {}",
+                self.svt_av1_preset
+            )));
+        }
+
+        if self.quality_sd > 63 {
+            return Err(CoreError::Config(format!(
+                "quality_sd must be 0-63, got {}",
+                self.quality_sd
+            )));
+        }
+
+        if self.quality_hd > 63 {
+            return Err(CoreError::Config(format!(
+                "quality_hd must be 0-63, got {}",
+                self.quality_hd
+            )));
+        }
+
+        if self.quality_uhd > 63 {
+            return Err(CoreError::Config(format!(
+                "quality_uhd must be 0-63, got {}",
+                self.quality_uhd
+            )));
+        }
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_config() {
+        let config = CoreConfig::default();
+
+        // Check default values
+        assert_eq!(config.svt_av1_preset, DEFAULT_SVT_AV1_PRESET);
+        assert_eq!(config.quality_sd, DEFAULT_CORE_QUALITY_SD);
+        assert_eq!(config.quality_hd, DEFAULT_CORE_QUALITY_HD);
+        assert_eq!(config.quality_uhd, DEFAULT_CORE_QUALITY_UHD);
+        assert_eq!(config.crop_mode, DEFAULT_CROP_MODE);
+        assert_eq!(config.encode_cooldown_secs, DEFAULT_ENCODE_COOLDOWN_SECS);
+        assert!(config.enable_denoise);
+        assert!(config.ntfy_topic.is_none());
+        assert!(config.temp_dir.is_none());
+
+        // Validate default config should pass
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_new_config() {
+        let input = PathBuf::from("/input");
+        let output = PathBuf::from("/output");
+        let log = PathBuf::from("/log");
+
+        let config = CoreConfig::new(input.clone(), output.clone(), log.clone());
+
+        // Check paths are set correctly
+        assert_eq!(config.input_dir, input);
+        assert_eq!(config.output_dir, output);
+        assert_eq!(config.log_dir, log);
+
+        // Check other fields use defaults
+        assert_eq!(config.svt_av1_preset, DEFAULT_SVT_AV1_PRESET);
+        assert_eq!(config.quality_sd, DEFAULT_CORE_QUALITY_SD);
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_svt_av1_preset() {
+        let mut config = CoreConfig::default();
+
+        // Valid presets
+        for preset in 0..=13 {
+            config.svt_av1_preset = preset;
+            assert!(config.validate().is_ok());
+        }
+
+        // Invalid presets
+        config.svt_av1_preset = 14;
+        assert!(config.validate().is_err());
+
+        config.svt_av1_preset = 255;
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_validate_quality_values() {
+        let mut config = CoreConfig::default();
+
+        // Valid quality values
+        for quality in 0..=63 {
+            config.quality_sd = quality;
+            config.quality_hd = quality;
+            config.quality_uhd = quality;
+            assert!(config.validate().is_ok());
+        }
+
+        // Invalid SD quality
+        config = CoreConfig::default();
+        config.quality_sd = 64;
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("quality_sd"));
+
+        // Invalid HD quality
+        config = CoreConfig::default();
+        config.quality_hd = 64;
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("quality_hd"));
+
+        // Invalid UHD quality
+        config = CoreConfig::default();
+        config.quality_uhd = 64;
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("quality_uhd"));
+
+        // Multiple invalid values (should fail on first)
+        config = CoreConfig::default();
+        config.svt_av1_preset = 14;
+        config.quality_sd = 64;
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("svt_av1_preset"));
+    }
+
+    #[test]
+    fn test_constants() {
+        // Verify constants are reasonable values
+        assert!(DEFAULT_CORE_QUALITY_SD <= 63);
+        assert!(DEFAULT_CORE_QUALITY_HD <= 63);
+        assert!(DEFAULT_CORE_QUALITY_UHD <= 63);
+        assert!(DEFAULT_SVT_AV1_PRESET <= 13);
+        assert!(FIXED_FILM_GRAIN_VALUE <= 50);
+        assert!(HD_WIDTH_THRESHOLD < UHD_WIDTH_THRESHOLD);
+        assert_eq!(HDR_COLOR_SPACES.len(), 2);
+        assert!(DEFAULT_ENCODE_COOLDOWN_SECS > 0);
     }
 }

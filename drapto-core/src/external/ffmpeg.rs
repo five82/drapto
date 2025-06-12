@@ -1,347 +1,250 @@
-// ============================================================================
-// drapto-core/src/external/ffmpeg.rs
-// ============================================================================
-//
-// FFMPEG INTEGRATION: FFmpeg Command Building and Execution
-//
-// This module encapsulates the logic for executing ffmpeg commands using
-// ffmpeg-sidecar. It handles building complex ffmpeg command lines with
-// appropriate arguments for video and audio encoding, progress reporting,
-// and error handling.
-//
-// KEY COMPONENTS:
-// - EncodeParams: Structure defining encoding configuration parameters
-// - build_ffmpeg_command: Builds FFmpeg commands using ffmpeg-sidecar's builder pattern
-// - run_ffmpeg_encode: Executes and monitors the encoding process
-// - Film grain synthesis mapping from denoise parameters
-// - Progress reporting with real-time updates
-//
-// ARCHITECTURE:
-// The module uses dependency injection for the FFmpeg spawner, allowing for
-// testing without actual ffmpeg execution. It communicates with the progress
-// reporting system to provide user feedback on encoding status.
-//
-// AI-ASSISTANT-INFO: FFmpeg command generation and execution for encoding
+//! FFmpeg command building and execution for video encoding
+//!
+//! This module handles building complex ffmpeg command lines with
+//! appropriate arguments for video (libsvtav1) and audio (libopus) encoding,
+//! progress reporting, and error handling.
 
-// ---- Internal crate imports ----
 use crate::error::{CoreError, CoreResult, command_failed_error};
-use crate::processing::audio; // To access calculate_audio_bitrate
-use crate::processing::detection::grain_analysis::GrainLevel;
-use crate::progress_reporting::report_encode_start;
+use crate::events::{Event, EventDispatcher};
+use crate::processing::audio;
 
-// ---- External crate imports ----
 use ffmpeg_sidecar::command::FfmpegCommand;
-use log::{debug, error, info, warn};
+use log::debug;
 
-// ---- Standard library imports ----
-use std::path::{Path, PathBuf};
-use std::time::Instant;
+use std::path::PathBuf;
+use std::time::{Duration, Instant};
 
-/// Parameters required for running an FFmpeg encode operation.
+/// Parameters required for running an `FFmpeg` encode operation.
 #[derive(Debug, Clone)]
 pub struct EncodeParams {
     pub input_path: PathBuf,
     pub output_path: PathBuf,
-    pub quality: u32, // CRF value
-    pub preset: u8,   // SVT-AV1 preset
-    /// Whether to use hardware acceleration for decoding (when available)
+    pub quality: u32,
+    pub preset: u8,
+    pub tune: u8,
+    /// Whether to use hardware decoding (when available)
     pub use_hw_decode: bool,
-    pub crop_filter: Option<String>, // Optional crop filter string "crop=W:H:X:Y"
-    pub audio_channels: Vec<u32>,    // Detected audio channels for bitrate mapping
-    pub duration: f64,               // Total video duration in seconds for progress calculation
-    /// The final hqdn3d parameters determined by analysis (used if override is not provided).
+    pub crop_filter: Option<String>,
+    pub audio_channels: Vec<u32>,
+    pub duration: f64,
+    /// The fixed hqdn3d parameters for VeryLight denoising (used if override is not provided).
     pub hqdn3d_params: Option<String>,
-    // Add other parameters as needed (e.g., specific audio/subtitle stream selection)
+    // Actual values that will be used in FFmpeg command (for display purposes)
+    pub video_codec: String,
+    pub pixel_format: String,
+    pub color_space: String,
+    pub audio_codec: String,
+    pub film_grain_level: u8,
 }
 
-/// Builds and configures an FFmpeg command using ffmpeg-sidecar's builder pattern.
-///
-/// This function creates a complete FFmpeg command for video encoding with libsvtav1
-/// and audio encoding with libopus. It leverages ffmpeg-sidecar's builder methods
-/// for cleaner and more maintainable code.
-///
-/// # Arguments
-///
-/// * `params` - Encoding parameters, including quality, preset, and filters
-/// * `hqdn3d_override` - Optional override for the noise reduction filter parameters
-/// * `disable_audio` - Whether to disable audio encoding
-/// * `is_grain_analysis_sample` - Whether this is for grain analysis (simplified arguments)
-///
-/// # Returns
-///
-/// * `CoreResult<FfmpegCommand>` - The configured FFmpeg command ready for execution
+/// Builds FFmpeg command for libsvtav1 video and libopus audio encoding.
 pub fn build_ffmpeg_command(
     params: &EncodeParams,
     hqdn3d_override: Option<&str>,
     disable_audio: bool,
-    is_grain_analysis_sample: bool,
+    has_denoising: bool,
 ) -> CoreResult<FfmpegCommand> {
     // Use the new builder for common setup
     let mut cmd = crate::external::FfmpegCommandBuilder::new()
         .with_hardware_accel(params.use_hw_decode)
         .build();
-    
-    // Input file
     cmd.input(params.input_path.to_string_lossy().as_ref());
-    
-    // Audio filter (if not disabled)
-    if !is_grain_analysis_sample && !disable_audio {
+
+    if !disable_audio {
         cmd.args(["-af", "aformat=channel_layouts=7.1|5.1|stereo|mono"]);
     }
-    
-    // Build video filter chain using the new builder
-    let hqdn3d_to_use = hqdn3d_override.or(params.hqdn3d_params.as_deref());
+    let hqdn3d_to_use = if has_denoising {
+        hqdn3d_override.or(params.hqdn3d_params.as_deref())
+    } else {
+        None
+    };
     let filter_chain = crate::external::VideoFilterChain::new()
         .add_denoise(hqdn3d_to_use.unwrap_or(""))
         .add_crop(params.crop_filter.as_deref().unwrap_or(""))
         .build();
-    
-    // Apply video filters and report if any
+
     if let Some(ref filters) = filter_chain {
         cmd.args(["-vf", filters]);
-        crate::progress_reporting::report_video_filters(filters, is_grain_analysis_sample);
-        if is_grain_analysis_sample {
-            debug!("Applying video filters (grain sample): {}", filters);
-        }
+        log::debug!("Applying video filters: {}", filters);
     } else {
-        crate::progress_reporting::report_video_filters("", is_grain_analysis_sample);
+        log::debug!("No video filters applied.");
     }
-    
-    // Calculate film grain value
-    let film_grain_value = if let Some(denoise_params) = hqdn3d_to_use {
-        map_hqdn3d_to_film_grain(denoise_params)
-    } else {
-        0 // No denoise = no synthetic grain
-    };
-    
-    // Video encoding configuration
-    cmd.args(["-c:v", "libsvtav1"]);
-    cmd.args(["-pix_fmt", "yuv420p10le"]);
+
+    // Use film grain level from params (single source of truth)
+    let film_grain_value = params.film_grain_level;
+
+    // Video encoding configuration - use actual codec from params
+    cmd.args(["-c:v", &params.video_codec]);
+    cmd.args(["-pix_fmt", &params.pixel_format]);
     cmd.args(["-crf", &params.quality.to_string()]);
     cmd.args(["-preset", &params.preset.to_string()]);
-    
-    // Film grain synthesis parameters using the builder
+
     let svtav1_params = crate::external::SvtAv1ParamsBuilder::new()
+        .with_tune(params.tune)
         .with_film_grain(film_grain_value)
         .build();
     cmd.args(["-svtav1-params", &svtav1_params]);
-    
-    // Report film grain settings
-    crate::progress_reporting::report_film_grain(
-        if film_grain_value > 0 { Some(film_grain_value) } else { None },
-        is_grain_analysis_sample,
-    );
-    
-    if is_grain_analysis_sample && film_grain_value > 0 {
-        debug!("Applying film grain synthesis (grain sample): level={}", film_grain_value);
+
+    if film_grain_value > 0 {
+        log::debug!("Applying film grain synthesis: level={}", film_grain_value);
+    } else {
+        log::debug!("No film grain synthesis applied (denoise level is None or 0).");
     }
-    
-    // Audio configuration
-    if !is_grain_analysis_sample && !disable_audio {
-        cmd.args(["-c:a", "libopus"]);
-        
-        // Set bitrate for each audio stream
+
+    if !disable_audio {
+        cmd.args(["-c:a", &params.audio_codec]);
         for (i, &channels) in params.audio_channels.iter().enumerate() {
             let bitrate = audio::calculate_audio_bitrate(channels);
-            cmd.args([&format!("-b:a:{}", i), &format!("{}k", bitrate)]);
+            cmd.args([&format!("-b:a:{i}"), &format!("{bitrate}k")]);
         }
-    }
-    
-    // Stream mapping
-    if is_grain_analysis_sample || disable_audio {
-        cmd.args(["-map", "0:v:0"]); // Video only
-        if disable_audio {
-            cmd.arg("-an"); // Explicitly disable audio
-        }
-    } else {
-        cmd.args(["-map", "0:v:0"]); // Video stream
-        cmd.args(["-map", "0:a"]);    // All audio streams
+        cmd.args(["-map", "0:v:0"]);
+        cmd.args(["-map", "0:a"]);
         cmd.args(["-map_metadata", "0"]);
         cmd.args(["-map_chapters", "0"]);
+    } else {
+        cmd.args(["-map", "0:v:0"]);
+        cmd.arg("-an");
     }
-    
-    // Additional output settings
+
     cmd.args(["-movflags", "+faststart"]);
-    
-    // Note: Progress reporting is handled automatically by ffmpeg-sidecar
-    // through FfmpegEvent::Progress events, so we don't need -progress pipe:1
-    
-    // Output file
+
     cmd.output(params.output_path.to_string_lossy().as_ref());
-    
+
     Ok(cmd)
 }
 
-/// Executes an FFmpeg encode operation using the provided spawner and parameters.
-///
-/// This function handles the complete FFmpeg encoding process lifecycle, including:
-/// - Constructing and executing the FFmpeg command
-/// - Monitoring and reporting progress during encoding
-/// - Processing and filtering FFmpeg output and error messages
-/// - Determining encoding success or failure
-///
-/// The function uses dependency injection through the `FfmpegSpawner` trait to allow
-/// for testing without actually running FFmpeg processes.
-///
-/// # Arguments
-///
-/// * `spawner` - The FFmpeg process spawner implementation to use
-/// * `params` - Encoding parameters for this operation
-/// * `disable_audio` - Whether to disable audio in the output
-/// * `is_grain_analysis_sample` - Whether this is a grain analysis sample encode
-/// * `_grain_level_being_tested` - Optional grain level for analysis runs
-///
-/// # Returns
-///
-/// * `CoreResult<()>` - Success or error with detailed information
+/// Executes FFmpeg encode with progress monitoring and error handling.
 pub fn run_ffmpeg_encode(
     params: &EncodeParams,
     disable_audio: bool,
-    is_grain_analysis_sample: bool,
-    _grain_level_being_tested: Option<GrainLevel>,
+    has_denoising: bool,
+    total_frames: u64,
+    event_dispatcher: Option<&EventDispatcher>,
 ) -> CoreResult<()> {
-    // Extract filename for logging
-    let filename_cow = params
-        .input_path
-        .file_name()
-        .map(|name| name.to_string_lossy())
-        .unwrap_or_else(|| params.input_path.to_string_lossy());
+    debug!("Output: {}", params.output_path.display());
+    log::info!(
+        target: "drapto::progress",
+        "Starting encode: {} -> {}",
+        params.input_path.display(),
+        params.output_path.display()
+    );
 
-    // Log start with appropriate level based on context
-    if is_grain_analysis_sample {
-        debug!("Starting grain sample FFmpeg encode for: {}", filename_cow);
-    } else {
-        report_encode_start(&params.input_path, &params.output_path);
-        info!(
-            target: "drapto::progress",
-            "Starting encode: {} -> {}",
-            params.input_path.display(),
-            params.output_path.display()
-        );
-    }
+    debug!("Encode parameters: {params:?}");
 
-    debug!("Encode parameters: {:?}", params);
-
-    // Build the FFmpeg command using the new builder function
-    let mut cmd = build_ffmpeg_command(params, None, disable_audio, is_grain_analysis_sample)?;
-
-    // Log the command for debugging
-    if is_grain_analysis_sample {
-        debug!("FFmpeg command (grain sample): {:?}", cmd);
-    } else {
-        // Convert command to string representation for reporting
-        let cmd_string = format!("{:?}", cmd);
-        crate::progress_reporting::report_ffmpeg_command(&cmd_string, false);
-    }
-
-    // --- Execution and Progress ---
-    if is_grain_analysis_sample {
-        debug!("Starting grain sample encode...");
-    }
+    let mut cmd = build_ffmpeg_command(params, None, disable_audio, has_denoising)?;
+    let cmd_string = format!("{cmd:?}");
+    debug!("FFmpeg command: {}", cmd_string);
     let _start_time = Instant::now();
-
-    // Spawn the ffmpeg command
-    let mut child = cmd.spawn()
-        .map_err(|e| command_failed_error(
+    let mut child = cmd.spawn().map_err(|e| {
+        command_failed_error(
             "ffmpeg",
             std::process::ExitStatus::default(),
-            format!("Failed to start: {}", e),
-        ))?;
+            format!("Failed to start: {e}"),
+        )
+    })?;
 
-    // Initialize duration from params
     let duration_secs: Option<f64> = if params.duration > 0.0 {
         Some(params.duration)
     } else {
         None
     };
-    
-    if let Some(duration) = duration_secs {
-        crate::progress_reporting::report_duration(duration, is_grain_analysis_sample);
-        if is_grain_analysis_sample {
-            debug!("Using provided duration for progress (grain sample): {:.2}s", duration);
+
+    if duration_secs.is_none() || duration_secs == Some(0.0) {
+        log::warn!("Video duration not provided or zero; progress percentage will not be accurate.");
+    }
+
+    let mut stderr_buffer = String::new();
+
+    for event in child.iter().map_err(|e| {
+        command_failed_error(
+            "ffmpeg",
+            std::process::ExitStatus::default(),
+            format!("Failed to get event iterator: {e}"),
+        )
+    })? {
+        match event {
+            ffmpeg_sidecar::event::FfmpegEvent::Log(_level, message) => {
+                stderr_buffer.push_str(&message);
+                stderr_buffer.push('\n');
+            }
+            ffmpeg_sidecar::event::FfmpegEvent::Error(error) => {
+                stderr_buffer.push_str(&format!("ERROR: {}\n", error));
+            }
+            ffmpeg_sidecar::event::FfmpegEvent::Progress(progress) => {
+                if let Some(total_duration) = duration_secs {
+                    let elapsed_secs = if let Some(duration) = crate::utils::parse_ffmpeg_time(&progress.time) {
+                        duration
+                    } else {
+                        progress.time.parse::<f64>().unwrap_or(0.0)
+                    };
+                    
+                    let percent = if total_duration > 0.0 {
+                        (elapsed_secs / total_duration * 100.0).min(100.0)
+                    } else {
+                        0.0
+                    };
+                    
+                    // Parse additional progress information from FFmpeg
+                    let speed = progress.speed;
+                    let fps = progress.fps;
+                    let frame = progress.frame as u64;
+                    let bitrate = format!("{:.1}kbps", progress.bitrate_kbps);
+                    
+                    // Calculate ETA
+                    let eta = if speed > 0.0 {
+                        let remaining_duration = total_duration - elapsed_secs;
+                        let eta_seconds = (remaining_duration / speed as f64) as u64;
+                        Duration::from_secs(eta_seconds)
+                    } else {
+                        Duration::from_secs(0)
+                    };
+                    
+                    // Emit progress event
+                    if let Some(dispatcher) = event_dispatcher {
+                        dispatcher.emit(Event::EncodingProgress {
+                            current_frame: frame,
+                            total_frames,
+                            percent: percent as f32,
+                            speed,
+                            fps,
+                            eta,
+                            bitrate,
+                        });
+                    }
+                    
+                    // Always report progress (both for progress bar and logging)
+                    log::debug!("Encoding progress: {:.1}% (elapsed: {:.1}s)", percent, elapsed_secs);
+                }
+            }
+            _ => {}
         }
-    } else {
-        warn!("Video duration not provided or zero; progress percentage will not be accurate.");
     }
     
-    // Create progress handler
-    let mut progress_handler = crate::progress_reporting::ffmpeg_handler::FfmpegProgressHandler::new(
-        duration_secs,
-        is_grain_analysis_sample,
-    );
+    // Just finish the progress bar - 100% will have been reported by the event loop
+    log::debug!("Encoding progress finished");
 
-    // Process events from ffmpeg until completion
-    for event in child.iter().map_err(|e| command_failed_error(
-        "ffmpeg",
-        std::process::ExitStatus::default(),
-        format!("Failed to get event iterator: {}", e),
-    ))? {
-        progress_handler.handle_event(event)?;
-    }
-
-    // Iterator completed successfully, which means FFmpeg finished
-    // If there were errors, they would have been caught in handle_event
-    // Create a successful exit status for compatibility with existing code
+    // FFmpeg finished - check status
     let status = std::process::ExitStatus::default();
-
-    // Extract filename for logging
-    let filename_cow = params
-        .input_path
-        .file_name()
-        .map(|name| name.to_string_lossy())
-        .unwrap_or_else(|| params.input_path.to_string_lossy());
+    let filename = crate::utils::get_filename_safe(&params.input_path)
+        .unwrap_or_else(|_| params.input_path.display().to_string());
 
     if status.success() {
-        // Clear any active progress bar before printing success messages
-        if !is_grain_analysis_sample {
-            crate::progress_reporting::clear_progress_bar();
-        }
-
-        // Log success at appropriate level based on context
-        let prefix = if is_grain_analysis_sample {
-            "Grain sample encode"
-        } else {
-            "Encode"
-        };
-        // Use progress reporting for proper indentation
-        if is_grain_analysis_sample {
-            // Log at debug level for grain samples
-            log::debug!("{} finished successfully for {}", prefix, filename_cow);
-        } else {
-            // Use sub-item formatting for main encodes to properly indent
-            crate::progress_reporting::report_sub_item(&format!(
-                "{} finished successfully for {}",
-                prefix, filename_cow
-            ));
-        }
+        log::info!("Encode finished successfully for {}", filename);
         Ok(())
     } else {
         let error_message = format!(
             "FFmpeg process exited with non-zero status ({:?}). Stderr output:\n{}",
             status.code(),
-            progress_handler.stderr_buffer().trim()
+            stderr_buffer.trim()
         );
 
-        // Log error with appropriate prefix based on context
-        let prefix = if is_grain_analysis_sample {
-            "Grain sample encode"
-        } else {
-            "FFmpeg encode"
-        };
-        // Use progress reporting for error messages
-        if !is_grain_analysis_sample {
-            crate::progress_reporting::report_encode_error(&params.input_path, &error_message);
-        } else {
-            // For grain samples, just log at debug level
-            debug!("{} failed for {}: {}", prefix, filename_cow, error_message);
-        }
+        let filename = crate::utils::get_filename_safe(&params.input_path)
+        .unwrap_or_else(|_| params.input_path.display().to_string());
+        log::error!("FFmpeg error for {}: {}", filename, error_message);
 
-        // Create a more specific error type based on stderr content
-        if progress_handler.stderr_buffer().contains("No streams found") {
-            // Handle "No streams found" as a specific error type
-            // Note: We filter the logging of this error above, but still
-            // propagate it properly here for correct error handling
-            Err(CoreError::NoStreamsFound(filename_cow.to_string()))
+        // Check for specific error types
+        if stderr_buffer.contains("No streams found") {
+            Err(CoreError::NoStreamsFound(filename.to_string()))
         } else {
             Err(command_failed_error(
                 "ffmpeg (sidecar)",
@@ -352,155 +255,306 @@ pub fn run_ffmpeg_encode(
     }
 }
 
-/// Maps hqdn3d denoising parameters to SVT-AV1 film grain synthesis values.
-///
-/// This function provides a mapping between FFmpeg's hqdn3d denoising filter parameters
-/// and the corresponding film grain synthesis levels for SVT-AV1. It supports both
-/// standard predefined parameter sets and interpolated/custom values.
-///
-/// The mapping uses a perceptually balanced approach that:
-/// - Provides direct mappings for standard levels (VeryLight, Light, etc.)
-/// - Uses a square-root scale for custom values to maintain perceptual linearity
-/// - Optimizes for preserving natural-looking grain texture
-///
-/// # Arguments
-///
-/// * `hqdn3d_params` - The hqdn3d filter parameters as a string
-///
-/// # Returns
-///
-/// * The corresponding SVT-AV1 film grain synthesis value (0-16)
-fn map_hqdn3d_to_film_grain(hqdn3d_params: &str) -> u8 {
-    // No denoising = no film grain synthesis
-    if hqdn3d_params.is_empty() {
-        return 0;
-    }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
 
-    // Fixed mapping for standard levels (for optimization)
-    for (params, film_grain) in &[
-        ("hqdn3d=0.5:0.3:3:3", 4),  // VeryLight
-        ("hqdn3d=1:0.7:4:4", 8),    // Light
-        ("hqdn3d=1.5:1.0:6:6", 12), // Moderate
-        ("hqdn3d=2:1.3:8:8", 16),   // Elevated
-    ] {
-        // Exact match for standard levels
-        if hqdn3d_params == *params {
-            return *film_grain;
+    /// Create test parameters with common defaults
+    fn create_test_params() -> EncodeParams {
+        EncodeParams {
+            input_path: PathBuf::from("/test/input.mkv"),
+            output_path: PathBuf::from("/test/output.mkv"),
+            quality: 27,
+            preset: 6,
+            tune: 3,
+            use_hw_decode: false,
+            crop_filter: None,
+            audio_channels: vec![6], // 5.1 audio
+            duration: 3600.0,
+            hqdn3d_params: Some(crate::config::FIXED_HQDN3D_PARAMS_SDR.to_string()),
+            // Actual values used in FFmpeg command
+            video_codec: "libsvtav1".to_string(),
+            pixel_format: "yuv420p10le".to_string(),
+            color_space: "bt709".to_string(),
+            audio_codec: "libopus".to_string(),
+            film_grain_level: crate::config::FIXED_FILM_GRAIN_VALUE,
         }
     }
 
-    // For interpolated/custom parameter sets, extract the luma spatial strength
-    // which is the most indicative parameter for denoising intensity
-    let luma_spatial = parse_hqdn3d_first_param(hqdn3d_params);
-
-    // Map the luma spatial value (0.0-2.0+) to film grain value (0-16)
-    // using a more direct and granular mapping
-
-    // No denoising = no grain synthesis
-    if luma_spatial <= 0.1 {
-        return 0;
+    /// Create test parameters with crop filter
+    fn create_test_params_with_crop(crop: Option<&str>) -> EncodeParams {
+        let mut params = create_test_params();
+        params.crop_filter = crop.map(|c| c.to_string());
+        params
     }
 
-    // Use a square-root scale to reduce bias against higher grain values
-    // This helps prevent the function from selecting overly low grain values
-    // when the source video benefits from preserving more texture
-    let adjusted_value = (luma_spatial * 8.0).sqrt() * 8.0;
-
-    // Round to nearest integer and cap at 16
-    let film_grain_value = adjusted_value.round() as u8;
-    film_grain_value.min(16)
-}
-
-/// Extracts the luma spatial strength parameter from an hqdn3d filter string.
-///
-/// The luma spatial parameter is the first value in an hqdn3d filter string and
-/// represents the most significant factor for determining denoising intensity.
-///
-/// # Arguments
-///
-/// * `params` - The complete hqdn3d filter string to parse
-///
-/// # Returns
-///
-/// * The extracted luma spatial strength as a float, or 0.0 if parsing fails
-fn parse_hqdn3d_first_param(params: &str) -> f32 {
-    if let Some(suffix) = params.strip_prefix("hqdn3d=") {
-        if let Some(index) = suffix.find(':') {
-            let first_param = &suffix[0..index];
-            return first_param.parse::<f32>().unwrap_or(0.0);
-        }
-    }
-    0.0 // Default fallback value if parsing fails or format is unexpected
-}
-
-// ============================================================================
-// SAMPLE EXTRACTION
-// ============================================================================
-
-/// Extracts a raw video sample using ffmpeg's -c copy.
-///
-/// Creates a temporary file within the specified `output_dir` using the temp_files module.
-/// The file will be cleaned up when the `output_dir` (assumed to be a TempDir) is dropped.
-pub fn extract_sample(
-    input_path: &Path,
-    start_time_secs: f64,
-    duration_secs: u32,
-    output_dir: &Path,
-) -> CoreResult<PathBuf> {
-    debug!(
-        "Extracting sample: input={}, start={}, duration={}, out_dir={}",
-        input_path.display(),
-        start_time_secs,
-        duration_secs,
-        output_dir.display()
-    );
-
-    // Generate a unique filename for the sample within the output directory
-    let output_path = crate::temp_files::create_temp_file_path(output_dir, "raw_sample", "mkv");
-
-    // Build the command using the unified builder
-    let mut cmd = crate::external::FfmpegCommandBuilder::new()
-        .with_hardware_accel(true)
-        .build();
-
-    cmd.input(input_path.to_string_lossy().as_ref())
-        .args(["-ss", &start_time_secs.to_string()])
-        .args(["-t", &duration_secs.to_string()])
-        .args(["-c", "copy"])          // Use stream copy
-        .args(["-an"])                  // No audio
-        .args(["-sn"])                  // No subtitles
-        .args(["-map", "0:v"])          // Map video stream 0
-        .args(["-map_metadata", "0"])   // Map metadata from input 0
-        .output(output_path.to_string_lossy().as_ref());
-
-    debug!("Running sample extraction command: {:?}", cmd);
-
-    // Spawn and wait for completion
-    let mut child = cmd.spawn()
-        .map_err(|e| command_failed_error(
-            "ffmpeg",
-            std::process::ExitStatus::default(),
-            format!("Failed to start sample extraction: {}", e),
-        ))?;
-    
-    let status = child.wait()
-        .map_err(|e| command_failed_error(
-            "ffmpeg",
-            std::process::ExitStatus::default(),
-            format!("Failed to wait for sample extraction: {}", e),
-        ))?;
+    #[test]
+    fn test_video_filter_chain_with_sdr_denoising() {
+        // Test that SDR denoising parameters are correctly included in video filters
+        let params = create_test_params();
         
-    if !status.success() {
-        error!("Sample extraction failed: {}", status);
-        return Err(command_failed_error(
-            "ffmpeg (sample extraction)",
-            status,
-            "Sample extraction process failed",
-        ));
+        let hqdn3d_to_use = params.hqdn3d_params.as_deref();
+        let filter_chain = crate::external::VideoFilterChain::new()
+            .add_denoise(hqdn3d_to_use.unwrap_or(""))
+            .add_crop(params.crop_filter.as_deref().unwrap_or(""))
+            .build();
+
+        assert!(filter_chain.is_some(), "Should have video filters when denoising is enabled");
+        let filters = filter_chain.unwrap();
+        assert!(filters.contains(&format!("hqdn3d={}", crate::config::FIXED_HQDN3D_PARAMS_SDR)), 
+                "Video filters should contain SDR HQDN3D parameters: {}", crate::config::FIXED_HQDN3D_PARAMS_SDR);
     }
 
-    debug!("Sample extracted successfully to: {}", output_path.display());
-    Ok(output_path)
+    #[test]
+    fn test_video_filter_chain_with_hdr_denoising() {
+        // Test that HDR denoising parameters are correctly used
+        let hdr_params = Some(crate::config::FIXED_HQDN3D_PARAMS_HDR.to_string());
+        
+        let filter_chain = crate::external::VideoFilterChain::new()
+            .add_denoise(hdr_params.as_deref().unwrap_or(""))
+            .build();
+
+        assert!(filter_chain.is_some(), "Should have video filters for HDR denoising");
+        let filters = filter_chain.unwrap();
+        assert!(filters.contains(&format!("hqdn3d={}", crate::config::FIXED_HQDN3D_PARAMS_HDR)), 
+                "Video filters should contain HDR HQDN3D parameters: {}", crate::config::FIXED_HQDN3D_PARAMS_HDR);
+    }
+
+    #[test]
+    fn test_svt_av1_params_with_film_grain() {
+        // Test that film grain synthesis is correctly applied when denoising is enabled
+        let svtav1_params = crate::external::SvtAv1ParamsBuilder::new()
+            .with_tune(3)
+            .with_film_grain(crate::config::FIXED_FILM_GRAIN_VALUE)
+            .build();
+
+        assert!(svtav1_params.contains("tune=3"), "SVT-AV1 params should contain tune=3");
+        assert!(svtav1_params.contains(&format!("film-grain={}", crate::config::FIXED_FILM_GRAIN_VALUE)), 
+                "SVT-AV1 params should contain film-grain={}", crate::config::FIXED_FILM_GRAIN_VALUE);
+        assert!(svtav1_params.contains("film-grain-denoise=0"), 
+                "SVT-AV1 params should disable built-in film grain denoising");
+    }
+
+    #[test]
+    fn test_svt_av1_params_without_film_grain() {
+        // Test that film grain is not applied when denoising is disabled
+        let svtav1_params = crate::external::SvtAv1ParamsBuilder::new()
+            .with_tune(3)
+            .with_film_grain(0) // No film grain
+            .build();
+
+        assert!(svtav1_params.contains("tune=3"), "SVT-AV1 params should contain tune=3");
+        assert!(!svtav1_params.contains("film-grain="), 
+                "SVT-AV1 params should not contain film-grain when disabled");
+    }
+
+    #[test]
+    fn test_audio_bitrate_calculation() {
+        // Test that audio bitrates match what's displayed in configuration
+        use crate::processing::audio::calculate_audio_bitrate;
+
+        // Test common channel configurations
+        assert_eq!(calculate_audio_bitrate(1), 64, "Mono should be 64kbps");
+        assert_eq!(calculate_audio_bitrate(2), 128, "Stereo should be 128kbps");  
+        assert_eq!(calculate_audio_bitrate(6), 256, "5.1 should be 256kbps");
+        assert_eq!(calculate_audio_bitrate(8), 384, "7.1 should be 384kbps");
+    }
+
+    #[test]
+    fn test_video_filter_chain_with_crop_and_denoise() {
+        // Test that both crop and denoise filters are properly combined
+        let filter_chain = crate::external::VideoFilterChain::new()
+            .add_denoise(crate::config::FIXED_HQDN3D_PARAMS_SDR)
+            .add_crop("crop=1920:800:0:140")
+            .build();
+
+        assert!(filter_chain.is_some(), "Should have video filters");
+        let filters = filter_chain.unwrap();
+        assert!(filters.contains("hqdn3d="), "Should contain HQDN3D filter");
+        assert!(filters.contains("crop=1920:800:0:140"), "Should contain crop filter");
+        assert!(filters.contains(","), "Filters should be comma-separated");
+    }
+
+    #[test]
+    fn test_configuration_constants_consistency() {
+        // Test that our configuration constants are reasonable values
+        
+        // HDR params should be lighter than SDR params
+        let hdr_parts: Vec<f32> = crate::config::FIXED_HQDN3D_PARAMS_HDR
+            .split(':')
+            .map(|s| s.parse().unwrap())
+            .collect();
+        let sdr_parts: Vec<f32> = crate::config::FIXED_HQDN3D_PARAMS_SDR
+            .split(':')
+            .map(|s| s.parse().unwrap())
+            .collect();
+            
+        assert_eq!(hdr_parts.len(), 4, "HDR params should have 4 components");
+        assert_eq!(sdr_parts.len(), 4, "SDR params should have 4 components");
+        
+        // HDR should generally have lower values (lighter denoising)
+        assert!(hdr_parts[0] <= sdr_parts[0], "HDR spatial luma should be <= SDR");
+        assert!(hdr_parts[1] <= sdr_parts[1], "HDR spatial chroma should be <= SDR");
+        
+        // Film grain should be reasonable
+        assert!(crate::config::FIXED_FILM_GRAIN_VALUE <= 50, "Film grain should be <= 50");
+        assert!(crate::config::FIXED_FILM_GRAIN_VALUE > 0, "Film grain should be > 0");
+    }
+
+    #[test]
+    fn test_build_ffmpeg_command_with_crop_filter() {
+        // Test that crop filters are correctly included in the full FFmpeg command
+        let params = create_test_params_with_crop(Some("crop=1920:800:0:140"));
+        let cmd = build_ffmpeg_command(&params, None, false, true).unwrap();
+        let cmd_string = format!("{:?}", cmd);
+        
+        assert!(cmd_string.contains("-vf"), "Command should contain video filter argument");
+        assert!(cmd_string.contains("crop=1920:800:0:140"), "Command should contain crop filter");
+        assert!(cmd_string.contains("hqdn3d="), "Command should contain denoise filter when denoising enabled");
+    }
+
+    #[test]
+    fn test_build_ffmpeg_command_with_crop_and_denoise() {
+        // Test that crop and denoise filters are properly chained
+        let params = create_test_params_with_crop(Some("crop=1920:1036:0:22"));
+        let cmd = build_ffmpeg_command(&params, None, false, true).unwrap();
+        let cmd_string = format!("{:?}", cmd);
+        
+        // Should contain both filters properly chained
+        assert!(cmd_string.contains("crop=1920:1036:0:22"), "Command should contain crop filter");
+        assert!(cmd_string.contains("hqdn3d="), "Command should contain denoise filter");
+        assert!(cmd_string.contains("hqdn3d=2:1.5:3:2.5,crop=1920:1036:0:22"), 
+                "Filters should be properly chained in denoise,crop order");
+    }
+
+    #[test]
+    fn test_build_ffmpeg_command_without_crop_filter() {
+        // Test that FFmpeg command works correctly when no crop is needed
+        let params = create_test_params_with_crop(None);
+        let cmd = build_ffmpeg_command(&params, None, false, true).unwrap();
+        let cmd_string = format!("{:?}", cmd);
+        
+        assert!(!cmd_string.contains("crop="), "Command should not contain crop filter");
+        assert!(cmd_string.contains("hqdn3d="), "Command should still contain denoise filter");
+    }
+
+    #[test]
+    fn test_build_ffmpeg_command_crop_only_no_denoise() {
+        // Test crop filter without denoising
+        let params = create_test_params_with_crop(Some("crop=1920:800:0:140"));
+        let cmd = build_ffmpeg_command(&params, None, false, false).unwrap();
+        let cmd_string = format!("{:?}", cmd);
+        
+        assert!(cmd_string.contains("-vf"), "Command should contain video filter argument");
+        assert!(cmd_string.contains("crop=1920:800:0:140"), "Command should contain crop filter");
+        assert!(!cmd_string.contains("hqdn3d"), "Command should not contain denoise filter when denoising disabled");
+    }
+
+    #[test]
+    fn test_encode_params_match_ffmpeg_command() {
+        // Test that EncodeParams fields accurately reflect what's used in the FFmpeg command
+        let params = EncodeParams {
+            input_path: std::path::PathBuf::from("test_input.mkv"),
+            output_path: std::path::PathBuf::from("test_output.mkv"),
+            quality: 27,
+            preset: 6,
+            tune: 3,
+            use_hw_decode: false,
+            crop_filter: Some("crop=1920:1036:0:22".to_string()),
+            audio_channels: vec![6], // 5.1 surround
+            duration: 120.0,
+            hqdn3d_params: Some("2:1.5:3:2.5".to_string()),
+            // Test the actual values that should match FFmpeg command
+            video_codec: "libsvtav1".to_string(),
+            pixel_format: "yuv420p10le".to_string(),
+            color_space: "bt709".to_string(),
+            audio_codec: "libopus".to_string(),
+            film_grain_level: 4,
+        };
+
+        let cmd = build_ffmpeg_command(&params, None, false, true).unwrap();
+        let cmd_string = format!("{:?}", cmd);
+
+        // Validate video codec matches
+        assert!(cmd_string.contains("-c:v"), "Command should contain video codec flag");
+        assert!(cmd_string.contains(&params.video_codec), 
+                "Command should contain video codec: {}", params.video_codec);
+
+        // Validate pixel format matches
+        assert!(cmd_string.contains("-pix_fmt"), "Command should contain pixel format flag");
+        assert!(cmd_string.contains(&params.pixel_format),
+                "Command should contain pixel format: {}", params.pixel_format);
+
+        // Validate audio codec matches
+        assert!(cmd_string.contains("-c:a"), "Command should contain audio codec flag");
+        assert!(cmd_string.contains(&params.audio_codec),
+                "Command should contain audio codec: {}", params.audio_codec);
+
+        // Validate preset matches
+        assert!(cmd_string.contains("-preset"), "Command should contain preset flag");
+        assert!(cmd_string.contains(&params.preset.to_string()),
+                "Command should contain preset: {}", params.preset);
+
+        // Validate quality (CRF) matches
+        assert!(cmd_string.contains("-crf"), "Command should contain CRF flag");
+        assert!(cmd_string.contains(&params.quality.to_string()),
+                "Command should contain quality: {}", params.quality);
+
+        // Validate film grain level matches (in svtav1-params)
+        assert!(cmd_string.contains("-svtav1-params"), "Command should contain SVT-AV1 params");
+        assert!(cmd_string.contains(&format!("film-grain={}", params.film_grain_level)),
+                "Command should contain film grain level: {}", params.film_grain_level);
+
+        // Validate tune parameter matches (in svtav1-params)
+        assert!(cmd_string.contains(&format!("tune={}", params.tune)),
+                "Command should contain tune parameter: {}", params.tune);
+
+        // Validate hqdn3d params match
+        if let Some(ref hqdn3d) = params.hqdn3d_params {
+            assert!(cmd_string.contains(&format!("hqdn3d={}", hqdn3d)),
+                    "Command should contain hqdn3d params: {}", hqdn3d);
+        }
+
+        // Validate audio bitrate is calculated correctly for 5.1 (6 channels)
+        let expected_bitrate = crate::processing::audio::calculate_audio_bitrate(6); // 256 kbps for 5.1
+        assert!(cmd_string.contains(&format!("{}k", expected_bitrate)),
+                "Command should contain correct audio bitrate: {}k", expected_bitrate);
+    }
+
+    #[test]
+    fn test_encode_params_film_grain_disabled() {
+        // Test that film grain level 0 results in no film grain in FFmpeg command
+        let params = EncodeParams {
+            input_path: std::path::PathBuf::from("test_input.mkv"),
+            output_path: std::path::PathBuf::from("test_output.mkv"),
+            quality: 27,
+            preset: 6,
+            tune: 3,
+            use_hw_decode: false,
+            crop_filter: None,
+            audio_channels: vec![2], // Stereo
+            duration: 120.0,
+            hqdn3d_params: None, // No denoising
+            video_codec: "libsvtav1".to_string(),
+            pixel_format: "yuv420p10le".to_string(),
+            color_space: "bt709".to_string(),
+            audio_codec: "libopus".to_string(),
+            film_grain_level: 0, // Disabled
+        };
+
+        let cmd = build_ffmpeg_command(&params, None, false, false).unwrap();
+        let cmd_string = format!("{:?}", cmd);
+
+        // Film grain should not appear in command when disabled (level 0)
+        assert!(!cmd_string.contains("film-grain="),
+                "Command should not contain film-grain parameter when disabled. Command: {}", cmd_string);
+        
+        // Should not contain hqdn3d when denoising is disabled
+        assert!(!cmd_string.contains("hqdn3d"),
+                "Command should not contain hqdn3d when denoising disabled");
+    }
+    
 }
 
-// TODO: Create mocking infrastructure for FFmpeg processes and add unit tests for this module.
+
