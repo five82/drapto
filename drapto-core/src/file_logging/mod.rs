@@ -22,6 +22,11 @@ impl FileLoggingHandler {
             last_log_time: std::sync::Mutex::new(None),
         }
     }
+    
+    pub fn reset_progress_state(&self) {
+        *self.last_logged_percent.lock().unwrap() = 0;
+        *self.last_log_time.lock().unwrap() = None;
+    }
 }
 
 impl EventHandler for FileLoggingHandler {
@@ -126,6 +131,8 @@ impl EventHandler for FileLoggingHandler {
             }
             
             Event::EncodingStarted { total_frames } => {
+                // Reset progress tracking for new encoding
+                self.reset_progress_state();
                 info!("Starting encoding process ({} frames)", total_frames);
             }
             
