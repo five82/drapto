@@ -496,7 +496,7 @@ pub fn process_videos(
                 };
 
                 // Perform post-encode validation
-                let (validation_passed, validation_steps) = match validate_output_video(&output_path, expected_dimensions, Some(duration_secs)) {
+                let (validation_passed, validation_steps) = match validate_output_video(&output_path, expected_dimensions, Some(duration_secs), Some(is_hdr)) {
                     Ok(validation_result) => {
                         let steps = validation_result.get_validation_steps();
                         

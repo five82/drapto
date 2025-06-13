@@ -18,6 +18,10 @@ pub struct ValidationResult {
     pub is_crop_correct: bool,
     /// Whether duration matches the input duration
     pub is_duration_correct: bool,
+    /// Whether HDR matches the input (both HDR or both SDR)
+    pub is_hdr_correct: bool,
+    /// Whether all audio tracks are Opus codec
+    pub is_audio_opus: bool,
     /// The actual codec found
     pub codec_name: Option<String>,
     /// The actual pixel format found
@@ -36,12 +40,22 @@ pub struct ValidationResult {
     pub expected_duration: Option<f64>,
     /// Duration validation message
     pub duration_message: Option<String>,
+    /// Whether the input was HDR
+    pub expected_hdr: Option<bool>,
+    /// Whether the output is HDR
+    pub actual_hdr: Option<bool>,
+    /// HDR validation message
+    pub hdr_message: Option<String>,
+    /// List of audio codec names found in the output
+    pub audio_codecs: Vec<String>,
+    /// Audio validation message
+    pub audio_message: Option<String>,
 }
 
 impl ValidationResult {
     /// Returns true if all validations pass
     pub fn is_valid(&self) -> bool {
-        self.is_av1 && self.is_10_bit && self.is_crop_correct && self.is_duration_correct
+        self.is_av1 && self.is_10_bit && self.is_crop_correct && self.is_duration_correct && self.is_hdr_correct && self.is_audio_opus
     }
 
     /// Returns a list of validation failures
@@ -72,6 +86,22 @@ impl ValidationResult {
                 failures.push(format!("Duration validation failed: {}", msg));
             } else {
                 failures.push("Duration validation failed".to_string());
+            }
+        }
+        
+        if !self.is_hdr_correct {
+            if let Some(msg) = &self.hdr_message {
+                failures.push(format!("HDR validation failed: {}", msg));
+            } else {
+                failures.push("HDR validation failed".to_string());
+            }
+        }
+        
+        if !self.is_audio_opus {
+            if let Some(msg) = &self.audio_message {
+                failures.push(format!("Audio codec validation failed: {}", msg));
+            } else {
+                failures.push("Audio codec validation failed".to_string());
             }
         }
         
@@ -124,15 +154,40 @@ impl ValidationResult {
         };
         steps.push(("Video duration".to_string(), self.is_duration_correct, duration_result));
         
+        // HDR validation
+        let hdr_result = if self.is_hdr_correct {
+            self.hdr_message.as_ref()
+                .map(|msg| msg.clone())
+                .unwrap_or_else(|| "HDR status matches input".to_string())
+        } else {
+            self.hdr_message.as_ref()
+                .map(|msg| msg.clone())
+                .unwrap_or_else(|| "HDR validation failed".to_string())
+        };
+        steps.push(("HDR/SDR status".to_string(), self.is_hdr_correct, hdr_result));
+        
+        // Audio codec validation
+        let audio_result = if self.is_audio_opus {
+            self.audio_message.as_ref()
+                .map(|msg| msg.clone())
+                .unwrap_or_else(|| "All audio tracks are Opus".to_string())
+        } else {
+            self.audio_message.as_ref()
+                .map(|msg| msg.clone())
+                .unwrap_or_else(|| "Audio codec validation failed".to_string())
+        };
+        steps.push(("Audio codec".to_string(), self.is_audio_opus, audio_result));
+        
         steps
     }
 }
 
-/// Validates that the output video file has AV1 codec, 10-bit depth, correct crop dimensions, and matching duration
+/// Validates that the output video file has AV1 codec, 10-bit depth, correct crop dimensions, matching duration, and HDR status
 pub fn validate_output_video(
     output_path: &Path, 
     expected_dimensions: Option<(u32, u32)>,
-    expected_duration: Option<f64>
+    expected_duration: Option<f64>,
+    expected_hdr: Option<bool>
 ) -> CoreResult<ValidationResult> {
     log::debug!("Validating output video: {}", output_path.display());
     
@@ -238,11 +293,79 @@ pub fn validate_output_video(
         }
     };
 
+    // Detect HDR status from color metadata
+    let actual_hdr = detect_hdr_from_stream(video_stream);
+
+    // Validate HDR status
+    let (is_hdr_correct, hdr_message) = match (expected_hdr, actual_hdr) {
+        (Some(expected), Some(actual)) => {
+            if expected == actual {
+                let status = if actual { "HDR" } else { "SDR" };
+                (true, Some(format!("{} preserved", status)))
+            } else {
+                let expected_str = if expected { "HDR" } else { "SDR" };
+                let actual_str = if actual { "HDR" } else { "SDR" };
+                (false, Some(format!("Expected {}, found {}", expected_str, actual_str)))
+            }
+        }
+        (None, Some(actual)) => {
+            let status = if actual { "HDR" } else { "SDR" };
+            (true, Some(format!("Output is {}", status)))
+        }
+        (Some(expected), None) => {
+            let expected_str = if expected { "HDR" } else { "SDR" };
+            (false, Some(format!("Expected {}, but could not detect HDR status", expected_str)))
+        }
+        (None, None) => {
+            (false, Some("Could not detect HDR status".to_string()))
+        }
+    };
+
+    // Validate audio codec - all audio streams should be Opus
+    let audio_streams: Vec<&ffprobe::Stream> = metadata
+        .streams
+        .iter()
+        .filter(|s| s.codec_type.as_deref() == Some("audio"))
+        .collect();
+
+    let audio_codecs: Vec<String> = audio_streams
+        .iter()
+        .filter_map(|s| s.codec_name.clone())
+        .collect();
+
+    let (is_audio_opus, audio_message) = if audio_streams.is_empty() {
+        // No audio streams found - this is an error
+        (false, Some("No audio streams found".to_string()))
+    } else {
+        let non_opus_codecs: Vec<&String> = audio_codecs
+            .iter()
+            .filter(|&codec| codec != "opus")
+            .collect();
+
+        if non_opus_codecs.is_empty() {
+            let track_count = audio_streams.len();
+            if track_count == 1 {
+                (true, Some("Audio track is Opus".to_string()))
+            } else {
+                (true, Some(format!("All {} audio tracks are Opus", track_count)))
+            }
+        } else {
+            let unique_codecs: std::collections::HashSet<&String> = non_opus_codecs.iter().copied().collect();
+            let codec_list: Vec<&str> = unique_codecs.iter().map(|s| s.as_str()).collect();
+            (false, Some(format!(
+                "Expected Opus for all audio tracks, found: {}", 
+                codec_list.join(", ")
+            )))
+        }
+    };
+
     let result = ValidationResult {
         is_av1,
         is_10_bit,
         is_crop_correct,
         is_duration_correct,
+        is_hdr_correct,
+        is_audio_opus,
         codec_name,
         pixel_format,
         bit_depth,
@@ -252,6 +375,11 @@ pub fn validate_output_video(
         actual_duration,
         expected_duration,
         duration_message,
+        expected_hdr,
+        actual_hdr,
+        hdr_message,
+        audio_codecs,
+        audio_message,
     };
 
     log::debug!("Validation result: {:?}", result);
@@ -358,6 +486,19 @@ fn infer_bit_depth_from_pixel_format(pix_fmt: &str) -> Option<u32> {
     }
 }
 
+/// Detect HDR status from video stream metadata
+fn detect_hdr_from_stream(stream: &ffprobe::Stream) -> Option<bool> {
+    // Use the same HDR detection logic as the rest of the codebase
+    if let Some(color_space) = &stream.color_space {
+        // Check against the HDR color spaces defined in config
+        let is_hdr = crate::config::HDR_COLOR_SPACES.contains(&color_space.as_str());
+        return Some(is_hdr);
+    }
+    
+    // If we can't determine, return None
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -378,6 +519,8 @@ mod tests {
             is_10_bit: true,
             is_crop_correct: true,
             is_duration_correct: true,
+            is_hdr_correct: true,
+            is_audio_opus: true,
             codec_name: Some("h264".to_string()),
             pixel_format: Some("yuv420p10le".to_string()),
             bit_depth: Some(10),
@@ -387,6 +530,11 @@ mod tests {
             actual_duration: Some(6155.0),
             expected_duration: Some(6155.0),
             duration_message: Some("Duration matches input (6155.0s)".to_string()),
+            expected_hdr: Some(false),
+            actual_hdr: Some(false),
+            hdr_message: Some("SDR preserved".to_string()),
+            audio_codecs: vec!["opus".to_string()],
+            audio_message: Some("Audio track is Opus".to_string()),
         };
         
         let failures = result.get_failures();
@@ -403,6 +551,8 @@ mod tests {
             is_10_bit: true,
             is_crop_correct: true,
             is_duration_correct: true,
+            is_hdr_correct: true,
+            is_audio_opus: true,
             codec_name: Some("av01".to_string()),
             pixel_format: Some("yuv420p10le".to_string()),
             bit_depth: Some(10),
@@ -412,10 +562,15 @@ mod tests {
             actual_duration: Some(6155.0),
             expected_duration: Some(6155.0),
             duration_message: Some("Duration matches input (6155.0s)".to_string()),
+            expected_hdr: Some(false),
+            actual_hdr: Some(false),
+            hdr_message: Some("SDR preserved".to_string()),
+            audio_codecs: vec!["opus".to_string()],
+            audio_message: Some("Audio track is Opus".to_string()),
         };
         
         let steps = result.get_validation_steps();
-        assert_eq!(steps.len(), 4);
+        assert_eq!(steps.len(), 6);
         assert_eq!(steps[2].0, "Crop detection");
         assert_eq!(steps[2].1, true);
         assert!(steps[2].2.contains("Crop applied correctly"));
@@ -426,6 +581,8 @@ mod tests {
             is_10_bit: true,
             is_crop_correct: false,
             is_duration_correct: true,
+            is_hdr_correct: true,
+            is_audio_opus: true,
             codec_name: Some("av01".to_string()),
             pixel_format: Some("yuv420p10le".to_string()),
             bit_depth: Some(10),
@@ -435,6 +592,11 @@ mod tests {
             actual_duration: Some(6155.0),
             expected_duration: Some(6155.0),
             duration_message: Some("Duration matches input (6155.0s)".to_string()),
+            expected_hdr: Some(false),
+            actual_hdr: Some(false),
+            hdr_message: Some("SDR preserved".to_string()),
+            audio_codecs: vec!["opus".to_string()],
+            audio_message: Some("Audio track is Opus".to_string()),
         };
         
         let steps_failed = result_failed.get_validation_steps();
@@ -450,6 +612,8 @@ mod tests {
             is_10_bit: true,
             is_crop_correct: true,
             is_duration_correct: true,
+            is_hdr_correct: true,
+            is_audio_opus: true,
             codec_name: Some("av01".to_string()),
             pixel_format: Some("yuv420p10le".to_string()),
             bit_depth: Some(10),
@@ -459,10 +623,15 @@ mod tests {
             actual_duration: Some(6155.0),
             expected_duration: Some(6155.0),
             duration_message: Some("Duration matches input (6155.0s)".to_string()),
+            expected_hdr: Some(false),
+            actual_hdr: Some(false),
+            hdr_message: Some("SDR preserved".to_string()),
+            audio_codecs: vec!["opus".to_string()],
+            audio_message: Some("Audio track is Opus".to_string()),
         };
         
         let steps = result.get_validation_steps();
-        assert_eq!(steps.len(), 4);
+        assert_eq!(steps.len(), 6);
         assert_eq!(steps[3].0, "Video duration");
         assert_eq!(steps[3].1, true);
         assert!(steps[3].2.contains("Duration matches input"));
@@ -473,6 +642,8 @@ mod tests {
             is_10_bit: true,
             is_crop_correct: true,
             is_duration_correct: false,
+            is_hdr_correct: true,
+            is_audio_opus: true,
             codec_name: Some("av01".to_string()),
             pixel_format: Some("yuv420p10le".to_string()),
             bit_depth: Some(10),
@@ -482,6 +653,11 @@ mod tests {
             actual_duration: Some(6150.0),
             expected_duration: Some(6155.0),
             duration_message: Some("Expected 6155.0s, found 6150.0s (diff: 5.0s)".to_string()),
+            expected_hdr: Some(false),
+            actual_hdr: Some(false),
+            hdr_message: Some("SDR preserved".to_string()),
+            audio_codecs: vec!["opus".to_string()],
+            audio_message: Some("Audio track is Opus".to_string()),
         };
         
         let steps_failed = result_failed.get_validation_steps();
@@ -497,5 +673,191 @@ mod tests {
         assert_eq!(parse_frame_rate("25/1").unwrap(), 25.0);
         assert!(parse_frame_rate("invalid").is_err());
         assert!(parse_frame_rate("30/0").is_err()); // Division by zero should be handled by parse
+    }
+
+    #[test]
+    fn test_hdr_validation() {
+        // Test HDR preserved correctly
+        let result_hdr = ValidationResult {
+            is_av1: true,
+            is_10_bit: true,
+            is_crop_correct: true,
+            is_duration_correct: true,
+            is_hdr_correct: true,
+            is_audio_opus: true,
+            codec_name: Some("av01".to_string()),
+            pixel_format: Some("yuv420p10le".to_string()),
+            bit_depth: Some(10),
+            actual_dimensions: Some((3840, 2160)),
+            expected_dimensions: Some((3840, 2160)),
+            crop_message: Some("No crop expected, dimensions: 3840x2160".to_string()),
+            actual_duration: Some(6155.0),
+            expected_duration: Some(6155.0),
+            duration_message: Some("Duration matches input (6155.0s)".to_string()),
+            expected_hdr: Some(true),
+            actual_hdr: Some(true),
+            hdr_message: Some("HDR preserved".to_string()),
+            audio_codecs: vec!["opus".to_string()],
+            audio_message: Some("Audio track is Opus".to_string()),
+        };
+        
+        assert!(result_hdr.is_valid());
+        assert!(result_hdr.is_hdr_correct);
+        
+        // Test HDR mismatch (expected HDR, got SDR)
+        let result_mismatch = ValidationResult {
+            is_av1: true,
+            is_10_bit: true,
+            is_crop_correct: true,
+            is_duration_correct: true,
+            is_hdr_correct: false,
+            is_audio_opus: true,
+            codec_name: Some("av01".to_string()),
+            pixel_format: Some("yuv420p10le".to_string()),
+            bit_depth: Some(10),
+            actual_dimensions: Some((3840, 2160)),
+            expected_dimensions: Some((3840, 2160)),
+            crop_message: Some("No crop expected, dimensions: 3840x2160".to_string()),
+            actual_duration: Some(6155.0),
+            expected_duration: Some(6155.0),
+            duration_message: Some("Duration matches input (6155.0s)".to_string()),
+            expected_hdr: Some(true),
+            actual_hdr: Some(false),
+            hdr_message: Some("Expected HDR, found SDR".to_string()),
+            audio_codecs: vec!["opus".to_string()],
+            audio_message: Some("Audio track is Opus".to_string()),
+        };
+        
+        assert!(!result_mismatch.is_valid());
+        assert!(!result_mismatch.is_hdr_correct);
+        let failures = result_mismatch.get_failures();
+        assert_eq!(failures.len(), 1);
+        assert!(failures[0].contains("Expected HDR, found SDR"));
+        
+        // Test HDR validation in steps
+        let steps = result_hdr.get_validation_steps();
+        assert_eq!(steps.len(), 6);
+        assert_eq!(steps[4].0, "HDR/SDR status");
+        assert_eq!(steps[4].1, true);
+        assert!(steps[4].2.contains("HDR preserved"));
+    }
+
+    #[test]
+    fn test_hdr_detection() {
+        // Test stream with HDR color space
+        let mut stream = ffprobe::Stream::default();
+        stream.color_space = Some("bt2020nc".to_string());
+        assert_eq!(detect_hdr_from_stream(&stream), Some(true));
+        
+        stream.color_space = Some("bt2020c".to_string());
+        assert_eq!(detect_hdr_from_stream(&stream), Some(true));
+        
+        // Test stream with SDR color space
+        stream.color_space = Some("bt709".to_string());
+        assert_eq!(detect_hdr_from_stream(&stream), Some(false));
+        
+        // Test stream with no color space info
+        stream.color_space = None;
+        assert_eq!(detect_hdr_from_stream(&stream), None);
+        
+        // Test unknown color space
+        stream.color_space = Some("unknown".to_string());
+        assert_eq!(detect_hdr_from_stream(&stream), Some(false));
+    }
+
+    #[test]
+    fn test_audio_codec_validation() {
+        // Test all audio tracks are Opus
+        let result_opus = ValidationResult {
+            is_av1: true,
+            is_10_bit: true,
+            is_crop_correct: true,
+            is_duration_correct: true,
+            is_hdr_correct: true,
+            is_audio_opus: true,
+            codec_name: Some("av01".to_string()),
+            pixel_format: Some("yuv420p10le".to_string()),
+            bit_depth: Some(10),
+            actual_dimensions: Some((1920, 1080)),
+            expected_dimensions: Some((1920, 1080)),
+            crop_message: Some("No crop expected, dimensions: 1920x1080".to_string()),
+            actual_duration: Some(6155.0),
+            expected_duration: Some(6155.0),
+            duration_message: Some("Duration matches input (6155.0s)".to_string()),
+            expected_hdr: Some(false),
+            actual_hdr: Some(false),
+            hdr_message: Some("SDR preserved".to_string()),
+            audio_codecs: vec!["opus".to_string(), "opus".to_string()],
+            audio_message: Some("All 2 audio tracks are Opus".to_string()),
+        };
+        
+        assert!(result_opus.is_valid());
+        assert!(result_opus.is_audio_opus);
+        
+        // Test non-Opus audio codec
+        let result_non_opus = ValidationResult {
+            is_av1: true,
+            is_10_bit: true,
+            is_crop_correct: true,
+            is_duration_correct: true,
+            is_hdr_correct: true,
+            is_audio_opus: false,
+            codec_name: Some("av01".to_string()),
+            pixel_format: Some("yuv420p10le".to_string()),
+            bit_depth: Some(10),
+            actual_dimensions: Some((1920, 1080)),
+            expected_dimensions: Some((1920, 1080)),
+            crop_message: Some("No crop expected, dimensions: 1920x1080".to_string()),
+            actual_duration: Some(6155.0),
+            expected_duration: Some(6155.0),
+            duration_message: Some("Duration matches input (6155.0s)".to_string()),
+            expected_hdr: Some(false),
+            actual_hdr: Some(false),
+            hdr_message: Some("SDR preserved".to_string()),
+            audio_codecs: vec!["aac".to_string(), "ac3".to_string()],
+            audio_message: Some("Expected Opus for all audio tracks, found: aac, ac3".to_string()),
+        };
+        
+        assert!(!result_non_opus.is_valid());
+        assert!(!result_non_opus.is_audio_opus);
+        let failures = result_non_opus.get_failures();
+        assert_eq!(failures.len(), 1);
+        assert!(failures[0].contains("Expected Opus for all audio tracks, found: aac, ac3"));
+        
+        // Test audio validation in steps
+        let steps = result_opus.get_validation_steps();
+        assert_eq!(steps.len(), 6);
+        assert_eq!(steps[5].0, "Audio codec");
+        assert_eq!(steps[5].1, true);
+        assert!(steps[5].2.contains("All 2 audio tracks are Opus"));
+        
+        // Test no audio tracks (should fail)
+        let result_no_audio = ValidationResult {
+            is_av1: true,
+            is_10_bit: true,
+            is_crop_correct: true,
+            is_duration_correct: true,
+            is_hdr_correct: true,
+            is_audio_opus: false,
+            codec_name: Some("av01".to_string()),
+            pixel_format: Some("yuv420p10le".to_string()),
+            bit_depth: Some(10),
+            actual_dimensions: Some((1920, 1080)),
+            expected_dimensions: Some((1920, 1080)),
+            crop_message: Some("No crop expected, dimensions: 1920x1080".to_string()),
+            actual_duration: Some(6155.0),
+            expected_duration: Some(6155.0),
+            duration_message: Some("Duration matches input (6155.0s)".to_string()),
+            expected_hdr: Some(false),
+            actual_hdr: Some(false),
+            hdr_message: Some("SDR preserved".to_string()),
+            audio_codecs: vec![],
+            audio_message: Some("No audio streams found".to_string()),
+        };
+        
+        assert!(!result_no_audio.is_valid());
+        assert!(!result_no_audio.is_audio_opus);
+        let failures = result_no_audio.get_failures();
+        assert!(failures.iter().any(|f| f.contains("No audio streams found")));
     }
 }
