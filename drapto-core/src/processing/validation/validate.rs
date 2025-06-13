@@ -16,7 +16,8 @@ pub fn validate_output_video(
     output_path: &Path, 
     expected_dimensions: Option<(u32, u32)>,
     expected_duration: Option<f64>,
-    expected_hdr: Option<bool>
+    expected_hdr: Option<bool>,
+    expected_audio_track_count: Option<usize>
 ) -> CoreResult<ValidationResult> {
     log::debug!("Validating output video: {}", output_path.display());
     
@@ -55,9 +56,9 @@ pub fn validate_output_video(
     let (is_hdr_correct, actual_hdr, hdr_message) = 
         hdr::validate_hdr_status(video_stream, expected_hdr);
 
-    // Validate audio codec
-    let (is_audio_opus, audio_codecs, audio_message) = 
-        audio::validate_audio_codec(&metadata);
+    // Validate audio codec and track count
+    let (is_audio_opus, is_audio_track_count_correct, audio_codecs, audio_message) = 
+        audio::validate_audio_codec(&metadata, expected_audio_track_count);
 
     let result = ValidationResult {
         is_av1,
@@ -66,6 +67,7 @@ pub fn validate_output_video(
         is_duration_correct,
         is_hdr_correct,
         is_audio_opus,
+        is_audio_track_count_correct,
         codec_name,
         pixel_format,
         bit_depth,
@@ -96,7 +98,7 @@ mod tests {
     fn test_validate_output_video_error_handling() {
         // Test with non-existent file
         let non_existent_path = PathBuf::from("/non/existent/file.mkv");
-        let result = validate_output_video(&non_existent_path, None, None, None);
+        let result = validate_output_video(&non_existent_path, None, None, None, None);
         assert!(result.is_err());
         
         // Should be an FfprobeParse error

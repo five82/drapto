@@ -41,6 +41,7 @@ mod tests {
             is_duration_correct: true,
             is_hdr_correct: true,
             is_audio_opus: true,
+            is_audio_track_count_correct: true,
             codec_name: Some("av01".to_string()),
             pixel_format: Some("yuv420p10le".to_string()),
             bit_depth: Some(10),

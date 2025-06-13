@@ -15,6 +15,8 @@ pub struct ValidationResult {
     pub is_hdr_correct: bool,
     /// Whether all audio tracks are Opus codec
     pub is_audio_opus: bool,
+    /// Whether the number of audio tracks matches the input
+    pub is_audio_track_count_correct: bool,
     /// The actual codec found
     pub codec_name: Option<String>,
     /// The actual pixel format found
@@ -48,7 +50,7 @@ pub struct ValidationResult {
 impl ValidationResult {
     /// Returns true if all validations pass
     pub fn is_valid(&self) -> bool {
-        self.is_av1 && self.is_10_bit && self.is_crop_correct && self.is_duration_correct && self.is_hdr_correct && self.is_audio_opus
+        self.is_av1 && self.is_10_bit && self.is_crop_correct && self.is_duration_correct && self.is_hdr_correct && self.is_audio_opus && self.is_audio_track_count_correct
     }
 
     /// Returns a list of validation failures
@@ -90,11 +92,11 @@ impl ValidationResult {
             }
         }
         
-        if !self.is_audio_opus {
+        if !self.is_audio_opus || !self.is_audio_track_count_correct {
             if let Some(msg) = &self.audio_message {
-                failures.push(format!("Audio codec validation failed: {}", msg));
+                failures.push(format!("Audio validation failed: {}", msg));
             } else {
-                failures.push("Audio codec validation failed".to_string());
+                failures.push("Audio validation failed".to_string());
             }
         }
         
@@ -159,17 +161,18 @@ impl ValidationResult {
         };
         steps.push(("HDR/SDR status".to_string(), self.is_hdr_correct, hdr_result));
         
-        // Audio codec validation
-        let audio_result = if self.is_audio_opus {
+        // Audio validation (codec and track count)
+        let audio_valid = self.is_audio_opus && self.is_audio_track_count_correct;
+        let audio_result = if audio_valid {
             self.audio_message.as_ref()
                 .map(|msg| msg.clone())
                 .unwrap_or_else(|| "All audio tracks are Opus".to_string())
         } else {
             self.audio_message.as_ref()
                 .map(|msg| msg.clone())
-                .unwrap_or_else(|| "Audio codec validation failed".to_string())
+                .unwrap_or_else(|| "Audio validation failed".to_string())
         };
-        steps.push(("Audio codec".to_string(), self.is_audio_opus, audio_result));
+        steps.push(("Audio tracks".to_string(), audio_valid, audio_result));
         
         steps
     }
@@ -188,6 +191,7 @@ mod tests {
             is_duration_correct: true,
             is_hdr_correct: true,
             is_audio_opus: true,
+            is_audio_track_count_correct: true,
             codec_name: Some("h264".to_string()),
             pixel_format: Some("yuv420p10le".to_string()),
             bit_depth: Some(10),
