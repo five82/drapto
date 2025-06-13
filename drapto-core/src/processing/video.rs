@@ -62,6 +62,34 @@ fn send_notification_safe(
     }
 }
 
+/// Helper function to send individual validation failure notifications
+fn send_validation_failure_notifications(
+    sender: Option<&dyn NotificationSender>,
+    filename: &str,
+    validation_steps: &[(String, bool, String)],
+) {
+    let failures: Vec<&(String, bool, String)> = validation_steps
+        .iter()
+        .filter(|(_, passed, _)| !passed)
+        .collect();
+
+    if failures.is_empty() {
+        return;
+    }
+
+    // Send individual notifications for each failure
+    for (step_name, _, message) in failures.iter() {
+        let notification_msg = format!("{}: {} validation failed - {}", filename, step_name, message);
+        send_notification_safe(sender, &notification_msg, "validation_failure");
+    }
+
+    // Send summary notification if multiple failures
+    if failures.len() > 1 {
+        let summary_msg = format!("{}: {} validation checks failed (encoding completed)", filename, failures.len());
+        send_notification_safe(sender, &summary_msg, "validation_summary");
+    }
+}
+
 /// Helper function to emit events if event dispatcher is available
 fn emit_event(event_dispatcher: Option<&EventDispatcher>, event: Event) {
     if let Some(dispatcher) = event_dispatcher {
@@ -511,10 +539,11 @@ pub fn process_videos(
                                 failures.join(", ")
                             );
                             
-                            send_notification_safe(
+                            // Send detailed individual notifications for each failure
+                            send_validation_failure_notifications(
                                 notification_sender,
-                                &format!("Validation failed for {}: {} (encoding completed)", filename, failures.join(", ")),
-                                "validation_warning"
+                                &filename,
+                                &steps
                             );
                         } else {
                             log::debug!(
