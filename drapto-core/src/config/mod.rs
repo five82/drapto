@@ -23,7 +23,7 @@ pub const DEFAULT_CORE_QUALITY_UHD: u8 = 27;
 
 /// Default SVT-AV1 preset (0-13, lower is slower/better quality)
 /// Value 6 provides a good balance between speed and quality.
-pub const DEFAULT_SVT_AV1_PRESET: u8 = 6;
+pub const DEFAULT_SVT_AV1_PRESET: u8 = 4;
 
 /// Default SVT-AV1 tune parameter
 /// Different SVT-AV1 forks may use this value differently
