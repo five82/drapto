@@ -12,13 +12,13 @@ Advanced ffmpeg video encoding wrapper with intelligent optimization for high-qu
 
 ## Installation
 
-1. **Prerequisites**: Install ffmpeg (with libsvtav1 and libopus support) and mediainfo
+1. **Prerequisites**: Install ffmpeg (with libsvtav1 and libopus support)
    ```bash
    # Ubuntu/Debian
-   sudo apt install ffmpeg mediainfo
+   sudo apt install ffmpeg
 
    # macOS
-   brew install ffmpeg mediainfo
+   brew install ffmpeg
    ```
 
 2. **Install Drapto**:
@@ -39,7 +39,7 @@ drapto encode -i /videos/ -o /encoded/
 drapto encode --interactive -i input.mkv -o output/
 
 # Custom settings
-drapto encode -i input.mkv -o output/ --quality-hd 24 --preset 6
+drapto encode -i input.mkv -o output/ --quality-hd 24 --preset 4
 
 # With notifications
 drapto encode -i input.mkv -o output/ --ntfy https://ntfy.sh/your_topic
@@ -59,8 +59,8 @@ drapto encode -v -i input.mkv -o output/
 * `-v, --verbose`: Enable verbose output with detailed information
 * `--no-color`: Disable colored output
 * `-l, --log-dir <DIR>`: Directory for log files (defaults to OUTPUT_DIR/logs)
-* `--preset <0-13>`: SVT-AV1 encoder speed/quality (default: 6, lower = slower/better)
-* `--quality-sd/hd/uhd <CRF>`: Override quality settings (defaults: SD=25, HD=27, UHD=27)
+* `--preset <0-13>`: SVT-AV1 encoder speed/quality (default: 4, lower = slower/better)
+* `--quality-sd/hd/uhd <CRF>`: Override quality settings (defaults: SD=23, HD=25, UHD=27)
 * `--no-denoise`: Disable denoising and film grain synthesis
 * `--disable-autocrop`: Disable black bar cropping
 * `--ntfy <URL>`: Send notifications to ntfy.sh
@@ -80,6 +80,17 @@ This achieves modest file size reduction while maintaining excellent visual qual
 ### HDR Support
 
 Automatically detects and preserves HDR content (BT.2020 color space) with adapted processing parameters.
+
+### Post-Encode Validation
+
+Drapto includes comprehensive validation to ensure encoding success:
+
+* **Video Codec**: Verifies AV1 encoding and 10-bit depth
+* **Audio Codec**: Confirms Opus audio encoding and track count
+* **Dimensions**: Validates crop detection and output dimensions
+* **Duration**: Ensures encoded duration matches input
+* **HDR/Color Space**: Verifies HDR content preservation
+* **Failure Reporting**: Logs and notifies about validation issues
 
 ### Hardware Acceleration
 
@@ -124,6 +135,8 @@ Push notifications via ntfy.sh include:
 git clone https://github.com/five82/drapto.git
 cd drapto
 cargo build --release
+# Or use the build script
+./build.sh
 ./target/release/drapto --help
 ```
 
@@ -138,11 +151,14 @@ Drapto is built as a Rust workspace with two main components:
   * Terminal color support
 
 * **drapto-core**: Core video processing library
-  * Video analysis (crop detection)
-  * FFmpeg/FFprobe integration
-  * Audio stream processing
-  * Notification services
+  * Video analysis (crop detection, video properties)
+  * FFmpeg/FFprobe integration and command building
+  * Audio stream processing and validation
+  * Post-encode validation system
+  * Notification services (ntfy.sh)
   * Hardware acceleration detection
+  * Event-based progress reporting
+  * System information collection
   * Temporary file management
 
 ## Debugging
