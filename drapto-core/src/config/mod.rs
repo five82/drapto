@@ -27,7 +27,7 @@ pub const DEFAULT_SVT_AV1_PRESET: u8 = 6;
 
 /// Default SVT-AV1 tune parameter
 /// Different SVT-AV1 forks may use this value differently
-pub const DEFAULT_SVT_AV1_TUNE: u8 = 1;
+pub const DEFAULT_SVT_AV1_TUNE: u8 = 0;
 
 /// Default crop mode for the main encode.
 pub const DEFAULT_CROP_MODE: &str = "auto";
