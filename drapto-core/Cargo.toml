@@ -20,8 +20,6 @@ authors = ["Drapto Contributors"]
 # ---- File System Operations ----
 tempfile = "3"                   # Temporary file and directory management
 
-# ---- Date and Time ----
-chrono = "0.4"                   # Date and time utilities
 
 # ---- Error Handling ----
 thiserror = "1.0"                # Error definition and handling
@@ -35,8 +33,6 @@ serde_json = "1.0"               # JSON support for serde
 log = "0.4"                      # Logging facade
 log4rs = "1.3"                   # Advanced logging configuration
 
-# ---- Synchronization ----
-once_cell = "1.19"               # Thread-safe lazy statics for the core library
 
 # ---- Randomization ----
 rand = "0.8"                     # Random number generation for crop detection sampling
@@ -57,4 +53,3 @@ indicatif = { version = "0.17", features = ["improved_unicode"] }  # Progress ba
 
 # ---- Media Analysis ----
 ffprobe = "0.3.0"                # FFprobe media file analysis
-mediainfo = "0.2.0"              # MediaInfo for comprehensive media metadata
