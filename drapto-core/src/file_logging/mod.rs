@@ -110,7 +110,7 @@ impl EventHandler for FileLoggingHandler {
                 film_grain,
                 hardware_accel,
                 pixel_format,
-                color_space,
+                matrix_coefficients,
                 audio_codec,
                 audio_description,
             } => {
@@ -125,7 +125,7 @@ impl EventHandler for FileLoggingHandler {
                     info!("  Hardware acceleration: {}", hw);
                 }
                 info!("  Pixel format: {}", pixel_format);
-                info!("  Color space: {}", color_space);
+                info!("  Matrix: {}", matrix_coefficients);
                 info!("  Audio codec: {}", audio_codec);
                 info!("  Audio: {}", audio_description);
             }

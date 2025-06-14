@@ -12,13 +12,13 @@ Advanced ffmpeg video encoding wrapper with intelligent optimization for high-qu
 
 ## Installation
 
-1. **Prerequisites**: Install ffmpeg (with libsvtav1 and libopus support)
+1. **Prerequisites**: Install ffmpeg (with libsvtav1 and libopus support) and mediainfo
    ```bash
    # Ubuntu/Debian
-   sudo apt install ffmpeg
+   sudo apt install ffmpeg mediainfo
 
    # macOS
-   brew install ffmpeg
+   brew install ffmpeg media-info
    ```
 
 2. **Install Drapto**:
@@ -79,7 +79,10 @@ This achieves modest file size reduction while maintaining excellent visual qual
 
 ### HDR Support
 
-Automatically detects and preserves HDR content (BT.2020 color space) with adapted processing parameters.
+Automatically detects and preserves HDR content using MediaInfo for comprehensive color space analysis:
+- Detects HDR based on color primaries (BT.2020, BT.2100)
+- Recognizes HDR transfer characteristics (PQ, HLG)
+- Adapts processing parameters for HDR content
 
 ### Post-Encode Validation
 
@@ -89,7 +92,7 @@ Drapto includes comprehensive validation to ensure encoding success:
 * **Audio Codec**: Confirms Opus audio encoding and track count
 * **Dimensions**: Validates crop detection and output dimensions
 * **Duration**: Ensures encoded duration matches input
-* **HDR/Color Space**: Verifies HDR content preservation
+* **HDR/Color Space**: Uses MediaInfo to verify HDR content preservation and color space accuracy
 * **Failure Reporting**: Logs and notifies about validation issues
 
 ### Hardware Acceleration
@@ -152,7 +155,7 @@ Drapto is built as a Rust workspace with two main components:
 
 * **drapto-core**: Core video processing library
   * Video analysis (crop detection, video properties)
-  * FFmpeg/FFprobe integration and command building
+  * FFmpeg/FFprobe and MediaInfo integration
   * Audio stream processing and validation
   * Post-encode validation system
   * Notification services (ntfy.sh)

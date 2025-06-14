@@ -54,9 +54,6 @@ pub const UHD_WIDTH_THRESHOLD: u32 = 3840;
 /// Videos with width >= this value (but < UHD threshold) are considered HD.
 pub const HD_WIDTH_THRESHOLD: u32 = 1920;
 
-/// HDR color spaces used for HDR detection.
-/// Videos with these color spaces are considered HDR.
-pub const HDR_COLOR_SPACES: &[&str] = &["bt2020nc", "bt2020c"];
 
 /// Default cooldown period between encodes in seconds.
 /// This helps ensure notifications arrive in order when processing multiple files.
@@ -290,7 +287,6 @@ mod tests {
         assert!(DEFAULT_SVT_AV1_PRESET <= 13);
         assert!(FIXED_FILM_GRAIN_VALUE <= 50);
         assert!(HD_WIDTH_THRESHOLD < UHD_WIDTH_THRESHOLD);
-        assert_eq!(HDR_COLOR_SPACES.len(), 2);
         assert!(DEFAULT_ENCODE_COOLDOWN_SECS > 0);
     }
 }

@@ -227,7 +227,7 @@ pub fn format_reduction(reduction: f64) -> String {
 /// - Resolution categories: HD/UHD/4K  
 /// - Audio channels: 5.1, 7.1, channel counts
 /// - Codecs: AV1, Opus, H.264, etc.
-/// - Color spaces: bt709, bt2020nc, etc.
+/// - Matrix coefficients: BT.709, BT.2020, etc.
 /// - Pixel formats: yuv420p, yuv420p10le, etc.
 pub fn format_technical_info(value: &str) -> String {
     // Check if this is technical info that should be entirely blue
@@ -235,7 +235,7 @@ pub fn format_technical_info(value: &str) -> String {
        value.contains("(HD)") || value.contains("(UHD)") || value.contains("(4K)") ||
        value.contains("5.1") || value.contains("7.1") || value.contains(" channels") ||
        value.contains("AV1") || value.contains("Opus") || value.contains("H.264") ||
-       value.contains("bt709") || value.contains("bt2020nc") ||
+       value.contains("BT.709") || value.contains("BT.2020") || // MediaInfo format
        value.contains("yuv") || value.contains("p10le") || value.contains("p8") {
         style(value).blue().to_string()
     } else {

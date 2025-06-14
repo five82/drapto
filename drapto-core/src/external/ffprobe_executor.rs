@@ -116,11 +116,26 @@ pub fn get_video_properties(input_path: &Path) -> CoreResult<VideoProperties> {
                 )));
             }
 
+            // Get HDR information using MediaInfo
+            let hdr_info = match crate::external::mediainfo_executor::get_media_info(input_path) {
+                Ok(media_info) => crate::external::mediainfo_executor::detect_hdr_from_mediainfo(&media_info),
+                Err(e) => {
+                    log::warn!("Failed to get MediaInfo for HDR detection: {}, defaulting to SDR", e);
+                    crate::external::HdrInfo {
+                        is_hdr: false,
+                        colour_primaries: None,
+                        transfer_characteristics: None,
+                        matrix_coefficients: None,
+                        bit_depth: None,
+                    }
+                }
+            };
+
             Ok(VideoProperties {
                 width: width as u32,
                 height: height as u32,
                 duration_secs,
-                color_space: video_stream.color_space.clone(),
+                hdr_info,
             })
         }
         Err(err) => {
