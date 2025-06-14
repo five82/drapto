@@ -128,7 +128,7 @@ fn render_grouped_key_values(title: &str, groups: &[GroupData]) {
                 style(value).green().bold().to_string()
             } else {
                 // Apply contextual formatting based on key type
-                match key.as_ref() {
+                match *key {
                     // Applied processing settings (purple)
                     "Denoising" | "Film grain" => format_applied_setting(value),
                     // Encoder settings (amber/yellow)
@@ -170,7 +170,7 @@ fn render_completion_summary(title: &str, success_message: &str, groups: &[Group
     
     println!("  {} {}", style("✓").green().bold(), style(success_message).bold());
     
-    for (_index, group) in groups.iter().enumerate() {
+    for group in groups.iter() {
         println!();
         
         for (key, value, emphasize) in &group.items {

@@ -480,7 +480,7 @@ pub fn process_videos(
         });
 
         // Get total frame count for progress reporting
-        let total_frames = match get_media_info(&input_path) {
+        let total_frames = match get_media_info(input_path) {
             Ok(info) => info.total_frames.unwrap_or(0),
             Err(e) => {
                 log::warn!("Failed to get media info for frame count: {}", e);
@@ -520,7 +520,7 @@ pub fn process_videos(
 
                 // Perform post-encode validation
                 let expected_audio_track_count = if audio_channels.is_empty() { Some(0) } else { Some(audio_channels.len()) };
-                let (validation_passed, validation_steps) = match validate_output_video(&input_path, &output_path, expected_dimensions, Some(duration_secs), Some(is_hdr), expected_audio_track_count) {
+                let (validation_passed, validation_steps) = match validate_output_video(input_path, &output_path, expected_dimensions, Some(duration_secs), Some(is_hdr), expected_audio_track_count) {
                     Ok(validation_result) => {
                         let steps = validation_result.get_validation_steps();
                         
@@ -743,7 +743,7 @@ pub fn process_videos(
                 total_original_size,
                 total_encoded_size,
                 total_duration,
-                average_speed: average_speed as f32,
+                average_speed,
                 file_results,
                 validation_passed_count,
                 validation_failed_count,

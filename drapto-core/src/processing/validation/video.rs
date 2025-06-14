@@ -15,7 +15,7 @@ pub fn validate_video_codec_and_depth(stream: &Stream) -> (bool, bool, Option<St
 
     // Check bit depth - try multiple methods
     let bit_depth = get_bit_depth_from_stream(stream);
-    let is_10_bit = bit_depth.map_or(false, |depth| depth == 10);
+    let is_10_bit = bit_depth == Some(10);
 
     (is_av1, is_10_bit, codec_name, pixel_format, bit_depth)
 }

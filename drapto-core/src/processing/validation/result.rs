@@ -141,36 +141,36 @@ impl ValidationResult {
         
         // Crop validation
         let crop_result = if self.is_crop_correct {
-            self.crop_message.as_ref()
-                .map(|msg| msg.clone())
+            self.crop_message
+                .clone()
                 .unwrap_or_else(|| "Crop applied correctly".to_string())
         } else {
-            self.crop_message.as_ref()
-                .map(|msg| msg.clone())
+            self.crop_message
+                .clone()
                 .unwrap_or_else(|| "Crop validation failed".to_string())
         };
         steps.push(("Crop detection".to_string(), self.is_crop_correct, crop_result));
         
         // Duration validation
         let duration_result = if self.is_duration_correct {
-            self.duration_message.as_ref()
-                .map(|msg| msg.clone())
+            self.duration_message
+                .clone()
                 .unwrap_or_else(|| "Duration matches input".to_string())
         } else {
-            self.duration_message.as_ref()
-                .map(|msg| msg.clone())
+            self.duration_message
+                .clone()
                 .unwrap_or_else(|| "Duration validation failed".to_string())
         };
         steps.push(("Video duration".to_string(), self.is_duration_correct, duration_result));
         
         // HDR validation
         let hdr_result = if self.is_hdr_correct {
-            self.hdr_message.as_ref()
-                .map(|msg| msg.clone())
+            self.hdr_message
+                .clone()
                 .unwrap_or_else(|| "HDR status matches input".to_string())
         } else {
-            self.hdr_message.as_ref()
-                .map(|msg| msg.clone())
+            self.hdr_message
+                .clone()
                 .unwrap_or_else(|| "HDR validation failed".to_string())
         };
         steps.push(("HDR/SDR status".to_string(), self.is_hdr_correct, hdr_result));
@@ -178,24 +178,24 @@ impl ValidationResult {
         // Audio validation (codec and track count)
         let audio_valid = self.is_audio_opus && self.is_audio_track_count_correct;
         let audio_result = if audio_valid {
-            self.audio_message.as_ref()
-                .map(|msg| msg.clone())
+            self.audio_message
+                .clone()
                 .unwrap_or_else(|| "All audio tracks are Opus".to_string())
         } else {
-            self.audio_message.as_ref()
-                .map(|msg| msg.clone())
+            self.audio_message
+                .clone()
                 .unwrap_or_else(|| "Audio validation failed".to_string())
         };
         steps.push(("Audio tracks".to_string(), audio_valid, audio_result));
         
         // Sync validation
         let sync_result = if self.is_sync_preserved {
-            self.sync_message.as_ref()
-                .map(|msg| msg.clone())
+            self.sync_message
+                .clone()
                 .unwrap_or_else(|| "Audio/video sync preserved".to_string())
         } else {
-            self.sync_message.as_ref()
-                .map(|msg| msg.clone())
+            self.sync_message
+                .clone()
                 .unwrap_or_else(|| "Sync validation failed".to_string())
         };
         steps.push(("Audio/video sync".to_string(), self.is_sync_preserved, sync_result));

@@ -1,5 +1,5 @@
 use crate::events::{Event, EventHandler};
-use super::template_presenter::TemplatePresenter;
+use super::template_presenter::{TemplatePresenter, FileAnalysisParams, EncodingConfigParams, EncodingCompleteParams, BatchCompleteParams};
 use super::templates;
 use std::sync::Mutex;
 
@@ -40,15 +40,15 @@ impl EventHandler for TemplateEventHandler {
                 audio_description,
                 hardware 
             } => {
-                presenter.render_file_analysis(
+                presenter.render_file_analysis(FileAnalysisParams {
                     input_file, 
                     duration, 
                     resolution, 
                     category,
                     dynamic_range,
                     audio_description,
-                    hardware.as_deref()
-                );
+                    hardware: hardware.as_deref(),
+                });
             }
             
             Event::VideoAnalysisStarted => {
@@ -101,19 +101,19 @@ impl EventHandler for TemplateEventHandler {
                 audio_codec,
                 audio_description,
             } => {
-                presenter.render_encoding_configuration(
+                presenter.render_encoding_configuration(EncodingConfigParams {
                     encoder,
                     preset,
                     tune,
                     quality,
                     denoising,
                     film_grain,
-                    hardware_accel.as_deref(),
+                    hardware_accel: hardware_accel.as_deref(),
                     pixel_format,
                     matrix_coefficients,
                     audio_codec,
                     audio_description,
-                );
+                });
             }
             
             Event::EncodingStarted { total_frames: _ } => {
@@ -174,18 +174,18 @@ impl EventHandler for TemplateEventHandler {
                     total_time.as_secs() % 60
                 );
                 
-                presenter.render_encoding_complete(
+                presenter.render_encoding_complete(EncodingCompleteParams {
                     input_file,
-                    &original_size_str,
-                    &encoded_size_str,
-                    &reduction_str,
+                    original_size: &original_size_str,
+                    encoded_size: &encoded_size_str,
+                    reduction: &reduction_str,
                     video_stream,
                     audio_stream,
-                    &total_time_str,
-                    &templates::format_speed(*average_speed),
+                    total_time: &total_time_str,
+                    average_speed: &templates::format_speed(*average_speed),
                     output_path,
-                    false, // color formatting handled by format_reduction
-                );
+                    emphasize_reduction: false, // color formatting handled by format_reduction
+                });
             }
             
             Event::Error { title, message, context, suggestion } => {
@@ -236,22 +236,22 @@ impl EventHandler for TemplateEventHandler {
                     0.0
                 };
                 
-                presenter.render_batch_complete(
-                    *successful_count,
-                    *total_files,
-                    &format_bytes(*total_original_size),
-                    &format_bytes(*total_encoded_size),
-                    total_reduction,
-                    &format!("{:02}:{:02}:{:02}", 
+                presenter.render_batch_complete(BatchCompleteParams {
+                    successful_count: *successful_count,
+                    total_files: *total_files,
+                    total_original_size: &format_bytes(*total_original_size),
+                    total_encoded_size: &format_bytes(*total_encoded_size),
+                    total_reduction_percent: total_reduction,
+                    total_time: &format!("{:02}:{:02}:{:02}", 
                         total_duration.as_secs() / 3600,
                         (total_duration.as_secs() % 3600) / 60,
                         total_duration.as_secs() % 60
                     ),
-                    &templates::format_speed(*average_speed),
+                    average_speed: &templates::format_speed(*average_speed),
                     file_results,
-                    *validation_passed_count,
-                    *validation_failed_count,
-                );
+                    validation_passed_count: *validation_passed_count,
+                    validation_failed_count: *validation_failed_count,
+                });
             }
         }
     }

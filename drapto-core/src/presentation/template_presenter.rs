@@ -3,6 +3,60 @@ use indicatif::{ProgressBar, ProgressStyle};
 use console;
 use std::time::Duration;
 
+/// Parameters for file analysis rendering
+pub struct FileAnalysisParams<'a> {
+    pub input_file: &'a str,
+    pub duration: &'a str,
+    pub resolution: &'a str,
+    pub category: &'a str,
+    pub dynamic_range: &'a str,
+    pub audio_description: &'a str,
+    pub hardware: Option<&'a str>,
+}
+
+/// Parameters for encoding configuration rendering
+pub struct EncodingConfigParams<'a> {
+    pub encoder: &'a str,
+    pub preset: &'a str,
+    pub tune: &'a str,
+    pub quality: &'a str,
+    pub denoising: &'a str,
+    pub film_grain: &'a str,
+    pub hardware_accel: Option<&'a str>,
+    pub pixel_format: &'a str,
+    pub matrix_coefficients: &'a str,
+    pub audio_codec: &'a str,
+    pub audio_description: &'a str,
+}
+
+/// Parameters for encoding completion rendering
+pub struct EncodingCompleteParams<'a> {
+    pub input_file: &'a str,
+    pub original_size: &'a str,
+    pub encoded_size: &'a str,
+    pub reduction: &'a str,
+    pub video_stream: &'a str,
+    pub audio_stream: &'a str,
+    pub total_time: &'a str,
+    pub average_speed: &'a str,
+    pub output_path: &'a str,
+    pub emphasize_reduction: bool,
+}
+
+/// Parameters for batch completion rendering
+pub struct BatchCompleteParams<'a> {
+    pub successful_count: usize,
+    pub total_files: usize,
+    pub total_original_size: &'a str,
+    pub total_encoded_size: &'a str,
+    pub total_reduction_percent: f64,
+    pub total_time: &'a str,
+    pub average_speed: &'a str,
+    pub file_results: &'a [(String, f64)],
+    pub validation_passed_count: usize,
+    pub validation_failed_count: usize,
+}
+
 /// Template-based presenter that handles all terminal output through consistent templates
 pub struct TemplatePresenter {
     progress_bar: Option<ProgressBar>,
@@ -43,20 +97,20 @@ impl TemplatePresenter {
     }
 
     /// Render file analysis section with comprehensive file information
-    pub fn render_file_analysis(&self, input_file: &str, duration: &str, resolution: &str, category: &str, dynamic_range: &str, audio_description: &str, hardware: Option<&str>) {
-        let resolution_with_category = templates::format_technical_info(&format!("{} ({})", resolution, category));
-        let formatted_dynamic_range = templates::format_technical_info(dynamic_range);
-        let formatted_audio = templates::format_technical_info(audio_description);
+    pub fn render_file_analysis(&self, params: FileAnalysisParams) {
+        let resolution_with_category = templates::format_technical_info(&format!("{} ({})", params.resolution, params.category));
+        let formatted_dynamic_range = templates::format_technical_info(params.dynamic_range);
+        let formatted_audio = templates::format_technical_info(params.audio_description);
         
         let mut items = vec![
-            ("File", input_file),
-            ("Duration", duration),
+            ("File", params.input_file),
+            ("Duration", params.duration),
             ("Resolution", &resolution_with_category),
             ("Dynamic range", &formatted_dynamic_range),
             ("Audio", &formatted_audio),
         ];
         
-        if let Some(hw) = hardware {
+        if let Some(hw) = params.hardware {
             items.push(("Hardware", hw));
         }
         
@@ -87,57 +141,44 @@ impl TemplatePresenter {
     }
 
     /// Render encoding configuration with grouped settings
-    pub fn render_encoding_configuration(
-        &self,
-        encoder: &str,
-        preset: &str,
-        tune: &str,
-        quality: &str, 
-        denoising: &str,
-        film_grain: &str,
-        hardware_accel: Option<&str>,
-        pixel_format: &str,
-        matrix_coefficients: &str,
-        audio_codec: &str,
-        audio_description: &str,
-    ) {
+    pub fn render_encoding_configuration(&self, params: EncodingConfigParams) {
         // Format film grain value to be more concise
-        let film_grain_formatted = format!("{} (synthesis)", film_grain);
+        let film_grain_formatted = format!("{} (synthesis)", params.film_grain);
         
         let mut groups = vec![
             GroupData {
                 name: "Video",
                 items: vec![
-                    ("Encoder", encoder, false),
-                    ("Preset", preset, false),
-                    ("Tune", tune, false),
-                    ("Quality", quality, false),
-                    ("Denoising", denoising, false),
+                    ("Encoder", params.encoder, false),
+                    ("Preset", params.preset, false),
+                    ("Tune", params.tune, false),
+                    ("Quality", params.quality, false),
+                    ("Denoising", params.denoising, false),
                     ("Film grain", &film_grain_formatted, false),
                 ],
             },
             GroupData {
                 name: "Audio",
                 items: vec![
-                    ("Audio codec", audio_codec, false),
-                    ("Audio", audio_description, false),
+                    ("Audio codec", params.audio_codec, false),
+                    ("Audio", params.audio_description, false),
                 ],
             }
         ];
         
-        if let Some(hw) = hardware_accel {
+        if let Some(hw) = params.hardware_accel {
             groups.push(GroupData {
                 name: "Hardware",
                 items: vec![("Acceleration", hw, false)],
             });
         }
         
-        let formatted_matrix_coefficients = templates::format_technical_info(matrix_coefficients);
+        let formatted_matrix_coefficients = templates::format_technical_info(params.matrix_coefficients);
         
         groups.push(GroupData {
             name: "Advanced",
             items: vec![
-                ("Pixel Format", pixel_format, false),
+                ("Pixel Format", params.pixel_format, false),
                 ("Matrix", &formatted_matrix_coefficients, false),
             ],
         });
@@ -237,30 +278,18 @@ impl TemplatePresenter {
     }
 
     /// Render encoding completion summary
-    pub fn render_encoding_complete(
-        &self,
-        input_file: &str,
-        original_size: &str,
-        encoded_size: &str,
-        reduction: &str,
-        video_stream: &str,
-        audio_stream: &str,
-        total_time: &str,
-        average_speed: &str,
-        output_path: &str,
-        emphasize_reduction: bool,
-    ) {
-        let formatted_video_stream = templates::format_technical_info(video_stream);
-        let formatted_audio_stream = templates::format_technical_info(audio_stream);
+    pub fn render_encoding_complete(&self, params: EncodingCompleteParams) {
+        let formatted_video_stream = templates::format_technical_info(params.video_stream);
+        let formatted_audio_stream = templates::format_technical_info(params.audio_stream);
         
         let groups = vec![
             GroupData {
                 name: "Results",
                 items: vec![
-                    ("File", input_file, false),
-                    ("Original size", original_size, false),
-                    ("Encoded size", encoded_size, false),
-                    ("Reduction", reduction, emphasize_reduction),
+                    ("File", params.input_file, false),
+                    ("Original size", params.original_size, false),
+                    ("Encoded size", params.encoded_size, false),
+                    ("Reduction", params.reduction, params.emphasize_reduction),
                 ],
             },
             GroupData {
@@ -273,8 +302,8 @@ impl TemplatePresenter {
             GroupData {
                 name: "Performance",
                 items: vec![
-                    ("Total time", total_time, false),
-                    ("Average speed", average_speed, false),
+                    ("Total time", params.total_time, false),
+                    ("Average speed", params.average_speed, false),
                 ],
             },
         ];
@@ -285,7 +314,7 @@ impl TemplatePresenter {
             groups,
         });
         
-        println!("\n  The encoded file is ready at: {}", output_path);
+        println!("\n  The encoded file is ready at: {}", params.output_path);
     }
 
     /// Start a spinner for short operations
@@ -357,45 +386,33 @@ impl TemplatePresenter {
     }
     
     /// Render batch complete summary
-    pub fn render_batch_complete(
-        &self,
-        successful_count: usize,
-        _total_files: usize,
-        total_original_size: &str,
-        total_encoded_size: &str,
-        total_reduction_percent: f64,
-        total_time: &str,
-        average_speed: &str,
-        file_results: &[(String, f64)],
-        validation_passed_count: usize,
-        validation_failed_count: usize,
-    ) {
+    pub fn render_batch_complete(&self, params: BatchCompleteParams) {
         templates::render(TemplateData::BatchHeader {
             title: "BATCH COMPLETE",
         });
         
-        println!("  {} Successfully encoded {} files", console::style("✓").green().bold(), successful_count);
+        println!("  {} Successfully encoded {} files", console::style("✓").green().bold(), params.successful_count);
         
         // Display validation summary
-        if validation_failed_count == 0 {
-            println!("  {} All {} files passed validation", console::style("✓").green().bold(), validation_passed_count);
+        if params.validation_failed_count == 0 {
+            println!("  {} All {} files passed validation", console::style("✓").green().bold(), params.validation_passed_count);
         } else {
             println!("  {} {} files passed validation, {} failed", 
                 console::style("⚠").yellow().bold(), 
-                validation_passed_count, 
-                validation_failed_count
+                params.validation_passed_count, 
+                params.validation_failed_count
             );
         }
         
         println!();
-        println!("  Total original size:   {}", total_original_size);
-        println!("  Total encoded size:    {}", total_encoded_size);
-        println!("  Total reduction:       {}", templates::format_reduction(total_reduction_percent));
-        println!("  Total encoding time:   {}", total_time);
-        println!("  Average speed:         {}", average_speed);
+        println!("  Total original size:   {}", params.total_original_size);
+        println!("  Total encoded size:    {}", params.total_encoded_size);
+        println!("  Total reduction:       {}", templates::format_reduction(params.total_reduction_percent));
+        println!("  Total encoding time:   {}", params.total_time);
+        println!("  Average speed:         {}", params.average_speed);
         println!();
         println!("  Files processed:");
-        for (filename, reduction) in file_results {
+        for (filename, reduction) in params.file_results {
             println!("    {} {} ({} reduction)", console::style("✓").dim(), filename, templates::format_reduction(*reduction));
         }
         println!();
