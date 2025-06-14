@@ -69,13 +69,15 @@ drapto encode -v -i input.mkv -o output/
 
 ### Conservative Denoising
 
-Drapto applies a fixed, conservative denoising approach for optimal quality:
+Drapto applies a fixed, conservative denoising approach that adapts to content type:
 
-1. **Light Denoising**: Uses hqdn3d=0.5:0.4:2:2 for subtle noise reduction
-2. **Film Grain Synthesis**: Adds level 4 synthetic grain to maintain natural appearance
-3. **Quality Preservation**: Conservative settings avoid visible quality loss at normal viewing distances
+1. **HDR-Aware Denoising**:
+   - HDR content: `hqdn3d=1:0.8:2.5:2` (very light denoising to preserve detail)
+   - SDR content: `hqdn3d=2:1.5:3:2.5` (slightly stronger but still conservative)
+2. **Film Grain Synthesis**: Adds level 4 synthetic grain to maintain natural texture
+3. **Simple Control**: Enabled by default, disable with `--no-denoise`
 
-This achieves modest file size reduction while maintaining excellent visual quality.
+This reduces file size while maintaining excellent visual quality. The denoising parameters are intentionally conservative to avoid visible quality loss at normal viewing distances.
 
 ### HDR Support
 
@@ -138,8 +140,6 @@ Push notifications via ntfy.sh include:
 git clone https://github.com/five82/drapto.git
 cd drapto
 cargo build --release
-# Or use the build script
-./build.sh
 ./target/release/drapto --help
 ```
 
