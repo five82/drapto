@@ -11,8 +11,8 @@
 # AI-ASSISTANT-INFO: Command-line interface for Drapto video processing system
 
 [package]
-name = "drapto-cli"
-version = "0.1.0"
+name = "drapto"
+version = "0.2.0"
 edition = "2024"
 description = "Command-line interface for the Drapto video processing system"
 authors = ["Drapto Contributors"]

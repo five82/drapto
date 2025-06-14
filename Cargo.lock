@@ -443,8 +443,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "drapto-cli"
-version = "0.1.0"
+name = "drapto"
+version = "0.2.0"
 dependencies = [
  "chrono 0.4.40",
  "clap",
@@ -463,7 +463,7 @@ dependencies = [
 
 [[package]]
 name = "drapto-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "chrono 0.4.40",

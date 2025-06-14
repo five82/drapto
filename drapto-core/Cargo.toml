@@ -11,7 +11,7 @@
 
 [package]
 name = "drapto-core"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 description = "Core library for the Drapto video processing and optimization system"
 authors = ["Drapto Contributors"]

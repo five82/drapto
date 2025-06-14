@@ -4,10 +4,10 @@
 //! and dispatching to the appropriate command handlers. The application can run
 //! in either interactive mode (with terminal output) or daemon mode (background process).
 
-use drapto_cli::commands::encode::discover_encode_files;
-use drapto_cli::error::CliResult;
-use drapto_cli::logging::get_timestamp;
-use drapto_cli::{Cli, Commands, run_encode};
+use drapto::commands::encode::discover_encode_files;
+use drapto::error::CliResult;
+use drapto::logging::get_timestamp;
+use drapto::{Cli, Commands, run_encode};
 
 use clap::Parser;
 use daemonize::Daemonize;
