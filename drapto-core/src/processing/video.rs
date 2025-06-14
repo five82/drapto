@@ -472,11 +472,7 @@ pub fn process_videos(
                 .map(|p| format!("hqdn3d={}", p))
                 .unwrap_or_else(|| "None".to_string()),
             film_grain: film_grain_display,
-            hardware_accel: if crate::hardware_decode::is_hardware_decoding_available() {
-                Some("VideoToolbox (decode only)".to_string())
-            } else {
-                None
-            },
+            hardware_accel: None, // Hardware info is already shown in VIDEO DETAILS section
             pixel_format: final_encode_params.pixel_format.clone(),
             matrix_coefficients: final_encode_params.matrix_coefficients.clone(),
             audio_codec: audio_codec_display.to_string(),
