@@ -11,8 +11,9 @@ use super::dimensions;
 use super::duration;
 use super::hdr;
 
-/// Validates that the output video file has AV1 codec, 10-bit depth, correct crop dimensions, matching duration, HDR status, and Opus audio
+/// Validates that the output video file has AV1 codec, 10-bit depth, correct crop dimensions, matching duration, HDR status, Opus audio, and preserved sync
 pub fn validate_output_video(
+    input_path: &Path,
     output_path: &Path, 
     expected_dimensions: Option<(u32, u32)>,
     expected_duration: Option<f64>,
@@ -60,6 +61,10 @@ pub fn validate_output_video(
     let (is_audio_opus, is_audio_track_count_correct, audio_codecs, audio_message) = 
         audio::validate_audio_codec(&metadata, expected_audio_track_count);
 
+    // Validate audio/video sync preservation
+    let (is_sync_preserved, sync_drift_ms, sync_message) = 
+        duration::validate_sync_preservation(input_path, output_path);
+
     let result = ValidationResult {
         is_av1,
         is_10_bit,
@@ -68,6 +73,7 @@ pub fn validate_output_video(
         is_hdr_correct,
         is_audio_opus,
         is_audio_track_count_correct,
+        is_sync_preserved,
         codec_name,
         pixel_format,
         bit_depth,
@@ -82,6 +88,8 @@ pub fn validate_output_video(
         hdr_message,
         audio_codecs,
         audio_message,
+        sync_drift_ms,
+        sync_message: Some(sync_message),
     };
 
     log::debug!("Validation result: {:?}", result);
@@ -98,7 +106,8 @@ mod tests {
     fn test_validate_output_video_error_handling() {
         // Test with non-existent file
         let non_existent_path = PathBuf::from("/non/existent/file.mkv");
-        let result = validate_output_video(&non_existent_path, None, None, None, None);
+        let input_path = PathBuf::from("/non/existent/input.mkv");
+        let result = validate_output_video(&input_path, &non_existent_path, None, None, None, None);
         assert!(result.is_err());
         
         // Should be an FfprobeParse error

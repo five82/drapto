@@ -17,6 +17,8 @@ pub struct ValidationResult {
     pub is_audio_opus: bool,
     /// Whether the number of audio tracks matches the input
     pub is_audio_track_count_correct: bool,
+    /// Whether audio/video sync is preserved from input to output
+    pub is_sync_preserved: bool,
     /// The actual codec found
     pub codec_name: Option<String>,
     /// The actual pixel format found
@@ -45,12 +47,16 @@ pub struct ValidationResult {
     pub audio_codecs: Vec<String>,
     /// Audio validation message
     pub audio_message: Option<String>,
+    /// The measured audio/video sync drift in milliseconds
+    pub sync_drift_ms: Option<f64>,
+    /// Sync validation message
+    pub sync_message: Option<String>,
 }
 
 impl ValidationResult {
     /// Returns true if all validations pass
     pub fn is_valid(&self) -> bool {
-        self.is_av1 && self.is_10_bit && self.is_crop_correct && self.is_duration_correct && self.is_hdr_correct && self.is_audio_opus && self.is_audio_track_count_correct
+        self.is_av1 && self.is_10_bit && self.is_crop_correct && self.is_duration_correct && self.is_hdr_correct && self.is_audio_opus && self.is_audio_track_count_correct && self.is_sync_preserved
     }
 
     /// Returns a list of validation failures
@@ -97,6 +103,14 @@ impl ValidationResult {
                 failures.push(format!("Audio validation failed: {}", msg));
             } else {
                 failures.push("Audio validation failed".to_string());
+            }
+        }
+        
+        if !self.is_sync_preserved {
+            if let Some(msg) = &self.sync_message {
+                failures.push(format!("Sync validation failed: {}", msg));
+            } else {
+                failures.push("Sync validation failed".to_string());
             }
         }
         
@@ -174,6 +188,18 @@ impl ValidationResult {
         };
         steps.push(("Audio tracks".to_string(), audio_valid, audio_result));
         
+        // Sync validation
+        let sync_result = if self.is_sync_preserved {
+            self.sync_message.as_ref()
+                .map(|msg| msg.clone())
+                .unwrap_or_else(|| "Audio/video sync preserved".to_string())
+        } else {
+            self.sync_message.as_ref()
+                .map(|msg| msg.clone())
+                .unwrap_or_else(|| "Sync validation failed".to_string())
+        };
+        steps.push(("Audio/video sync".to_string(), self.is_sync_preserved, sync_result));
+        
         steps
     }
 }
@@ -192,6 +218,7 @@ mod tests {
             is_hdr_correct: true,
             is_audio_opus: true,
             is_audio_track_count_correct: true,
+            is_sync_preserved: true,
             codec_name: Some("h264".to_string()),
             pixel_format: Some("yuv420p10le".to_string()),
             bit_depth: Some(10),
@@ -206,6 +233,8 @@ mod tests {
             hdr_message: Some("SDR preserved".to_string()),
             audio_codecs: vec!["opus".to_string()],
             audio_message: Some("Audio track is Opus".to_string()),
+            sync_drift_ms: Some(15.0),
+            sync_message: Some("Audio/video sync preserved (drift: 15.0ms)".to_string()),
         };
         
         let failures = result.get_failures();

@@ -42,6 +42,7 @@ mod tests {
             is_hdr_correct: true,
             is_audio_opus: true,
             is_audio_track_count_correct: true,
+            is_sync_preserved: true,
             codec_name: Some("av01".to_string()),
             pixel_format: Some("yuv420p10le".to_string()),
             bit_depth: Some(10),
@@ -56,10 +57,12 @@ mod tests {
             hdr_message: Some("SDR preserved".to_string()),
             audio_codecs: vec!["opus".to_string()],
             audio_message: Some("Audio track is Opus".to_string()),
+            sync_drift_ms: Some(25.0),
+            sync_message: Some("Audio/video sync preserved (drift: 25.0ms)".to_string()),
         };
         
         assert!(result.is_valid());
-        assert_eq!(result.get_validation_steps().len(), 6);
+        assert_eq!(result.get_validation_steps().len(), 7);
         assert!(result.get_failures().is_empty());
     }
 }
