@@ -52,9 +52,9 @@ pub fn validate_output_video(
     let (is_duration_correct, actual_duration, duration_message) = 
         duration::validate_duration(&metadata, video_stream, expected_duration);
 
-    // Validate HDR status
+    // Validate HDR status using MediaInfo
     let (is_hdr_correct, actual_hdr, hdr_message) = 
-        hdr::validate_hdr_status(video_stream, expected_hdr);
+        hdr::validate_hdr_status_with_path(output_path, expected_hdr);
 
     // Validate audio codec and track count
     let (is_audio_opus, is_audio_track_count_correct, audio_codecs, audio_message) = 

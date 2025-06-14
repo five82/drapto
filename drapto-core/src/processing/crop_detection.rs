@@ -23,9 +23,8 @@ pub fn detect_crop(
         return Ok((None, false));
     }
 
-    // Detect HDR content
-    let color_space = video_props.color_space.as_deref().unwrap_or("");
-    let is_hdr = color_space == "bt2020nc" || color_space == "bt2020c";
+    // Detect HDR content using MediaInfo data
+    let is_hdr = video_props.hdr_info.is_hdr;
     
     // Set threshold based on content type
     let threshold = if is_hdr { 100 } else { 16 };

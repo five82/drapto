@@ -97,7 +97,7 @@ impl EventHandler for TemplateEventHandler {
                 film_grain,
                 hardware_accel,
                 pixel_format,
-                color_space,
+                matrix_coefficients,
                 audio_codec,
                 audio_description,
             } => {
@@ -110,7 +110,7 @@ impl EventHandler for TemplateEventHandler {
                     film_grain,
                     hardware_accel.as_deref(),
                     pixel_format,
-                    color_space,
+                    matrix_coefficients,
                     audio_codec,
                     audio_description,
                 );

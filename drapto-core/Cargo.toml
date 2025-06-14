@@ -57,3 +57,4 @@ indicatif = { version = "0.17", features = ["improved_unicode"] }  # Progress ba
 
 # ---- Media Analysis ----
 ffprobe = "0.3.0"                # FFprobe media file analysis
+mediainfo = "0.2.0"              # MediaInfo for comprehensive media metadata

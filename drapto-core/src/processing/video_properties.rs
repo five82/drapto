@@ -4,7 +4,9 @@
 //! video files, such as resolution, duration, and color space. This structure
 //! is used throughout the codebase to represent the properties of a video file.
 
-/// Video metadata including resolution, duration, and color space.
+use crate::external::HdrInfo;
+
+/// Video metadata including resolution, duration, and HDR information.
 #[derive(Debug, Clone, Default)]
 pub struct VideoProperties {
     /// Width of the video in pixels
@@ -16,6 +18,6 @@ pub struct VideoProperties {
     /// Duration of the video in seconds
     pub duration_secs: f64,
 
-    /// Color space of the video (e.g., "bt709", "bt2020nc")
-    pub color_space: Option<String>,
+    /// Comprehensive HDR information from MediaInfo
+    pub hdr_info: HdrInfo,
 }

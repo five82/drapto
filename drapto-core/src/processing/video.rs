@@ -17,7 +17,7 @@
 //!    - Handle results and send notifications
 
 
-use crate::config::{CoreConfig, UHD_WIDTH_THRESHOLD, HD_WIDTH_THRESHOLD, HDR_COLOR_SPACES};
+use crate::config::{CoreConfig, UHD_WIDTH_THRESHOLD, HD_WIDTH_THRESHOLD};
 use crate::error::{CoreError, CoreResult};
 use crate::events::{Event, EventDispatcher};
 use crate::external::ffmpeg::{EncodeParams, run_ffmpeg_encode};
@@ -141,9 +141,8 @@ fn determine_quality_settings(video_props: &VideoProperties, config: &CoreConfig
         "SD"
     };
 
-    // Detect HDR/SDR status based on color space
-    let color_space = video_props.color_space.as_deref().unwrap_or("");
-    let is_hdr = HDR_COLOR_SPACES.contains(&color_space);
+    // Detect HDR/SDR status using MediaInfo
+    let is_hdr = video_props.hdr_info.is_hdr;
 
     (quality.into(), category, is_hdr)
 }
@@ -167,7 +166,7 @@ fn setup_encoding_parameters(params: EncodingSetupParams) -> EncodeParams {
         // Actual values that will be used in FFmpeg command
         video_codec: "libsvtav1".to_string(),
         pixel_format: "yuv420p10le".to_string(),
-        color_space: params.video_props.color_space.clone().unwrap_or_else(|| "bt709".to_string()),
+        matrix_coefficients: params.video_props.hdr_info.matrix_coefficients.clone().unwrap_or_else(|| "bt709".to_string()),
         audio_codec: "libopus".to_string(),
         film_grain_level: 0, // Will be set below
     };
@@ -479,7 +478,7 @@ pub fn process_videos(
                 None
             },
             pixel_format: final_encode_params.pixel_format.clone(),
-            color_space: final_encode_params.color_space.clone(),
+            matrix_coefficients: final_encode_params.matrix_coefficients.clone(),
             audio_codec: audio_codec_display.to_string(),
             audio_description,
         });

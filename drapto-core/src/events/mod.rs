@@ -55,7 +55,7 @@ pub enum Event {
         film_grain: String,
         hardware_accel: Option<String>,
         pixel_format: String,
-        color_space: String,
+        matrix_coefficients: String,
         audio_codec: String,
         audio_description: String,
     },

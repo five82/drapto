@@ -97,7 +97,7 @@ impl TemplatePresenter {
         film_grain: &str,
         hardware_accel: Option<&str>,
         pixel_format: &str,
-        color_space: &str,
+        matrix_coefficients: &str,
         audio_codec: &str,
         audio_description: &str,
     ) {
@@ -132,13 +132,13 @@ impl TemplatePresenter {
             });
         }
         
-        let formatted_color_space = templates::format_technical_info(color_space);
+        let formatted_matrix_coefficients = templates::format_technical_info(matrix_coefficients);
         
         groups.push(GroupData {
             name: "Advanced",
             items: vec![
                 ("Pixel Format", pixel_format, false),
-                ("Color Space", &formatted_color_space, false),
+                ("Matrix", &formatted_matrix_coefficients, false),
             ],
         });
         

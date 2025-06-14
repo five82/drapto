@@ -32,7 +32,7 @@ pub struct EncodeParams {
     // Actual values that will be used in FFmpeg command (for display purposes)
     pub video_codec: String,
     pub pixel_format: String,
-    pub color_space: String,
+    pub matrix_coefficients: String,
     pub audio_codec: String,
     pub film_grain_level: u8,
 }
@@ -276,7 +276,7 @@ mod tests {
             // Actual values used in FFmpeg command
             video_codec: "libsvtav1".to_string(),
             pixel_format: "yuv420p10le".to_string(),
-            color_space: "bt709".to_string(),
+            matrix_coefficients: "bt709".to_string(),
             audio_codec: "libopus".to_string(),
             film_grain_level: crate::config::FIXED_FILM_GRAIN_VALUE,
         }
@@ -468,7 +468,7 @@ mod tests {
             // Test the actual values that should match FFmpeg command
             video_codec: "libsvtav1".to_string(),
             pixel_format: "yuv420p10le".to_string(),
-            color_space: "bt709".to_string(),
+            matrix_coefficients: "bt709".to_string(),
             audio_codec: "libopus".to_string(),
             film_grain_level: 4,
         };
@@ -538,7 +538,7 @@ mod tests {
             hqdn3d_params: None, // No denoising
             video_codec: "libsvtav1".to_string(),
             pixel_format: "yuv420p10le".to_string(),
-            color_space: "bt709".to_string(),
+            matrix_coefficients: "bt709".to_string(),
             audio_codec: "libopus".to_string(),
             film_grain_level: 0, // Disabled
         };
