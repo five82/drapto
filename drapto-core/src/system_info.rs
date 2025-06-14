@@ -45,7 +45,7 @@ fn get_os_info() -> String {
                     .args(["-productVersion"])
                     .output()
                     .map(|version_output| {
-                        let version = String::from_utf8_lossy(&version_output.stdout).trim();
+                        let version = String::from_utf8_lossy(&version_output.stdout).trim().to_string();
                         format!("{} {}", product, version)
                     })
             })

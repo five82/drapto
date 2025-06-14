@@ -472,11 +472,7 @@ pub fn process_videos(
                 .map(|p| format!("hqdn3d={}", p))
                 .unwrap_or_else(|| "None".to_string()),
             film_grain: film_grain_display,
-            hardware_accel: if crate::hardware_decode::is_hardware_decoding_available() {
-                Some("VideoToolbox (decode only)".to_string())
-            } else {
-                None
-            },
+            hardware_accel: None, // Hardware info is already shown in VIDEO DETAILS section
             pixel_format: final_encode_params.pixel_format.clone(),
             matrix_coefficients: final_encode_params.matrix_coefficients.clone(),
             audio_codec: audio_codec_display.to_string(),
@@ -524,7 +520,7 @@ pub fn process_videos(
 
                 // Perform post-encode validation
                 let expected_audio_track_count = if audio_channels.is_empty() { Some(0) } else { Some(audio_channels.len()) };
-                let (validation_passed, validation_steps) = match validate_output_video(&output_path, expected_dimensions, Some(duration_secs), Some(is_hdr), expected_audio_track_count) {
+                let (validation_passed, validation_steps) = match validate_output_video(&input_path, &output_path, expected_dimensions, Some(duration_secs), Some(is_hdr), expected_audio_track_count) {
                     Ok(validation_result) => {
                         let steps = validation_result.get_validation_steps();
                         
@@ -560,6 +556,9 @@ pub fn process_videos(
                             ("Bit depth".to_string(), false, "Validation error".to_string()),
                             ("Crop detection".to_string(), false, "Validation error".to_string()),
                             ("Video duration".to_string(), false, "Validation error".to_string()),
+                            ("HDR/SDR status".to_string(), false, "Validation error".to_string()),
+                            ("Audio tracks".to_string(), false, "Validation error".to_string()),
+                            ("Audio/video sync".to_string(), false, "Validation error".to_string()),
                         ];
                         
                         log::warn!(

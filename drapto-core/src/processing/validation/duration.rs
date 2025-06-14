@@ -1,6 +1,8 @@
 //! Video duration validation
 
-use ffprobe::{FfProbe, Stream};
+use ffprobe::{FfProbe, Stream, ffprobe};
+use std::path::Path;
+use crate::error::CoreResult;
 
 /// Validates that the video duration matches the expected duration
 pub fn validate_duration(
@@ -96,6 +98,101 @@ fn parse_frame_rate(frame_rate_str: &str) -> Result<f64, std::num::ParseFloatErr
         }
     }
     frame_rate_str.parse()
+}
+
+/// Get video stream duration from a media file
+fn get_video_stream_duration(file_path: &Path) -> CoreResult<f64> {
+    let metadata = ffprobe(file_path)
+        .map_err(|e| crate::error::CoreError::FfprobeParse(format!("Failed to read {}: {:?}", file_path.display(), e)))?;
+    
+    let video_stream = metadata
+        .streams
+        .iter()
+        .find(|s| s.codec_type.as_deref() == Some("video"))
+        .ok_or_else(|| crate::error::CoreError::VideoInfoError(format!("No video stream found in {}", file_path.display())))?;
+    
+    get_duration_from_metadata(&metadata, video_stream)
+        .ok_or_else(|| crate::error::CoreError::VideoInfoError(format!("Could not determine video duration for {}", file_path.display())))
+}
+
+/// Get audio stream duration from a media file
+fn get_audio_stream_duration(file_path: &Path) -> CoreResult<f64> {
+    let metadata = ffprobe(file_path)
+        .map_err(|e| crate::error::CoreError::FfprobeParse(format!("Failed to read {}: {:?}", file_path.display(), e)))?;
+    
+    let audio_stream = metadata
+        .streams
+        .iter()
+        .find(|s| s.codec_type.as_deref() == Some("audio"))
+        .ok_or_else(|| crate::error::CoreError::VideoInfoError(format!("No audio stream found in {}", file_path.display())))?;
+    
+    // Try audio stream duration first
+    if let Some(duration_str) = &audio_stream.duration {
+        if let Ok(duration) = duration_str.parse::<f64>() {
+            if duration > 0.0 {
+                log::debug!("Audio duration from stream: {}", duration);
+                return Ok(duration);
+            }
+        }
+    }
+    
+    // Fallback to format duration
+    if let Some(duration_str) = &metadata.format.duration {
+        if let Ok(duration) = duration_str.parse::<f64>() {
+            if duration > 0.0 {
+                log::debug!("Audio duration from format: {}", duration);
+                return Ok(duration);
+            }
+        }
+    }
+    
+    Err(crate::error::CoreError::VideoInfoError(format!("Could not determine audio duration for {}", file_path.display())))
+}
+
+/// Validates that audio/video sync is preserved between input and output files
+/// Returns (is_valid, sync_drift_ms, message)
+pub fn validate_sync_preservation(input_path: &Path, output_path: &Path) -> (bool, Option<f64>, String) {
+    log::debug!("Validating sync preservation between {} and {}", input_path.display(), output_path.display());
+    
+    let result = || -> CoreResult<(bool, f64, String)> {
+        // Get input stream durations
+        let input_video_duration = get_video_stream_duration(input_path)?;
+        let input_audio_duration = get_audio_stream_duration(input_path)?;
+        
+        // Get output stream durations  
+        let output_video_duration = get_video_stream_duration(output_path)?;
+        let output_audio_duration = get_audio_stream_duration(output_path)?;
+        
+        // Calculate sync differences
+        let input_sync_diff = (input_video_duration - input_audio_duration).abs();
+        let output_sync_diff = (output_video_duration - output_audio_duration).abs();
+        let sync_drift = (output_sync_diff - input_sync_diff).abs();
+        let sync_drift_ms = sync_drift * 1000.0;
+        
+        // 100ms tolerance for lip sync detection
+        let tolerance_ms = 100.0;
+        let is_valid = sync_drift_ms <= tolerance_ms;
+        
+        let message = if is_valid {
+            format!("Audio/video sync preserved (drift: {:.1}ms)", sync_drift_ms)
+        } else {
+            format!("Audio/video sync drift detected: {:.1}ms (tolerance: {:.1}ms)", sync_drift_ms, tolerance_ms)
+        };
+        
+        log::debug!("Sync validation - Input A/V diff: {:.3}s, Output A/V diff: {:.3}s, Drift: {:.1}ms", 
+                   input_sync_diff, output_sync_diff, sync_drift_ms);
+        
+        Ok((is_valid, sync_drift_ms, message))
+    }();
+    
+    match result {
+        Ok((is_valid, drift_ms, message)) => (is_valid, Some(drift_ms), message),
+        Err(e) => {
+            let error_msg = format!("Failed to validate sync preservation: {}", e);
+            log::warn!("{}", error_msg);
+            (false, None, error_msg)
+        }
+    }
 }
 
 #[cfg(test)]
