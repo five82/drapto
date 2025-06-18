@@ -1,6 +1,7 @@
 use crate::events::{Event, EventHandler};
 use super::template_presenter::{TemplatePresenter, FileAnalysisParams, EncodingConfigParams, EncodingCompleteParams, BatchCompleteParams};
 use super::templates;
+use console;
 use std::sync::Mutex;
 
 pub struct TemplateEventHandler {
@@ -252,6 +253,45 @@ impl EventHandler for TemplateEventHandler {
                     validation_passed_count: *validation_passed_count,
                     validation_failed_count: *validation_failed_count,
                 });
+            }
+            
+            Event::NoiseAnalysisStarted => {
+                presenter.render_template(&templates::ProcessingStep {
+                    message: "Analyzing video noise levels...",
+                });
+            }
+            
+            Event::NoiseAnalysisComplete { 
+                average_noise, 
+                has_significant_noise: _, 
+                recommended_params 
+            } => {
+                let noise_level_desc = if *average_noise >= 0.8 {
+                    "noisy"
+                } else if *average_noise >= 0.7 {
+                    "somewhat noisy"
+                } else if *average_noise >= 0.6 {
+                    "slightly noisy"
+                } else {
+                    "very clean"
+                };
+                
+                let denoising_strength = if recommended_params.starts_with("4:3.5:5:4.5") || recommended_params.starts_with("3:2.5:4.5:4") {
+                    "moderate denoising"
+                } else if recommended_params.starts_with("3:2.5:4:3.5") || recommended_params.starts_with("2:1.5:3.5:3") {
+                    "light denoising"
+                } else if recommended_params.starts_with("2:1.5:3:2.5") || recommended_params.starts_with("1:0.8:2.5:2") {
+                    "very light denoising"
+                } else {
+                    "minimal denoising"
+                };
+                
+                // Level 2: Success message (subsection level)
+                println!("  {} {}", console::style("✓").dim(), console::style("Noise analysis complete").dim());
+                
+                // Level 4: Primary findings (key-value level)
+                println!("      Video quality:    {} ({:.0}%)", noise_level_desc, average_noise * 100.0);
+                println!("      Denoising:        {} ({})", denoising_strength, recommended_params);
             }
         }
     }

@@ -26,6 +26,7 @@ use crate::external::get_file_size as external_get_file_size;
 use crate::notifications::NotificationSender;
 use crate::processing::audio;
 use crate::processing::crop_detection;
+use crate::processing::noise_analysis;
 use crate::processing::video_properties::VideoProperties;
 use crate::processing::validation::validate_output_video;
 use crate::system_info::SystemInfo;
@@ -42,8 +43,8 @@ struct EncodingSetupParams<'a> {
     crop_filter_opt: Option<String>,
     audio_channels: Vec<u32>,
     duration_secs: f64,
-    is_hdr: bool,
     video_props: &'a VideoProperties,
+    noise_analysis: Option<&'a noise_analysis::NoiseAnalysis>,
 }
 
 use std::path::PathBuf;
@@ -171,24 +172,20 @@ fn setup_encoding_parameters(params: EncodingSetupParams) -> EncodeParams {
         film_grain_level: 0, // Will be set below
     };
 
-    // Apply fixed denoising parameters if enabled, using HDR or SDR specific values
-    let final_hqdn3d_params = if params.config.enable_denoise {
-        let denoise_params = if params.is_hdr {
-            crate::config::FIXED_HQDN3D_PARAMS_HDR
-        } else {
-            crate::config::FIXED_HQDN3D_PARAMS_SDR
-        };
-        Some(denoise_params.to_string())
+    // Apply denoising parameters if enabled
+    let (final_hqdn3d_params, film_grain_level) = if params.config.enable_denoise {
+        // Noise analysis is required when denoising is enabled - no fallback
+        let noise_analysis = params.noise_analysis.expect("Noise analysis should be available when denoising is enabled");
+        
+        log::info!(
+            "Using adaptive denoising: hqdn3d={}, film_grain={}",
+            noise_analysis.recommended_hqdn3d,
+            noise_analysis.recommended_film_grain
+        );
+        (Some(noise_analysis.recommended_hqdn3d.clone()), noise_analysis.recommended_film_grain)
     } else {
         log::debug!("Denoising disabled via config.");
-        None
-    };
-
-    // Set film grain level based on denoising
-    let film_grain_level = if params.config.enable_denoise {
-        crate::config::FIXED_FILM_GRAIN_VALUE
-    } else {
-        0
+        (None, 0)
     };
 
     // Finalize encoding parameters
@@ -397,6 +394,40 @@ pub fn process_videos(
 
         // Audio channels already analyzed above
 
+        // Perform noise analysis if denoising is enabled
+        let noise_analysis_result = if config.enable_denoise {
+            emit_event(event_dispatcher, Event::NoiseAnalysisStarted);
+            match noise_analysis::analyze_noise(input_path, &video_props) {
+                Ok(analysis) => {
+                    emit_event(event_dispatcher, Event::NoiseAnalysisComplete {
+                        average_noise: analysis.average_noise,
+                        has_significant_noise: analysis.has_significant_noise,
+                        recommended_params: analysis.recommended_hqdn3d.clone(),
+                    });
+                    Some(analysis)
+                },
+                Err(e) => {
+                    let error_msg = format!("Noise analysis failed for {filename}: {e}");
+                    emit_event(event_dispatcher, Event::Error {
+                        title: "Noise Analysis Failed".to_string(),
+                        message: error_msg.clone(),
+                        context: Some(format!("File: {}", input_path.display())),
+                        suggestion: Some("Check if the video file is valid and accessible".to_string()),
+                    });
+
+                    send_notification_safe(
+                        notification_sender,
+                        &format!("Error encoding {filename}: Noise analysis failed"),
+                        "error"
+                    );
+
+                    continue;
+                }
+            }
+        } else {
+            None
+        };
+
         // Setup encoding parameters
         let final_encode_params = setup_encoding_parameters(EncodingSetupParams {
             input_path,
@@ -406,8 +437,8 @@ pub fn process_videos(
             crop_filter_opt,
             audio_channels: audio_channels.clone(),
             duration_secs,
-            is_hdr,
             video_props: &video_props,
+            noise_analysis: noise_analysis_result.as_ref(),
         });
 
         // Format audio description for the config display

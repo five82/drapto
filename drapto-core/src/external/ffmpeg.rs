@@ -278,7 +278,7 @@ mod tests {
             pixel_format: "yuv420p10le".to_string(),
             matrix_coefficients: "bt709".to_string(),
             audio_codec: "libopus".to_string(),
-            film_grain_level: crate::config::FIXED_FILM_GRAIN_VALUE,
+            film_grain_level: crate::config::MIN_FILM_GRAIN_VALUE,
         }
     }
 
@@ -326,12 +326,12 @@ mod tests {
         // Test that film grain synthesis is correctly applied when denoising is enabled
         let svtav1_params = crate::external::SvtAv1ParamsBuilder::new()
             .with_tune(3)
-            .with_film_grain(crate::config::FIXED_FILM_GRAIN_VALUE)
+            .with_film_grain(crate::config::MIN_FILM_GRAIN_VALUE)
             .build();
 
         assert!(svtav1_params.contains("tune=3"), "SVT-AV1 params should contain tune=3");
-        assert!(svtav1_params.contains(&format!("film-grain={}", crate::config::FIXED_FILM_GRAIN_VALUE)), 
-                "SVT-AV1 params should contain film-grain={}", crate::config::FIXED_FILM_GRAIN_VALUE);
+        assert!(svtav1_params.contains(&format!("film-grain={}", crate::config::MIN_FILM_GRAIN_VALUE)), 
+                "SVT-AV1 params should contain film-grain={}", crate::config::MIN_FILM_GRAIN_VALUE);
         assert!(svtav1_params.contains("film-grain-denoise=0"), 
                 "SVT-AV1 params should disable built-in film grain denoising");
     }
@@ -398,8 +398,10 @@ mod tests {
         assert!(hdr_parts[1] <= sdr_parts[1], "HDR spatial chroma should be <= SDR");
         
         // Film grain should be reasonable
-        assert!(crate::config::FIXED_FILM_GRAIN_VALUE <= 50, "Film grain should be <= 50");
-        assert!(crate::config::FIXED_FILM_GRAIN_VALUE > 0, "Film grain should be > 0");
+        assert!(crate::config::MIN_FILM_GRAIN_VALUE <= 50, "Min film grain should be <= 50");
+        assert!(crate::config::MIN_FILM_GRAIN_VALUE > 0, "Min film grain should be > 0");
+        assert!(crate::config::MAX_FILM_GRAIN_VALUE <= 50, "Max film grain should be <= 50");
+        assert!(crate::config::MAX_FILM_GRAIN_VALUE > crate::config::MIN_FILM_GRAIN_VALUE, "Max should be > min");
     }
 
     #[test]

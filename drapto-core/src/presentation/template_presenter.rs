@@ -417,4 +417,9 @@ impl TemplatePresenter {
         }
         println!();
     }
+    
+    /// Render a simple processing step message
+    pub fn render_template(&self, step: &templates::ProcessingStep) {
+        println!("  {}", step.message);
+    }
 }

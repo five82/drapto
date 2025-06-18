@@ -45,6 +45,11 @@ pub enum TemplateData<'a> {
     },
 }
 
+/// Simple processing step message structure
+pub struct ProcessingStep<'a> {
+    pub message: &'a str,
+}
+
 #[derive(Debug)]
 pub struct GroupData<'a> {
     pub name: &'a str,
