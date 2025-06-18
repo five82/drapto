@@ -55,14 +55,15 @@ RUST_LOG=trace cargo run -- encode --interactive -i input.mkv -o output/
 
 ## Key Components
 
-### Fixed Denoising System
+### Adaptive Denoising System
 
-The project uses a conservative, fixed denoising approach:
+The project uses an intelligent, adaptive denoising approach:
 
-1. Applies VeryLight denoising (hqdn3d=0.5:0.4:2:2)
-2. Adds Level 4 film grain synthesis
-3. Provides modest file size reduction while preserving quality
-4. No complex analysis required - consistent results
+1. Analyzes video noise levels using FFmpeg's bitplanenoise filter
+2. Applies appropriate hqdn3d denoising based on detected noise levels
+3. Compensates with proportional film grain synthesis (levels 4-16)
+4. Provides HDR/SDR-aware processing for optimal quality
+5. Conservative approach ensures quality preservation while reducing file size
 
 ### FFmpeg Integration
 

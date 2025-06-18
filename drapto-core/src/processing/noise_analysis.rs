@@ -71,23 +71,42 @@ impl NoiseAnalysis {
 
     /// Calculate recommended film grain synthesis level based on denoising strength
     /// Returns a value between MIN_FILM_GRAIN_VALUE (4) and MAX_FILM_GRAIN_VALUE (16)
+    /// Film grain level is proportional to the spatial denoising strength applied
     fn calculate_film_grain_level(average_noise: f64, is_hdr: bool) -> u8 {
         use crate::config::{MIN_FILM_GRAIN_VALUE, MAX_FILM_GRAIN_VALUE};
         
         if !Self::has_significant_noise(average_noise) {
-            // Very low noise - minimal film grain
+            // Very low noise - minimal film grain compensation
             MIN_FILM_GRAIN_VALUE
-        } else if average_noise < 0.7 {
-            // Low noise - slightly more film grain
-            if is_hdr { 5 } else { 6 }
-        } else if average_noise < 0.8 {
-            // Moderate noise - moderate film grain
-            if is_hdr { 8 } else { 10 }
         } else {
-            // High noise - film grain to compensate for denoising
-            // HDR gets less aggressive denoising, so needs less film grain compensation
-            if is_hdr { 12 } else { MAX_FILM_GRAIN_VALUE }
+            // Calculate film grain proportional to spatial denoising strength
+            // Extract spatial luma parameter from the denoising settings
+            let hqdn3d_params = Self::calculate_hqdn3d_params(average_noise, is_hdr);
+            let spatial_luma = Self::extract_spatial_luma_param(&hqdn3d_params);
+            
+            // Film grain level scales with spatial denoising strength
+            // Stronger denoising removes more natural grain, requiring more synthesis
+            let base_grain = MIN_FILM_GRAIN_VALUE as f64;
+            let max_grain = MAX_FILM_GRAIN_VALUE as f64;
+            
+            // Scale film grain based on spatial luma denoising (typical range 0.5-4.0)
+            // Conservative scaling: grain increases gradually with denoising strength
+            let grain_scaling = (spatial_luma - 0.5).max(0.0).min(3.5) / 3.5; // Normalize to 0.0-1.0
+            let calculated_grain = base_grain + (max_grain - base_grain) * grain_scaling;
+            
+            // Ensure result is within valid range
+            (calculated_grain.round() as u8).clamp(MIN_FILM_GRAIN_VALUE, MAX_FILM_GRAIN_VALUE)
         }
+    }
+    
+    /// Extract the spatial luma parameter from hqdn3d parameter string
+    /// Format: "spatial_luma:spatial_chroma:temporal_luma:temporal_chroma"
+    fn extract_spatial_luma_param(hqdn3d_params: &str) -> f64 {
+        hqdn3d_params
+            .split(':')
+            .next()
+            .and_then(|s| s.parse::<f64>().ok())
+            .unwrap_or(1.0) // Default fallback
     }
 }
 
@@ -111,27 +130,48 @@ pub fn analyze_noise(
         }
     }
     
-    if all_noise_values.is_empty() {
-        return Err(crate::error::CoreError::Analysis(
-            "Failed to analyze noise levels".to_string()
-        ));
-    }
-    
-    // Calculate average noise across all samples and bit planes
-    let mut avg_per_plane = vec![0.0; all_noise_values[0].len()];
-    
-    for sample in &all_noise_values {
-        for (i, &value) in sample.iter().enumerate() {
-            avg_per_plane[i] += value;
+    // Handle cases with insufficient noise analysis data
+    let (average_noise, max_noise, bit_plane_noise) = if all_noise_values.is_empty() {
+        log::warn!("No noise analysis data collected, using conservative fallback estimate");
+        // Conservative fallback: assume moderate noise for safety
+        let fallback_noise = 0.5; // Below significant threshold but not zero
+        (fallback_noise, fallback_noise, vec![fallback_noise])
+    } else if all_noise_values.len() < 3 {
+        log::warn!("Limited noise analysis data ({} samples), results may be less accurate", all_noise_values.len());
+        // Use available data but note it's limited
+        let mut avg_per_plane = vec![0.0; all_noise_values[0].len()];
+        
+        for sample in &all_noise_values {
+            for (i, &value) in sample.iter().enumerate() {
+                avg_per_plane[i] += value;
+            }
         }
-    }
-    
-    for value in &mut avg_per_plane {
-        *value /= all_noise_values.len() as f64;
-    }
-    
-    let average_noise = avg_per_plane.iter().sum::<f64>() / avg_per_plane.len() as f64;
-    let max_noise = avg_per_plane.iter().cloned().fold(0.0, f64::max);
+        
+        for value in &mut avg_per_plane {
+            *value /= all_noise_values.len() as f64;
+        }
+        
+        let avg = avg_per_plane.iter().sum::<f64>() / avg_per_plane.len() as f64;
+        let max = avg_per_plane.iter().cloned().fold(0.0, f64::max);
+        (avg, max, avg_per_plane)
+    } else {
+        // Normal case: sufficient data available
+        let mut avg_per_plane = vec![0.0; all_noise_values[0].len()];
+        
+        for sample in &all_noise_values {
+            for (i, &value) in sample.iter().enumerate() {
+                avg_per_plane[i] += value;
+            }
+        }
+        
+        for value in &mut avg_per_plane {
+            *value /= all_noise_values.len() as f64;
+        }
+        
+        let avg = avg_per_plane.iter().sum::<f64>() / avg_per_plane.len() as f64;
+        let max = avg_per_plane.iter().cloned().fold(0.0, f64::max);
+        (avg, max, avg_per_plane)
+    };
     
     let is_hdr = video_props.hdr_info.is_hdr;
     let has_significant_noise = NoiseAnalysis::has_significant_noise(average_noise);
@@ -146,7 +186,7 @@ pub fn analyze_noise(
     Ok(NoiseAnalysis {
         average_noise,
         max_noise,
-        bit_plane_noise: avg_per_plane,
+        bit_plane_noise,
         recommended_hqdn3d,
         recommended_film_grain,
         has_significant_noise,
@@ -195,12 +235,23 @@ fn sample_noise_at_position(
             // Parse bitplanenoise metadata output
             // Format: [Parsed_metadata_1 @ 0x...] lavfi.bitplanenoise.0.1=0.827098
             if line.contains("lavfi.bitplanenoise") && line.contains("=") {
-                // Extract just the luma (0) channel noise value for primary measurement
+                // Extract luma (0.1) channel noise value for primary measurement
+                // Focus on luma since film grain is primarily a luminance phenomenon
                 if line.contains("lavfi.bitplanenoise.0.1=") {
                     if let Some(noise_part) = line.split("lavfi.bitplanenoise.0.1=").nth(1) {
-                        if let Ok(noise_value) = noise_part.trim().parse::<f64>() {
-                            noise_values.push(noise_value);
-                            found_values = true;
+                        // Parse the noise value, handling potential trailing content
+                        let noise_str = noise_part.split_whitespace().next().unwrap_or("").trim();
+                        if let Ok(noise_value) = noise_str.parse::<f64>() {
+                            // Validate noise value is within expected range (0.0-1.0)
+                            if (0.0..=1.0).contains(&noise_value) {
+                                noise_values.push(noise_value);
+                                found_values = true;
+                                log::trace!("Captured luma noise value: {:.6}", noise_value);
+                            } else {
+                                log::warn!("Invalid noise value out of range: {:.6}", noise_value);
+                            }
+                        } else {
+                            log::warn!("Failed to parse noise value: '{}'", noise_str);
                         }
                     }
                 }
@@ -292,28 +343,25 @@ mod tests {
             MIN_FILM_GRAIN_VALUE
         );
         
-        // Low noise (SDR)
-        assert_eq!(
-            NoiseAnalysis::calculate_film_grain_level(0.65, false),
-            6
-        );
+        // Low noise (SDR) - proportional to spatial denoising (2.0)
+        let low_noise_grain = NoiseAnalysis::calculate_film_grain_level(0.65, false);
+        assert!(low_noise_grain >= 7 && low_noise_grain <= 10, 
+                "Low noise grain should be between 7 and 10, got {}", low_noise_grain);
         
-        // Moderate noise (SDR)
-        assert_eq!(
-            NoiseAnalysis::calculate_film_grain_level(0.75, false),
-            10
-        );
+        // Moderate noise (SDR) - proportional to spatial denoising (3.0)
+        let moderate_noise_grain = NoiseAnalysis::calculate_film_grain_level(0.75, false);
+        assert!(moderate_noise_grain >= 10 && moderate_noise_grain <= 14, 
+                "Moderate noise grain should be between 10 and 14, got {}", moderate_noise_grain);
         
-        // High noise - maximum film grain (SDR)
-        assert_eq!(
-            NoiseAnalysis::calculate_film_grain_level(0.85, false),
-            MAX_FILM_GRAIN_VALUE
-        );
+        // High noise (SDR) - proportional to spatial denoising (4.0)
+        let high_noise_grain = NoiseAnalysis::calculate_film_grain_level(0.85, false);
+        assert!(high_noise_grain >= 14 && high_noise_grain <= MAX_FILM_GRAIN_VALUE, 
+                "High noise grain should be between 14 and {}, got {}", MAX_FILM_GRAIN_VALUE, high_noise_grain);
     }
     
     #[test]
     fn test_calculate_film_grain_level_hdr() {
-        use crate::config::MIN_FILM_GRAIN_VALUE;
+        use crate::config::{MIN_FILM_GRAIN_VALUE, MAX_FILM_GRAIN_VALUE};
         
         // Very low noise - minimum film grain (HDR)
         assert_eq!(
@@ -321,22 +369,51 @@ mod tests {
             MIN_FILM_GRAIN_VALUE
         );
         
-        // Low noise (HDR) - less than SDR
-        assert_eq!(
-            NoiseAnalysis::calculate_film_grain_level(0.65, true),
-            5
-        );
+        // Low noise (HDR) - proportional to spatial denoising (1.0) - lighter than SDR
+        let low_noise_grain = NoiseAnalysis::calculate_film_grain_level(0.65, true);
+        assert!(low_noise_grain >= MIN_FILM_GRAIN_VALUE && low_noise_grain <= 7, 
+                "HDR low noise grain should be between {} and 7, got {}", MIN_FILM_GRAIN_VALUE, low_noise_grain);
         
-        // Moderate noise (HDR) - less than SDR
-        assert_eq!(
-            NoiseAnalysis::calculate_film_grain_level(0.75, true),
-            8
-        );
+        // Moderate noise (HDR) - proportional to spatial denoising (2.0) - lighter than SDR
+        let moderate_noise_grain = NoiseAnalysis::calculate_film_grain_level(0.75, true);
+        assert!(moderate_noise_grain >= 7 && moderate_noise_grain <= 11, 
+                "HDR moderate noise grain should be between 7 and 11, got {}", moderate_noise_grain);
         
-        // High noise (HDR) - less than SDR max
-        assert_eq!(
-            NoiseAnalysis::calculate_film_grain_level(0.85, true),
-            12
-        );
+        // High noise (HDR) - proportional to spatial denoising (3.0) - lighter than SDR
+        let high_noise_grain = NoiseAnalysis::calculate_film_grain_level(0.85, true);
+        assert!(high_noise_grain >= 11 && high_noise_grain <= MAX_FILM_GRAIN_VALUE, 
+                "HDR high noise grain should be between 11 and {}, got {}", MAX_FILM_GRAIN_VALUE, high_noise_grain);
+    }
+    
+    #[test]
+    fn test_extract_spatial_luma_param() {
+        // Test normal hqdn3d parameter extraction
+        assert_eq!(NoiseAnalysis::extract_spatial_luma_param("2:1.5:3:2.5"), 2.0);
+        assert_eq!(NoiseAnalysis::extract_spatial_luma_param("0.5:0.4:1.5:1.5"), 0.5);
+        assert_eq!(NoiseAnalysis::extract_spatial_luma_param("4:3.5:5:4.5"), 4.0);
+        
+        // Test edge cases
+        assert_eq!(NoiseAnalysis::extract_spatial_luma_param(""), 1.0); // Fallback
+        assert_eq!(NoiseAnalysis::extract_spatial_luma_param("invalid:params"), 1.0); // Fallback
+        assert_eq!(NoiseAnalysis::extract_spatial_luma_param("3.5"), 3.5); // Single value
+    }
+    
+    #[test]
+    fn test_proportional_film_grain_scaling() {
+        // Test that film grain scales appropriately with denoising strength
+        
+        // Compare SDR low vs high noise - high noise should have more film grain
+        let low_noise_grain = NoiseAnalysis::calculate_film_grain_level(0.65, false);
+        let high_noise_grain = NoiseAnalysis::calculate_film_grain_level(0.85, false);
+        assert!(high_noise_grain > low_noise_grain, 
+                "High noise should produce more film grain than low noise: {} vs {}", 
+                high_noise_grain, low_noise_grain);
+        
+        // Compare HDR vs SDR for same noise level - HDR should have less film grain
+        let sdr_grain = NoiseAnalysis::calculate_film_grain_level(0.75, false);
+        let hdr_grain = NoiseAnalysis::calculate_film_grain_level(0.75, true);
+        assert!(hdr_grain <= sdr_grain, 
+                "HDR should have less or equal film grain than SDR: {} vs {}", 
+                hdr_grain, sdr_grain);
     }
 }

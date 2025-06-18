@@ -32,15 +32,6 @@ pub const DEFAULT_SVT_AV1_TUNE: u8 = 0;
 /// Default crop mode for the main encode.
 pub const DEFAULT_CROP_MODE: &str = "auto";
 
-/// Fixed denoising parameters for hqdn3d filter for HDR content.
-/// Format: spatial_luma:spatial_chroma:temporal_luma:temporal_chroma
-/// HDR content requires lighter denoising to preserve detail
-pub const FIXED_HQDN3D_PARAMS_HDR: &str = "1:0.8:2.5:2";
-
-/// Fixed denoising parameters for hqdn3d filter for SDR content.
-/// Format: spatial_luma:spatial_chroma:temporal_luma:temporal_chroma
-/// SDR content can use slightly stronger denoising
-pub const FIXED_HQDN3D_PARAMS_SDR: &str = "2:1.5:3:2.5";
 
 /// Minimum film grain synthesis value for SVT-AV1.
 /// Range: 0-50, where 0 is no grain and 50 is maximum grain.
