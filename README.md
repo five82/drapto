@@ -4,9 +4,9 @@ Advanced ffmpeg video encoding wrapper with intelligent optimization for high-qu
 
 ## Features
 
-* **Intelligent Analysis**: Automatic black bar cropping, HDR-aware processing
+* **Intelligent Analysis**: Automatic black bar cropping, HDR-aware processing, adaptive noise analysis
 * **Optimized Encoding**: AV1 video (libsvtav1), Opus audio with multi-stream support, resolution-based quality settings
-* **Conservative Denoising**: Light denoising with film grain synthesis for optimal quality/size balance
+* **Adaptive Denoising**: Intelligent noise detection with tailored denoising and film grain synthesis
 * **Hardware Acceleration**: VideoToolbox decoding support on macOS (automatically detected)
 * **Flexible Workflow**: Daemon mode for background processing, interactive mode with progress bars, push notifications
 
@@ -67,17 +67,21 @@ drapto encode -v -i input.mkv -o output/
 
 ## Advanced Features
 
-### Conservative Denoising
+### Adaptive Denoising
 
-Drapto applies a fixed, conservative denoising approach that adapts to content type:
+Drapto uses intelligent noise analysis to apply optimal denoising settings for each video:
 
-1. **HDR-Aware Denoising**:
-   - HDR content: `hqdn3d=1:0.8:2.5:2` (very light denoising to preserve detail)
-   - SDR content: `hqdn3d=2:1.5:3:2.5` (slightly stronger but still conservative)
-2. **Film Grain Synthesis**: Adds level 4 synthetic grain to maintain natural texture
-3. **Simple Control**: Enabled by default, disable with `--no-denoise`
+1. **Noise Analysis**: Automatically analyzes video noise levels using FFmpeg's bitplanenoise filter
+2. **Adaptive Parameters**: Selects appropriate denoising strength based on detected noise:
+   - Very clean content: Minimal denoising (preserves pristine quality)
+   - Slightly noisy content: Very light denoising  
+   - Somewhat noisy content: Light denoising
+   - Noisy content: Moderate denoising (still conservative)
+3. **HDR-Aware Processing**: Uses lighter denoising parameters for HDR content to preserve detail
+4. **Dynamic Film Grain**: Scales film grain synthesis (levels 4-16) to compensate for denoising artifacts
+5. **Quality-First Approach**: All parameters remain conservative to avoid visible quality loss
 
-This reduces file size while maintaining excellent visual quality. The denoising parameters are intentionally conservative to avoid visible quality loss at normal viewing distances.
+This system maximizes file size reduction while maintaining excellent visual quality by applying exactly the right amount of denoising for each video's noise characteristics.
 
 ### HDR Support
 

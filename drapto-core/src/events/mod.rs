@@ -36,6 +36,13 @@ pub enum Event {
         crop_params: Option<String>,
     },
     
+    NoiseAnalysisStarted,
+    NoiseAnalysisComplete {
+        average_noise: f64,
+        has_significant_noise: bool,
+        recommended_params: String,
+    },
+    
     ProcessingConfigurationStarted,
     ProcessingConfigurationApplied {
         denoising: String,

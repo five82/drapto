@@ -299,6 +299,21 @@ impl EventHandler for FileLoggingHandler {
                     info!("  {} - {:.1}% reduction", filename, reduction);
                 }
             }
+            
+            Event::NoiseAnalysisStarted => {
+                info!("Analyzing video noise levels...");
+            }
+            
+            Event::NoiseAnalysisComplete { 
+                average_noise, 
+                has_significant_noise, 
+                recommended_params 
+            } => {
+                info!(
+                    "Noise analysis complete: avg={:.4}, significant={}, recommended={}",
+                    average_noise, has_significant_noise, recommended_params
+                );
+            }
         }
     }
 }

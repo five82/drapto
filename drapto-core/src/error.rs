@@ -75,6 +75,9 @@ pub enum CoreError {
     #[error("Operation failed: {0}")]
     OperationFailed(String),
 
+    /// Analysis-related errors (e.g., noise analysis, crop detection)
+    #[error("Analysis error: {0}")]
+    Analysis(String),
 
     /// Notification sending errors
     #[error("Notification error: {0}")]

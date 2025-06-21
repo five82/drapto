@@ -27,7 +27,7 @@ pub struct EncodeParams {
     pub crop_filter: Option<String>,
     pub audio_channels: Vec<u32>,
     pub duration: f64,
-    /// The fixed hqdn3d parameters for VeryLight denoising (used if override is not provided).
+    /// The adaptive hqdn3d parameters based on noise analysis (used if override is not provided).
     pub hqdn3d_params: Option<String>,
     // Actual values that will be used in FFmpeg command (for display purposes)
     pub video_codec: String,
@@ -272,13 +272,13 @@ mod tests {
             crop_filter: None,
             audio_channels: vec![6], // 5.1 audio
             duration: 3600.0,
-            hqdn3d_params: Some(crate::config::FIXED_HQDN3D_PARAMS_SDR.to_string()),
+            hqdn3d_params: Some("2:1.5:3:2.5".to_string()), // Example SDR denoising params
             // Actual values used in FFmpeg command
             video_codec: "libsvtav1".to_string(),
             pixel_format: "yuv420p10le".to_string(),
             matrix_coefficients: "bt709".to_string(),
             audio_codec: "libopus".to_string(),
-            film_grain_level: crate::config::FIXED_FILM_GRAIN_VALUE,
+            film_grain_level: crate::config::MIN_FILM_GRAIN_VALUE,
         }
     }
 
@@ -302,14 +302,14 @@ mod tests {
 
         assert!(filter_chain.is_some(), "Should have video filters when denoising is enabled");
         let filters = filter_chain.unwrap();
-        assert!(filters.contains(&format!("hqdn3d={}", crate::config::FIXED_HQDN3D_PARAMS_SDR)), 
-                "Video filters should contain SDR HQDN3D parameters: {}", crate::config::FIXED_HQDN3D_PARAMS_SDR);
+        assert!(filters.contains("hqdn3d=2:1.5:3:2.5"), 
+                "Video filters should contain test SDR HQDN3D parameters");
     }
 
     #[test]
     fn test_video_filter_chain_with_hdr_denoising() {
         // Test that HDR denoising parameters are correctly used
-        let hdr_params = Some(crate::config::FIXED_HQDN3D_PARAMS_HDR.to_string());
+        let hdr_params = Some("1:0.8:2.5:2".to_string()); // Example HDR denoising params
         
         let filter_chain = crate::external::VideoFilterChain::new()
             .add_denoise(hdr_params.as_deref().unwrap_or(""))
@@ -317,8 +317,8 @@ mod tests {
 
         assert!(filter_chain.is_some(), "Should have video filters for HDR denoising");
         let filters = filter_chain.unwrap();
-        assert!(filters.contains(&format!("hqdn3d={}", crate::config::FIXED_HQDN3D_PARAMS_HDR)), 
-                "Video filters should contain HDR HQDN3D parameters: {}", crate::config::FIXED_HQDN3D_PARAMS_HDR);
+        assert!(filters.contains("hqdn3d=1:0.8:2.5:2"), 
+                "Video filters should contain test HDR HQDN3D parameters");
     }
 
     #[test]
@@ -326,12 +326,12 @@ mod tests {
         // Test that film grain synthesis is correctly applied when denoising is enabled
         let svtav1_params = crate::external::SvtAv1ParamsBuilder::new()
             .with_tune(3)
-            .with_film_grain(crate::config::FIXED_FILM_GRAIN_VALUE)
+            .with_film_grain(crate::config::MIN_FILM_GRAIN_VALUE)
             .build();
 
         assert!(svtav1_params.contains("tune=3"), "SVT-AV1 params should contain tune=3");
-        assert!(svtav1_params.contains(&format!("film-grain={}", crate::config::FIXED_FILM_GRAIN_VALUE)), 
-                "SVT-AV1 params should contain film-grain={}", crate::config::FIXED_FILM_GRAIN_VALUE);
+        assert!(svtav1_params.contains(&format!("film-grain={}", crate::config::MIN_FILM_GRAIN_VALUE)), 
+                "SVT-AV1 params should contain film-grain={}", crate::config::MIN_FILM_GRAIN_VALUE);
         assert!(svtav1_params.contains("film-grain-denoise=0"), 
                 "SVT-AV1 params should disable built-in film grain denoising");
     }
@@ -365,7 +365,7 @@ mod tests {
     fn test_video_filter_chain_with_crop_and_denoise() {
         // Test that both crop and denoise filters are properly combined
         let filter_chain = crate::external::VideoFilterChain::new()
-            .add_denoise(crate::config::FIXED_HQDN3D_PARAMS_SDR)
+            .add_denoise("2:1.5:3:2.5")
             .add_crop("crop=1920:800:0:140")
             .build();
 
@@ -380,26 +380,16 @@ mod tests {
     fn test_configuration_constants_consistency() {
         // Test that our configuration constants are reasonable values
         
-        // HDR params should be lighter than SDR params
-        let hdr_parts: Vec<f32> = crate::config::FIXED_HQDN3D_PARAMS_HDR
-            .split(':')
-            .map(|s| s.parse().unwrap())
-            .collect();
-        let sdr_parts: Vec<f32> = crate::config::FIXED_HQDN3D_PARAMS_SDR
-            .split(':')
-            .map(|s| s.parse().unwrap())
-            .collect();
-            
-        assert_eq!(hdr_parts.len(), 4, "HDR params should have 4 components");
-        assert_eq!(sdr_parts.len(), 4, "SDR params should have 4 components");
+        // Film grain constants should be reasonable
+        assert!(crate::config::MIN_FILM_GRAIN_VALUE <= 50, "Min film grain should be <= 50");
+        assert!(crate::config::MIN_FILM_GRAIN_VALUE > 0, "Min film grain should be > 0");
+        assert!(crate::config::MAX_FILM_GRAIN_VALUE <= 50, "Max film grain should be <= 50");
+        assert!(crate::config::MAX_FILM_GRAIN_VALUE > crate::config::MIN_FILM_GRAIN_VALUE, "Max should be > min");
         
-        // HDR should generally have lower values (lighter denoising)
-        assert!(hdr_parts[0] <= sdr_parts[0], "HDR spatial luma should be <= SDR");
-        assert!(hdr_parts[1] <= sdr_parts[1], "HDR spatial chroma should be <= SDR");
-        
-        // Film grain should be reasonable
-        assert!(crate::config::FIXED_FILM_GRAIN_VALUE <= 50, "Film grain should be <= 50");
-        assert!(crate::config::FIXED_FILM_GRAIN_VALUE > 0, "Film grain should be > 0");
+        // Resolution thresholds should be reasonable
+        assert!(crate::config::HD_WIDTH_THRESHOLD < crate::config::UHD_WIDTH_THRESHOLD, "HD threshold should be < UHD threshold");
+        assert!(crate::config::HD_WIDTH_THRESHOLD >= 1920, "HD threshold should be >= 1920");
+        assert!(crate::config::UHD_WIDTH_THRESHOLD >= 3840, "UHD threshold should be >= 3840");
     }
 
     #[test]

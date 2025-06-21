@@ -16,6 +16,9 @@ pub mod video_properties;
 /// Crop detection and analysis
 pub mod crop_detection;
 
+/// Noise analysis for adaptive denoising
+pub mod noise_analysis;
+
 /// Post-encode validation
 pub mod validation;
 
