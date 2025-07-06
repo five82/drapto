@@ -66,8 +66,13 @@ impl EventHandler for TemplateEventHandler {
             
             Event::BlackBarDetectionComplete { crop_required, crop_params } => {
                 presenter.finish_spinner();
+                let message = if crop_params.as_deref() == Some("disabled") {
+                    "Crop detection disabled"
+                } else {
+                    "Crop detection complete"
+                };
                 presenter.render_video_analysis_results(
-                    "Crop detection complete",
+                    message,
                     *crop_required,
                     crop_params.as_deref()
                 );

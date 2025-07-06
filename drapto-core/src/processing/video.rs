@@ -367,10 +367,19 @@ pub fn process_videos(
 
         // Perform video analysis (crop detection)
         emit_event(event_dispatcher, Event::VideoAnalysisStarted);
-        emit_event(event_dispatcher, Event::BlackBarDetectionStarted);
-
-        let disable_crop = config.crop_mode == "off";
-        let (crop_filter_opt, _is_hdr) =
+        
+        let disable_crop = config.crop_mode == "none";
+        let (crop_filter_opt, _is_hdr) = if disable_crop {
+            // Crop detection is disabled - emit a special event to show this
+            emit_event(event_dispatcher, Event::BlackBarDetectionComplete {
+                crop_required: false,
+                crop_params: Some("disabled".to_string()),
+            });
+            (None, false)
+        } else {
+            // Crop detection is enabled - proceed normally
+            emit_event(event_dispatcher, Event::BlackBarDetectionStarted);
+            
             match crop_detection::detect_crop(input_path, &video_props, disable_crop) {
                 Ok(result) => {
                     emit_event(event_dispatcher, Event::BlackBarDetectionComplete {
@@ -390,7 +399,8 @@ pub fn process_videos(
                     });
                     (None, false)
                 }
-            };
+            }
+        };
 
         // Audio channels already analyzed above
 
