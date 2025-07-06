@@ -129,8 +129,14 @@ impl TemplatePresenter {
 
     /// Render video analysis results after spinner completes (no header)
     pub fn render_video_analysis_results(&self, success_message: &str, crop_required: bool, crop_params: Option<&str>) {
-        let crop_value = if crop_required {
-            crop_params.unwrap_or("crop parameters detected")
+        let crop_value = if let Some(params) = crop_params {
+            if params == "disabled" {
+                "Disabled"
+            } else if crop_required {
+                params
+            } else {
+                "None required"
+            }
         } else {
             "None required"
         };

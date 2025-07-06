@@ -7,13 +7,16 @@
 use std::path::Path;
 
 /// Checks if the given path is a valid video file that can be processed.
-/// Currently only supports .mkv files (case-insensitive).
+/// Supports common video file formats (case-insensitive).
 #[must_use]
 pub fn is_valid_video_file(path: &Path) -> bool {
     path.is_file() && 
     path.extension()
         .and_then(|ext| ext.to_str())
-        .map(|ext_str| ext_str.eq_ignore_ascii_case("mkv"))
+        .map(|ext_str| {
+            matches!(ext_str.to_lowercase().as_str(), 
+                "mkv" | "wmv" | "ts" | "avi" | "mp4" | "m4v" | "mpg" | "mpeg" | "mov" | "webm" | "flv" | "m2ts" | "ogv" | "vob")
+        })
         .unwrap_or(false)
 }
 
@@ -95,27 +98,38 @@ mod tests {
         
         // Create a temporary test file
         let temp_dir = std::env::temp_dir();
-        let test_file = temp_dir.join("test_video.mkv");
+        let test_file_mkv = temp_dir.join("test_video.mkv");
         let test_file_upper = temp_dir.join("test_video.MKV");
         let test_file_mixed = temp_dir.join("test_video.Mkv");
         let test_file_mp4 = temp_dir.join("test_video.mp4");
+        let test_file_avi = temp_dir.join("test_video.avi");
+        let test_file_wmv = temp_dir.join("test_video.wmv");
+        let test_file_mov = temp_dir.join("test_video.mov");
+        let test_file_webm = temp_dir.join("test_video.webm");
         
         // Create test files
-        let _ = File::create(&test_file);
+        let _ = File::create(&test_file_mkv);
         let _ = File::create(&test_file_upper);
         let _ = File::create(&test_file_mixed);
         let _ = File::create(&test_file_mp4);
+        let _ = File::create(&test_file_avi);
+        let _ = File::create(&test_file_wmv);
+        let _ = File::create(&test_file_mov);
+        let _ = File::create(&test_file_webm);
         
-        // Test valid MKV files (case insensitive)
-        assert!(is_valid_video_file(&test_file));
+        // Test valid video files (case insensitive)
+        assert!(is_valid_video_file(&test_file_mkv));
         assert!(is_valid_video_file(&test_file_upper));
         assert!(is_valid_video_file(&test_file_mixed));
+        assert!(is_valid_video_file(&test_file_mp4));
+        assert!(is_valid_video_file(&test_file_avi));
+        assert!(is_valid_video_file(&test_file_wmv));
+        assert!(is_valid_video_file(&test_file_mov));
+        assert!(is_valid_video_file(&test_file_webm));
         
         // Test invalid files
-        assert!(!is_valid_video_file(&test_file_mp4));
         assert!(!is_valid_video_file(Path::new("test.mkv"))); // Non-existent file
-        assert!(!is_valid_video_file(Path::new("test.mp4")));
-        assert!(!is_valid_video_file(Path::new("test.avi")));
+        assert!(!is_valid_video_file(Path::new("test.mp4"))); // Non-existent file
         assert!(!is_valid_video_file(Path::new("test.txt")));
         assert!(!is_valid_video_file(Path::new("test")));
         assert!(!is_valid_video_file(Path::new("")));
@@ -125,10 +139,14 @@ mod tests {
         assert!(!is_valid_video_file(&temp_dir));
         
         // Cleanup
-        let _ = std::fs::remove_file(&test_file);
+        let _ = std::fs::remove_file(&test_file_mkv);
         let _ = std::fs::remove_file(&test_file_upper);
         let _ = std::fs::remove_file(&test_file_mixed);
         let _ = std::fs::remove_file(&test_file_mp4);
+        let _ = std::fs::remove_file(&test_file_avi);
+        let _ = std::fs::remove_file(&test_file_wmv);
+        let _ = std::fs::remove_file(&test_file_mov);
+        let _ = std::fs::remove_file(&test_file_webm);
     }
 
     #[test]
