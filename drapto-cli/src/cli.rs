@@ -32,7 +32,7 @@ pub struct Cli {
 /// Available CLI subcommands.
 #[derive(Subcommand, Debug)]
 pub enum Commands {
-    /// Encode .mkv files to AV1 format.
+    /// Encode video files to AV1 format.
     Encode(EncodeArgs),
     // Future subcommands will be added here as the application evolves
     // Examples:
@@ -44,7 +44,7 @@ pub enum Commands {
 #[derive(Parser, Debug)]
 pub struct EncodeArgs {
     // Required Arguments
-    /// Input .mkv file or directory containing .mkv files.
+    /// Input video file or directory containing video files.
     #[arg(
         short = 'i',
         long = "input",
