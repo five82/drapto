@@ -11,9 +11,10 @@ use crate::utils::is_valid_video_file;
 use std::path::{Path, PathBuf};
 
 /// Finds supported video files in the top level of the input directory (case-insensitive).
+/// Returns files sorted alphabetically by filename.
 pub fn find_processable_files(input_dir: &Path) -> CoreResult<Vec<PathBuf>> {
     let read_dir = std::fs::read_dir(input_dir)?;
-    let files: Vec<PathBuf> = read_dir
+    let mut files: Vec<PathBuf> = read_dir
         .filter_map(|entry| {
             let entry = entry.ok()?;
             let path = entry.path();
@@ -25,6 +26,18 @@ pub fn find_processable_files(input_dir: &Path) -> CoreResult<Vec<PathBuf>> {
             }
         })
         .collect();
+
+    // Sort files alphabetically by filename
+    files.sort_by(|a, b| {
+        a.file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("")
+            .to_lowercase()
+            .cmp(&b.file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("")
+                .to_lowercase())
+    });
 
     if files.is_empty() {
         Err(CoreError::NoFilesFound)
