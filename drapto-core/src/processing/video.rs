@@ -239,9 +239,9 @@ pub fn process_videos(
             });
         }
 
-        let filename = crate::utils::get_filename_safe(input_path)?;
-
-        let _filename_noext = input_path
+        let input_filename = crate::utils::get_filename_safe(input_path)?;
+        
+        let filename_noext = input_path
             .file_stem()
             .ok_or_else(|| {
                 CoreError::PathError(format!(
@@ -252,12 +252,15 @@ pub fn process_videos(
             .to_string_lossy()
             .to_string();
 
+        // Always use .mkv extension for output files
+        let output_filename = format!("{}.mkv", filename_noext);
+
         // Determine output path based on configuration and target filename override
         let output_path = match &target_filename_override {
             Some(target_filename) if files_to_process.len() == 1 => {
                 config.output_dir.join(target_filename)
             }
-            _ => config.output_dir.join(&filename),
+            _ => config.output_dir.join(&output_filename),
         };
 
         // Skip processing if the output file already exists
@@ -271,7 +274,7 @@ pub fn process_videos(
             
             send_notification_safe(
                 notification_sender,
-                &format!("Skipped encode for {}: Output file already exists at {}", filename, output_path.display()),
+                &format!("Skipped encode for {}: Output file already exists at {}", output_filename, output_path.display()),
                 "skip"
             );
 
@@ -281,7 +284,7 @@ pub fn process_videos(
         // Send encoding start notification
         send_notification_safe(
             notification_sender,
-            &format!("Started encoding {filename}"),
+            &format!("Started encoding {input_filename}"),
             "start"
         );
 
@@ -289,7 +292,7 @@ pub fn process_videos(
         let video_props = match crate::external::get_video_properties(input_path) {
             Ok(props) => props,
             Err(e) => {
-                let error_msg = format!("Could not analyze {filename}: {e}");
+                let error_msg = format!("Could not analyze {input_filename}: {e}");
                 emit_event(event_dispatcher, Event::Error {
                     title: "Analysis Error".to_string(),
                     message: error_msg.clone(),
@@ -299,7 +302,7 @@ pub fn process_videos(
 
                 send_notification_safe(
                     notification_sender,
-                    &format!("Error encoding {filename}: Failed to get video properties"),
+                    &format!("Error encoding {input_filename}: Failed to get video properties"),
                     "error"
                 );
 
@@ -348,7 +351,7 @@ pub fn process_videos(
 
         // Emit initialization event
         emit_event(event_dispatcher, Event::InitializationStarted {
-            input_file: filename.clone(),
+            input_file: input_filename.clone(),
             output_file: output_path.file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("unknown")
@@ -390,7 +393,7 @@ pub fn process_videos(
                 },
                 Err(e) => {
                     let warning_msg = format!(
-                        "Crop detection failed for {filename}: {e}. Proceeding without cropping."
+                        "Crop detection failed for {input_filename}: {e}. Proceeding without cropping."
                     );
                     emit_event(event_dispatcher, Event::Warning { message: warning_msg });
                     emit_event(event_dispatcher, Event::BlackBarDetectionComplete {
@@ -417,7 +420,7 @@ pub fn process_videos(
                     Some(analysis)
                 },
                 Err(e) => {
-                    let error_msg = format!("Noise analysis failed for {filename}: {e}");
+                    let error_msg = format!("Noise analysis failed for {input_filename}: {e}");
                     emit_event(event_dispatcher, Event::Error {
                         title: "Noise Analysis Failed".to_string(),
                         message: error_msg.clone(),
@@ -427,7 +430,7 @@ pub fn process_videos(
 
                     send_notification_safe(
                         notification_sender,
-                        &format!("Error encoding {filename}: Noise analysis failed"),
+                        &format!("Error encoding {input_filename}: Noise analysis failed"),
                         "error"
                     );
 
@@ -571,20 +574,20 @@ pub fn process_videos(
                             let failures = validation_result.get_failures();
                             log::warn!(
                                 "Post-encode validation failed for {}: {} (continuing processing)",
-                                filename,
+                                input_filename,
                                 failures.join(", ")
                             );
                             
                             // Send detailed individual notifications for each failure
                             send_validation_failure_notifications(
                                 notification_sender,
-                                &filename,
+                                &input_filename,
                                 &steps
                             );
                         } else {
                             log::debug!(
                                 "Post-encode validation passed for {}: All validation checks confirmed",
-                                filename
+                                input_filename
                             );
                         }
                         
@@ -604,7 +607,7 @@ pub fn process_videos(
                         
                         log::warn!(
                             "Post-encode validation error for {}: {} (continuing processing)",
-                            filename,
+                            input_filename,
                             validation_error
                         );
                         
@@ -613,7 +616,7 @@ pub fn process_videos(
                 };
                 
                 results.push(EncodeResult {
-                    filename: filename.clone(),
+                    filename: input_filename.clone(),
                     duration: file_elapsed_time,
                     input_size,
                     output_size,
@@ -638,7 +641,7 @@ pub fn process_videos(
 
                 // Emit encoding complete event
                 emit_event(event_dispatcher, Event::EncodingComplete {
-                    input_file: filename.clone(),
+                    input_file: input_filename.clone(),
                     output_file: output_path.file_name()
                         .and_then(|n| n.to_str())
                         .unwrap_or("unknown")
@@ -697,24 +700,24 @@ pub fn process_videos(
 
                 send_notification_safe(
                     notification_sender,
-                    &format!("Completed encoding {filename} in {duration_str}. Reduced by {reduction}%"),
+                    &format!("Completed encoding {input_filename} in {duration_str}. Reduced by {reduction}%"),
                     "success"
                 );
             }
 
             Err(e) => if let CoreError::NoStreamsFound(path) = &e {
                 let warning_msg = format!(
-                    "Skipping encode for {filename}: FFmpeg reported no processable streams found in '{path}'."
+                    "Skipping encode for {input_filename}: FFmpeg reported no processable streams found in '{path}'."
                 );
                 emit_event(event_dispatcher, Event::Warning { message: warning_msg });
 
                 send_notification_safe(
                     notification_sender,
-                    &format!("Skipped encode for {filename}: No streams found."),
+                    &format!("Skipped encode for {input_filename}: No streams found."),
                     "skip"
                 );
             } else {
-                let error_msg = format!("FFmpeg failed to encode {filename}: {e}");
+                let error_msg = format!("FFmpeg failed to encode {input_filename}: {e}");
                 emit_event(event_dispatcher, Event::Error {
                     title: "Encoding Error".to_string(),
                     message: error_msg.clone(),
@@ -724,7 +727,7 @@ pub fn process_videos(
 
                 send_notification_safe(
                     notification_sender,
-                    &format!("Error encoding {filename}: ffmpeg failed: {e}"),
+                    &format!("Error encoding {input_filename}: ffmpeg failed: {e}"),
                     "error"
                 );
             }
