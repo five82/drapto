@@ -9,6 +9,7 @@ use drapto_core::{
     events::{Event, EventDispatcher},
     notifications::NotificationSender,
     processing::process_videos,
+    utils::calculate_size_reduction,
 };
 
 use std::io::Write;
@@ -167,11 +168,7 @@ pub fn run_encode(
         
         let total_input_size: u64 = results.iter().map(|r| r.input_size).sum();
         let total_output_size: u64 = results.iter().map(|r| r.output_size).sum();
-        let total_reduction = if total_input_size > 0 {
-            (total_input_size - total_output_size) as f64 / total_input_size as f64 * 100.0
-        } else {
-            0.0
-        };
+        let total_reduction = calculate_size_reduction(total_input_size, total_output_size) as f64;
         
         log::info!(
             "Total size reduction: {:.1}% ({} → {})",

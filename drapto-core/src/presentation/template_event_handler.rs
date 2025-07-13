@@ -1,6 +1,7 @@
 use crate::events::{Event, EventHandler};
 use super::template_presenter::{TemplatePresenter, FileAnalysisParams, EncodingConfigParams, EncodingCompleteParams, BatchCompleteParams};
 use super::templates;
+use crate::utils::calculate_size_reduction;
 use console;
 use std::sync::Mutex;
 
@@ -169,7 +170,7 @@ impl EventHandler for TemplateEventHandler {
                 output_path,
             } => {
                 
-                let reduction = (*original_size - *encoded_size) as f64 / *original_size as f64 * 100.0;
+                let reduction = calculate_size_reduction(*original_size, *encoded_size) as f64;
                 let original_size_str = format_bytes(*original_size);
                 let encoded_size_str = format_bytes(*encoded_size);
                 let reduction_str = templates::format_reduction(reduction);
