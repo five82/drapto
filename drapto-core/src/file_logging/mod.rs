@@ -1,6 +1,7 @@
 pub mod setup;
 
 use crate::events::{Event, EventHandler};
+use crate::utils::calculate_size_reduction;
 use log::{info, warn, error, debug};
 use std::time::{Duration, Instant};
 
@@ -219,7 +220,7 @@ impl EventHandler for FileLoggingHandler {
                 average_speed,
                 output_path,
             } => {
-                let reduction = (original_size - encoded_size) as f64 / *original_size as f64 * 100.0;
+                let reduction = calculate_size_reduction(*original_size, *encoded_size) as f64;
                 
                 info!("Encoding completed successfully");
                 info!("Input: {} ({} bytes)", input_file, original_size);

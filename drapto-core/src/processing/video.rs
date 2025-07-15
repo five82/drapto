@@ -30,6 +30,7 @@ use crate::processing::noise_analysis;
 use crate::processing::video_properties::VideoProperties;
 use crate::processing::validation::validate_output_video;
 use crate::system_info::SystemInfo;
+use crate::utils::calculate_size_reduction;
 use crate::EncodeResult;
 
 use log::warn;
@@ -687,7 +688,7 @@ pub fn process_videos(
                 });
 
                 // Send success notification
-                let reduction = ((input_size - output_size) as f64 / input_size as f64 * 100.0) as u32;
+                let reduction = calculate_size_reduction(input_size, output_size) as u32;
 
                 let duration_secs = file_elapsed_time.as_secs();
                 let duration_str = if duration_secs >= 3600 {
@@ -772,7 +773,7 @@ pub fn process_videos(
             // Build per-file results for the summary
             let file_results: Vec<(String, f64)> = results.iter()
                 .map(|r| {
-                    let reduction = (r.input_size - r.output_size) as f64 / r.input_size as f64 * 100.0;
+                    let reduction = calculate_size_reduction(r.input_size, r.output_size) as f64;
                     (r.filename.clone(), reduction)
                 })
                 .collect();
