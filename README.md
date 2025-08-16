@@ -1,13 +1,13 @@
-# Drapto
+# drapto
 
-Advanced ffmpeg video encoding wrapper with intelligent optimization for high-quality, efficient AV1 encodes.
+FFmpeg video encoding wrapper with intelligent optimization for high-quality, efficient AV1 encodes. The purpose is to apply sane defaults to encodes so you can run and forget or incorporate drapto into an automated workflow.
 
 ## Features
 
 * **Intelligent Analysis**: Automatic black bar cropping, HDR-aware processing, adaptive noise analysis
 * **Optimized Encoding**: AV1 video (libsvtav1), Opus audio with multi-stream support, resolution-based quality settings
 * **Adaptive Denoising**: Intelligent noise detection with tailored denoising and film grain synthesis
-* **Hardware Acceleration**: VideoToolbox decoding support on macOS (automatically detected)
+* **Hardware Acceleration**: VideoToolbox and VAAPI decoding support (automatically detected)
 * **Flexible Workflow**: Daemon mode for background processing, interactive mode with progress bars, push notifications
 
 ## Installation
@@ -32,7 +32,7 @@ Advanced ffmpeg video encoding wrapper with intelligent optimization for high-qu
 # Basic usage (runs in background by default)
 drapto encode -i input.mkv -o output/
 
-# Encode directory (processes all .mkv files)
+# Encode directory (processes all video files)
 drapto encode -i /videos/ -o /encoded/
 
 # Interactive mode (foreground with progress bars)
@@ -74,14 +74,14 @@ Drapto uses intelligent noise analysis to apply optimal denoising settings for e
 1. **Noise Analysis**: Automatically analyzes video noise levels using FFmpeg's bitplanenoise filter
 2. **Adaptive Parameters**: Selects appropriate denoising strength based on detected noise:
    - Very clean content: Minimal denoising (preserves pristine quality)
-   - Slightly noisy content: Very light denoising  
+   - Slightly noisy content: Very light denoising
    - Somewhat noisy content: Light denoising
    - Noisy content: Moderate denoising (still conservative)
 3. **HDR-Aware Processing**: Uses lighter denoising parameters for HDR content to preserve detail
 4. **Dynamic Film Grain**: Scales film grain synthesis (levels 4-16) to compensate for denoising artifacts
 5. **Quality-First Approach**: All parameters remain conservative to avoid visible quality loss
 
-This system maximizes file size reduction while maintaining excellent visual quality by applying exactly the right amount of denoising for each video's noise characteristics.
+This system reduces file size while maintaining visual quality by applying a conservative amount of denoising for each video's noise characteristics.
 
 ### HDR Support
 
@@ -92,7 +92,7 @@ Automatically detects and preserves HDR content using MediaInfo for comprehensiv
 
 ### Post-Encode Validation
 
-Drapto includes comprehensive validation to ensure encoding success:
+Includes comprehensive validation to ensure encoding success:
 
 * **Video Codec**: Verifies AV1 encoding and 10-bit depth
 * **Audio Codec**: Confirms Opus audio encoding and track count
@@ -103,7 +103,7 @@ Drapto includes comprehensive validation to ensure encoding success:
 
 ### Hardware Acceleration
 
-* VideoToolbox hardware decoding on macOS (automatically enabled when available)
+* VideoToolbox and VAAPI hardware decoding support (automatically enabled when available)
 * Improves performance by hardware-accelerating video decoding
 
 ### Multi-Stream Audio
