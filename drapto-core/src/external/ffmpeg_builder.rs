@@ -32,7 +32,7 @@ impl FfmpegCommandBuilder {
         }
     }
 
-    /// Enables hardware decoding (`VideoToolbox` on macOS)
+    /// Enables hardware decoding (`VideoToolbox` on macOS, `VAAPI` on Linux)
     #[must_use] pub fn with_hardware_accel(mut self, enabled: bool) -> Self {
         self.use_hw_decode = enabled;
         self

@@ -39,8 +39,7 @@ impl EventHandler for TemplateEventHandler {
                 resolution,
                 category,
                 dynamic_range,
-                audio_description,
-                hardware 
+                audio_description 
             } => {
                 presenter.render_file_analysis(FileAnalysisParams {
                     input_file, 
@@ -49,7 +48,6 @@ impl EventHandler for TemplateEventHandler {
                     category,
                     dynamic_range,
                     audio_description,
-                    hardware: hardware.as_deref(),
                 });
             }
             

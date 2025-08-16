@@ -182,9 +182,6 @@ fn format_memory_size(bytes: u64) -> String {
 }
 
 fn get_decoder_info() -> String {
-    if crate::hardware_decode::is_hardware_decoding_available() {
-        "VideoToolbox".to_string()
-    } else {
-        "Software".to_string()
-    }
+    crate::hardware_decode::get_hardware_decoding_info()
+        .unwrap_or_else(|| "Software".to_string())
 }
