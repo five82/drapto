@@ -21,7 +21,6 @@ pub enum Event {
         category: String, // HD, UHD, SD
         dynamic_range: String, // HDR, SDR
         audio_description: String, // e.g., "5.1 surround", "stereo"
-        hardware: Option<String>,
     },
     
     // Analysis events

@@ -49,16 +49,12 @@ impl EventHandler for FileLoggingHandler {
                 resolution,
                 category,
                 dynamic_range,
-                audio_description,
-                hardware 
+                audio_description 
             } => {
                 info!("Starting drapto encoding process");
                 info!("Input: {} (duration: {}, resolution: {} {})", input_file, duration, resolution, category);
                 info!("Output: {}", output_file);
                 info!("Dynamic range: {}, Audio: {}", dynamic_range, audio_description);
-                if let Some(hw) = hardware {
-                    info!("Hardware acceleration: {}", hw);
-                }
             }
             
             Event::VideoAnalysisStarted => {

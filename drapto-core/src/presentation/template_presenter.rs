@@ -11,7 +11,6 @@ pub struct FileAnalysisParams<'a> {
     pub category: &'a str,
     pub dynamic_range: &'a str,
     pub audio_description: &'a str,
-    pub hardware: Option<&'a str>,
 }
 
 /// Parameters for encoding configuration rendering
@@ -102,17 +101,13 @@ impl TemplatePresenter {
         let formatted_dynamic_range = templates::format_technical_info(params.dynamic_range);
         let formatted_audio = templates::format_technical_info(params.audio_description);
         
-        let mut items = vec![
+        let items = vec![
             ("File", params.input_file),
             ("Duration", params.duration),
             ("Resolution", &resolution_with_category),
             ("Dynamic range", &formatted_dynamic_range),
             ("Audio", &formatted_audio),
         ];
-        
-        if let Some(hw) = params.hardware {
-            items.push(("Hardware", hw));
-        }
         
         templates::render(TemplateData::KeyValueList {
             title: "VIDEO DETAILS",

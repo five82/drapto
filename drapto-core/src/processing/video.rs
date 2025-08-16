@@ -362,11 +362,6 @@ pub fn process_videos(
             category: category.to_string(),
             dynamic_range: if is_hdr { "HDR".to_string() } else { "SDR".to_string() },
             audio_description,
-            hardware: if crate::hardware_decode::is_hardware_decoding_available() {
-                Some("VideoToolbox (decode only)".to_string())
-            } else {
-                None
-            },
         });
 
         // Perform video analysis (crop detection)
