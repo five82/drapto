@@ -41,13 +41,13 @@ pub fn discover_encode_files(args: &EncodeArgs) -> CliResult<(Vec<PathBuf>, Path
 pub fn run_encode(
     notification_sender: Option<&dyn NotificationSender>,
     args: EncodeArgs,
-    interactive_mode: bool,
+    foreground_mode: bool,
     discovered_files: Vec<PathBuf>,
     effective_input_dir: PathBuf,
     event_dispatcher: EventDispatcher,
 ) -> CliResult<()> {
     // PID file setup for daemon mode
-    let pid_file_path = if !interactive_mode {
+    let pid_file_path = if !foreground_mode {
         let pid_filename = format!(
             "drapto_encode_pid_{}.txt",
             chrono::Local::now().format("%Y%m%d_%H%M%S")

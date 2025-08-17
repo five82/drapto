@@ -297,6 +297,11 @@ impl EventHandler for TemplateEventHandler {
                 println!("      Video quality:    {} ({:.0}%)", noise_level_desc, average_noise * 100.0);
                 println!("      Denoising:        {} ({})", denoising_strength, recommended_params);
             }
+
+            Event::StageProgress { .. } => {
+                // Don't show stage progress in interactive mode - it clutters the output
+                // The JSON progress handler will still emit these events for spindle integration
+            }
         }
     }
 }

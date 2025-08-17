@@ -21,7 +21,7 @@ pub struct Cli {
 
     /// Run in foreground instead of daemonizing.
     #[arg(long, global = true, default_value_t = false)]
-    pub interactive: bool,
+    pub foreground: bool,
 
     /// Enable verbose output for troubleshooting.
     #[arg(short, long, global = true, default_value_t = false)]
@@ -97,4 +97,8 @@ pub struct EncodeArgs {
     /// ntfy.sh topic URL for notifications (e.g., https://ntfy.sh/your_topic).
     #[arg(long, value_name = "TOPIC_URL", env = "DRAPTO_NTFY_TOPIC")]
     pub ntfy: Option<String>,
+
+    /// Output progress as structured JSON to stdout for machine parsing (cannot be used with --foreground).
+    #[arg(long)]
+    pub progress_json: bool,
 }

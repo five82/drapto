@@ -39,8 +39,8 @@ cargo build --release
 # Run a build from the project directory
 cargo run -- encode -i /path/to/video.mkv -o /path/to/output/
 
-# Run with interactive mode (no daemon)
-cargo run -- encode --interactive -i /path/to/video.mkv -o /path/to/output/
+# Run with foreground mode (no daemon)
+cargo run -- encode --foreground -i /path/to/video.mkv -o /path/to/output/
 
 # Enable debug logging
 RUST_LOG=debug cargo run -- encode -i /path/to/video.mkv -o /path/to/output/
@@ -50,7 +50,7 @@ RUST_LOG=debug cargo run -- encode -i /path/to/video.mkv -o /path/to/output/
 
 ```bash
 # Enable trace-level logging for more detailed output
-RUST_LOG=trace cargo run -- encode --interactive -i input.mkv -o output/
+RUST_LOG=trace cargo run -- encode --foreground -i input.mkv -o output/
 ```
 
 ## Key Components
@@ -77,7 +77,7 @@ The project uses FFmpeg for video processing via:
 
 The progress reporting system provides feedback during long-running operations:
 
-1. Terminal-based progress bars for interactive mode
+1. Terminal-based progress bars for foreground mode
 2. Detailed logging for daemon mode
 3. Push notifications via ntfy.sh
 
