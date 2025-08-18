@@ -5,6 +5,7 @@
 //! and uses the most common crop result.
 
 use crate::error::CoreResult;
+use crate::events::{Event, EventDispatcher};
 use crate::processing::video_properties::VideoProperties;
 // Removed unused log::info import
 use std::path::Path;
@@ -16,11 +17,22 @@ pub fn detect_crop(
     input_file: &Path,
     video_props: &VideoProperties,
     disable_crop: bool,
+    event_dispatcher: Option<&EventDispatcher>,
 ) -> CoreResult<(Option<String>, bool)> {
     // Check if crop detection is disabled
     if disable_crop {
         log::info!("Crop detection: Disabled");
         return Ok((None, false));
+    }
+
+    // Emit start event
+    if let Some(dispatcher) = event_dispatcher {
+        dispatcher.emit(Event::StageProgress {
+            stage: "crop_detection".to_string(),
+            percent: 0.0,
+            message: "Starting black bar detection".to_string(),
+            eta: None,
+        });
     }
 
     // Detect HDR content using MediaInfo data
@@ -92,20 +104,33 @@ pub fn detect_crop(
     };
     
     // Report results
-    match &best_crop {
+    let message = match &best_crop {
         Some(crop) => {
             log::info!("Crop detection: {}", crop);
             log::debug!("Applied crop filter: {}", crop);
+            format!("Crop detected: {}", crop)
         }
         None => {
             if has_multiple_ratios {
                 log::info!("Crop detection: Multiple ratios (no crop)");
                 log::debug!("Multiple aspect ratios detected - no cropping applied");
+                "Multiple aspect ratios detected - no cropping applied".to_string()
             } else {
                 log::info!("Crop detection: None required");
                 log::debug!("No cropping needed for {}", input_file.display());
+                "No cropping required".to_string()
             }
         }
+    };
+
+    // Emit completion event
+    if let Some(dispatcher) = event_dispatcher {
+        dispatcher.emit(Event::StageProgress {
+            stage: "crop_detection".to_string(),
+            percent: 100.0,
+            message,
+            eta: None,
+        });
     }
     
     Ok((best_crop, is_hdr))

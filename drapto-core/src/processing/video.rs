@@ -379,7 +379,7 @@ pub fn process_videos(
             // Crop detection is enabled - proceed normally
             emit_event(event_dispatcher, Event::BlackBarDetectionStarted);
             
-            match crop_detection::detect_crop(input_path, &video_props, disable_crop) {
+            match crop_detection::detect_crop(input_path, &video_props, disable_crop, event_dispatcher) {
                 Ok(result) => {
                     emit_event(event_dispatcher, Event::BlackBarDetectionComplete {
                         crop_required: result.0.is_some(),
@@ -406,7 +406,7 @@ pub fn process_videos(
         // Perform noise analysis if denoising is enabled
         let noise_analysis_result = if config.enable_denoise {
             emit_event(event_dispatcher, Event::NoiseAnalysisStarted);
-            match noise_analysis::analyze_noise(input_path, &video_props) {
+            match noise_analysis::analyze_noise(input_path, &video_props, event_dispatcher) {
                 Ok(analysis) => {
                     emit_event(event_dispatcher, Event::NoiseAnalysisComplete {
                         average_noise: analysis.average_noise,
@@ -558,6 +558,14 @@ pub fn process_videos(
                     Some((video_width, video_height))
                 };
 
+                // Emit validation start event
+                emit_event(event_dispatcher, Event::StageProgress {
+                    stage: "validation".to_string(),
+                    percent: 0.0,
+                    message: "Starting output validation".to_string(),
+                    eta: None,
+                });
+
                 // Perform post-encode validation
                 let expected_audio_track_count = if audio_channels.is_empty() { Some(0) } else { Some(audio_channels.len()) };
                 let (validation_passed, validation_steps) = match validate_output_video(input_path, &output_path, expected_dimensions, Some(duration_secs), Some(is_hdr), expected_audio_track_count) {
@@ -620,6 +628,18 @@ pub fn process_videos(
                     encoding_speed,
                     validation_passed,
                     validation_steps: validation_steps.clone(),
+                });
+
+                // Emit validation stage completion event
+                emit_event(event_dispatcher, Event::StageProgress {
+                    stage: "validation".to_string(),
+                    percent: 100.0,
+                    message: if validation_passed {
+                        "Validation completed successfully".to_string()
+                    } else {
+                        "Validation completed with issues".to_string()
+                    },
+                    eta: None,
                 });
 
                 // Emit validation complete event

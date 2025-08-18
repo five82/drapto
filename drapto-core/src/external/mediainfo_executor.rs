@@ -86,6 +86,17 @@ pub struct HdrInfo {
     pub bit_depth: Option<u8>,
 }
 
+/// Checks if MediaInfo is available on the system
+pub fn is_mediainfo_available() -> bool {
+    match Command::new("mediainfo")
+        .arg("--Version")
+        .output()
+    {
+        Ok(output) => output.status.success(),
+        Err(_) => false,
+    }
+}
+
 /// Gets comprehensive media information using MediaInfo
 pub fn get_media_info(input_path: &Path) -> CoreResult<MediaInfoResponse> {
     log::debug!(

@@ -35,8 +35,8 @@ drapto encode -i input.mkv -o output/
 # Encode directory (processes all video files)
 drapto encode -i /videos/ -o /encoded/
 
-# Interactive mode (foreground with progress bars)
-drapto encode --interactive -i input.mkv -o output/
+# Foreground mode (with progress bars and terminal output)
+drapto encode --foreground -i input.mkv -o output/
 
 # Custom settings
 drapto encode -i input.mkv -o output/ --quality-hd 24 --preset 4
@@ -55,7 +55,7 @@ drapto encode -v -i input.mkv -o output/
 * `-o, --output <DIR>`: Output directory (or filename if single file)
 
 **Common Options:**
-* `--interactive`: Run in foreground instead of daemon mode
+* `--foreground`: Run in foreground instead of daemon mode
 * `-v, --verbose`: Enable verbose output with detailed information
 * `--no-color`: Disable colored output
 * `-l, --log-dir <DIR>`: Directory for log files (defaults to OUTPUT_DIR/logs)
@@ -118,7 +118,7 @@ Includes comprehensive validation to ensure encoding success:
 
 ### Progress Reporting
 
-In interactive mode:
+In foreground mode:
 * Real-time encoding progress with ETA
 * Current encoding speed (fps)
 * Bitrate monitoring

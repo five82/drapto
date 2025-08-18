@@ -5,6 +5,7 @@
 //! visual quality.
 
 use crate::error::CoreResult;
+use crate::events::{Event, EventDispatcher};
 use crate::processing::video_properties::VideoProperties;
 use std::path::Path;
 
@@ -114,8 +115,19 @@ impl NoiseAnalysis {
 pub fn analyze_noise(
     input_file: &Path,
     video_props: &VideoProperties,
+    event_dispatcher: Option<&EventDispatcher>,
 ) -> CoreResult<NoiseAnalysis> {
     log::debug!("Analyzing noise levels for {}", input_file.display());
+    
+    // Emit start event
+    if let Some(dispatcher) = event_dispatcher {
+        dispatcher.emit(Event::StageProgress {
+            stage: "noise_analysis".to_string(),
+            percent: 0.0,
+            message: "Starting noise analysis".to_string(),
+            eta: None,
+        });
+    }
     
     // Sample at multiple points in the video for more accurate analysis
     let sample_points = vec![0.2, 0.4, 0.5, 0.6, 0.8];
@@ -182,6 +194,22 @@ pub fn analyze_noise(
         "Noise analysis: avg={:.4}, max={:.4}, significant={}, recommended=hqdn3d={}, film_grain={}",
         average_noise, max_noise, has_significant_noise, recommended_hqdn3d, recommended_film_grain
     );
+    
+    // Emit completion event
+    if let Some(dispatcher) = event_dispatcher {
+        let noise_level = if has_significant_noise {
+            "significant noise detected"
+        } else {
+            "minimal noise detected"
+        };
+        
+        dispatcher.emit(Event::StageProgress {
+            stage: "noise_analysis".to_string(),
+            percent: 100.0,
+            message: format!("Noise analysis complete: {}", noise_level),
+            eta: None,
+        });
+    }
     
     Ok(NoiseAnalysis {
         average_noise,

@@ -25,7 +25,7 @@ use log::LevelFilter;
 /// Main entry point with clean separation of concerns
 fn main() -> CliResult<()> {
     let cli_args = Cli::parse();
-    let interactive_mode = cli_args.interactive;
+    let foreground_mode = cli_args.foreground;
 
     // Determine log level based on verbose flag
     let log_level = if cli_args.verbose {
@@ -36,6 +36,13 @@ fn main() -> CliResult<()> {
 
     let _ = match cli_args.command {
         Commands::Encode(args) => {
+            // Validate argument combinations
+            if foreground_mode && args.progress_json {
+                return Err(CoreError::OperationFailed(
+                    "Cannot use --progress-json with --foreground. Use --progress-json for machine parsing (e.g., spindle integration) or --foreground for human-readable output, but not both.".to_string()
+                ));
+            }
+
             let (discovered_files, effective_input_dir) =
                 discover_encode_files(&args).map_err(|e| 
                     CoreError::OperationFailed(format!("Error during file discovery: {}", e))
@@ -88,12 +95,18 @@ fn main() -> CliResult<()> {
             // Always add file logging handler
             event_dispatcher.add_handler(Arc::new(FileLoggingHandler::new()));
             
-            // Add terminal handler only in interactive mode
-            if interactive_mode {
+            // Add JSON progress handler if requested
+            if args.progress_json {
+                use drapto_core::events::json_handler::JsonProgressHandler;
+                event_dispatcher.add_handler(Arc::new(JsonProgressHandler::new()));
+            }
+            
+            // Add terminal handler only in foreground mode
+            if foreground_mode {
                 event_dispatcher.add_handler(Arc::new(TemplateEventHandler::new()));
             }
 
-            if !interactive_mode {
+            if !foreground_mode {
                 // Pre-daemonization output
                 eprintln!("===== DAEMON MODE =====");
                 eprintln!();
@@ -150,7 +163,7 @@ fn main() -> CliResult<()> {
 
             // Log startup information
             log::info!("Drapto encoder starting in {} mode", 
-                if interactive_mode { "interactive" } else { "daemon" });
+                if foreground_mode { "foreground" } else { "daemon" });
             
             if log_level == LevelFilter::Debug {
                 log::info!("Debug level logging enabled");
@@ -159,7 +172,7 @@ fn main() -> CliResult<()> {
             run_encode(
                 notification_sender.as_ref().map(|s| s as &dyn NotificationSender),
                 args,
-                interactive_mode,
+                foreground_mode,
                 discovered_files,
                 effective_input_dir,
                 event_dispatcher,

@@ -1,6 +1,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+pub mod json_handler;
+
 #[derive(Debug, Clone)]
 pub enum Event {
     // System information events
@@ -78,6 +80,13 @@ pub enum Event {
         fps: f32,
         eta: Duration,
         bitrate: String,
+    },
+
+    StageProgress {
+        stage: String,
+        percent: f32,
+        message: String,
+        eta: Option<Duration>,
     },
     
     EncodingComplete {

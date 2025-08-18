@@ -311,6 +311,10 @@ impl EventHandler for FileLoggingHandler {
                     average_noise, has_significant_noise, recommended_params
                 );
             }
+
+            Event::StageProgress { stage, percent, message, .. } => {
+                debug!("[{}] {:.1}% - {}", stage, percent, message);
+            }
         }
     }
 }

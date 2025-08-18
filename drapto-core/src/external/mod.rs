@@ -25,7 +25,7 @@ pub use ffprobe_executor::{
 };
 pub use mediainfo_executor::{
     MediaInfoResponse, HdrInfo, detect_hdr_from_mediainfo, get_media_info as get_mediainfo_data,
-    get_audio_channels_from_mediainfo,
+    get_audio_channels_from_mediainfo, is_mediainfo_available,
 };
 
 

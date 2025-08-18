@@ -1,13 +1,29 @@
 //! HDR/SDR validation
 
 use std::path::Path;
-use crate::external::{get_mediainfo_data, detect_hdr_from_mediainfo};
+use crate::external::{get_mediainfo_data, detect_hdr_from_mediainfo, is_mediainfo_available};
 
 /// Validates HDR status between input and output using MediaInfo
 pub fn validate_hdr_status_with_path(
     output_path: &Path,
     expected_hdr: Option<bool>
 ) -> (bool, Option<bool>, Option<String>) {
+    validate_hdr_status_with_availability_check(output_path, expected_hdr, is_mediainfo_available())
+}
+
+/// Internal HDR validation function that accepts MediaInfo availability as parameter
+/// This allows for easier testing without depending on actual system MediaInfo installation
+fn validate_hdr_status_with_availability_check(
+    output_path: &Path,
+    expected_hdr: Option<bool>,
+    mediainfo_available: bool
+) -> (bool, Option<bool>, Option<String>) {
+    // Check if MediaInfo is available first
+    if !mediainfo_available {
+        log::warn!("MediaInfo not available for HDR validation");
+        return (true, None, Some("MediaInfo not installed - HDR validation skipped".to_string()));
+    }
+
     // Use MediaInfo for HDR detection
     let actual_hdr = match get_mediainfo_data(output_path) {
         Ok(media_info) => {
@@ -101,5 +117,35 @@ mod tests {
         assert!(!is_valid);
         assert_eq!(actual_hdr, None);
         assert!(message.unwrap().contains("Could not detect HDR status"));
+    }
+
+    #[test]
+    fn test_mediainfo_not_available() {
+        // Test the MediaInfo availability check with mocked unavailability
+        use std::path::PathBuf;
+        
+        let dummy_path = PathBuf::from("/nonexistent/file.mkv");
+        // Use the internal function with mediainfo_available = false
+        let (is_valid, actual_hdr, message) = validate_hdr_status_with_availability_check(&dummy_path, Some(false), false);
+        
+        // When MediaInfo is not available, validation should pass with a skip message
+        assert!(is_valid);
+        assert_eq!(actual_hdr, None);
+        assert!(message.unwrap().contains("MediaInfo not installed - HDR validation skipped"));
+    }
+
+    #[test]
+    fn test_mediainfo_available_but_file_not_found() {
+        // Test behavior when MediaInfo is available but the file doesn't exist
+        use std::path::PathBuf;
+        
+        let dummy_path = PathBuf::from("/nonexistent/file.mkv");
+        // Use the internal function with mediainfo_available = true
+        let (is_valid, actual_hdr, message) = validate_hdr_status_with_availability_check(&dummy_path, Some(false), true);
+        
+        // When MediaInfo is available but file access fails, validation should fail
+        assert!(!is_valid);
+        assert_eq!(actual_hdr, None);
+        assert!(message.unwrap().contains("Expected SDR, but could not detect HDR status"));
     }
 }
