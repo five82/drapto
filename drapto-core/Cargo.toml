@@ -52,4 +52,4 @@ console = "0.16"                 # Terminal utilities and color detection
 indicatif = { version = "0.17", features = ["improved_unicode"] }  # Progress bars and spinners
 
 # ---- Media Analysis ----
-ffprobe = "0.3.0"                # FFprobe media file analysis
+ffprobe = "0.4.0"                # FFprobe media file analysis
