@@ -39,4 +39,4 @@ log = "0.4"                      # Logging facade
 fern = "0.7"                     # Advanced logging configuration with file output
 
 # ---- Terminal UI ----
-console = "0.15"                 # Terminal utilities and color detection
+console = "0.16"                 # Terminal utilities and color detection
