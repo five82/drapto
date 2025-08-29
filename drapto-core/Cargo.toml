@@ -48,7 +48,7 @@ ntfy = { version = "0.7.0", default-features = false, features = ["blocking"] } 
 ffmpeg-sidecar = "2.0.5"         # FFmpeg process execution and management
 
 # ---- Terminal UI ----
-console = "0.15"                 # Terminal utilities and color detection
+console = "0.16"                 # Terminal utilities and color detection
 indicatif = { version = "0.17", features = ["improved_unicode"] }  # Progress bars and spinners
 
 # ---- Media Analysis ----
