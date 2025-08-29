@@ -34,13 +34,12 @@ pub fn create_temp_file(dir: &Path, prefix: &str, extension: &str) -> CoreResult
 
 /// Returns a temporary file path with random suffix. Does not create the file.
 pub fn create_temp_file_path(dir: &Path, prefix: &str, extension: &str) -> PathBuf {
-    use rand::distributions::Alphanumeric;
-    use rand::{Rng, thread_rng};
+    use rand::distr::Alphanumeric;
+    use rand::prelude::*;
 
-    let random_suffix: String = thread_rng()
-        .sample_iter(&Alphanumeric)
-        .take(6)
-        .map(char::from)
+    let mut rng = rand::rng();
+    let random_suffix: String = (0..6)
+        .map(|_| rng.sample(Alphanumeric) as char)
         .collect();
 
     let filename = format!("{prefix}_{random_suffix}.{extension}");
