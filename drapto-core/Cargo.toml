@@ -22,7 +22,7 @@ tempfile = "3"                   # Temporary file and directory management
 
 
 # ---- Error Handling ----
-thiserror = "1.0"                # Error definition and handling
+thiserror = "2.0"                # Error definition and handling
 anyhow = "1.0"                   # Error handling and context
 
 # ---- Serialization ----
