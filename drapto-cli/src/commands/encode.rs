@@ -9,22 +9,22 @@ use drapto_core::{
     events::{Event, EventDispatcher},
     notifications::NotificationSender,
     processing::process_videos,
-    utils::calculate_size_reduction,
+    utils::{calculate_size_reduction, validate_paths, SafePath},
 };
 
-use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::SystemTime;
 
 /// Discover video files to encode based on the provided arguments
 pub fn discover_encode_files(args: &EncodeArgs) -> CliResult<(Vec<PathBuf>, PathBuf)> {
     let input_path = &args.input_path;
     
+    // Validate paths early
+    validate_paths(input_path, &args.output_dir)?;
+    
     if input_path.is_file() {
-        // Single file input
-        let effective_input_dir = input_path.parent()
-            .unwrap_or_else(|| Path::new("."))
-            .to_path_buf();
+        // Single file input - get parent directory safely
+        let effective_input_dir = SafePath::get_parent_safe(input_path)?.to_path_buf();
         Ok((vec![input_path.clone()], effective_input_dir))
     } else if input_path.is_dir() {
         // Directory input - find all processable files
@@ -44,30 +44,18 @@ pub fn run_encode(
     foreground_mode: bool,
     discovered_files: Vec<PathBuf>,
     effective_input_dir: PathBuf,
+    target_filename_override: Option<std::ffi::OsString>,
     event_dispatcher: EventDispatcher,
 ) -> CliResult<()> {
-    // PID file setup for daemon mode
-    let pid_file_path = if !foreground_mode {
-        let pid_filename = format!(
-            "drapto_encode_pid_{}.txt",
-            chrono::Local::now().format("%Y%m%d_%H%M%S")
-        );
-        let log_dir = args
-            .log_dir
-            .clone()
-            .unwrap_or_else(|| args.output_dir.join("logs"));
-        let pid_path = log_dir.join(pid_filename);
-        
-        // Write PID file
-        if let Ok(mut pid_file) = std::fs::File::create(&pid_path) {
-            let _ = writeln!(pid_file, "{}", std::process::id());
-            log::info!("PID file created: {}", pid_path.display());
+    // Log startup information for daemon mode
+    if !foreground_mode {
+        log::info!("Starting drapto encoding in daemon mode");
+        log::info!("Processing {} files", discovered_files.len());
+        log::info!("Output directory: {}", args.output_dir.display());
+        if let Some(ref log_dir) = args.log_dir {
+            log::info!("Log directory: {}", log_dir.display());
         }
-        
-        Some(pid_path)
-    } else {
-        None
-    };
+    }
 
     // Notify about startup
     if let Some(sender) = notification_sender {
@@ -130,11 +118,12 @@ pub fn run_encode(
         vec![]
     } else {
         // Process videos with the new event-based system
+        let target_filename = target_filename_override.map(PathBuf::from);
         match process_videos(
             notification_sender,
             &config,
             &discovered_files,
-            None,
+            target_filename,
             Some(&event_dispatcher),
         ) {
             Ok(results) => results,
@@ -198,11 +187,9 @@ pub fn run_encode(
         let _ = sender.send(&message);
     }
 
-    // Clean up PID file
-    if let Some(pid_path) = pid_file_path {
-        if let Err(e) = std::fs::remove_file(&pid_path) {
-            log::warn!("Failed to remove PID file: {}", e);
-        }
+    // Log completion for daemon mode
+    if !foreground_mode {
+        log::info!("Drapto encoding completed");
     }
 
     Ok(())

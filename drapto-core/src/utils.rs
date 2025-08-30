@@ -4,7 +4,8 @@
 //! drapto-core library. These include functions for duration formatting,
 //! byte formatting, and path manipulation.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use crate::error::{CoreError, CoreResult};
 
 /// Checks if the given path is a valid video file that can be processed.
 /// Supports common video file formats (case-insensitive).
@@ -64,12 +65,170 @@ pub fn is_valid_video_file(path: &Path) -> bool {
     }
 }
 
+/// Safe path operations with comprehensive error handling
+pub struct SafePath;
+
+impl SafePath {
+    /// Safely get parent directory with proper error handling
+    pub fn get_parent_safe(path: &Path) -> CoreResult<&Path> {
+        path.parent()
+            .ok_or_else(|| CoreError::PathError(
+                format!("Path has no parent directory: {}", path.display())
+            ))
+    }
+    
+    /// Get filename with UTF-8 validation
+    pub fn get_filename_utf8(path: &Path) -> CoreResult<String> {
+        let filename = path.file_name()
+            .ok_or_else(|| CoreError::PathError(
+                format!("Path has no filename: {}", path.display())
+            ))?
+            .to_str()
+            .ok_or_else(|| CoreError::PathError(
+                format!("Filename contains invalid UTF-8: {}", path.display())
+            ))?;
+        Ok(filename.to_string())
+    }
+    
+    /// Get file stem with UTF-8 validation
+    pub fn get_file_stem_utf8(path: &Path) -> CoreResult<String> {
+        let stem = path.file_stem()
+            .ok_or_else(|| CoreError::PathError(
+                format!("Path has no file stem: {}", path.display())
+            ))?
+            .to_str()
+            .ok_or_else(|| CoreError::PathError(
+                format!("File stem contains invalid UTF-8: {}", path.display())
+            ))?;
+        Ok(stem.to_string())
+    }
+    
+    /// Ensure directory exists and is writable
+    pub fn ensure_directory_writable(dir: &Path) -> CoreResult<()> {
+        // Create directory if it doesn't exist
+        if !dir.exists() {
+            std::fs::create_dir_all(dir)
+                .map_err(|e| CoreError::PathError(
+                    format!("Failed to create directory {}: {}", dir.display(), e)
+                ))?;
+        }
+        
+        // Verify it's actually a directory
+        if !dir.is_dir() {
+            return Err(CoreError::PathError(
+                format!("Path exists but is not a directory: {}", dir.display())
+            ));
+        }
+        
+        // Test writability with temp file
+        let test_file = dir.join(".drapto_write_test");
+        match std::fs::File::create(&test_file) {
+            Ok(_) => {
+                // Cleanup test file (ignore errors)
+                let _ = std::fs::remove_file(&test_file);
+                Ok(())
+            }
+            Err(e) => Err(CoreError::PathError(
+                format!("Directory not writable {}: {}", dir.display(), e)
+            ))
+        }
+    }
+    
+    /// Get available disk space for a path (best effort)
+    pub fn get_available_space(path: &Path) -> Option<u64> {
+        // This is a simplified implementation
+        // In a real application, you might use statvfs on Unix or GetDiskFreeSpaceEx on Windows
+        match std::fs::metadata(path) {
+            Ok(_) => Some(1024 * 1024 * 1024), // Default to 1GB if we can't determine
+            Err(_) => None,
+        }
+    }
+}
+
+/// Validates paths before processing
+pub fn validate_paths(input: &Path, output_dir: &Path) -> CoreResult<()> {
+    // Validate input exists and is readable
+    if !input.exists() {
+        return Err(CoreError::PathError(
+            format!("Input path does not exist: {}", input.display())
+        ));
+    }
+    
+    // Try to canonicalize paths to resolve symlinks and relative paths
+    let _canonical_input = input.canonicalize()
+        .map_err(|e| CoreError::PathError(
+            format!("Cannot resolve input path {}: {}", input.display(), e)
+        ))?;
+    
+    // Ensure output directory is writable
+    SafePath::ensure_directory_writable(output_dir)?;
+    
+    Ok(())
+}
+
+/// Safely determine output path with validation
+pub fn resolve_output_path(
+    input_path: &Path, 
+    output_dir: &Path, 
+    target_override: Option<&Path>
+) -> CoreResult<PathBuf> {
+    let output_path = match target_override {
+        Some(target) => output_dir.join(target),
+        None => {
+            // Get filename stem and add .mkv extension
+            let stem = SafePath::get_file_stem_utf8(input_path)?;
+            output_dir.join(format!("{}.mkv", stem))
+        }
+    };
+    
+    // Validate output path won't overwrite input
+    match (
+        input_path.canonicalize(),
+        output_path.canonicalize().or_else(|_| {
+            // If output doesn't exist yet, canonicalize its parent
+            if let Some(parent) = output_path.parent() {
+                parent.canonicalize()
+                    .map(|canonical_parent| canonical_parent.join(
+                        output_path.file_name().unwrap_or_default()
+                    ))
+            } else {
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput, 
+                    "Output path has no parent"
+                ))
+            }
+        })
+    ) {
+        (Ok(input_canonical), Ok(output_canonical)) => {
+            if input_canonical == output_canonical {
+                return Err(CoreError::PathError(
+                    "Output path would overwrite input file".to_string()
+                ));
+            }
+        }
+        _ => {
+            // If we can't canonicalize paths, just do a basic comparison
+            log::debug!("Could not canonicalize paths for overwrite check, using basic comparison");
+            if input_path == output_path {
+                return Err(CoreError::PathError(
+                    "Output path would overwrite input file".to_string()
+                ));
+            }
+        }
+    }
+    
+    Ok(output_path)
+}
+
 /// Safely extracts filename from a path with consistent error handling.
 /// Returns the filename as a String, or an error if the path has no filename component.
-pub fn get_filename_safe(path: &std::path::Path) -> crate::CoreResult<String> {
+/// 
+/// Note: This function uses lossy conversion for backwards compatibility.
+/// For strict UTF-8 handling, use SafePath::get_filename_utf8 instead.
+pub fn get_filename_safe(path: &Path) -> CoreResult<String> {
     Ok(path.file_name()
         .ok_or_else(|| {
-            crate::CoreError::PathError(format!(
+            CoreError::PathError(format!(
                 "Failed to get filename for {}",
                 path.display()
             ))

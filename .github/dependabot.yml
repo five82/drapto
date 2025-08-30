@@ -1,18 +1,18 @@
 version: 2
 updates:
-  # Enable version updates for Cargo dependencies
-  - package-ecosystem: "cargo"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "04:00"
-    open-pull-requests-limit: 5
-    commit-message:
-      prefix: "deps"
-      prefix-development: "deps-dev"
-    reviewers:
-      - "ken"
-    labels:
-      - "dependencies"
-      - "rust"
+    # Enable version updates for Cargo dependencies
+    - package-ecosystem: "cargo"
+      directory: "/"
+      schedule:
+          interval: "weekly"
+          day: "saturday"
+          time: "06:00"
+      open-pull-requests-limit: 10
+      commit-message:
+          prefix: "deps"
+          prefix-development: "deps-dev"
+      reviewers:
+          - "five82"
+      labels:
+          - "dependencies"
+          - "rust"

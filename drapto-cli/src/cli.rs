@@ -41,7 +41,7 @@ pub enum Commands {
 }
 
 /// Arguments for the encode command.
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 pub struct EncodeArgs {
     // Required Arguments
     /// Input video file or directory containing video files.

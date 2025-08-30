@@ -6,6 +6,7 @@
 
 use crate::error::{CoreError, CoreResult, command_failed_error};
 use crate::events::{Event, EventDispatcher};
+use crate::external::AudioStreamInfo;
 use crate::processing::audio;
 
 use ffmpeg_sidecar::command::FfmpegCommand;
@@ -26,6 +27,7 @@ pub struct EncodeParams {
     pub use_hw_decode: bool,
     pub crop_filter: Option<String>,
     pub audio_channels: Vec<u32>,
+    pub audio_streams: Option<Vec<AudioStreamInfo>>,
     pub duration: f64,
     /// The adaptive hqdn3d parameters based on noise analysis (used if override is not provided).
     pub hqdn3d_params: Option<String>,
@@ -50,9 +52,7 @@ pub fn build_ffmpeg_command(
         .build();
     cmd.input(params.input_path.to_string_lossy().as_ref());
 
-    if !disable_audio {
-        cmd.args(["-af", "aformat=channel_layouts=7.1|5.1|stereo|mono"]);
-    }
+    // Audio filter will be applied per-stream later for transcoded streams only
     let hqdn3d_to_use = if has_denoising {
         hqdn3d_override.or(params.hqdn3d_params.as_deref())
     } else {
@@ -92,13 +92,45 @@ pub fn build_ffmpeg_command(
     }
 
     if !disable_audio {
-        cmd.args(["-c:a", &params.audio_codec]);
-        for (i, &channels) in params.audio_channels.iter().enumerate() {
-            let bitrate = audio::calculate_audio_bitrate(channels);
-            cmd.args([&format!("-b:a:{i}"), &format!("{bitrate}k")]);
-        }
+        // Map video stream
         cmd.args(["-map", "0:v:0"]);
-        cmd.args(["-map", "0:a"]);
+        
+        // Handle audio streams with per-stream mapping for precise control
+        if let Some(ref audio_streams) = params.audio_streams {
+            // Always use per-stream mapping for consistency and precise control
+            for (output_index, stream) in audio_streams.iter().enumerate() {
+                cmd.args(["-map", &format!("0:a:{}", stream.index)]);
+                
+                if stream.is_spatial {
+                    // Copy spatial audio tracks to preserve Atmos/DTS:X
+                    cmd.args([&format!("-c:a:{}", output_index), "copy"]);
+                    log::info!(
+                        "Copying spatial audio stream {} ({} {})",
+                        output_index,
+                        stream.codec_name,
+                        stream.profile.as_deref().unwrap_or("")
+                    );
+                } else {
+                    // Transcode non-spatial audio to Opus
+                    cmd.args([&format!("-c:a:{}", output_index), &params.audio_codec]);
+                    let bitrate = audio::calculate_audio_bitrate(stream.channels);
+                    cmd.args([&format!("-b:a:{}", output_index), &format!("{bitrate}k")]);
+                    // Apply audio format filter only to transcoded streams
+                    cmd.args([&format!("-filter:a:{}", output_index), "aformat=channel_layouts=7.1|5.1|stereo|mono"]);
+                }
+            }
+        } else {
+            // Fallback to old behavior if no detailed stream info
+            cmd.args(["-c:a", &params.audio_codec]);
+            for (i, &channels) in params.audio_channels.iter().enumerate() {
+                let bitrate = audio::calculate_audio_bitrate(channels);
+                cmd.args([&format!("-b:a:{i}"), &format!("{bitrate}k")]);
+                // Apply audio format filter to all streams in fallback mode
+                cmd.args([&format!("-filter:a:{i}"), "aformat=channel_layouts=7.1|5.1|stereo|mono"]);
+            }
+            cmd.args(["-map", "0:a"]);
+        }
+        
         cmd.args(["-map_metadata", "0"]);
         cmd.args(["-map_chapters", "0"]);
     } else {
@@ -223,8 +255,15 @@ pub fn run_ffmpeg_encode(
     // Just finish the progress bar - 100% will have been reported by the event loop
     log::debug!("Encoding progress finished");
 
-    // FFmpeg finished - check status
-    let status = std::process::ExitStatus::default();
+    // FFmpeg finished - get the actual exit status
+    let status = child.wait().map_err(|e| {
+        command_failed_error(
+            "ffmpeg",
+            std::process::ExitStatus::default(),
+            format!("Failed to wait for FFmpeg process: {e}"),
+        )
+    })?;
+    
     let filename = crate::utils::get_filename_safe(&params.input_path)
         .unwrap_or_else(|_| params.input_path.display().to_string());
 
@@ -271,6 +310,7 @@ mod tests {
             use_hw_decode: false,
             crop_filter: None,
             audio_channels: vec![6], // 5.1 audio
+            audio_streams: None,
             duration: 3600.0,
             hqdn3d_params: Some("2:1.5:3:2.5".to_string()), // Example SDR denoising params
             // Actual values used in FFmpeg command
@@ -453,6 +493,7 @@ mod tests {
             use_hw_decode: false,
             crop_filter: Some("crop=1920:1036:0:22".to_string()),
             audio_channels: vec![6], // 5.1 surround
+            audio_streams: None,
             duration: 120.0,
             hqdn3d_params: Some("2:1.5:3:2.5".to_string()),
             // Test the actual values that should match FFmpeg command
@@ -524,6 +565,7 @@ mod tests {
             use_hw_decode: false,
             crop_filter: None,
             audio_channels: vec![2], // Stereo
+            audio_streams: None,
             duration: 120.0,
             hqdn3d_params: None, // No denoising
             video_codec: "libsvtav1".to_string(),
@@ -543,6 +585,230 @@ mod tests {
         // Should not contain hqdn3d when denoising is disabled
         assert!(!cmd_string.contains("hqdn3d"),
                 "Command should not contain hqdn3d when denoising disabled");
+    }
+
+    #[test]
+    fn test_spatial_audio_command_generation() {
+        use crate::external::AudioStreamInfo;
+
+        // Test single spatial audio track (Dolby Atmos)
+        let spatial_stream = AudioStreamInfo {
+            channels: 8,
+            codec_name: "truehd".to_string(),
+            profile: Some("Dolby TrueHD + Dolby Atmos".to_string()),
+            index: 0,
+            is_spatial: true,
+        };
+
+        let params = EncodeParams {
+            input_path: std::path::PathBuf::from("test_input.mkv"),
+            output_path: std::path::PathBuf::from("test_output.mkv"),
+            quality: 27,
+            preset: 6,
+            tune: 3,
+            use_hw_decode: false,
+            crop_filter: None,
+            audio_channels: vec![8],
+            audio_streams: Some(vec![spatial_stream]),
+            duration: 120.0,
+            hqdn3d_params: None,
+            video_codec: "libsvtav1".to_string(),
+            pixel_format: "yuv420p10le".to_string(),
+            matrix_coefficients: "bt709".to_string(),
+            audio_codec: "libopus".to_string(),
+            film_grain_level: 0,
+        };
+
+        let cmd = build_ffmpeg_command(&params, None, false, false).unwrap();
+        let cmd_string = format!("{:?}", cmd);
+
+        // Should use copy codec for spatial audio
+        assert!(cmd_string.contains("-c:a:0") && cmd_string.contains("copy"),
+                "Command should contain copy codec for spatial audio: {}", cmd_string);
+        
+        // Should map audio stream correctly
+        assert!(cmd_string.contains("-map") && cmd_string.contains("0:a:0"),
+                "Command should map first audio stream: {}", cmd_string);
+        
+        // Should NOT contain opus bitrate settings for spatial audio
+        assert!(!cmd_string.contains("-b:a:0"),
+                "Command should not contain bitrate for copied spatial audio: {}", cmd_string);
+    }
+
+    #[test]
+    fn test_mixed_spatial_non_spatial_audio_command() {
+        use crate::external::AudioStreamInfo;
+
+        // Mixed scenario: spatial + commentary track
+        let spatial_stream = AudioStreamInfo {
+            channels: 8,
+            codec_name: "truehd".to_string(),
+            profile: Some("Dolby TrueHD + Dolby Atmos".to_string()),
+            index: 0,
+            is_spatial: true,
+        };
+
+        let commentary_stream = AudioStreamInfo {
+            channels: 2,
+            codec_name: "aac".to_string(),
+            profile: Some("LC".to_string()),
+            index: 1,
+            is_spatial: false,
+        };
+
+        let params = EncodeParams {
+            input_path: std::path::PathBuf::from("test_input.mkv"),
+            output_path: std::path::PathBuf::from("test_output.mkv"),
+            quality: 27,
+            preset: 6,
+            tune: 3,
+            use_hw_decode: false,
+            crop_filter: None,
+            audio_channels: vec![8, 2],
+            audio_streams: Some(vec![spatial_stream, commentary_stream]),
+            duration: 120.0,
+            hqdn3d_params: None,
+            video_codec: "libsvtav1".to_string(),
+            pixel_format: "yuv420p10le".to_string(),
+            matrix_coefficients: "bt709".to_string(),
+            audio_codec: "libopus".to_string(),
+            film_grain_level: 0,
+        };
+
+        let cmd = build_ffmpeg_command(&params, None, false, false).unwrap();
+        let cmd_string = format!("{:?}", cmd);
+
+        // First stream should be copied (spatial)
+        assert!(cmd_string.contains("-c:a:0") && cmd_string.contains("copy"),
+                "First stream should use copy codec: {}", cmd_string);
+        
+        // Second stream should use opus
+        assert!(cmd_string.contains("-c:a:1") && cmd_string.contains("libopus"),
+                "Second stream should use opus codec: {}", cmd_string);
+        
+        // Second stream should have bitrate
+        assert!(cmd_string.contains("-b:a:1") && cmd_string.contains("128k"),
+                "Second stream should have opus bitrate: {}", cmd_string);
+        
+        // Should map both streams
+        assert!(cmd_string.contains("0:a:0") && cmd_string.contains("0:a:1"),
+                "Command should map both audio streams: {}", cmd_string);
+    }
+
+    #[test]
+    fn test_dtsx_audio_command_generation() {
+        use crate::external::AudioStreamInfo;
+
+        // Test DTS:X spatial audio track
+        let dtsx_stream = AudioStreamInfo {
+            channels: 8,
+            codec_name: "dts".to_string(),
+            profile: Some("DTS:X".to_string()),
+            index: 0,
+            is_spatial: true,
+        };
+
+        let params = EncodeParams {
+            input_path: std::path::PathBuf::from("test_input.mkv"),
+            output_path: std::path::PathBuf::from("test_output.mkv"),
+            quality: 27,
+            preset: 6,
+            tune: 3,
+            use_hw_decode: false,
+            crop_filter: None,
+            audio_channels: vec![8],
+            audio_streams: Some(vec![dtsx_stream]),
+            duration: 120.0,
+            hqdn3d_params: None,
+            video_codec: "libsvtav1".to_string(),
+            pixel_format: "yuv420p10le".to_string(),
+            matrix_coefficients: "bt709".to_string(),
+            audio_codec: "libopus".to_string(),
+            film_grain_level: 0,
+        };
+
+        let cmd = build_ffmpeg_command(&params, None, false, false).unwrap();
+        let cmd_string = format!("{:?}", cmd);
+
+        // Should use copy codec for DTS:X
+        assert!(cmd_string.contains("-c:a:0") && cmd_string.contains("copy"),
+                "Command should contain copy codec for DTS:X audio: {}", cmd_string);
+    }
+
+    #[test]
+    fn test_eac3_joc_audio_command_generation() {
+        use crate::external::AudioStreamInfo;
+
+        // Test E-AC-3 with JOC (Atmos) spatial audio track
+        let eac3_joc_stream = AudioStreamInfo {
+            channels: 8,
+            codec_name: "eac3".to_string(),
+            profile: Some("Dolby Digital Plus + JOC".to_string()),
+            index: 0,
+            is_spatial: true,
+        };
+
+        let params = EncodeParams {
+            input_path: std::path::PathBuf::from("test_input.mkv"),
+            output_path: std::path::PathBuf::from("test_output.mkv"),
+            quality: 27,
+            preset: 6,
+            tune: 3,
+            use_hw_decode: false,
+            crop_filter: None,
+            audio_channels: vec![8],
+            audio_streams: Some(vec![eac3_joc_stream]),
+            duration: 120.0,
+            hqdn3d_params: None,
+            video_codec: "libsvtav1".to_string(),
+            pixel_format: "yuv420p10le".to_string(),
+            matrix_coefficients: "bt709".to_string(),
+            audio_codec: "libopus".to_string(),
+            film_grain_level: 0,
+        };
+
+        let cmd = build_ffmpeg_command(&params, None, false, false).unwrap();
+        let cmd_string = format!("{:?}", cmd);
+
+        // Should use copy codec for E-AC-3 + JOC
+        assert!(cmd_string.contains("-c:a:0") && cmd_string.contains("copy"),
+                "Command should contain copy codec for E-AC-3 JOC audio: {}", cmd_string);
+    }
+
+    #[test]
+    fn test_fallback_behavior_without_detailed_streams() {
+        // Test fallback when no detailed audio stream info is available
+        let params = EncodeParams {
+            input_path: std::path::PathBuf::from("test_input.mkv"),
+            output_path: std::path::PathBuf::from("test_output.mkv"),
+            quality: 27,
+            preset: 6,
+            tune: 3,
+            use_hw_decode: false,
+            crop_filter: None,
+            audio_channels: vec![6], // 5.1 surround
+            audio_streams: None, // No detailed stream info
+            duration: 120.0,
+            hqdn3d_params: None,
+            video_codec: "libsvtav1".to_string(),
+            pixel_format: "yuv420p10le".to_string(),
+            matrix_coefficients: "bt709".to_string(),
+            audio_codec: "libopus".to_string(),
+            film_grain_level: 0,
+        };
+
+        let cmd = build_ffmpeg_command(&params, None, false, false).unwrap();
+        let cmd_string = format!("{:?}", cmd);
+
+        // Should fall back to traditional behavior
+        assert!(cmd_string.contains("-c:a") && cmd_string.contains("libopus"),
+                "Command should use opus codec in fallback mode: {}", cmd_string);
+        
+        assert!(cmd_string.contains("-b:a:0") && cmd_string.contains("256k"),
+                "Command should contain 5.1 bitrate in fallback mode: {}", cmd_string);
+        
+        assert!(cmd_string.contains("-map") && cmd_string.contains("0:a"),
+                "Command should map all audio streams in fallback mode: {}", cmd_string);
     }
     
 }

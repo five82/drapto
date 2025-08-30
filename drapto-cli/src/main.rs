@@ -49,7 +49,7 @@ fn main() -> CliResult<()> {
                 )?;
 
             // Calculate log path
-            let (actual_output_dir, _target_filename_override_os) =
+            let (actual_output_dir, target_filename_override_os) =
                 if discovered_files.len() == 1 && args.output_dir.extension().is_some() {
                     let target_file = args.output_dir.clone();
                     let parent_dir = target_file
@@ -169,12 +169,17 @@ fn main() -> CliResult<()> {
                 log::info!("Debug level logging enabled");
             }
 
+            // Update args to use the calculated actual output directory
+            let mut corrected_args = args.clone();
+            corrected_args.output_dir = actual_output_dir;
+            
             run_encode(
                 notification_sender.as_ref().map(|s| s as &dyn NotificationSender),
-                args,
+                corrected_args,
                 foreground_mode,
                 discovered_files,
                 effective_input_dir,
+                target_filename_override_os,
                 event_dispatcher,
             )
         }

@@ -5,7 +5,7 @@ FFmpeg video encoding wrapper with intelligent optimization for high-quality, ef
 ## Features
 
 * **Intelligent Analysis**: Automatic black bar cropping, HDR-aware processing, adaptive noise analysis
-* **Optimized Encoding**: AV1 video (libsvtav1), Opus audio with multi-stream support, resolution-based quality settings
+* **Optimized Encoding**: AV1 video (libsvtav1), intelligent audio processing with spatial audio preservation and Opus transcoding, resolution-based quality settings
 * **Adaptive Denoising**: Intelligent noise detection with tailored denoising and film grain synthesis
 * **Hardware Acceleration**: VideoToolbox and VAAPI decoding support (automatically detected)
 * **Flexible Workflow**: Daemon mode for background processing, interactive mode with progress bars, push notifications
@@ -95,7 +95,10 @@ Automatically detects and preserves HDR content using MediaInfo for comprehensiv
 Includes comprehensive validation to ensure encoding success:
 
 * **Video Codec**: Verifies AV1 encoding and 10-bit depth
-* **Audio Codec**: Confirms Opus audio encoding and track count
+* **Audio Codec**: Validates audio processing based on stream type:
+  * Spatial audio streams: Confirms preservation of original codecs (TrueHD/DTS)
+  * Non-spatial streams: Confirms Opus transcoding
+  * Mixed content: Validates each stream according to its processing method
 * **Dimensions**: Validates crop detection and output dimensions
 * **Duration**: Ensures encoded duration matches input
 * **HDR/Color Space**: Uses MediaInfo to verify HDR content preservation and color space accuracy
@@ -108,8 +111,15 @@ Includes comprehensive validation to ensure encoding success:
 
 ### Multi-Stream Audio
 
-* Automatic detection of all audio streams
-* Channel-based bitrate allocation:
+* Automatic detection of all audio streams with intelligent spatial audio preservation
+* **Spatial Audio Support**: Automatically detects and preserves spatial audio formats:
+  * **Dolby Atmos**: TrueHD + Atmos and E-AC-3 + JOC (Joint Object Coding)
+  * **DTS:X**: DTS with DTS:X profile variations
+  * Spatial audio streams are copied unchanged to preserve object-based metadata
+* **Mixed Audio Processing**: Handles files with both spatial and non-spatial audio streams
+  * Spatial streams: Copied to preserve quality and metadata
+  * Non-spatial streams: Transcoded to Opus with optimized bitrates
+* Channel-based bitrate allocation for Opus transcoding:
   * Mono: 64 kbps
   * Stereo: 128 kbps
   * 5.1: 256 kbps

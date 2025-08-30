@@ -117,3 +117,5 @@ When working with the codebase, understand the flow:
 8. Avoid overengineering solutions.
 9. Use proper rust file and directory structure according to Rust best practices.
 10. This is a small hobby project maintained by a single develper. The project scope should reflect this.
+11. When running drapto with a timeout, do not use a timeout value of less than 120 seconds so the encoding processing steps have a chance to finish.
+12. Video encoding takes significant time. When testing drapto, use unit tests to test logic over running actual encodes when possible.
