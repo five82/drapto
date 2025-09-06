@@ -45,7 +45,7 @@ ntfy = { version = "0.7.0", default-features = false, features = ["blocking"] } 
 
 
 # ---- FFmpeg Integration ----
-ffmpeg-sidecar = "2.1.0"         # FFmpeg process execution and management
+ffmpeg-sidecar = "2.2.0"         # FFmpeg process execution and management
 
 # ---- Terminal UI ----
 console = "0.16"                 # Terminal utilities and color detection
