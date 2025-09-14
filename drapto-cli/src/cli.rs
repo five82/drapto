@@ -98,7 +98,7 @@ pub struct EncodeArgs {
     #[arg(long, value_name = "TOPIC_URL", env = "DRAPTO_NTFY_TOPIC")]
     pub ntfy: Option<String>,
 
-    /// Output progress as structured JSON to stdout for machine parsing (cannot be used with --foreground).
+    /// Output progress as structured JSON to stdout for machine parsing (automatically runs in foreground).
     #[arg(long)]
     pub progress_json: bool,
 }

@@ -36,12 +36,8 @@ fn main() -> CliResult<()> {
 
     let _ = match cli_args.command {
         Commands::Encode(args) => {
-            // Validate argument combinations
-            if foreground_mode && args.progress_json {
-                return Err(CoreError::OperationFailed(
-                    "Cannot use --progress-json with --foreground. Use --progress-json for machine parsing (e.g., spindle integration) or --foreground for human-readable output, but not both.".to_string()
-                ));
-            }
+            // --progress-json automatically implies foreground mode for external tool integration
+            let foreground_mode = foreground_mode || args.progress_json;
 
             let (discovered_files, effective_input_dir) =
                 discover_encode_files(&args).map_err(|e| 
@@ -99,10 +95,8 @@ fn main() -> CliResult<()> {
             if args.progress_json {
                 use drapto_core::events::json_handler::JsonProgressHandler;
                 event_dispatcher.add_handler(Arc::new(JsonProgressHandler::new()));
-            }
-            
-            // Add terminal handler only in foreground mode
-            if foreground_mode {
+            } else if foreground_mode {
+                // Add terminal handler only in foreground mode without JSON progress
                 event_dispatcher.add_handler(Arc::new(TemplateEventHandler::new()));
             }
 
