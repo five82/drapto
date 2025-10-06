@@ -62,6 +62,7 @@ drapto encode -v -i input.mkv -o output/
 * `--preset <0-13>`: SVT-AV1 encoder speed/quality (default: 4, lower = slower/better)
 * `--quality-sd/hd/uhd <CRF>`: Override quality settings (defaults: SD=23, HD=25, UHD=27)
 * `--no-denoise`: Disable denoising and film grain synthesis
+* `--responsive`: Reserve a few CPU threads so other applications stay responsive
 * `--disable-autocrop`: Disable black bar cropping
 * `--ntfy <URL>`: Send notifications to ntfy.sh
 

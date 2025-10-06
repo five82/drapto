@@ -32,7 +32,6 @@ pub const DEFAULT_SVT_AV1_TUNE: u8 = 0;
 /// Default crop mode for the main encode.
 pub const DEFAULT_CROP_MODE: &str = "auto";
 
-
 /// Minimum film grain synthesis value for SVT-AV1.
 /// Range: 0-50, where 0 is no grain and 50 is maximum grain.
 pub const MIN_FILM_GRAIN_VALUE: u8 = 4;
@@ -48,7 +47,6 @@ pub const UHD_WIDTH_THRESHOLD: u32 = 3840;
 /// Width threshold for High Definition videos.
 /// Videos with width >= this value (but < UHD threshold) are considered HD.
 pub const HD_WIDTH_THRESHOLD: u32 = 1920;
-
 
 /// Default cooldown period between encodes in seconds.
 /// This helps ensure notifications arrive in order when processing multiple files.
@@ -101,6 +99,9 @@ pub struct CoreConfig {
     /// When true, analyzes video noise and applies appropriate denoising with film grain synthesis
     pub enable_denoise: bool,
 
+    /// Whether to reserve CPU threads for improved system responsiveness.
+    pub responsive_encoding: bool,
+
     /// Cooldown period in seconds between encodes when processing multiple files.
     /// Helps ensure notifications arrive in order.
     pub encode_cooldown_secs: u64,
@@ -121,6 +122,7 @@ impl Default for CoreConfig {
             crop_mode: DEFAULT_CROP_MODE.to_string(),
             ntfy_topic: None,
             enable_denoise: true,
+            responsive_encoding: false,
             encode_cooldown_secs: DEFAULT_ENCODE_COOLDOWN_SECS,
         }
     }
@@ -187,6 +189,7 @@ mod tests {
         assert_eq!(config.crop_mode, DEFAULT_CROP_MODE);
         assert_eq!(config.encode_cooldown_secs, DEFAULT_ENCODE_COOLDOWN_SECS);
         assert!(config.enable_denoise);
+        assert!(!config.responsive_encoding);
         assert!(config.ntfy_topic.is_none());
         assert!(config.temp_dir.is_none());
 

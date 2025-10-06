@@ -26,7 +26,6 @@ pub struct Cli {
     /// Enable verbose output for troubleshooting.
     #[arg(short, long, global = true, default_value_t = false)]
     pub verbose: bool,
-
 }
 
 /// Available CLI subcommands.
@@ -92,6 +91,9 @@ pub struct EncodeArgs {
     #[arg(long, default_value_t = false)]
     pub no_denoise: bool,
 
+    /// Reserve CPU threads for improved system responsiveness during encoding.
+    #[arg(long, default_value_t = false)]
+    pub responsive: bool,
 
     // Notification Options
     /// ntfy.sh topic URL for notifications (e.g., https://ntfy.sh/your_topic).

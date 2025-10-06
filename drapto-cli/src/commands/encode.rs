@@ -1,7 +1,7 @@
 //! Encode command implementation using event-based architecture
 
-use crate::error::CliResult;
 use crate::EncodeArgs;
+use crate::error::CliResult;
 
 use drapto_core::{
     CoreConfig, CoreError,
@@ -9,7 +9,7 @@ use drapto_core::{
     events::{Event, EventDispatcher},
     notifications::NotificationSender,
     processing::process_videos,
-    utils::{calculate_size_reduction, validate_paths, SafePath},
+    utils::{SafePath, calculate_size_reduction, validate_paths},
 };
 
 use std::path::PathBuf;
@@ -18,10 +18,10 @@ use std::time::SystemTime;
 /// Discover video files to encode based on the provided arguments
 pub fn discover_encode_files(args: &EncodeArgs) -> CliResult<(Vec<PathBuf>, PathBuf)> {
     let input_path = &args.input_path;
-    
+
     // Validate paths early
     validate_paths(input_path, &args.output_dir)?;
-    
+
     if input_path.is_file() {
         // Single file input - get parent directory safely
         let effective_input_dir = SafePath::get_parent_safe(input_path)?.to_path_buf();
@@ -31,9 +31,10 @@ pub fn discover_encode_files(args: &EncodeArgs) -> CliResult<(Vec<PathBuf>, Path
         let files = find_processable_files(input_path)?;
         Ok((files, input_path.clone()))
     } else {
-        Err(CoreError::PathError(
-            format!("Input path does not exist: {}", input_path.display())
-        ))
+        Err(CoreError::PathError(format!(
+            "Input path does not exist: {}",
+            input_path.display()
+        )))
     }
 }
 
@@ -62,7 +63,7 @@ pub fn run_encode(
         let hostname = std::env::var("HOSTNAME")
             .or_else(|_| std::env::var("COMPUTERNAME"))
             .unwrap_or_else(|_| "local".to_string());
-            
+
         let _ = sender.send(&format!(
             "Drapto encoding started on {} - Processing {} files",
             hostname,
@@ -76,11 +77,20 @@ pub fn run_encode(
     let mut config = CoreConfig::new(
         effective_input_dir.clone(),
         args.output_dir.clone(),
-        args.log_dir.clone().unwrap_or_else(|| args.output_dir.join("logs")),
+        args.log_dir
+            .clone()
+            .unwrap_or_else(|| args.output_dir.join("logs")),
     );
 
     // Apply command line arguments to config
     config.enable_denoise = !args.no_denoise;
+    config.responsive_encoding = args.responsive;
+
+    if args.responsive {
+        log::info!(
+            "Responsive mode enabled: reserving SVT-AV1 threads to keep the system interactive"
+        );
+    }
 
     if let Some(quality) = args.quality_sd {
         config.quality_sd = quality;
@@ -154,11 +164,11 @@ pub fn run_encode(
         log::info!("");
         log::info!("Total files processed: {}", results.len());
         log::info!("Total time: {}", total_duration);
-        
+
         let total_input_size: u64 = results.iter().map(|r| r.input_size).sum();
         let total_output_size: u64 = results.iter().map(|r| r.output_size).sum();
         let total_reduction = calculate_size_reduction(total_input_size, total_output_size) as f64;
-        
+
         log::info!(
             "Total size reduction: {:.1}% ({} → {})",
             total_reduction,
@@ -172,9 +182,12 @@ pub fn run_encode(
         let hostname = std::env::var("HOSTNAME")
             .or_else(|_| std::env::var("COMPUTERNAME"))
             .unwrap_or_else(|_| "local".to_string());
-            
+
         let message = if results.is_empty() {
-            format!("Drapto encoding on {} completed - No files processed", hostname)
+            format!(
+                "Drapto encoding on {} completed - No files processed",
+                hostname
+            )
         } else {
             format!(
                 "Drapto encoding on {} completed - {} files processed in {}",
@@ -183,7 +196,7 @@ pub fn run_encode(
                 total_duration
             )
         };
-        
+
         let _ = sender.send(&message);
     }
 
