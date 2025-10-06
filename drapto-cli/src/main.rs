@@ -13,14 +13,14 @@ use clap::Parser;
 use daemonize::Daemonize;
 use drapto_core::CoreError;
 use drapto_core::events::{Event, EventDispatcher};
-use drapto_core::file_logging::{setup::setup_file_logging, FileLoggingHandler};
-use drapto_core::presentation::template_event_handler::TemplateEventHandler;
+use drapto_core::file_logging::{FileLoggingHandler, setup::setup_file_logging};
 use drapto_core::notifications::{NotificationSender, NtfyNotificationSender};
+use drapto_core::presentation::template_event_handler::TemplateEventHandler;
 
+use log::LevelFilter;
 use std::io::{self, Write};
 use std::path::PathBuf;
 use std::sync::Arc;
-use log::LevelFilter;
 
 /// Main entry point with clean separation of concerns
 fn main() -> CliResult<()> {
@@ -40,9 +40,9 @@ fn main() -> CliResult<()> {
             let foreground_mode = foreground_mode || args.progress_json;
 
             let (discovered_files, effective_input_dir) =
-                discover_encode_files(&args).map_err(|e| 
+                discover_encode_files(&args).map_err(|e| {
                     CoreError::OperationFailed(format!("Error during file discovery: {}", e))
-                )?;
+                })?;
 
             // Calculate log path
             let (actual_output_dir, target_filename_override_os) =
@@ -87,10 +87,10 @@ fn main() -> CliResult<()> {
 
             // Create event dispatcher
             let mut event_dispatcher = EventDispatcher::new();
-            
+
             // Always add file logging handler
             event_dispatcher.add_handler(Arc::new(FileLoggingHandler::new()));
-            
+
             // Add JSON progress handler if requested
             if args.progress_json {
                 use drapto_core::events::json_handler::JsonProgressHandler;
@@ -134,7 +134,7 @@ fn main() -> CliResult<()> {
                     .working_directory(".")
                     .stdout(log_file)
                     .stderr(log_file_stderr);
-                    
+
                 daemonize.start().map_err(|e| {
                     CoreError::OperationFailed(format!("Failed to start daemon process: {e}"))
                 })?;
@@ -156,9 +156,15 @@ fn main() -> CliResult<()> {
             };
 
             // Log startup information
-            log::info!("Drapto encoder starting in {} mode", 
-                if foreground_mode { "foreground" } else { "daemon" });
-            
+            log::info!(
+                "Drapto encoder starting in {} mode",
+                if foreground_mode {
+                    "foreground"
+                } else {
+                    "daemon"
+                }
+            );
+
             if log_level == LevelFilter::Debug {
                 log::info!("Debug level logging enabled");
             }
@@ -166,9 +172,11 @@ fn main() -> CliResult<()> {
             // Update args to use the calculated actual output directory
             let mut corrected_args = args.clone();
             corrected_args.output_dir = actual_output_dir;
-            
+
             run_encode(
-                notification_sender.as_ref().map(|s| s as &dyn NotificationSender),
+                notification_sender
+                    .as_ref()
+                    .map(|s| s as &dyn NotificationSender),
                 corrected_args,
                 foreground_mode,
                 discovered_files,

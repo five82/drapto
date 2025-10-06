@@ -8,9 +8,9 @@ use crate::error::CoreResult;
 use crate::events::{Event, EventDispatcher};
 use crate::processing::video_properties::VideoProperties;
 // Removed unused log::info import
-use std::path::Path;
-use std::collections::HashMap;
 use rayon::prelude::*;
+use std::collections::HashMap;
+use std::path::Path;
 
 /// Detects black bars by sampling 141 points from 15-85% of video. Returns crop filter and HDR status.
 pub fn detect_crop(
@@ -37,37 +37,34 @@ pub fn detect_crop(
 
     // Detect HDR content using MediaInfo data
     let is_hdr = video_props.hdr_info.is_hdr;
-    
+
     // Set threshold based on content type
     let threshold = if is_hdr { 100 } else { 16 };
 
     // Sample every 0.5% from 15% to 85% (141 points total)
     // Avoids first/last 15% where intros/credits typically appear
-    let sample_points: Vec<f64> = (30..=170)
-        .map(|i| i as f64 / 200.0)
-        .collect();
+    let sample_points: Vec<f64> = (30..=170).map(|i| i as f64 / 200.0).collect();
     let mut crop_results = HashMap::new();
-    
+
     log::debug!(
         "Sampling crop at {} points throughout the video (15% to 85%, every 0.5%)",
         sample_points.len()
     );
-    
+
     // Process samples in parallel for faster detection
     let crops: Vec<Option<String>> = sample_points
         .par_iter()
         .map(|&position| {
             let start_time = video_props.duration_secs * position;
-            sample_crop_at_position(input_file, start_time, threshold)
-                .unwrap_or(None)
+            sample_crop_at_position(input_file, start_time, threshold).unwrap_or(None)
         })
         .collect();
-    
+
     // Count the results
     for crop in crops.into_iter().flatten() {
         *crop_results.entry(crop).or_insert(0) += 1;
     }
-    
+
     // Analyze crop results
     let (best_crop, has_multiple_ratios) = if crop_results.is_empty() {
         (None, false)
@@ -79,10 +76,10 @@ pub fn detect_crop(
         let total_samples: usize = crop_results.values().sum();
         let mut sorted_crops: Vec<(String, usize)> = crop_results.into_iter().collect();
         sorted_crops.sort_by(|a, b| b.1.cmp(&a.1));
-        
+
         let (most_common_crop, most_common_count) = &sorted_crops[0];
         let ratio = *most_common_count as f64 / total_samples as f64;
-        
+
         // If one crop is dominant (>80% of samples), use it
         if ratio > 0.8 {
             (Some(most_common_crop.clone()), false)
@@ -96,13 +93,13 @@ pub fn detect_crop(
                 let percentage = (count * 100) / total_samples;
                 log::debug!("  {}: {}% of samples", crop, percentage);
             }
-            
+
             // Conservative approach: don't crop at all for mixed aspect ratio content
             log::info!("Using conservative approach - no cropping for mixed aspect ratio content");
             (None, true)
         }
     };
-    
+
     // Report results
     let message = match &best_crop {
         Some(crop) => {
@@ -132,7 +129,7 @@ pub fn detect_crop(
             eta: None,
         });
     }
-    
+
     Ok((best_crop, is_hdr))
 }
 
@@ -147,32 +144,35 @@ fn sample_crop_at_position(
         start_time,
         threshold
     );
-    
+
     let mut cmd = crate::external::FfmpegCommandBuilder::new()
         .with_hardware_accel(true)
         .build();
-    
+
     // Start at the specified time
     cmd.args(["-ss", &format!("{:.2}", start_time)]);
-    
+
     // Input file
     cmd.input(input_file.to_string_lossy());
-    
+
     // Cropdetect filter and output
     cmd.args([
-        "-vframes", "10",  // Analyze 10 frames
-        "-vf", &format!("cropdetect=limit={threshold}:round=2:reset=1"),
-        "-f", "null",
-        "-"
+        "-vframes",
+        "10", // Analyze 10 frames
+        "-vf",
+        &format!("cropdetect=limit={threshold}:round=2:reset=1"),
+        "-f",
+        "null",
+        "-",
     ]);
-    
+
     // Spawn and collect output
     let mut child = cmd
         .spawn()
         .map_err(|e| crate::error::command_start_error("ffmpeg", e))?;
-    
+
     let mut crop_output = String::new();
-    
+
     for event in child.iter().map_err(|e| {
         crate::error::command_failed_error(
             "ffmpeg",
@@ -187,7 +187,7 @@ fn sample_crop_at_position(
             }
         }
     }
-    
+
     // Parse the most common crop from this sample
     parse_crop_from_output(&crop_output)
 }
@@ -195,26 +195,26 @@ fn sample_crop_at_position(
 /// Parse crop values from ffmpeg output.
 fn parse_crop_from_output(output: &str) -> CoreResult<Option<String>> {
     let mut crop_counts: HashMap<String, usize> = HashMap::new();
-    
+
     // Extract all crop values
     for line in output.lines() {
         if let Some(crop_pos) = line.find("crop=") {
             let crop_part = &line[crop_pos + 5..];
-            
+
             // Find the end of the crop value (space or end of line)
             let end_pos = crop_part
                 .find(|c: char| c.is_whitespace())
                 .unwrap_or(crop_part.len());
-            
+
             let crop_value = &crop_part[..end_pos];
-            
+
             // Validate it's a proper crop format (w:h:x:y)
             if is_valid_crop_format(crop_value) {
                 *crop_counts.entry(crop_value.to_string()).or_insert(0) += 1;
             }
         }
     }
-    
+
     // Return the most common crop value
     Ok(crop_counts
         .into_iter()
@@ -225,11 +225,11 @@ fn parse_crop_from_output(output: &str) -> CoreResult<Option<String>> {
 /// Validate that a crop string is in the format w:h:x:y with valid numbers.
 fn is_valid_crop_format(crop: &str) -> bool {
     let parts: Vec<&str> = crop.split(':').collect();
-    
+
     if parts.len() != 4 {
         return false;
     }
-    
+
     // All parts must be valid numbers
     parts.iter().all(|part| part.parse::<u32>().is_ok())
 }
@@ -245,22 +245,24 @@ mod tests {
         assert!(is_valid_crop_format("1920:800:0:140"));
         assert!(is_valid_crop_format("3840:2160:0:0"));
         assert!(is_valid_crop_format("100:200:10:20"));
-        
+
         // Invalid formats - wrong number of parts
         assert!(!is_valid_crop_format("1920:1080:0"));
         assert!(!is_valid_crop_format("1920:1080:0:0:0"));
         assert!(!is_valid_crop_format("1920"));
         assert!(!is_valid_crop_format(""));
-        
+
         // Invalid formats - non-numeric values
         assert!(!is_valid_crop_format("1920:1080:0:a"));
         assert!(!is_valid_crop_format("width:height:x:y"));
         assert!(!is_valid_crop_format("1920:1080:0:-10"));
         assert!(!is_valid_crop_format("1920.5:1080:0:0"));
-        
+
         // Edge cases
         assert!(is_valid_crop_format("0:0:0:0"));
-        assert!(is_valid_crop_format("4294967295:4294967295:4294967295:4294967295")); // max u32
+        assert!(is_valid_crop_format(
+            "4294967295:4294967295:4294967295:4294967295"
+        )); // max u32
     }
 
     #[test]
@@ -271,7 +273,7 @@ mod tests {
             parse_crop_from_output(output).unwrap(),
             Some("crop=1920:800:0:140".to_string())
         );
-        
+
         // Test with multiple identical crop values
         let output = "[Parsed_cropdetect_0 @ 0x7f8] crop=1920:800:0:140\n\
                      [Parsed_cropdetect_0 @ 0x7f8] crop=1920:800:0:140\n\
@@ -280,7 +282,7 @@ mod tests {
             parse_crop_from_output(output).unwrap(),
             Some("crop=1920:800:0:140".to_string())
         );
-        
+
         // Test with multiple different crop values (most common wins)
         let output = "[Parsed_cropdetect_0 @ 0x7f8] crop=1920:800:0:140\n\
                      [Parsed_cropdetect_0 @ 0x7f8] crop=1920:800:0:140\n\
@@ -290,12 +292,12 @@ mod tests {
             parse_crop_from_output(output).unwrap(),
             Some("crop=1920:800:0:140".to_string())
         );
-        
+
         // Test with no crop values
         let output = "[Parsed_cropdetect_0 @ 0x7f8] x1:0 x2:1919 y1:0 y2:1079\n\
                      Some other ffmpeg output without crop\n";
         assert_eq!(parse_crop_from_output(output).unwrap(), None);
-        
+
         // Test with invalid crop formats (should be ignored)
         let output = "[Parsed_cropdetect_0 @ 0x7f8] crop=invalid:format\n\
                      [Parsed_cropdetect_0 @ 0x7f8] crop=1920:800:0:140\n";
@@ -303,21 +305,21 @@ mod tests {
             parse_crop_from_output(output).unwrap(),
             Some("crop=1920:800:0:140".to_string())
         );
-        
+
         // Test with crop value at end of line (no trailing space)
         let output = "[Parsed_cropdetect_0 @ 0x7f8] crop=1920:800:0:140";
         assert_eq!(
             parse_crop_from_output(output).unwrap(),
             Some("crop=1920:800:0:140".to_string())
         );
-        
+
         // Test with crop value followed by other parameters
         let output = "[Parsed_cropdetect_0 @ 0x7f8] crop=1920:800:0:140 pts:1234 t:1.234";
         assert_eq!(
             parse_crop_from_output(output).unwrap(),
             Some("crop=1920:800:0:140".to_string())
         );
-        
+
         // Test empty output
         assert_eq!(parse_crop_from_output("").unwrap(), None);
     }

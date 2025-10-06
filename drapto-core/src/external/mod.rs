@@ -21,13 +21,13 @@ pub mod mediainfo_executor;
 // Re-exports for convenience
 pub use ffmpeg_builder::{FfmpegCommandBuilder, SvtAv1ParamsBuilder, VideoFilterChain};
 pub use ffprobe_executor::{
-    MediaInfo, AudioStreamInfo, get_audio_channels, get_audio_stream_info, get_media_info, get_video_properties,
+    AudioStreamInfo, MediaInfo, get_audio_channels, get_audio_stream_info, get_media_info,
+    get_video_properties,
 };
 pub use mediainfo_executor::{
-    MediaInfoResponse, HdrInfo, detect_hdr_from_mediainfo, get_media_info as get_mediainfo_data,
-    get_audio_channels_from_mediainfo, is_mediainfo_available,
+    HdrInfo, MediaInfoResponse, detect_hdr_from_mediainfo, get_audio_channels_from_mediainfo,
+    get_media_info as get_mediainfo_data, is_mediainfo_available,
 };
-
 
 /// Returns file size in bytes.
 pub fn get_file_size(path: &Path) -> CoreResult<u64> {

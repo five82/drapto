@@ -16,18 +16,18 @@
 //!     PathBuf::from("/path/to/output"),
 //!     PathBuf::from("/path/to/logs")
 //! );
-//! 
+//!
 //! // Configure encoding settings
 //! config.enable_denoise = true;
 //! config.svt_av1_preset = 6;
 //! config.quality_hd = 27;
-//! 
+//!
 //! // Validate configuration
 //! config.validate().unwrap();
 //!
 //! // Find video files to process
 //! let files = drapto_core::find_processable_files(&config.input_dir).unwrap();
-//! 
+//!
 //! // Optional: Set up notifications
 //! let notification_sender = NtfyNotificationSender::new("https://ntfy.sh/my-topic").unwrap();
 //!
@@ -59,21 +59,16 @@ pub mod utils;
 pub use config::CoreConfig;
 pub use discovery::find_processable_files;
 pub use error::{CoreError, CoreResult};
-pub use processing::process_videos;
-pub use utils::{format_bytes, format_duration, parse_ffmpeg_time};
 pub use external::{
-    MediaInfo, get_audio_channels, get_file_size, get_media_info,
-    get_video_properties,
-};
-pub use notifications::{Notification, NtfyNotificationSender};
-pub use temp_files::{
-    create_temp_dir,
-    create_temp_file,
-    create_temp_file_path,
+    MediaInfo, get_audio_channels, get_file_size, get_media_info, get_video_properties,
 };
 pub use hardware_decode::{
     HardwareDecoding, add_hardware_decoding_to_command, is_hardware_decoding_available, is_macos,
 };
+pub use notifications::{Notification, NtfyNotificationSender};
+pub use processing::process_videos;
+pub use temp_files::{create_temp_dir, create_temp_file, create_temp_file_path};
+pub use utils::{format_bytes, format_duration, parse_ffmpeg_time};
 
 use std::time::Duration;
 

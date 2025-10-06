@@ -3,10 +3,12 @@
 use ffprobe::Stream;
 
 /// Validates the video codec (AV1) and bit depth (10-bit)
-pub fn validate_video_codec_and_depth(stream: &Stream) -> (bool, bool, Option<String>, Option<String>, Option<u32>) {
+pub fn validate_video_codec_and_depth(
+    stream: &Stream,
+) -> (bool, bool, Option<String>, Option<String>, Option<u32>) {
     let codec_name = stream.codec_name.clone();
     let pixel_format = stream.pix_fmt.clone();
-    
+
     // Check if codec is AV1
     let is_av1 = codec_name
         .as_deref()
@@ -52,16 +54,20 @@ fn infer_bit_depth_from_pixel_format(pix_fmt: &str) -> Option<u32> {
         // 10-bit formats
         s if s.contains("10le") || s.contains("10be") => Some(10),
         s if s.contains("p010") || s.contains("p016") => Some(10),
-        s if s.contains("yuv420p10") || s.contains("yuv422p10") || s.contains("yuv444p10") => Some(10),
-        
+        s if s.contains("yuv420p10") || s.contains("yuv422p10") || s.contains("yuv444p10") => {
+            Some(10)
+        }
+
         // 12-bit formats
         s if s.contains("12le") || s.contains("12be") => Some(12),
-        s if s.contains("yuv420p12") || s.contains("yuv422p12") || s.contains("yuv444p12") => Some(12),
-        
+        s if s.contains("yuv420p12") || s.contains("yuv422p12") || s.contains("yuv444p12") => {
+            Some(12)
+        }
+
         // 8-bit formats (default)
         s if s.contains("yuv420p") || s.contains("yuv422p") || s.contains("yuv444p") => Some(8),
         s if s.contains("nv12") || s.contains("nv21") => Some(8),
-        
+
         // If we can't determine, return None
         _ => None,
     }

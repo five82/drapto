@@ -4,25 +4,25 @@ use crate::error::{CoreError, CoreResult};
 use ffprobe::ffprobe;
 use std::path::Path;
 
-use super::result::ValidationResult;
-use super::video;
 use super::audio;
 use super::dimensions;
 use super::duration;
 use super::hdr;
+use super::result::ValidationResult;
+use super::video;
 
 /// Validates that the output video file has AV1 codec, 10-bit depth, correct crop dimensions, matching duration, HDR status, appropriate audio codecs, and preserved sync
 pub fn validate_output_video(
     input_path: &Path,
-    output_path: &Path, 
+    output_path: &Path,
     expected_dimensions: Option<(u32, u32)>,
     expected_duration: Option<f64>,
     expected_hdr: Option<bool>,
     expected_audio_track_count: Option<usize>,
-    spatial_audio_streams: Option<&[bool]>
+    spatial_audio_streams: Option<&[bool]>,
 ) -> CoreResult<ValidationResult> {
     log::debug!("Validating output video: {}", output_path.display());
-    
+
     let metadata = ffprobe(output_path).map_err(|e| {
         CoreError::FfprobeParse(format!(
             "Failed to probe output file {}: {:?}",
@@ -43,27 +43,27 @@ pub fn validate_output_video(
         })?;
 
     // Validate video codec and bit depth
-    let (is_av1, is_10_bit, codec_name, pixel_format, bit_depth) = 
+    let (is_av1, is_10_bit, codec_name, pixel_format, bit_depth) =
         video::validate_video_codec_and_depth(video_stream);
 
     // Validate dimensions/crop
-    let (is_crop_correct, actual_dimensions, crop_message) = 
+    let (is_crop_correct, actual_dimensions, crop_message) =
         dimensions::validate_dimensions(video_stream, expected_dimensions);
 
     // Validate duration
-    let (is_duration_correct, actual_duration, duration_message) = 
+    let (is_duration_correct, actual_duration, duration_message) =
         duration::validate_duration(&metadata, video_stream, expected_duration);
 
     // Validate HDR status using MediaInfo
-    let (is_hdr_correct, actual_hdr, hdr_message) = 
+    let (is_hdr_correct, actual_hdr, hdr_message) =
         hdr::validate_hdr_status_with_path(output_path, expected_hdr);
 
     // Validate audio codec and track count
-    let (is_audio_opus, is_audio_track_count_correct, audio_codecs, audio_message) = 
+    let (is_audio_opus, is_audio_track_count_correct, audio_codecs, audio_message) =
         audio::validate_audio_codec(&metadata, expected_audio_track_count, spatial_audio_streams);
 
     // Validate audio/video sync preservation
-    let (is_sync_preserved, sync_drift_ms, sync_message) = 
+    let (is_sync_preserved, sync_drift_ms, sync_message) =
         duration::validate_sync_preservation(input_path, output_path);
 
     let result = ValidationResult {
@@ -94,7 +94,7 @@ pub fn validate_output_video(
     };
 
     log::debug!("Validation result: {:?}", result);
-    
+
     Ok(result)
 }
 
@@ -108,9 +108,17 @@ mod tests {
         // Test with non-existent file
         let non_existent_path = PathBuf::from("/non/existent/file.mkv");
         let input_path = PathBuf::from("/non/existent/input.mkv");
-        let result = validate_output_video(&input_path, &non_existent_path, None, None, None, None, None);
+        let result = validate_output_video(
+            &input_path,
+            &non_existent_path,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
         assert!(result.is_err());
-        
+
         // Should be an FfprobeParse error
         match result.unwrap_err() {
             CoreError::FfprobeParse(_) => (),

@@ -88,10 +88,7 @@ pub struct HdrInfo {
 
 /// Checks if MediaInfo is available on the system
 pub fn is_mediainfo_available() -> bool {
-    match Command::new("mediainfo")
-        .arg("--Version")
-        .output()
-    {
+    match Command::new("mediainfo").arg("--Version").output() {
         Ok(output) => output.status.success(),
         Err(_) => false,
     }
@@ -108,16 +105,14 @@ pub fn get_media_info(input_path: &Path) -> CoreResult<MediaInfoResponse> {
         .arg("--Output=JSON")
         .arg(input_path)
         .output()
-        .map_err(|e| {
-            crate::error::command_start_error("mediainfo", e)
-        })?;
+        .map_err(|e| crate::error::command_start_error("mediainfo", e))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(crate::error::command_failed_error(
             "mediainfo",
             output.status,
-            stderr.to_string()
+            stderr.to_string(),
         ));
     }
 
@@ -158,8 +153,7 @@ pub fn detect_hdr_from_mediainfo(media_info: &MediaInfoResponse) -> HdrInfo {
     let matrix_coefficients = get_field_value(video_track, "matrix_coefficients");
     let bit_depth_str = get_field_value(video_track, "BitDepth");
 
-    let bit_depth = bit_depth_str
-        .and_then(|s| s.parse::<u8>().ok());
+    let bit_depth = bit_depth_str.and_then(|s| s.parse::<u8>().ok());
 
     // HDR detection logic based on color metadata
     let is_hdr = detect_hdr_from_color_metadata(
@@ -240,9 +234,7 @@ pub fn get_audio_channels_from_mediainfo(media_info: &MediaInfoResponse) -> Vec<
         .track
         .iter()
         .filter(|track| track.track_type == "Audio")
-        .filter_map(|track| {
-            track.audio.as_ref()?.channels.as_ref()?.parse::<u32>().ok()
-        })
+        .filter_map(|track| track.audio.as_ref()?.channels.as_ref()?.parse::<u32>().ok())
         .collect()
 }
 
@@ -252,20 +244,12 @@ mod tests {
 
     #[test]
     fn test_hdr_detection_bt2020_primaries() {
-        assert!(detect_hdr_from_color_metadata(
-            Some("BT.2020"),
-            None,
-            None
-        ));
+        assert!(detect_hdr_from_color_metadata(Some("BT.2020"), None, None));
     }
 
     #[test]
     fn test_hdr_detection_pq_transfer() {
-        assert!(detect_hdr_from_color_metadata(
-            None,
-            Some("PQ"),
-            None
-        ));
+        assert!(detect_hdr_from_color_metadata(None, Some("PQ"), None));
     }
 
     #[test]

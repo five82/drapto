@@ -1,6 +1,6 @@
-use super::templates::{self, TemplateData, GroupData};
-use indicatif::{ProgressBar, ProgressStyle};
+use super::templates::{self, GroupData, TemplateData};
 use console;
+use indicatif::{ProgressBar, ProgressStyle};
 use std::time::Duration;
 
 /// Parameters for file analysis rendering
@@ -77,7 +77,14 @@ impl TemplatePresenter {
     }
 
     /// Render hardware information section
-    pub fn render_hardware_info(&self, hostname: &str, os: &str, cpu: &str, memory: &str, decoder: &str) {
+    pub fn render_hardware_info(
+        &self,
+        hostname: &str,
+        os: &str,
+        cpu: &str,
+        memory: &str,
+        decoder: &str,
+    ) {
         let items = vec![
             ("Hostname", hostname),
             ("OS", os),
@@ -85,11 +92,9 @@ impl TemplatePresenter {
             ("Memory", memory),
             ("Decoder", decoder),
         ];
-        
-        templates::render(TemplateData::HardwareHeader {
-            title: "HARDWARE",
-        });
-        
+
+        templates::render(TemplateData::HardwareHeader { title: "HARDWARE" });
+
         for (key, value) in items {
             println!("  {:<18} {}", format!("{}:", key), value);
         }
@@ -97,10 +102,13 @@ impl TemplatePresenter {
 
     /// Render file analysis section with comprehensive file information
     pub fn render_file_analysis(&self, params: FileAnalysisParams) {
-        let resolution_with_category = templates::format_technical_info(&format!("{} ({})", params.resolution, params.category));
+        let resolution_with_category = templates::format_technical_info(&format!(
+            "{} ({})",
+            params.resolution, params.category
+        ));
         let formatted_dynamic_range = templates::format_technical_info(params.dynamic_range);
         let formatted_audio = templates::format_technical_info(params.audio_description);
-        
+
         let items = vec![
             ("File", params.input_file),
             ("Duration", params.duration),
@@ -108,7 +116,7 @@ impl TemplatePresenter {
             ("Dynamic range", &formatted_dynamic_range),
             ("Audio", &formatted_audio),
         ];
-        
+
         templates::render(TemplateData::KeyValueList {
             title: "VIDEO DETAILS",
             items,
@@ -123,7 +131,12 @@ impl TemplatePresenter {
     }
 
     /// Render video analysis results after spinner completes (no header)
-    pub fn render_video_analysis_results(&self, success_message: &str, crop_required: bool, crop_params: Option<&str>) {
+    pub fn render_video_analysis_results(
+        &self,
+        success_message: &str,
+        crop_required: bool,
+        crop_params: Option<&str>,
+    ) {
         let crop_value = if let Some(params) = crop_params {
             if params == "disabled" {
                 "Disabled"
@@ -135,9 +148,13 @@ impl TemplatePresenter {
         } else {
             "None required"
         };
-        
+
         // Just render the success message and result, no section header - dimmed for minor status
-        println!("  {} {}", console::style("✓").dim(), console::style(success_message).dim());
+        println!(
+            "  {} {}",
+            console::style("✓").dim(),
+            console::style(success_message).dim()
+        );
         println!("  {:<18} {}", "Detected crop:", crop_value);
     }
 
@@ -145,7 +162,7 @@ impl TemplatePresenter {
     pub fn render_encoding_configuration(&self, params: EncodingConfigParams) {
         // Format film grain value to be more concise
         let film_grain_formatted = format!("{} (synthesis)", params.film_grain);
-        
+
         let mut groups = vec![
             GroupData {
                 name: "Video",
@@ -164,18 +181,19 @@ impl TemplatePresenter {
                     ("Audio codec", params.audio_codec, false),
                     ("Audio", params.audio_description, false),
                 ],
-            }
+            },
         ];
-        
+
         if let Some(hw) = params.hardware_accel {
             groups.push(GroupData {
                 name: "Hardware",
                 items: vec![("Acceleration", hw, false)],
             });
         }
-        
-        let formatted_matrix_coefficients = templates::format_technical_info(params.matrix_coefficients);
-        
+
+        let formatted_matrix_coefficients =
+            templates::format_technical_info(params.matrix_coefficients);
+
         groups.push(GroupData {
             name: "Advanced",
             items: vec![
@@ -183,7 +201,7 @@ impl TemplatePresenter {
                 ("Matrix", &formatted_matrix_coefficients, false),
             ],
         });
-        
+
         templates::render(TemplateData::GroupedKeyValues {
             title: "ENCODING CONFIGURATION",
             groups,
@@ -195,13 +213,13 @@ impl TemplatePresenter {
         templates::render(TemplateData::SectionHeader {
             title: "ENCODING PROGRESS",
         });
-        
+
         let pb = ProgressBar::new(100);
         pb.set_style(
             ProgressStyle::default_bar()
                 .template("  Encoding: {percent:>3}% [{bar:30}] ({elapsed} / {duration})\n{msg}")
                 .unwrap()
-                .progress_chars("##.")
+                .progress_chars("##."),
         );
         pb.enable_steady_tick(Duration::from_millis(100));
         self.progress_bar = Some(pb);
@@ -219,9 +237,13 @@ impl TemplatePresenter {
                 pb.set_position(pos);
             } else {
                 // FFmpeg reported progress going backwards - ignore it
-                log::debug!("Ignoring backward progress: {} < {}", pos, self.max_progress);
+                log::debug!(
+                    "Ignoring backward progress: {} < {}",
+                    pos,
+                    self.max_progress
+                );
             }
-            
+
             if let Some(msg) = message {
                 pb.set_message(format!("  {}", msg));
             }
@@ -237,9 +259,14 @@ impl TemplatePresenter {
     }
 
     /// Render validation completion summary
-    pub fn render_validation_complete(&self, validation_passed: bool, validation_steps: &[(String, bool, String)]) {
+    pub fn render_validation_complete(
+        &self,
+        validation_passed: bool,
+        validation_steps: &[(String, bool, String)],
+    ) {
         // Add validation group with individual steps using proper colors per design guide
-        let validation_results: Vec<String> = validation_steps.iter()
+        let validation_results: Vec<String> = validation_steps
+            .iter()
             .map(|(_, passed, details)| {
                 if *passed {
                     // Green checkmark for successful validation (major milestone)
@@ -250,27 +277,26 @@ impl TemplatePresenter {
                 }
             })
             .collect();
-        
-        let validation_items: Vec<(&str, &str, bool)> = validation_steps.iter()
+
+        let validation_items: Vec<(&str, &str, bool)> = validation_steps
+            .iter()
             .zip(validation_results.iter())
             .map(|((step_name, _, _), formatted_result)| {
                 (step_name.as_str(), formatted_result.as_str(), false)
             })
             .collect();
 
-        let groups = vec![
-            GroupData {
-                name: "Post-encode validation",
-                items: validation_items,
-            },
-        ];
+        let groups = vec![GroupData {
+            name: "Post-encode validation",
+            items: validation_items,
+        }];
 
         let success_message = if validation_passed {
             "Validation passed"
         } else {
             "Validation failed"
         };
-        
+
         templates::render(TemplateData::CompletionSummary {
             title: "VALIDATION RESULTS",
             success_message,
@@ -282,7 +308,7 @@ impl TemplatePresenter {
     pub fn render_encoding_complete(&self, params: EncodingCompleteParams) {
         let formatted_video_stream = templates::format_technical_info(params.video_stream);
         let formatted_audio_stream = templates::format_technical_info(params.audio_stream);
-        
+
         let groups = vec![
             GroupData {
                 name: "Results",
@@ -308,13 +334,13 @@ impl TemplatePresenter {
                 ],
             },
         ];
-        
+
         templates::render(TemplateData::CompletionSummary {
             title: "ENCODING RESULTS",
             success_message: "Encoding finished successfully",
             groups,
         });
-        
+
         println!("\n  The encoded file is ready at: {}", params.output_path);
     }
 
@@ -325,7 +351,7 @@ impl TemplatePresenter {
             ProgressStyle::default_spinner()
                 .template("  {spinner} {msg}")
                 .unwrap()
-                .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
+                .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"),
         );
         pb.set_message(message.to_string());
         pb.enable_steady_tick(Duration::from_millis(120));
@@ -341,8 +367,18 @@ impl TemplatePresenter {
     }
 
     /// Render error using template
-    pub fn render_error(&self, title: &str, message: &str, context: Option<&str>, suggestion: Option<&str>) {
-        println!("\n  {} {}", console::style("✗").bold().red(), console::style(title).bold().red());
+    pub fn render_error(
+        &self,
+        title: &str,
+        message: &str,
+        context: Option<&str>,
+        suggestion: Option<&str>,
+    ) {
+        println!(
+            "\n  {} {}",
+            console::style("✗").bold().red(),
+            console::style(title).bold().red()
+        );
         println!();
         println!("  {:<18} {}", "Message:", message);
         if let Some(ctx) = context {
@@ -356,20 +392,29 @@ impl TemplatePresenter {
 
     /// Render warning
     pub fn render_warning(&self, message: &str) {
-        println!("  {} {}", console::style("⚠").bold().yellow(), console::style(message).bold().yellow());
+        println!(
+            "  {} {}",
+            console::style("⚠").bold().yellow(),
+            console::style(message).bold().yellow()
+        );
     }
-    
+
     /// Render single file operation complete
     pub fn render_operation_complete(&self, message: &str) {
         println!("\n  ✓ {}", message);
     }
-    
+
     /// Render batch initialization
-    pub fn render_batch_initialization(&self, total_files: usize, file_list: &[String], output_dir: &str) {
+    pub fn render_batch_initialization(
+        &self,
+        total_files: usize,
+        file_list: &[String],
+        output_dir: &str,
+    ) {
         templates::render(TemplateData::BatchHeader {
             title: "BATCH ENCODING",
         });
-        
+
         println!("  Processing {} files:", total_files);
         for (i, filename) in file_list.iter().enumerate() {
             println!("    {}. {}", i + 1, filename);
@@ -377,7 +422,7 @@ impl TemplatePresenter {
         println!();
         println!("  Output directory: {}", output_dir);
     }
-    
+
     /// Render file progress context
     pub fn render_file_progress_context(&self, current_file: usize, total_files: usize) {
         templates::render(TemplateData::FileProgressHeader {
@@ -385,40 +430,57 @@ impl TemplatePresenter {
             total: total_files,
         });
     }
-    
+
     /// Render batch complete summary
     pub fn render_batch_complete(&self, params: BatchCompleteParams) {
         templates::render(TemplateData::BatchHeader {
             title: "BATCH COMPLETE",
         });
-        
-        println!("  {} Successfully encoded {} files", console::style("✓").green().bold(), params.successful_count);
-        
+
+        println!(
+            "  {} Successfully encoded {} files",
+            console::style("✓").green().bold(),
+            params.successful_count
+        );
+
         // Display validation summary
         if params.validation_failed_count == 0 {
-            println!("  {} All {} files passed validation", console::style("✓").green().bold(), params.validation_passed_count);
+            println!(
+                "  {} All {} files passed validation",
+                console::style("✓").green().bold(),
+                params.validation_passed_count
+            );
         } else {
-            println!("  {} {} files passed validation, {} failed", 
-                console::style("⚠").yellow().bold(), 
-                params.validation_passed_count, 
+            println!(
+                "  {} {} files passed validation, {} failed",
+                console::style("⚠").yellow().bold(),
+                params.validation_passed_count,
                 params.validation_failed_count
             );
         }
-        
+
         println!();
         println!("  Total original size:   {}", params.total_original_size);
         println!("  Total encoded size:    {}", params.total_encoded_size);
-        println!("  Total reduction:       {}", templates::format_reduction(params.total_reduction_percent));
+        println!(
+            "  Total reduction:       {}",
+            templates::format_reduction(params.total_reduction_percent)
+        );
         println!("  Total encoding time:   {}", params.total_time);
         println!("  Average speed:         {}", params.average_speed);
         println!();
         println!("  Files processed:");
         for (filename, reduction) in params.file_results {
-            println!("    {} {} ({} reduction)", console::style("✓").dim(), filename, templates::format_reduction(*reduction));
+            println!(
+                "    {} {} ({} reduction)",
+                console::style("✓").dim(),
+                filename,
+                templates::format_reduction(*reduction)
+            );
         }
         println!();
     }
-    
+
     /// Render a simple processing step message
     pub fn render_template(&self, step: &templates::ProcessingStep) {
         println!("  {}", step.message);

@@ -4,7 +4,8 @@
 //! with support for different log levels controlled by the RUST_LOG environment variable.
 
 /// Returns current timestamp as YYYYMMDD_HHMMSS for unique file names.
-#[must_use] pub fn get_timestamp() -> String {
+#[must_use]
+pub fn get_timestamp() -> String {
     chrono::Local::now().format("%Y%m%d_%H%M%S").to_string()
 }
 
@@ -60,28 +61,28 @@ pub fn setup_file_logging(log_path: &Path) -> CliResult<()> {
         .level_for("drapto::progress", log::LevelFilter::Off)
         .chain(std::io::stdout());
 
-    let file_dispatch =
-        fern::Dispatch::new()
-            .format(|out, message, record| {
-                let msg_str = format!("{message}");
+    let file_dispatch = fern::Dispatch::new()
+        .format(|out, message, record| {
+            let msg_str = format!("{message}");
 
-                let clean_str = console::strip_ansi_codes(&msg_str);
-                if clean_str.starts_with("[info]") || clean_str.starts_with("Svt[info]:") {
-                    out.finish(format_args!("{clean_str}"));
-                } else if record.level() != log::Level::Info {
-                    out.finish(format_args!("[{}] {}", record.level(), clean_str));
-                } else {
-                    out.finish(format_args!("{clean_str}"));
-                }
-            })
-            .level(log_level)
-            .level_for("drapto", log_level)
-            .level_for("drapto_cli", log_level)
-            .level_for("drapto_core", log_level)
-            .level_for("drapto::progress", log_level)
-            .chain(fern::log_file(log_path).map_err(|e| {
-                CoreError::OperationFailed(format!("Failed to open log file: {e}"))
-            })?);
+            let clean_str = console::strip_ansi_codes(&msg_str);
+            if clean_str.starts_with("[info]") || clean_str.starts_with("Svt[info]:") {
+                out.finish(format_args!("{clean_str}"));
+            } else if record.level() != log::Level::Info {
+                out.finish(format_args!("[{}] {}", record.level(), clean_str));
+            } else {
+                out.finish(format_args!("{clean_str}"));
+            }
+        })
+        .level(log_level)
+        .level_for("drapto", log_level)
+        .level_for("drapto_cli", log_level)
+        .level_for("drapto_core", log_level)
+        .level_for("drapto::progress", log_level)
+        .chain(
+            fern::log_file(log_path)
+                .map_err(|e| CoreError::OperationFailed(format!("Failed to open log file: {e}")))?,
+        );
 
     fern::Dispatch::new()
         .level(log_level)

@@ -36,8 +36,6 @@ pub struct AudioStreamInfo {
     pub is_spatial: bool,
 }
 
-
-
 /// Gets audio channel counts for a given input file.
 pub fn get_audio_channels(input_path: &Path) -> CoreResult<Vec<u32>> {
     log::debug!(
@@ -73,7 +71,11 @@ pub fn get_audio_channels(input_path: &Path) -> CoreResult<Vec<u32>> {
             Ok(channels)
         }
         Err(err) => {
-            log::error!("ffprobe failed for audio channels on {}: {:?}", input_path.display(), err);
+            log::error!(
+                "ffprobe failed for audio channels on {}: {:?}",
+                input_path.display(),
+                err
+            );
             Err(map_ffprobe_error(err, "audio channels"))
         }
     }
@@ -89,53 +91,62 @@ pub fn get_audio_stream_info(input_path: &Path) -> CoreResult<Vec<AudioStreamInf
         Ok(metadata) => {
             let mut audio_streams = Vec::new();
             let mut audio_index = 0;
-            
+
             for (stream_index, stream) in metadata.streams.iter().enumerate() {
                 if stream.codec_type.as_deref() != Some("audio") {
                     continue;
                 }
-                
+
                 let channels = stream.channels.unwrap_or(0);
                 if channels <= 0 {
-                    log::warn!("Skipping audio stream {} with invalid channel count: {}", stream_index, channels);
+                    log::warn!(
+                        "Skipping audio stream {} with invalid channel count: {}",
+                        stream_index,
+                        channels
+                    );
                     continue;
                 }
-                
+
                 let codec_name = stream.codec_name.clone().unwrap_or_default();
                 let profile = stream.profile.clone();
-                
+
                 // Detect spatial audio formats
                 // Dolby Atmos: TrueHD with Atmos profile or E-AC-3 with JOC (Joint Object Coding)
                 // DTS:X: DTS with DTS:X profile
                 let is_spatial = match codec_name.to_lowercase().as_str() {
                     "truehd" => {
                         // TrueHD with Atmos
-                        profile.as_ref()
+                        profile
+                            .as_ref()
                             .map(|p| p.to_lowercase().contains("atmos"))
                             .unwrap_or(false)
-                    },
+                    }
                     "eac3" => {
                         // E-AC-3 with Atmos (JOC)
                         // Note: ffprobe from git should detect this properly
-                        profile.as_ref()
+                        profile
+                            .as_ref()
                             .map(|p| {
                                 let p_lower = p.to_lowercase();
                                 p_lower.contains("atmos") || p_lower.contains("joc")
                             })
                             .unwrap_or(false)
-                    },
+                    }
                     "dts" => {
                         // DTS:X
-                        profile.as_ref()
+                        profile
+                            .as_ref()
                             .map(|p| {
                                 let p_lower = p.to_lowercase();
-                                p_lower.contains("dts:x") || p_lower.contains("dtsx") || p_lower.contains("dts-x")
+                                p_lower.contains("dts:x")
+                                    || p_lower.contains("dtsx")
+                                    || p_lower.contains("dts-x")
                             })
                             .unwrap_or(false)
-                    },
+                    }
                     _ => false,
                 };
-                
+
                 if is_spatial {
                     log::info!(
                         "Detected spatial audio in stream {} (audio index {}): {} {}",
@@ -145,7 +156,7 @@ pub fn get_audio_stream_info(input_path: &Path) -> CoreResult<Vec<AudioStreamInf
                         profile.as_deref().unwrap_or("")
                     );
                 }
-                
+
                 audio_streams.push(AudioStreamInfo {
                     channels: channels as u32,
                     codec_name: codec_name.clone(),
@@ -153,21 +164,25 @@ pub fn get_audio_stream_info(input_path: &Path) -> CoreResult<Vec<AudioStreamInf
                     index: audio_index,
                     is_spatial,
                 });
-                
+
                 audio_index += 1;
             }
-            
+
             if audio_streams.is_empty() {
                 log::warn!(
                     "No audio streams found by ffprobe for {}",
                     input_path.display()
                 );
             }
-            
+
             Ok(audio_streams)
         }
         Err(err) => {
-            log::error!("ffprobe failed for audio stream info on {}: {:?}", input_path.display(), err);
+            log::error!(
+                "ffprobe failed for audio stream info on {}: {:?}",
+                input_path.display(),
+                err
+            );
             Err(map_ffprobe_error(err, "audio stream info"))
         }
     }
@@ -227,9 +242,14 @@ pub fn get_video_properties(input_path: &Path) -> CoreResult<VideoProperties> {
 
             // Get HDR information using MediaInfo
             let hdr_info = match crate::external::mediainfo_executor::get_media_info(input_path) {
-                Ok(media_info) => crate::external::mediainfo_executor::detect_hdr_from_mediainfo(&media_info),
+                Ok(media_info) => {
+                    crate::external::mediainfo_executor::detect_hdr_from_mediainfo(&media_info)
+                }
                 Err(e) => {
-                    log::warn!("Failed to get MediaInfo for HDR detection: {}, defaulting to SDR", e);
+                    log::warn!(
+                        "Failed to get MediaInfo for HDR detection: {}, defaulting to SDR",
+                        e
+                    );
                     crate::external::HdrInfo {
                         is_hdr: false,
                         colour_primaries: None,
@@ -248,7 +268,11 @@ pub fn get_video_properties(input_path: &Path) -> CoreResult<VideoProperties> {
             })
         }
         Err(err) => {
-            log::error!("ffprobe failed for video properties on {}: {:?}", input_path.display(), err);
+            log::error!(
+                "ffprobe failed for video properties on {}: {:?}",
+                input_path.display(),
+                err
+            );
             Err(map_ffprobe_error(err, "video properties"))
         }
     }
@@ -280,9 +304,10 @@ pub fn get_media_info(input_path: &Path) -> CoreResult<MediaInfo> {
             {
                 info.width = video_stream.width;
                 info.height = video_stream.height;
-                
+
                 // Get total frames from nb_frames field if available
-                info.total_frames = video_stream.nb_frames
+                info.total_frames = video_stream
+                    .nb_frames
                     .as_deref()
                     .and_then(|f| f.parse::<u64>().ok());
             }
@@ -298,19 +323,15 @@ pub fn get_media_info(input_path: &Path) -> CoreResult<MediaInfo> {
 
 fn map_ffprobe_error(err: FfProbeError, context: &str) -> CoreError {
     match err {
-        FfProbeError::Io(io_err) => {
-            command_start_error(format!("ffprobe ({context})"), io_err)
-        }
+        FfProbeError::Io(io_err) => command_start_error(format!("ffprobe ({context})"), io_err),
         FfProbeError::Status(output) => {
             let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
             command_failed_error(format!("ffprobe ({context})"), output.status, stderr)
         }
-        FfProbeError::Deserialize(err) => CoreError::JsonParseError(format!(
-            "ffprobe {context} output deserialization: {err}"
-        )),
-        _ => CoreError::FfprobeParse(format!(
-            "Unknown ffprobe error during {context}: {err:?}"
-        )),
+        FfProbeError::Deserialize(err) => {
+            CoreError::JsonParseError(format!("ffprobe {context} output deserialization: {err}"))
+        }
+        _ => CoreError::FfprobeParse(format!("Unknown ffprobe error during {context}: {err:?}")),
     }
 }
 
@@ -329,7 +350,10 @@ mod tests {
             index: 0,
             is_spatial: true,
         };
-        assert!(truehd_atmos.is_spatial, "TrueHD with Atmos profile should be spatial");
+        assert!(
+            truehd_atmos.is_spatial,
+            "TrueHD with Atmos profile should be spatial"
+        );
 
         // Test TrueHD without Atmos
         let truehd_normal = AudioStreamInfo {
@@ -339,7 +363,10 @@ mod tests {
             index: 0,
             is_spatial: false,
         };
-        assert!(!truehd_normal.is_spatial, "TrueHD without Atmos should not be spatial");
+        assert!(
+            !truehd_normal.is_spatial,
+            "TrueHD without Atmos should not be spatial"
+        );
 
         // Test E-AC-3 with JOC (Atmos)
         let eac3_joc = AudioStreamInfo {
@@ -369,7 +396,10 @@ mod tests {
             index: 0,
             is_spatial: false,
         };
-        assert!(!eac3_normal.is_spatial, "Regular E-AC-3 should not be spatial");
+        assert!(
+            !eac3_normal.is_spatial,
+            "Regular E-AC-3 should not be spatial"
+        );
 
         // Test DTS:X
         let dtsx = AudioStreamInfo {
@@ -389,7 +419,10 @@ mod tests {
             index: 0,
             is_spatial: true,
         };
-        assert!(dts_x_alt.is_spatial, "DTS-X (alternative naming) should be spatial");
+        assert!(
+            dts_x_alt.is_spatial,
+            "DTS-X (alternative naming) should be spatial"
+        );
 
         // Test regular DTS
         let dts_normal = AudioStreamInfo {
@@ -434,11 +467,13 @@ mod tests {
                 "eac3" => {
                     let p_lower = profile.to_lowercase();
                     p_lower.contains("atmos") || p_lower.contains("joc")
-                },
+                }
                 "dts" => {
                     let p_lower = profile.to_lowercase();
-                    p_lower.contains("dts:x") || p_lower.contains("dtsx") || p_lower.contains("dts-x")
-                },
+                    p_lower.contains("dts:x")
+                        || p_lower.contains("dtsx")
+                        || p_lower.contains("dts-x")
+                }
                 _ => false,
             };
 
@@ -460,7 +495,10 @@ mod tests {
             index: 0,
             is_spatial: false,
         };
-        assert!(!stream_no_profile.is_spatial, "Stream without profile should not be spatial");
+        assert!(
+            !stream_no_profile.is_spatial,
+            "Stream without profile should not be spatial"
+        );
 
         let stream_empty_profile = AudioStreamInfo {
             channels: 8,
@@ -469,7 +507,10 @@ mod tests {
             index: 0,
             is_spatial: false,
         };
-        assert!(!stream_empty_profile.is_spatial, "Stream with empty profile should not be spatial");
+        assert!(
+            !stream_empty_profile.is_spatial,
+            "Stream with empty profile should not be spatial"
+        );
     }
 
     /// Test audio stream indexing
@@ -493,9 +534,18 @@ mod tests {
             },
         ];
 
-        assert_eq!(streams[0].index, 0, "First audio stream should have index 0");
-        assert_eq!(streams[1].index, 1, "Second audio stream should have index 1");
+        assert_eq!(
+            streams[0].index, 0,
+            "First audio stream should have index 0"
+        );
+        assert_eq!(
+            streams[1].index, 1,
+            "Second audio stream should have index 1"
+        );
         assert!(!streams[0].is_spatial, "AAC stream should not be spatial");
-        assert!(streams[1].is_spatial, "TrueHD + Atmos stream should be spatial");
+        assert!(
+            streams[1].is_spatial,
+            "TrueHD + Atmos stream should be spatial"
+        );
     }
 }

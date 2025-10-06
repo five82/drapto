@@ -45,13 +45,15 @@ fn get_os_info() -> String {
                     .args(["-productVersion"])
                     .output()
                     .map(|version_output| {
-                        let version = String::from_utf8_lossy(&version_output.stdout).trim().to_string();
+                        let version = String::from_utf8_lossy(&version_output.stdout)
+                            .trim()
+                            .to_string();
                         format!("{} {}", product, version)
                     })
             })
             .unwrap_or_else(|_| "macOS".to_string())
     }
-    
+
     #[cfg(target_os = "linux")]
     {
         // Try to get distro info from /etc/os-release
@@ -60,22 +62,24 @@ fn get_os_info() -> String {
             .and_then(|content| {
                 let mut name = None;
                 let mut version = None;
-                
+
                 for line in content.lines() {
                     if let Some(value) = line.strip_prefix("PRETTY_NAME=") {
                         // PRETTY_NAME usually has the full name and version
                         return Some(value.trim_matches('"').to_string());
                     }
                     if name.is_none() && line.starts_with("NAME=") {
-                        name = line.strip_prefix("NAME=")
+                        name = line
+                            .strip_prefix("NAME=")
                             .map(|s| s.trim_matches('"').to_string());
                     }
                     if version.is_none() && line.starts_with("VERSION=") {
-                        version = line.strip_prefix("VERSION=")
+                        version = line
+                            .strip_prefix("VERSION=")
                             .map(|s| s.trim_matches('"').to_string());
                     }
                 }
-                
+
                 match (name, version) {
                     (Some(n), Some(v)) => Some(format!("{} {}", n, v)),
                     (Some(n), None) => Some(n),
@@ -91,7 +95,7 @@ fn get_os_info() -> String {
                     .unwrap_or_else(|_| "Linux".to_string())
             })
     }
-    
+
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
         std::env::consts::OS.to_string()
@@ -108,7 +112,7 @@ fn get_cpu_info() -> String {
             .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
             .unwrap_or_else(|_| "Unknown CPU".to_string())
     }
-    
+
     #[cfg(target_os = "linux")]
     {
         // On Linux, parse /proc/cpuinfo
@@ -123,7 +127,7 @@ fn get_cpu_info() -> String {
             })
             .unwrap_or_else(|| "Unknown CPU".to_string())
     }
-    
+
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
         "Unknown CPU".to_string()
@@ -146,7 +150,7 @@ fn get_memory_info() -> String {
             })
             .unwrap_or_else(|_| "Unknown".to_string())
     }
-    
+
     #[cfg(target_os = "linux")]
     {
         // On Linux, parse /proc/meminfo
@@ -165,7 +169,7 @@ fn get_memory_info() -> String {
             })
             .unwrap_or_else(|| "Unknown".to_string())
     }
-    
+
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
         "Unknown".to_string()
@@ -175,13 +179,12 @@ fn get_memory_info() -> String {
 fn format_memory_size(bytes: u64) -> String {
     const GB: f64 = 1024.0 * 1024.0 * 1024.0;
     let gb_float = bytes as f64 / GB;
-    
+
     // Round up to nearest 4 GB increment (modern memory configurations)
     let gb_rounded = ((gb_float / 4.0).ceil() * 4.0) as u64;
     format!("{} GB", gb_rounded)
 }
 
 fn get_decoder_info() -> String {
-    crate::hardware_decode::get_hardware_decoding_info()
-        .unwrap_or_else(|| "Software".to_string())
+    crate::hardware_decode::get_hardware_decoding_info().unwrap_or_else(|| "Software".to_string())
 }

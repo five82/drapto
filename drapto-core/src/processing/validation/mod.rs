@@ -17,13 +17,13 @@
 pub use self::result::ValidationResult;
 pub use self::validate::validate_output_video;
 
-mod result;
-mod validate;
-mod video;
 mod audio;
 mod dimensions;
 mod duration;
 mod hdr;
+mod result;
+mod validate;
+mod video;
 
 #[cfg(test)]
 mod tests {
@@ -33,7 +33,7 @@ mod tests {
     fn test_module_integration() {
         // Test that all modules are properly integrated
         // This is a basic smoke test to ensure modules compile together
-        
+
         let result = ValidationResult {
             is_av1: true,
             is_10_bit: true,
@@ -60,7 +60,7 @@ mod tests {
             sync_drift_ms: Some(25.0),
             sync_message: Some("Audio/video sync preserved (drift: 25.0ms)".to_string()),
         };
-        
+
         assert!(result.is_valid());
         assert_eq!(result.get_validation_steps().len(), 7);
         assert!(result.get_failures().is_empty());

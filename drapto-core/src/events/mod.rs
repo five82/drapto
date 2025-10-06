@@ -13,18 +13,18 @@ pub enum Event {
         memory: String,
         decoder: String,
     },
-    
+
     // Initialization events
     InitializationStarted {
         input_file: String,
         output_file: String,
         duration: String,
         resolution: String,
-        category: String, // HD, UHD, SD
-        dynamic_range: String, // HDR, SDR
+        category: String,          // HD, UHD, SD
+        dynamic_range: String,     // HDR, SDR
         audio_description: String, // e.g., "5.1 surround", "stereo"
     },
-    
+
     // Analysis events
     VideoAnalysisStarted,
     BlackBarDetectionStarted,
@@ -36,14 +36,14 @@ pub enum Event {
         crop_required: bool,
         crop_params: Option<String>,
     },
-    
+
     NoiseAnalysisStarted,
     NoiseAnalysisComplete {
         average_noise: f64,
         has_significant_noise: bool,
         recommended_params: String,
     },
-    
+
     ProcessingConfigurationStarted,
     ProcessingConfigurationApplied {
         denoising: String,
@@ -52,7 +52,7 @@ pub enum Event {
         estimated_size: String,
         estimated_savings: String,
     },
-    
+
     // Encoding events
     EncodingConfigurationDisplayed {
         encoder: String,
@@ -67,11 +67,11 @@ pub enum Event {
         audio_codec: String,
         audio_description: String,
     },
-    
+
     EncodingStarted {
         total_frames: u64,
     },
-    
+
     EncodingProgress {
         current_frame: u64,
         total_frames: u64,
@@ -88,7 +88,7 @@ pub enum Event {
         message: String,
         eta: Option<Duration>,
     },
-    
+
     EncodingComplete {
         input_file: String,
         output_file: String,
@@ -106,7 +106,6 @@ pub enum Event {
         validation_steps: Vec<(String, bool, String)>, // (step_name, passed, details)
     },
 
-    
     // Error events
     Error {
         title: String,
@@ -114,38 +113,38 @@ pub enum Event {
         context: Option<String>,
         suggestion: Option<String>,
     },
-    
+
     Warning {
         message: String,
     },
-    
+
     // Generic events
     StatusUpdate {
         label: String,
         value: String,
         emphasize: bool,
     },
-    
+
     ProcessingStep {
         message: String,
     },
-    
+
     OperationComplete {
         message: String,
     },
-    
+
     // Batch processing events
     BatchInitializationStarted {
         total_files: usize,
         file_list: Vec<String>,
         output_dir: String,
     },
-    
+
     FileProgressContext {
         current_file: usize,
         total_files: usize,
     },
-    
+
     BatchComplete {
         successful_count: usize,
         total_files: usize,
@@ -173,11 +172,11 @@ impl EventDispatcher {
             handlers: Vec::new(),
         }
     }
-    
+
     pub fn add_handler(&mut self, handler: Arc<dyn EventHandler>) {
         self.handlers.push(handler);
     }
-    
+
     pub fn emit(&self, event: Event) {
         for handler in &self.handlers {
             handler.handle(&event);

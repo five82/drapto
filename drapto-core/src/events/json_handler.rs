@@ -54,7 +54,12 @@ impl EventHandler for JsonProgressHandler {
         let timestamp = Self::get_timestamp();
 
         match event {
-            Event::StageProgress { stage, percent, message, eta } => {
+            Event::StageProgress {
+                stage,
+                percent,
+                message,
+                eta,
+            } => {
                 let progress = json!({
                     "type": "stage_progress",
                     "stage": stage,
@@ -66,7 +71,15 @@ impl EventHandler for JsonProgressHandler {
                 self.write_json(progress);
             }
 
-            Event::EncodingProgress { current_frame, total_frames, percent, speed, fps, eta, bitrate } => {
+            Event::EncodingProgress {
+                current_frame,
+                total_frames,
+                percent,
+                speed,
+                fps,
+                eta,
+                bitrate,
+            } => {
                 // Only output encoding progress every 5% to avoid interfering with interactive progress bars
                 if (*percent as u32) % 5 == 0 || *percent >= 99.0 {
                     let progress = json!({
@@ -85,7 +98,15 @@ impl EventHandler for JsonProgressHandler {
                 }
             }
 
-            Event::InitializationStarted { input_file, output_file, duration, resolution, category, dynamic_range, audio_description } => {
+            Event::InitializationStarted {
+                input_file,
+                output_file,
+                duration,
+                resolution,
+                category,
+                dynamic_range,
+                audio_description,
+            } => {
                 let init = json!({
                     "type": "initialization",
                     "input_file": input_file,
@@ -100,7 +121,14 @@ impl EventHandler for JsonProgressHandler {
                 self.write_json(init);
             }
 
-            Event::EncodingComplete { input_file, output_file, original_size, encoded_size, total_time, .. } => {
+            Event::EncodingComplete {
+                input_file,
+                output_file,
+                original_size,
+                encoded_size,
+                total_time,
+                ..
+            } => {
                 let complete = json!({
                     "type": "encoding_complete",
                     "input_file": input_file,
@@ -118,7 +146,10 @@ impl EventHandler for JsonProgressHandler {
                 self.write_json(complete);
             }
 
-            Event::ValidationComplete { validation_passed, validation_steps } => {
+            Event::ValidationComplete {
+                validation_passed,
+                validation_steps,
+            } => {
                 let validation = json!({
                     "type": "validation_complete",
                     "validation_passed": validation_passed,
@@ -134,7 +165,12 @@ impl EventHandler for JsonProgressHandler {
                 self.write_json(validation);
             }
 
-            Event::Error { title, message, context, suggestion } => {
+            Event::Error {
+                title,
+                message,
+                context,
+                suggestion,
+            } => {
                 let error = json!({
                     "type": "error",
                     "title": title,
@@ -155,7 +191,14 @@ impl EventHandler for JsonProgressHandler {
                 self.write_json(warning);
             }
 
-            Event::BatchComplete { successful_count, total_files, total_original_size, total_encoded_size, total_duration, .. } => {
+            Event::BatchComplete {
+                successful_count,
+                total_files,
+                total_original_size,
+                total_encoded_size,
+                total_duration,
+                ..
+            } => {
                 let batch_complete = json!({
                     "type": "batch_complete",
                     "successful_count": successful_count,
@@ -200,7 +243,12 @@ mod tests {
     impl MockWriter {
         fn new() -> (Self, Arc<Mutex<Vec<u8>>>) {
             let content = Arc::new(Mutex::new(Vec::new()));
-            (Self { content: content.clone() }, content)
+            (
+                Self {
+                    content: content.clone(),
+                },
+                content,
+            )
         }
     }
 

@@ -7,9 +7,9 @@ use ffprobe::FfProbe;
 /// - For non-spatial audio: Expects Opus transcoding
 /// - For mixed content: Validates each stream according to its spatial status
 pub fn validate_audio_codec(
-    metadata: &FfProbe, 
+    metadata: &FfProbe,
     expected_track_count: Option<usize>,
-    spatial_audio_streams: Option<&[bool]>
+    spatial_audio_streams: Option<&[bool]>,
 ) -> (bool, bool, Vec<String>, Option<String>) {
     // Find all audio streams
     let audio_streams: Vec<&ffprobe::Stream> = metadata
@@ -47,10 +47,10 @@ pub fn validate_audio_codec(
     if !is_track_count_correct {
         if let Some(expected) = expected_track_count {
             let track_count_msg = format!(
-                "Expected {} audio tracks, found {}", 
+                "Expected {} audio tracks, found {}",
                 expected, actual_track_count
             );
-            
+
             match audio_message {
                 Some(existing_msg) => {
                     audio_message = Some(format!("{}; {}", existing_msg, track_count_msg));
@@ -62,17 +62,25 @@ pub fn validate_audio_codec(
         }
     }
 
-    (is_audio_correct, is_track_count_correct, audio_codecs, audio_message)
+    (
+        is_audio_correct,
+        is_track_count_correct,
+        audio_codecs,
+        audio_message,
+    )
 }
 
 /// Validates audio codecs when spatial audio information is available
 fn validate_with_spatial_info(
-    audio_codecs: &[String], 
-    spatial_flags: &[bool], 
-    _actual_track_count: usize
+    audio_codecs: &[String],
+    spatial_flags: &[bool],
+    _actual_track_count: usize,
 ) -> (bool, Option<String>) {
     if audio_codecs.len() != spatial_flags.len() {
-        return (false, Some("Mismatch between detected audio streams and spatial audio flags".to_string()));
+        return (
+            false,
+            Some("Mismatch between detected audio streams and spatial audio flags".to_string()),
+        );
     }
 
     let mut errors = Vec::new();
@@ -84,14 +92,20 @@ fn validate_with_spatial_info(
         if is_spatial {
             // Spatial audio should be preserved (TrueHD, DTS, etc.)
             if !is_preserved_codec(codec) {
-                errors.push(format!("Stream {}: Expected preserved spatial audio (TrueHD/DTS), found {}", i, codec));
+                errors.push(format!(
+                    "Stream {}: Expected preserved spatial audio (TrueHD/DTS), found {}",
+                    i, codec
+                ));
             } else {
                 preserved_count += 1;
             }
         } else {
             // Non-spatial audio should be Opus
             if codec != "opus" {
-                errors.push(format!("Stream {}: Expected Opus for non-spatial audio, found {}", i, codec));
+                errors.push(format!(
+                    "Stream {}: Expected Opus for non-spatial audio, found {}",
+                    i, codec
+                ));
             } else {
                 opus_count += 1;
             }
@@ -116,7 +130,10 @@ fn validate_with_spatial_info(
                 }
             }
             (preserved, opus) => {
-                format!("{} spatial audio tracks preserved, {} Opus tracks", preserved, opus)
+                format!(
+                    "{} spatial audio tracks preserved, {} Opus tracks",
+                    preserved, opus
+                )
             }
         };
         (true, Some(message))
@@ -126,7 +143,10 @@ fn validate_with_spatial_info(
 }
 
 /// Validates audio codecs without spatial audio information (legacy behavior)
-fn validate_without_spatial_info(audio_codecs: &[String], actual_track_count: usize) -> (bool, Option<String>) {
+fn validate_without_spatial_info(
+    audio_codecs: &[String],
+    actual_track_count: usize,
+) -> (bool, Option<String>) {
     let non_opus_codecs: Vec<&String> = audio_codecs
         .iter()
         .filter(|&codec| codec != "opus")
@@ -142,12 +162,16 @@ fn validate_without_spatial_info(audio_codecs: &[String], actual_track_count: us
         (true, Some(codec_msg))
     } else {
         // Some non-Opus codecs found
-        let unique_codecs: std::collections::HashSet<&String> = non_opus_codecs.iter().copied().collect();
+        let unique_codecs: std::collections::HashSet<&String> =
+            non_opus_codecs.iter().copied().collect();
         let codec_list: Vec<&str> = unique_codecs.iter().map(|s| s.as_str()).collect();
-        (false, Some(format!(
-            "Expected Opus for all audio tracks, found: {}", 
-            codec_list.join(", ")
-        )))
+        (
+            false,
+            Some(format!(
+                "Expected Opus for all audio tracks, found: {}",
+                codec_list.join(", ")
+            )),
+        )
     }
 }
 
@@ -159,7 +183,7 @@ fn is_preserved_codec(codec: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ffprobe::{FfProbe, Stream, Format};
+    use ffprobe::{FfProbe, Format, Stream};
 
     fn create_test_metadata(audio_codecs: Vec<&str>) -> FfProbe {
         let streams: Vec<Stream> = audio_codecs
@@ -182,7 +206,8 @@ mod tests {
     fn test_audio_codec_validation() {
         // Test all Opus tracks with correct count
         let metadata = create_test_metadata(vec!["opus", "opus"]);
-        let (is_opus_valid, is_count_valid, codecs, message) = validate_audio_codec(&metadata, Some(2), None);
+        let (is_opus_valid, is_count_valid, codecs, message) =
+            validate_audio_codec(&metadata, Some(2), None);
         assert!(is_opus_valid);
         assert!(is_count_valid);
         assert_eq!(codecs, vec!["opus", "opus"]);
@@ -191,7 +216,8 @@ mod tests {
 
         // Test single Opus track with correct count
         let metadata = create_test_metadata(vec!["opus"]);
-        let (is_opus_valid, is_count_valid, codecs, message) = validate_audio_codec(&metadata, Some(1), None);
+        let (is_opus_valid, is_count_valid, codecs, message) =
+            validate_audio_codec(&metadata, Some(1), None);
         assert!(is_opus_valid);
         assert!(is_count_valid);
         assert_eq!(codecs, vec!["opus"]);
@@ -200,26 +226,37 @@ mod tests {
 
         // Test mixed codecs
         let metadata = create_test_metadata(vec!["opus", "aac"]);
-        let (is_opus_valid, is_count_valid, codecs, message) = validate_audio_codec(&metadata, Some(2), None);
+        let (is_opus_valid, is_count_valid, codecs, message) =
+            validate_audio_codec(&metadata, Some(2), None);
         assert!(!is_opus_valid);
         assert!(is_count_valid); // Count is correct
         assert_eq!(codecs, vec!["opus", "aac"]);
-        assert!(message.unwrap().contains("Expected Opus for all audio tracks, found: aac"));
+        assert!(
+            message
+                .unwrap()
+                .contains("Expected Opus for all audio tracks, found: aac")
+        );
 
         // Test wrong track count
         let metadata = create_test_metadata(vec!["opus", "opus"]);
-        let (is_opus_valid, is_count_valid, codecs, message) = validate_audio_codec(&metadata, Some(1), None);
+        let (is_opus_valid, is_count_valid, codecs, message) =
+            validate_audio_codec(&metadata, Some(1), None);
         assert!(is_opus_valid); // Codecs are correct
         assert!(!is_count_valid); // Count is wrong
         assert_eq!(codecs, vec!["opus", "opus"]);
-        assert!(message.unwrap().contains("Expected 1 audio tracks, found 2"));
+        assert!(
+            message
+                .unwrap()
+                .contains("Expected 1 audio tracks, found 2")
+        );
 
         // Test no audio streams
         let metadata = FfProbe {
             streams: vec![],
             format: Format::default(),
         };
-        let (is_opus_valid, is_count_valid, codecs, message) = validate_audio_codec(&metadata, Some(1), None);
+        let (is_opus_valid, is_count_valid, codecs, message) =
+            validate_audio_codec(&metadata, Some(1), None);
         assert!(!is_opus_valid);
         assert!(!is_count_valid);
         assert!(codecs.is_empty());
@@ -227,7 +264,8 @@ mod tests {
 
         // Test with no expected count (should pass count validation)
         let metadata = create_test_metadata(vec!["opus"]);
-        let (is_opus_valid, is_count_valid, codecs, message) = validate_audio_codec(&metadata, None, None);
+        let (is_opus_valid, is_count_valid, codecs, message) =
+            validate_audio_codec(&metadata, None, None);
         assert!(is_opus_valid);
         assert!(is_count_valid);
         assert_eq!(codecs, vec!["opus"]);
@@ -239,7 +277,8 @@ mod tests {
         // Test single spatial audio (TrueHD) - should pass
         let metadata = create_test_metadata(vec!["truehd"]);
         let spatial_flags = &[true];
-        let (is_valid, is_count_valid, codecs, message) = validate_audio_codec(&metadata, Some(1), Some(spatial_flags));
+        let (is_valid, is_count_valid, codecs, message) =
+            validate_audio_codec(&metadata, Some(1), Some(spatial_flags));
         assert!(is_valid, "Spatial TrueHD should be valid");
         assert!(is_count_valid);
         assert_eq!(codecs, vec!["truehd"]);
@@ -248,7 +287,8 @@ mod tests {
         // Test single non-spatial audio with Opus - should pass
         let metadata = create_test_metadata(vec!["opus"]);
         let spatial_flags = &[false];
-        let (is_valid, is_count_valid, codecs, message) = validate_audio_codec(&metadata, Some(1), Some(spatial_flags));
+        let (is_valid, is_count_valid, codecs, message) =
+            validate_audio_codec(&metadata, Some(1), Some(spatial_flags));
         assert!(is_valid, "Non-spatial Opus should be valid");
         assert!(is_count_valid);
         assert_eq!(codecs, vec!["opus"]);
@@ -257,37 +297,63 @@ mod tests {
         // Test mixed streams (spatial TrueHD + non-spatial Opus) - should pass
         let metadata = create_test_metadata(vec!["truehd", "opus"]);
         let spatial_flags = &[true, false];
-        let (is_valid, is_count_valid, codecs, message) = validate_audio_codec(&metadata, Some(2), Some(spatial_flags));
+        let (is_valid, is_count_valid, codecs, message) =
+            validate_audio_codec(&metadata, Some(2), Some(spatial_flags));
         assert!(is_valid, "Mixed spatial and non-spatial should be valid");
         assert!(is_count_valid);
         assert_eq!(codecs, vec!["truehd", "opus"]);
-        assert!(message.unwrap().contains("1 spatial audio tracks preserved, 1 Opus tracks"));
+        assert!(
+            message
+                .unwrap()
+                .contains("1 spatial audio tracks preserved, 1 Opus tracks")
+        );
 
         // Test spatial audio with wrong codec (should be TrueHD but found AAC) - should fail
         let metadata = create_test_metadata(vec!["aac"]);
         let spatial_flags = &[true];
-        let (is_valid, is_count_valid, codecs, message) = validate_audio_codec(&metadata, Some(1), Some(spatial_flags));
-        assert!(!is_valid, "Spatial audio with wrong codec should be invalid");
+        let (is_valid, is_count_valid, codecs, message) =
+            validate_audio_codec(&metadata, Some(1), Some(spatial_flags));
+        assert!(
+            !is_valid,
+            "Spatial audio with wrong codec should be invalid"
+        );
         assert!(is_count_valid);
         assert_eq!(codecs, vec!["aac"]);
-        assert!(message.unwrap().contains("Expected preserved spatial audio (TrueHD/DTS), found aac"));
+        assert!(
+            message
+                .unwrap()
+                .contains("Expected preserved spatial audio (TrueHD/DTS), found aac")
+        );
 
         // Test non-spatial audio with wrong codec (should be Opus but found AAC) - should fail
         let metadata = create_test_metadata(vec!["aac"]);
         let spatial_flags = &[false];
-        let (is_valid, is_count_valid, codecs, message) = validate_audio_codec(&metadata, Some(1), Some(spatial_flags));
-        assert!(!is_valid, "Non-spatial audio with wrong codec should be invalid");
+        let (is_valid, is_count_valid, codecs, message) =
+            validate_audio_codec(&metadata, Some(1), Some(spatial_flags));
+        assert!(
+            !is_valid,
+            "Non-spatial audio with wrong codec should be invalid"
+        );
         assert!(is_count_valid);
         assert_eq!(codecs, vec!["aac"]);
-        assert!(message.unwrap().contains("Expected Opus for non-spatial audio, found aac"));
+        assert!(
+            message
+                .unwrap()
+                .contains("Expected Opus for non-spatial audio, found aac")
+        );
 
         // Test multiple spatial tracks - should pass
         let metadata = create_test_metadata(vec!["truehd", "dts"]);
         let spatial_flags = &[true, true];
-        let (is_valid, is_count_valid, codecs, message) = validate_audio_codec(&metadata, Some(2), Some(spatial_flags));
+        let (is_valid, is_count_valid, codecs, message) =
+            validate_audio_codec(&metadata, Some(2), Some(spatial_flags));
         assert!(is_valid, "Multiple spatial tracks should be valid");
         assert!(is_count_valid);
         assert_eq!(codecs, vec!["truehd", "dts"]);
-        assert!(message.unwrap().contains("All 2 spatial audio tracks preserved"));
+        assert!(
+            message
+                .unwrap()
+                .contains("All 2 spatial audio tracks preserved")
+        );
     }
 }

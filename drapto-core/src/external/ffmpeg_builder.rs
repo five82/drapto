@@ -24,7 +24,8 @@ impl Default for FfmpegCommandBuilder {
 
 impl FfmpegCommandBuilder {
     /// Creates a new `FFmpeg` command builder with sensible defaults
-    #[must_use] pub fn new() -> Self {
+    #[must_use]
+    pub fn new() -> Self {
         Self {
             cmd: FfmpegCommand::new(),
             use_hw_decode: false,
@@ -33,19 +34,22 @@ impl FfmpegCommandBuilder {
     }
 
     /// Enables hardware decoding (`VideoToolbox` on macOS, `VAAPI` on Linux)
-    #[must_use] pub fn with_hardware_accel(mut self, enabled: bool) -> Self {
+    #[must_use]
+    pub fn with_hardware_accel(mut self, enabled: bool) -> Self {
         self.use_hw_decode = enabled;
         self
     }
 
     /// Sets whether to hide the `FFmpeg` banner
-    #[must_use] pub fn with_hide_banner(mut self, hide: bool) -> Self {
+    #[must_use]
+    pub fn with_hide_banner(mut self, hide: bool) -> Self {
         self.hide_banner = hide;
         self
     }
 
     /// Builds the `FFmpeg` command with all configured options
-    #[must_use] pub fn build(mut self) -> FfmpegCommand {
+    #[must_use]
+    pub fn build(mut self) -> FfmpegCommand {
         if self.hide_banner {
             self.cmd.arg("-hide_banner");
         }
@@ -66,12 +70,14 @@ pub struct VideoFilterChain {
 
 impl VideoFilterChain {
     /// Creates a new empty filter chain
-    #[must_use] pub fn new() -> Self {
+    #[must_use]
+    pub fn new() -> Self {
         Self::default()
     }
 
     /// Adds a denoising filter to the chain
-    #[must_use] pub fn add_denoise(mut self, params: &str) -> Self {
+    #[must_use]
+    pub fn add_denoise(mut self, params: &str) -> Self {
         if !params.is_empty() {
             if params.starts_with("hqdn3d=") {
                 self.filters.push(params.to_string());
@@ -83,7 +89,8 @@ impl VideoFilterChain {
     }
 
     /// Adds a crop filter to the chain
-    #[must_use] pub fn add_crop(mut self, crop: &str) -> Self {
+    #[must_use]
+    pub fn add_crop(mut self, crop: &str) -> Self {
         if !crop.is_empty() {
             self.filters.push(crop.to_string());
         }
@@ -91,7 +98,8 @@ impl VideoFilterChain {
     }
 
     /// Adds a custom filter to the chain
-    #[must_use] pub fn add_filter(mut self, filter: String) -> Self {
+    #[must_use]
+    pub fn add_filter(mut self, filter: String) -> Self {
         if !filter.is_empty() {
             self.filters.push(filter);
         }
@@ -99,7 +107,8 @@ impl VideoFilterChain {
     }
 
     /// Builds the filter chain into a single filter string
-    #[must_use] pub fn build(self) -> Option<String> {
+    #[must_use]
+    pub fn build(self) -> Option<String> {
         if self.filters.is_empty() {
             None
         } else {
@@ -115,20 +124,21 @@ pub struct SvtAv1ParamsBuilder {
 
 impl SvtAv1ParamsBuilder {
     /// Creates a new SVT-AV1 parameters builder
-    #[must_use] pub fn new() -> Self {
-        Self {
-            params: vec![],
-        }
+    #[must_use]
+    pub fn new() -> Self {
+        Self { params: vec![] }
     }
 
     /// Sets the tune parameter
-    #[must_use] pub fn with_tune(mut self, tune: u8) -> Self {
+    #[must_use]
+    pub fn with_tune(mut self, tune: u8) -> Self {
         self.params.push(("tune".to_string(), tune.to_string()));
         self
     }
 
     /// Sets the film grain synthesis level
-    #[must_use] pub fn with_film_grain(mut self, level: u8) -> Self {
+    #[must_use]
+    pub fn with_film_grain(mut self, level: u8) -> Self {
         if level > 0 {
             self.params
                 .push(("film-grain".to_string(), level.to_string()));
@@ -139,13 +149,15 @@ impl SvtAv1ParamsBuilder {
     }
 
     /// Adds a custom parameter
-    #[must_use] pub fn add_param(mut self, key: &str, value: &str) -> Self {
+    #[must_use]
+    pub fn add_param(mut self, key: &str, value: &str) -> Self {
         self.params.push((key.to_string(), value.to_string()));
         self
     }
 
     /// Builds the parameters into a colon-separated string
-    #[must_use] pub fn build(self) -> String {
+    #[must_use]
+    pub fn build(self) -> String {
         self.params
             .into_iter()
             .map(|(k, v)| format!("{k}={v}"))
@@ -173,23 +185,19 @@ mod tests {
     #[test]
     fn test_video_filter_chain_single_filter() {
         // Test crop filter
-        let chain = VideoFilterChain::new()
-            .add_crop("crop=1920:800:0:140");
+        let chain = VideoFilterChain::new().add_crop("crop=1920:800:0:140");
         assert_eq!(chain.build(), Some("crop=1920:800:0:140".to_string()));
-        
+
         // Test denoise filter with full format
-        let chain = VideoFilterChain::new()
-            .add_denoise("hqdn3d=0.5:0.4:2:2");
+        let chain = VideoFilterChain::new().add_denoise("hqdn3d=0.5:0.4:2:2");
         assert_eq!(chain.build(), Some("hqdn3d=0.5:0.4:2:2".to_string()));
-        
+
         // Test denoise filter without prefix
-        let chain = VideoFilterChain::new()
-            .add_denoise("0.5:0.4:2:2");
+        let chain = VideoFilterChain::new().add_denoise("0.5:0.4:2:2");
         assert_eq!(chain.build(), Some("hqdn3d=0.5:0.4:2:2".to_string()));
-        
+
         // Test custom filter
-        let chain = VideoFilterChain::new()
-            .add_filter("scale=1920:1080".to_string());
+        let chain = VideoFilterChain::new().add_filter("scale=1920:1080".to_string());
         assert_eq!(chain.build(), Some("scale=1920:1080".to_string()));
     }
 
@@ -199,7 +207,7 @@ mod tests {
             .add_crop("crop=1920:800:0:140")
             .add_denoise("0.5:0.4:2:2")
             .add_filter("scale=1920:1080".to_string());
-        
+
         assert_eq!(
             chain.build(),
             Some("crop=1920:800:0:140,hqdn3d=0.5:0.4:2:2,scale=1920:1080".to_string())
@@ -213,7 +221,7 @@ mod tests {
             .add_denoise("")
             .add_filter("".to_string())
             .add_crop("crop=1920:1080:0:0");
-        
+
         assert_eq!(chain.build(), Some("crop=1920:1080:0:0".to_string()));
     }
 
@@ -225,33 +233,25 @@ mod tests {
 
     #[test]
     fn test_svtav1_params_builder_with_tune() {
-        let builder = SvtAv1ParamsBuilder::new()
-            .with_tune(3);
+        let builder = SvtAv1ParamsBuilder::new().with_tune(3);
         assert_eq!(builder.build(), "tune=3");
-        
-        let builder = SvtAv1ParamsBuilder::new()
-            .with_tune(0);
+
+        let builder = SvtAv1ParamsBuilder::new().with_tune(0);
         assert_eq!(builder.build(), "tune=0");
     }
 
     #[test]
     fn test_svtav1_params_builder_with_film_grain() {
         // Test with film grain
-        let builder = SvtAv1ParamsBuilder::new()
-            .with_tune(3)
-            .with_film_grain(4);
+        let builder = SvtAv1ParamsBuilder::new().with_tune(3).with_film_grain(4);
         assert_eq!(builder.build(), "tune=3:film-grain=4:film-grain-denoise=0");
-        
+
         // Test with no film grain (0)
-        let builder = SvtAv1ParamsBuilder::new()
-            .with_tune(3)
-            .with_film_grain(0);
+        let builder = SvtAv1ParamsBuilder::new().with_tune(3).with_film_grain(0);
         assert_eq!(builder.build(), "tune=3");
-        
+
         // Test with max film grain
-        let builder = SvtAv1ParamsBuilder::new()
-            .with_tune(3)
-            .with_film_grain(50);
+        let builder = SvtAv1ParamsBuilder::new().with_tune(3).with_film_grain(50);
         assert_eq!(builder.build(), "tune=3:film-grain=50:film-grain-denoise=0");
     }
 
@@ -262,7 +262,7 @@ mod tests {
             .add_param("preset", "6")
             .add_param("crf", "27")
             .with_film_grain(4);
-        
+
         assert_eq!(
             builder.build(),
             "tune=3:preset=6:crf=27:film-grain=4:film-grain-denoise=0"
@@ -277,7 +277,7 @@ mod tests {
             .add_param("a", "1")
             .add_param("b", "2")
             .add_param("c", "3");
-        
+
         assert_eq!(builder.build(), "tune=3:a=1:b=2:c=3");
     }
 
@@ -291,15 +291,13 @@ mod tests {
     #[test]
     fn test_ffmpeg_command_builder_with_options() {
         // Test with hardware acceleration
-        let builder = FfmpegCommandBuilder::new()
-            .with_hardware_accel(true);
+        let builder = FfmpegCommandBuilder::new().with_hardware_accel(true);
         assert_eq!(builder.use_hw_decode, true);
-        
+
         // Test without hide banner
-        let builder = FfmpegCommandBuilder::new()
-            .with_hide_banner(false);
+        let builder = FfmpegCommandBuilder::new().with_hide_banner(false);
         assert_eq!(builder.hide_banner, false);
-        
+
         // Test chaining
         let builder = FfmpegCommandBuilder::new()
             .with_hardware_accel(true)

@@ -17,7 +17,7 @@ use ntfy::payload::{Payload, Priority as NtfyPriority};
 pub struct Notification {
     pub title: String,
     pub message: String,
-    pub priority: u8,  // 1-5, where 5 is highest
+    pub priority: u8, // 1-5, where 5 is highest
     pub tags: Vec<String>,
 }
 
@@ -142,7 +142,10 @@ impl NtfyNotificationSender {
             4 => NtfyPriority::High,
             5 => NtfyPriority::Max,
             _ => {
-                log::warn!("Invalid ntfy priority value: {}, using default", notification.priority);
+                log::warn!(
+                    "Invalid ntfy priority value: {}, using default",
+                    notification.priority
+                );
                 NtfyPriority::Default
             }
         };

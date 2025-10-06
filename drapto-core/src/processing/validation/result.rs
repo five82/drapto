@@ -56,24 +56,36 @@ pub struct ValidationResult {
 impl ValidationResult {
     /// Returns true if all validations pass
     pub fn is_valid(&self) -> bool {
-        self.is_av1 && self.is_10_bit && self.is_crop_correct && self.is_duration_correct && self.is_hdr_correct && self.is_audio_opus && self.is_audio_track_count_correct && self.is_sync_preserved
+        self.is_av1
+            && self.is_10_bit
+            && self.is_crop_correct
+            && self.is_duration_correct
+            && self.is_hdr_correct
+            && self.is_audio_opus
+            && self.is_audio_track_count_correct
+            && self.is_sync_preserved
     }
 
     /// Returns a list of validation failures
     pub fn get_failures(&self) -> Vec<String> {
         let mut failures = Vec::new();
-        
+
         if !self.is_av1 {
             let codec = self.codec_name.as_deref().unwrap_or("unknown");
             failures.push(format!("Expected AV1 codec, found: {}", codec));
         }
-        
+
         if !self.is_10_bit {
             let pix_fmt = self.pixel_format.as_deref().unwrap_or("unknown");
-            let bit_depth = self.bit_depth.map_or("unknown".to_string(), |d| d.to_string());
-            failures.push(format!("Expected 10-bit depth, found: {} bit (pixel format: {})", bit_depth, pix_fmt));
+            let bit_depth = self
+                .bit_depth
+                .map_or("unknown".to_string(), |d| d.to_string());
+            failures.push(format!(
+                "Expected 10-bit depth, found: {} bit (pixel format: {})",
+                bit_depth, pix_fmt
+            ));
         }
-        
+
         if !self.is_crop_correct {
             if let Some(msg) = &self.crop_message {
                 failures.push(format!("Crop validation failed: {}", msg));
@@ -81,7 +93,7 @@ impl ValidationResult {
                 failures.push("Crop validation failed".to_string());
             }
         }
-        
+
         if !self.is_duration_correct {
             if let Some(msg) = &self.duration_message {
                 failures.push(format!("Duration validation failed: {}", msg));
@@ -89,7 +101,7 @@ impl ValidationResult {
                 failures.push("Duration validation failed".to_string());
             }
         }
-        
+
         if !self.is_hdr_correct {
             if let Some(msg) = &self.hdr_message {
                 failures.push(format!("HDR validation failed: {}", msg));
@@ -97,7 +109,7 @@ impl ValidationResult {
                 failures.push("HDR validation failed".to_string());
             }
         }
-        
+
         if !self.is_audio_opus || !self.is_audio_track_count_correct {
             if let Some(msg) = &self.audio_message {
                 failures.push(format!("Audio validation failed: {}", msg));
@@ -105,7 +117,7 @@ impl ValidationResult {
                 failures.push("Audio validation failed".to_string());
             }
         }
-        
+
         if !self.is_sync_preserved {
             if let Some(msg) = &self.sync_message {
                 failures.push(format!("Sync validation failed: {}", msg));
@@ -113,14 +125,14 @@ impl ValidationResult {
                 failures.push("Sync validation failed".to_string());
             }
         }
-        
+
         failures
     }
 
     /// Returns individual validation step results
     pub fn get_validation_steps(&self) -> Vec<(String, bool, String)> {
         let mut steps = Vec::new();
-        
+
         // AV1 codec validation
         let codec_name = self.codec_name.as_deref().unwrap_or("unknown");
         let codec_result = if self.is_av1 {
@@ -129,16 +141,18 @@ impl ValidationResult {
             format!("Expected AV1, found: {}", codec_name)
         };
         steps.push(("Video codec".to_string(), self.is_av1, codec_result));
-        
+
         // 10-bit depth validation
         let bit_depth_result = if self.is_10_bit {
             format!("{}-bit depth", self.bit_depth.unwrap_or(10))
         } else {
-            let depth = self.bit_depth.map_or("unknown".to_string(), |d| d.to_string());
+            let depth = self
+                .bit_depth
+                .map_or("unknown".to_string(), |d| d.to_string());
             format!("Expected 10-bit, found: {}-bit", depth)
         };
         steps.push(("Bit depth".to_string(), self.is_10_bit, bit_depth_result));
-        
+
         // Crop validation
         let crop_result = if self.is_crop_correct {
             self.crop_message
@@ -149,8 +163,12 @@ impl ValidationResult {
                 .clone()
                 .unwrap_or_else(|| "Crop validation failed".to_string())
         };
-        steps.push(("Crop detection".to_string(), self.is_crop_correct, crop_result));
-        
+        steps.push((
+            "Crop detection".to_string(),
+            self.is_crop_correct,
+            crop_result,
+        ));
+
         // Duration validation
         let duration_result = if self.is_duration_correct {
             self.duration_message
@@ -161,8 +179,12 @@ impl ValidationResult {
                 .clone()
                 .unwrap_or_else(|| "Duration validation failed".to_string())
         };
-        steps.push(("Video duration".to_string(), self.is_duration_correct, duration_result));
-        
+        steps.push((
+            "Video duration".to_string(),
+            self.is_duration_correct,
+            duration_result,
+        ));
+
         // HDR validation
         let hdr_result = if self.is_hdr_correct {
             self.hdr_message
@@ -173,8 +195,12 @@ impl ValidationResult {
                 .clone()
                 .unwrap_or_else(|| "HDR validation failed".to_string())
         };
-        steps.push(("HDR/SDR status".to_string(), self.is_hdr_correct, hdr_result));
-        
+        steps.push((
+            "HDR/SDR status".to_string(),
+            self.is_hdr_correct,
+            hdr_result,
+        ));
+
         // Audio validation (codec and track count)
         let audio_valid = self.is_audio_opus && self.is_audio_track_count_correct;
         let audio_result = if audio_valid {
@@ -187,7 +213,7 @@ impl ValidationResult {
                 .unwrap_or_else(|| "Audio validation failed".to_string())
         };
         steps.push(("Audio tracks".to_string(), audio_valid, audio_result));
-        
+
         // Sync validation
         let sync_result = if self.is_sync_preserved {
             self.sync_message
@@ -198,8 +224,12 @@ impl ValidationResult {
                 .clone()
                 .unwrap_or_else(|| "Sync validation failed".to_string())
         };
-        steps.push(("Audio/video sync".to_string(), self.is_sync_preserved, sync_result));
-        
+        steps.push((
+            "Audio/video sync".to_string(),
+            self.is_sync_preserved,
+            sync_result,
+        ));
+
         steps
     }
 }
@@ -236,7 +266,7 @@ mod tests {
             sync_drift_ms: Some(15.0),
             sync_message: Some("Audio/video sync preserved (drift: 15.0ms)".to_string()),
         };
-        
+
         let failures = result.get_failures();
         assert_eq!(failures.len(), 1);
         assert!(failures[0].contains("Expected AV1 codec"));

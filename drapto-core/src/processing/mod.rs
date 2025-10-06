@@ -22,7 +22,7 @@ pub mod noise_analysis;
 /// Post-encode validation
 pub mod validation;
 
+pub use crop_detection::detect_crop;
+pub use validation::{ValidationResult, validate_output_video};
 pub use video::process_videos;
 pub use video_properties::VideoProperties;
-pub use crop_detection::detect_crop;
-pub use validation::{validate_output_video, ValidationResult};

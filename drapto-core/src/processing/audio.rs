@@ -4,7 +4,7 @@
 //! detecting the number of channels and calculating appropriate bitrates for
 //! encoding.
 
-use crate::external::{get_audio_channels, get_audio_stream_info, AudioStreamInfo};
+use crate::external::{AudioStreamInfo, get_audio_channels, get_audio_stream_info};
 
 use std::path::Path;
 
@@ -19,7 +19,6 @@ pub fn calculate_audio_bitrate(channels: u32) -> u32 {
     }
 }
 
-
 /// Analyzes audio streams and returns channel information without logging.
 /// Returns empty vector on error (non-critical operation).
 pub fn get_audio_channels_quiet(input_path: &Path) -> Vec<u32> {
@@ -31,14 +30,18 @@ pub fn get_audio_channels_quiet(input_path: &Path) -> Vec<u32> {
 /// Returns empty vector on error (non-critical operation).
 pub fn analyze_and_log_audio(input_path: &Path) -> Vec<u32> {
     // Extract filename for logging purposes
-    let filename = crate::utils::get_filename_safe(input_path)
-        .unwrap_or_else(|_| "unknown_file".to_string());
+    let filename =
+        crate::utils::get_filename_safe(input_path).unwrap_or_else(|_| "unknown_file".to_string());
 
     let audio_channels = match get_audio_channels(input_path) {
         Ok(channels) => channels,
         Err(e) => {
             // Audio info is non-critical - warn and continue
-            log::warn!("Error getting audio channels for {}: {}. Using empty list.", filename, e);
+            log::warn!(
+                "Error getting audio channels for {}: {}. Using empty list.",
+                filename,
+                e
+            );
             log::info!("Audio streams: Error detecting audio");
             return vec![];
         }
@@ -86,9 +89,8 @@ pub fn analyze_and_log_audio(input_path: &Path) -> Vec<u32> {
 /// Returns None on error (non-critical operation).
 pub fn analyze_and_log_audio_detailed(input_path: &Path) -> Option<Vec<AudioStreamInfo>> {
     // Extract filename for logging purposes
-    let filename = crate::utils::get_filename_safe(input_path)
-        .unwrap_or_else(|_| "unknown_file".to_string());
-    
+    let filename =
+        crate::utils::get_filename_safe(input_path).unwrap_or_else(|_| "unknown_file".to_string());
 
     let audio_streams = match get_audio_stream_info(input_path) {
         Ok(streams) => {
@@ -96,19 +98,26 @@ pub fn analyze_and_log_audio_detailed(input_path: &Path) -> Option<Vec<AudioStre
             for stream in &streams {
                 log::info!(
                     "Stream {}: codec={}, profile={:?}, spatial={}",
-                    stream.index, stream.codec_name, stream.profile, stream.is_spatial
+                    stream.index,
+                    stream.codec_name,
+                    stream.profile,
+                    stream.is_spatial
                 );
             }
             streams
-        },
+        }
         Err(e) => {
             // Audio info is non-critical - warn and continue
-            log::warn!("Error getting audio stream info for {}: {}. Using fallback.", filename, e);
+            log::warn!(
+                "Error getting audio stream info for {}: {}. Using fallback.",
+                filename,
+                e
+            );
             log::info!("Audio streams: Error detecting audio details");
             return None;
         }
     };
-    
+
     if audio_streams.is_empty() {
         log::info!("Audio streams: None detected");
         return Some(vec![]);
@@ -118,12 +127,16 @@ pub fn analyze_and_log_audio_detailed(input_path: &Path) -> Option<Vec<AudioStre
     if audio_streams.len() == 1 {
         let stream = &audio_streams[0];
         let spatial_note = if stream.is_spatial {
-            format!(" [Spatial: {} {}]", stream.codec_name, stream.profile.as_deref().unwrap_or(""))
+            format!(
+                " [Spatial: {} {}]",
+                stream.codec_name,
+                stream.profile.as_deref().unwrap_or("")
+            )
         } else {
             String::new()
         };
         log::info!("Audio: {} channels{}", stream.channels, spatial_note);
-        
+
         if stream.is_spatial {
             log::info!("Processing: Will copy spatial audio to preserve Atmos/DTS:X");
         } else {
@@ -132,10 +145,14 @@ pub fn analyze_and_log_audio_detailed(input_path: &Path) -> Option<Vec<AudioStre
         }
     } else {
         log::info!("Audio: {} streams detected", audio_streams.len());
-        
+
         for stream in &audio_streams {
             let spatial_note = if stream.is_spatial {
-                format!(" [Spatial: {} {}, will copy]", stream.codec_name, stream.profile.as_deref().unwrap_or(""))
+                format!(
+                    " [Spatial: {} {}, will copy]",
+                    stream.codec_name,
+                    stream.profile.as_deref().unwrap_or("")
+                )
             } else {
                 let bitrate = calculate_audio_bitrate(stream.channels);
                 format!(" [{}kbps Opus]", bitrate)
@@ -164,10 +181,18 @@ mod tests {
         assert_eq!(calculate_audio_bitrate(2), 128, "Stereo should be 128kbps");
         assert_eq!(calculate_audio_bitrate(6), 256, "5.1 should be 256kbps");
         assert_eq!(calculate_audio_bitrate(8), 384, "7.1 should be 384kbps");
-        
+
         // Test non-standard configurations
-        assert_eq!(calculate_audio_bitrate(4), 192, "4-channel should be 4 * 48kbps");
-        assert_eq!(calculate_audio_bitrate(10), 480, "10-channel should be 10 * 48kbps");
+        assert_eq!(
+            calculate_audio_bitrate(4),
+            192,
+            "4-channel should be 4 * 48kbps"
+        );
+        assert_eq!(
+            calculate_audio_bitrate(10),
+            480,
+            "10-channel should be 10 * 48kbps"
+        );
     }
 
     #[test]
@@ -183,7 +208,7 @@ mod tests {
 
         // Test that spatial audio is properly identified and formatted
         let streams = vec![spatial_stream];
-        
+
         // Test the logic that would be used in analyze_and_log_audio_detailed
         assert_eq!(streams.len(), 1, "Should have one stream");
         assert!(streams[0].is_spatial, "Stream should be spatial");
@@ -215,22 +240,28 @@ mod tests {
         // Test mixed stream analysis
         assert_eq!(streams.len(), 2, "Should have two streams");
         assert!(streams[0].is_spatial, "First stream should be spatial");
-        assert!(!streams[1].is_spatial, "Second stream should not be spatial");
-        
+        assert!(
+            !streams[1].is_spatial,
+            "Second stream should not be spatial"
+        );
+
         // Test codec display logic
         let spatial_count = streams.iter().filter(|s| s.is_spatial).count();
         let non_spatial_count = streams.len() - spatial_count;
-        
+
         assert_eq!(spatial_count, 1, "Should have one spatial stream");
         assert_eq!(non_spatial_count, 1, "Should have one non-spatial stream");
-        
+
         // This matches the logic in video.rs for codec display
         let expected_display = match (spatial_count, non_spatial_count) {
             (0, _) => "Opus",
             (_, 0) => "Copy (Spatial Audio Preserved)",
             (_, _) => "Mixed (Spatial + Opus)",
         };
-        assert_eq!(expected_display, "Mixed (Spatial + Opus)", "Should show mixed codec display");
+        assert_eq!(
+            expected_display, "Mixed (Spatial + Opus)",
+            "Should show mixed codec display"
+        );
     }
 
     #[test]
@@ -265,7 +296,10 @@ mod tests {
             (_, 0) => "Copy (Spatial Audio Preserved)",
             (_, _) => "Mixed (Spatial + Opus)",
         };
-        assert_eq!(expected_display, "Copy (Spatial Audio Preserved)", "Should show spatial preservation");
+        assert_eq!(
+            expected_display, "Copy (Spatial Audio Preserved)",
+            "Should show spatial preservation"
+        );
     }
 
     #[test]
@@ -333,16 +367,21 @@ mod tests {
         assert_eq!(channel_desc, "7.1", "Should format 8 channels as 7.1");
 
         let spatial_format = if spatial_stream.is_spatial {
-            format!("{} ({} {}) - Preserved", 
-                channel_desc, 
-                spatial_stream.codec_name, 
-                spatial_stream.profile.as_deref().unwrap_or(""))
+            format!(
+                "{} ({} {}) - Preserved",
+                channel_desc,
+                spatial_stream.codec_name,
+                spatial_stream.profile.as_deref().unwrap_or("")
+            )
         } else {
             let bitrate = calculate_audio_bitrate(spatial_stream.channels);
             format!("{} @ {}kbps Opus", channel_desc, bitrate)
         };
-        assert!(spatial_format.contains("7.1 (truehd Dolby TrueHD + Dolby Atmos) - Preserved"), 
-               "Spatial stream should be formatted correctly: {}", spatial_format);
+        assert!(
+            spatial_format.contains("7.1 (truehd Dolby TrueHD + Dolby Atmos) - Preserved"),
+            "Spatial stream should be formatted correctly: {}",
+            spatial_format
+        );
 
         // Test single stream formatting (non-spatial)
         let stereo_desc = match non_spatial_stream.channels {
@@ -350,16 +389,19 @@ mod tests {
             _ => format!("{} channels", non_spatial_stream.channels),
         };
         let non_spatial_format = if non_spatial_stream.is_spatial {
-            format!("{} ({} {}) - Preserved", 
-                stereo_desc, 
-                non_spatial_stream.codec_name, 
-                non_spatial_stream.profile.as_deref().unwrap_or(""))
+            format!(
+                "{} ({} {}) - Preserved",
+                stereo_desc,
+                non_spatial_stream.codec_name,
+                non_spatial_stream.profile.as_deref().unwrap_or("")
+            )
         } else {
             let bitrate = calculate_audio_bitrate(non_spatial_stream.channels);
             format!("{} @ {}kbps Opus", stereo_desc, bitrate)
         };
-        assert_eq!(non_spatial_format, "Stereo @ 128kbps Opus", 
-                  "Non-spatial stream should be formatted correctly");
+        assert_eq!(
+            non_spatial_format, "Stereo @ 128kbps Opus",
+            "Non-spatial stream should be formatted correctly"
+        );
     }
 }
-

@@ -4,25 +4,42 @@
 //! drapto-core library. These include functions for duration formatting,
 //! byte formatting, and path manipulation.
 
-use std::path::{Path, PathBuf};
 use crate::error::{CoreError, CoreResult};
+use std::path::{Path, PathBuf};
 
 /// Checks if the given path is a valid video file that can be processed.
 /// Supports common video file formats (case-insensitive).
 #[must_use]
 pub fn is_valid_video_file(path: &Path) -> bool {
-    path.is_file() && 
-    path.extension()
-        .and_then(|ext| ext.to_str())
-        .map(|ext_str| {
-            matches!(ext_str.to_lowercase().as_str(), 
-                "mkv" | "wmv" | "ts" | "avi" | "mp4" | "m4v" | "mpg" | "mpeg" | "mov" | "webm" | "flv" | "m2ts" | "ogv" | "vob")
-        })
-        .unwrap_or(false)
+    path.is_file()
+        && path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext_str| {
+                matches!(
+                    ext_str.to_lowercase().as_str(),
+                    "mkv"
+                        | "wmv"
+                        | "ts"
+                        | "avi"
+                        | "mp4"
+                        | "m4v"
+                        | "mpg"
+                        | "mpeg"
+                        | "mov"
+                        | "webm"
+                        | "flv"
+                        | "m2ts"
+                        | "ogv"
+                        | "vob"
+                )
+            })
+            .unwrap_or(false)
 }
 
 /// Formats seconds as HH:MM:SS (e.g., 3725.0 -> "01:02:05"). Returns "??:??:??" for invalid inputs.
-#[must_use] pub fn format_duration(seconds: f64) -> String {
+#[must_use]
+pub fn format_duration(seconds: f64) -> String {
     if seconds < 0.0 || !seconds.is_finite() {
         return "??:??:??".to_string();
     }
@@ -35,7 +52,8 @@ pub fn is_valid_video_file(path: &Path) -> bool {
 }
 
 /// Formats bytes with appropriate binary units (B, KiB, MiB, GiB).
-#[must_use] pub fn format_bytes(bytes: u64) -> String {
+#[must_use]
+pub fn format_bytes(bytes: u64) -> String {
     const KIB: f64 = 1024.0;
     const MIB: f64 = KIB * 1024.0;
     const GIB: f64 = MIB * 1024.0;
@@ -53,7 +71,8 @@ pub fn is_valid_video_file(path: &Path) -> bool {
 }
 
 /// Parses FFmpeg time string (HH:MM:SS.MS) to seconds. Returns None if invalid.
-#[must_use] pub fn parse_ffmpeg_time(time: &str) -> Option<f64> {
+#[must_use]
+pub fn parse_ffmpeg_time(time: &str) -> Option<f64> {
     let parts: Vec<&str> = time.split(':').collect();
     if parts.len() == 3 {
         let hours = parts[0].parse::<f64>().ok()?;
@@ -71,55 +90,66 @@ pub struct SafePath;
 impl SafePath {
     /// Safely get parent directory with proper error handling
     pub fn get_parent_safe(path: &Path) -> CoreResult<&Path> {
-        path.parent()
-            .ok_or_else(|| CoreError::PathError(
-                format!("Path has no parent directory: {}", path.display())
-            ))
+        path.parent().ok_or_else(|| {
+            CoreError::PathError(format!("Path has no parent directory: {}", path.display()))
+        })
     }
-    
+
     /// Get filename with UTF-8 validation
     pub fn get_filename_utf8(path: &Path) -> CoreResult<String> {
-        let filename = path.file_name()
-            .ok_or_else(|| CoreError::PathError(
-                format!("Path has no filename: {}", path.display())
-            ))?
+        let filename = path
+            .file_name()
+            .ok_or_else(|| {
+                CoreError::PathError(format!("Path has no filename: {}", path.display()))
+            })?
             .to_str()
-            .ok_or_else(|| CoreError::PathError(
-                format!("Filename contains invalid UTF-8: {}", path.display())
-            ))?;
+            .ok_or_else(|| {
+                CoreError::PathError(format!(
+                    "Filename contains invalid UTF-8: {}",
+                    path.display()
+                ))
+            })?;
         Ok(filename.to_string())
     }
-    
+
     /// Get file stem with UTF-8 validation
     pub fn get_file_stem_utf8(path: &Path) -> CoreResult<String> {
-        let stem = path.file_stem()
-            .ok_or_else(|| CoreError::PathError(
-                format!("Path has no file stem: {}", path.display())
-            ))?
+        let stem = path
+            .file_stem()
+            .ok_or_else(|| {
+                CoreError::PathError(format!("Path has no file stem: {}", path.display()))
+            })?
             .to_str()
-            .ok_or_else(|| CoreError::PathError(
-                format!("File stem contains invalid UTF-8: {}", path.display())
-            ))?;
+            .ok_or_else(|| {
+                CoreError::PathError(format!(
+                    "File stem contains invalid UTF-8: {}",
+                    path.display()
+                ))
+            })?;
         Ok(stem.to_string())
     }
-    
+
     /// Ensure directory exists and is writable
     pub fn ensure_directory_writable(dir: &Path) -> CoreResult<()> {
         // Create directory if it doesn't exist
         if !dir.exists() {
-            std::fs::create_dir_all(dir)
-                .map_err(|e| CoreError::PathError(
-                    format!("Failed to create directory {}: {}", dir.display(), e)
-                ))?;
+            std::fs::create_dir_all(dir).map_err(|e| {
+                CoreError::PathError(format!(
+                    "Failed to create directory {}: {}",
+                    dir.display(),
+                    e
+                ))
+            })?;
         }
-        
+
         // Verify it's actually a directory
         if !dir.is_dir() {
-            return Err(CoreError::PathError(
-                format!("Path exists but is not a directory: {}", dir.display())
-            ));
+            return Err(CoreError::PathError(format!(
+                "Path exists but is not a directory: {}",
+                dir.display()
+            )));
         }
-        
+
         // Test writability with temp file
         let test_file = dir.join(".drapto_write_test");
         match std::fs::File::create(&test_file) {
@@ -128,12 +158,14 @@ impl SafePath {
                 let _ = std::fs::remove_file(&test_file);
                 Ok(())
             }
-            Err(e) => Err(CoreError::PathError(
-                format!("Directory not writable {}: {}", dir.display(), e)
-            ))
+            Err(e) => Err(CoreError::PathError(format!(
+                "Directory not writable {}: {}",
+                dir.display(),
+                e
+            ))),
         }
     }
-    
+
     /// Get available disk space for a path (best effort)
     pub fn get_available_space(path: &Path) -> Option<u64> {
         // This is a simplified implementation
@@ -149,28 +181,32 @@ impl SafePath {
 pub fn validate_paths(input: &Path, output_dir: &Path) -> CoreResult<()> {
     // Validate input exists and is readable
     if !input.exists() {
-        return Err(CoreError::PathError(
-            format!("Input path does not exist: {}", input.display())
-        ));
+        return Err(CoreError::PathError(format!(
+            "Input path does not exist: {}",
+            input.display()
+        )));
     }
-    
+
     // Try to canonicalize paths to resolve symlinks and relative paths
-    let _canonical_input = input.canonicalize()
-        .map_err(|e| CoreError::PathError(
-            format!("Cannot resolve input path {}: {}", input.display(), e)
-        ))?;
-    
+    let _canonical_input = input.canonicalize().map_err(|e| {
+        CoreError::PathError(format!(
+            "Cannot resolve input path {}: {}",
+            input.display(),
+            e
+        ))
+    })?;
+
     // Ensure output directory is writable
     SafePath::ensure_directory_writable(output_dir)?;
-    
+
     Ok(())
 }
 
 /// Safely determine output path with validation
 pub fn resolve_output_path(
-    input_path: &Path, 
-    output_dir: &Path, 
-    target_override: Option<&Path>
+    input_path: &Path,
+    output_dir: &Path,
+    target_override: Option<&Path>,
 ) -> CoreResult<PathBuf> {
     let output_path = match target_override {
         Some(target) => output_dir.join(target),
@@ -180,29 +216,28 @@ pub fn resolve_output_path(
             output_dir.join(format!("{}.mkv", stem))
         }
     };
-    
+
     // Validate output path won't overwrite input
     match (
         input_path.canonicalize(),
         output_path.canonicalize().or_else(|_| {
             // If output doesn't exist yet, canonicalize its parent
             if let Some(parent) = output_path.parent() {
-                parent.canonicalize()
-                    .map(|canonical_parent| canonical_parent.join(
-                        output_path.file_name().unwrap_or_default()
-                    ))
+                parent.canonicalize().map(|canonical_parent| {
+                    canonical_parent.join(output_path.file_name().unwrap_or_default())
+                })
             } else {
                 Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput, 
-                    "Output path has no parent"
+                    std::io::ErrorKind::InvalidInput,
+                    "Output path has no parent",
                 ))
             }
-        })
+        }),
     ) {
         (Ok(input_canonical), Ok(output_canonical)) => {
             if input_canonical == output_canonical {
                 return Err(CoreError::PathError(
-                    "Output path would overwrite input file".to_string()
+                    "Output path would overwrite input file".to_string(),
                 ));
             }
         }
@@ -211,27 +246,25 @@ pub fn resolve_output_path(
             log::debug!("Could not canonicalize paths for overwrite check, using basic comparison");
             if input_path == output_path {
                 return Err(CoreError::PathError(
-                    "Output path would overwrite input file".to_string()
+                    "Output path would overwrite input file".to_string(),
                 ));
             }
         }
     }
-    
+
     Ok(output_path)
 }
 
 /// Safely extracts filename from a path with consistent error handling.
 /// Returns the filename as a String, or an error if the path has no filename component.
-/// 
+///
 /// Note: This function uses lossy conversion for backwards compatibility.
 /// For strict UTF-8 handling, use SafePath::get_filename_utf8 instead.
 pub fn get_filename_safe(path: &Path) -> CoreResult<String> {
-    Ok(path.file_name()
+    Ok(path
+        .file_name()
         .ok_or_else(|| {
-            CoreError::PathError(format!(
-                "Failed to get filename for {}",
-                path.display()
-            ))
+            CoreError::PathError(format!("Failed to get filename for {}", path.display()))
         })?
         .to_string_lossy()
         .to_string())
@@ -239,9 +272,10 @@ pub fn get_filename_safe(path: &Path) -> CoreResult<String> {
 
 /// Calculates the percentage size reduction from input to output.
 /// Returns 0 if input_size is 0 to avoid division by zero.
-#[must_use] pub fn calculate_size_reduction(input_size: u64, output_size: u64) -> u64 {
+#[must_use]
+pub fn calculate_size_reduction(input_size: u64, output_size: u64) -> u64 {
     if input_size == 0 || output_size >= input_size {
-        0  // No reduction if input is zero or output is larger
+        0 // No reduction if input is zero or output is larger
     } else {
         100 - ((output_size * 100) / input_size)
     }
@@ -254,7 +288,7 @@ mod tests {
     #[test]
     fn test_is_valid_video_file() {
         use std::fs::File;
-        
+
         // Create a temporary test file
         let temp_dir = std::env::temp_dir();
         let test_file_mkv = temp_dir.join("test_video.mkv");
@@ -265,7 +299,7 @@ mod tests {
         let test_file_wmv = temp_dir.join("test_video.wmv");
         let test_file_mov = temp_dir.join("test_video.mov");
         let test_file_webm = temp_dir.join("test_video.webm");
-        
+
         // Create test files
         let _ = File::create(&test_file_mkv);
         let _ = File::create(&test_file_upper);
@@ -275,7 +309,7 @@ mod tests {
         let _ = File::create(&test_file_wmv);
         let _ = File::create(&test_file_mov);
         let _ = File::create(&test_file_webm);
-        
+
         // Test valid video files (case insensitive)
         assert!(is_valid_video_file(&test_file_mkv));
         assert!(is_valid_video_file(&test_file_upper));
@@ -285,18 +319,18 @@ mod tests {
         assert!(is_valid_video_file(&test_file_wmv));
         assert!(is_valid_video_file(&test_file_mov));
         assert!(is_valid_video_file(&test_file_webm));
-        
+
         // Test invalid files
         assert!(!is_valid_video_file(Path::new("test.mkv"))); // Non-existent file
         assert!(!is_valid_video_file(Path::new("test.mp4"))); // Non-existent file
         assert!(!is_valid_video_file(Path::new("test.txt")));
         assert!(!is_valid_video_file(Path::new("test")));
         assert!(!is_valid_video_file(Path::new("")));
-        
+
         // Test directories
         assert!(!is_valid_video_file(Path::new("/")));
         assert!(!is_valid_video_file(&temp_dir));
-        
+
         // Cleanup
         let _ = std::fs::remove_file(&test_file_mkv);
         let _ = std::fs::remove_file(&test_file_upper);
@@ -320,11 +354,11 @@ mod tests {
         assert_eq!(format_duration(86399.0), "23:59:59");
         assert_eq!(format_duration(86400.0), "24:00:00");
         assert_eq!(format_duration(90061.0), "25:01:01");
-        
+
         // Test fractional seconds (should truncate)
         assert_eq!(format_duration(59.9), "00:00:59");
         assert_eq!(format_duration(60.1), "00:01:00");
-        
+
         // Test invalid inputs
         assert_eq!(format_duration(-1.0), "??:??:??");
         assert_eq!(format_duration(f64::INFINITY), "??:??:??");
@@ -338,17 +372,17 @@ mod tests {
         assert_eq!(format_bytes(0), "0 B");
         assert_eq!(format_bytes(1), "1 B");
         assert_eq!(format_bytes(1023), "1023 B");
-        
+
         // Test KiB
         assert_eq!(format_bytes(1024), "1.00 KiB");
         assert_eq!(format_bytes(1536), "1.50 KiB");
         assert_eq!(format_bytes(1024 * 1023), "1023.00 KiB");
-        
+
         // Test MiB
         assert_eq!(format_bytes(1024 * 1024), "1.00 MiB");
         assert_eq!(format_bytes(1024 * 1024 * 2), "2.00 MiB");
         assert_eq!(format_bytes(1024 * 1024 * 1023), "1023.00 MiB");
-        
+
         // Test GiB
         assert_eq!(format_bytes(1024 * 1024 * 1024), "1.00 GiB");
         assert_eq!(format_bytes(1024 * 1024 * 1024 * 2), "2.00 GiB");
@@ -364,12 +398,12 @@ mod tests {
         assert_eq!(parse_ffmpeg_time("01:00:00"), Some(3600.0));
         assert_eq!(parse_ffmpeg_time("01:02:03"), Some(3723.0));
         assert_eq!(parse_ffmpeg_time("23:59:59"), Some(86399.0));
-        
+
         // Test with fractional seconds
         assert_eq!(parse_ffmpeg_time("00:00:00.5"), Some(0.5));
         assert_eq!(parse_ffmpeg_time("00:00:01.25"), Some(1.25));
         assert_eq!(parse_ffmpeg_time("01:30:45.75"), Some(5445.75));
-        
+
         // Test invalid formats
         assert_eq!(parse_ffmpeg_time(""), None);
         assert_eq!(parse_ffmpeg_time("00:00"), None);
@@ -395,7 +429,7 @@ mod tests {
             get_filename_safe(Path::new("./file.mkv")).unwrap(),
             "file.mkv"
         );
-        
+
         // Test edge cases
         assert!(get_filename_safe(Path::new("/")).is_err());
         assert!(get_filename_safe(Path::new("")).is_err());
@@ -409,7 +443,7 @@ mod tests {
         assert_eq!(calculate_size_reduction(1000, 999), 1); // 1% reduction (rounds down)
         assert_eq!(calculate_size_reduction(1000, 1), 100); // Integer division rounds down
         assert_eq!(calculate_size_reduction(1000, 0), 100);
-        
+
         // Edge cases
         assert_eq!(calculate_size_reduction(0, 0), 0);
         assert_eq!(calculate_size_reduction(0, 100), 0);
