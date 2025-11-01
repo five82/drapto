@@ -42,7 +42,7 @@ rayon = "1.11"                   # Data parallelism for concurrent processing
 num_cpus = "1.16"                # Determine available logical processors
 
 # ---- Notifications ----
-ntfy = { version = "0.7.0", default-features = false, features = ["blocking"] }  # Push notifications
+ntfy = { version = "0.8.0", default-features = false, features = ["blocking"] }  # Push notifications
 
 
 # ---- FFmpeg Integration ----
