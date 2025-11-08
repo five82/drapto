@@ -174,6 +174,7 @@ struct VaapiCandidate {
     render_node: String,
     driver: Option<&'static str>,
     driver_present: bool,
+    vendor: Option<String>,
 }
 
 impl VaapiCandidate {
@@ -181,6 +182,10 @@ impl VaapiCandidate {
         self.driver
             .map(|driver| driver.eq_ignore_ascii_case(driver_name))
             .unwrap_or(false)
+    }
+
+    fn is_nvidia(&self) -> bool {
+        self.matches_driver("nvidia") || matches!(self.vendor.as_deref(), Some("0x10de"))
     }
 
     fn to_device(&self) -> VaapiDevice {
@@ -198,29 +203,20 @@ fn detect_vaapi_device() -> Option<VaapiDevice> {
     }
 
     let env_driver = env::var("LIBVA_DRIVER_NAME").ok();
+    let env_driver_ref = env_driver.as_deref();
+    let selected = select_best_vaapi_device(&candidates, env_driver_ref);
 
-    if let Some(ref env_driver) = env_driver {
-        if let Some(candidate) = candidates
-            .iter()
-            .find(|candidate| candidate.driver_present && candidate.matches_driver(env_driver))
-        {
-            return Some(candidate.to_device());
-        }
+    if selected.is_none()
+        && env_driver_ref
+            .map(|driver| driver.eq_ignore_ascii_case("nvidia"))
+            .unwrap_or(false)
+    {
+        log::warn!(
+            "LIBVA_DRIVER_NAME=nvidia is not supported for decoding; falling back to software."
+        );
     }
 
-    for preferred in ["nvidia", "radeonsi", "iHD"] {
-        if let Some(candidate) = candidates
-            .iter()
-            .find(|candidate| candidate.driver_present && candidate.matches_driver(preferred))
-        {
-            return Some(candidate.to_device());
-        }
-    }
-
-    candidates
-        .iter()
-        .find(|candidate| candidate.driver_present)
-        .map(VaapiCandidate::to_device)
+    selected
 }
 
 fn gather_vaapi_candidates() -> Vec<VaapiCandidate> {
@@ -234,9 +230,8 @@ fn gather_vaapi_candidates() -> Vec<VaapiCandidate> {
             };
 
             let path = format!("/dev/dri/{file_name}");
-            let driver = read_vendor_id(&file_name)
-                .as_deref()
-                .and_then(vendor_to_driver_name);
+            let vendor = read_vendor_id(&file_name);
+            let driver = vendor.as_deref().and_then(vendor_to_driver_name);
             let driver_present = driver.map(libva_driver_available).unwrap_or(true);
 
             candidates.push(VaapiCandidate {
@@ -244,12 +239,52 @@ fn gather_vaapi_candidates() -> Vec<VaapiCandidate> {
                 render_node: file_name,
                 driver,
                 driver_present,
+                vendor,
             });
         }
     }
 
     candidates.sort_by(|a, b| a.render_node.cmp(&b.render_node));
     candidates
+}
+
+fn select_best_vaapi_device(
+    candidates: &[VaapiCandidate],
+    env_driver: Option<&str>,
+) -> Option<VaapiDevice> {
+    let supported: Vec<&VaapiCandidate> = candidates
+        .iter()
+        .filter(|candidate| !candidate.is_nvidia())
+        .collect();
+
+    if supported.is_empty() {
+        return None;
+    }
+
+    if let Some(driver) = env_driver {
+        if !driver.eq_ignore_ascii_case("nvidia") {
+            if let Some(candidate) = supported
+                .iter()
+                .find(|candidate| candidate.driver_present && candidate.matches_driver(driver))
+            {
+                return Some(candidate.to_device());
+            }
+        }
+    }
+
+    for preferred in ["radeonsi", "iHD"] {
+        if let Some(candidate) = supported
+            .iter()
+            .find(|candidate| candidate.driver_present && candidate.matches_driver(preferred))
+        {
+            return Some(candidate.to_device());
+        }
+    }
+
+    supported
+        .iter()
+        .find(|candidate| candidate.driver_present)
+        .map(|candidate| candidate.to_device())
 }
 
 fn read_vendor_id(render_node: &str) -> Option<String> {
@@ -483,5 +518,67 @@ mod tests {
             assert!(debug_output.contains("-hwaccel"));
             assert!(debug_output.contains("videotoolbox"));
         }
+    }
+
+    #[test]
+    fn test_select_best_vaapi_device_prefers_amd_over_nvidia() {
+        let candidates = vec![
+            VaapiCandidate {
+                path: "/dev/dri/renderD128".to_string(),
+                render_node: "renderD128".to_string(),
+                driver: Some("nvidia"),
+                driver_present: true,
+                vendor: Some("0x10de".to_string()),
+            },
+            VaapiCandidate {
+                path: "/dev/dri/renderD129".to_string(),
+                render_node: "renderD129".to_string(),
+                driver: Some("radeonsi"),
+                driver_present: true,
+                vendor: Some("0x1002".to_string()),
+            },
+        ];
+
+        let selected = select_best_vaapi_device(&candidates, None).expect("Expected AMD device");
+        assert_eq!(selected.path, "/dev/dri/renderD129");
+        assert_eq!(selected.driver.as_deref(), Some("radeonsi"));
+    }
+
+    #[test]
+    fn test_select_best_vaapi_device_skips_nvidia_only() {
+        let candidates = vec![VaapiCandidate {
+            path: "/dev/dri/renderD128".to_string(),
+            render_node: "renderD128".to_string(),
+            driver: Some("nvidia"),
+            driver_present: true,
+            vendor: Some("0x10de".to_string()),
+        }];
+
+        assert!(select_best_vaapi_device(&candidates, None).is_none());
+    }
+
+    #[test]
+    fn test_select_best_vaapi_device_with_env_override_for_amd() {
+        let candidates = vec![
+            VaapiCandidate {
+                path: "/dev/dri/renderD128".to_string(),
+                render_node: "renderD128".to_string(),
+                driver: Some("radeonsi"),
+                driver_present: true,
+                vendor: Some("0x1002".to_string()),
+            },
+            VaapiCandidate {
+                path: "/dev/dri/renderD129".to_string(),
+                render_node: "renderD129".to_string(),
+                driver: Some("iHD"),
+                driver_present: true,
+                vendor: Some("0x8086".to_string()),
+            },
+        ];
+
+        let selected =
+            select_best_vaapi_device(&candidates, Some("radeonsi")).expect("Expected AMD device");
+        assert_eq!(selected.path, "/dev/dri/renderD128");
+        assert_eq!(selected.driver.as_deref(), Some("radeonsi"));
     }
 }

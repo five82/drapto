@@ -167,13 +167,44 @@ pub fn run_ffmpeg_encode(
     total_frames: u64,
     event_dispatcher: Option<&EventDispatcher>,
 ) -> CoreResult<()> {
+    run_ffmpeg_encode_internal(
+        params,
+        disable_audio,
+        has_denoising,
+        total_frames,
+        event_dispatcher,
+        false,
+    )
+}
+
+fn run_ffmpeg_encode_internal(
+    params: &EncodeParams,
+    disable_audio: bool,
+    has_denoising: bool,
+    total_frames: u64,
+    event_dispatcher: Option<&EventDispatcher>,
+    is_retry: bool,
+) -> CoreResult<()> {
     debug!("Output: {}", params.output_path.display());
-    log::info!(
-        target: "drapto::progress",
-        "Starting encode: {} -> {}",
-        params.input_path.display(),
-        params.output_path.display()
-    );
+
+    let filename = crate::utils::get_filename_safe(&params.input_path)
+        .unwrap_or_else(|_| params.input_path.display().to_string());
+
+    if is_retry {
+        log::info!(
+            target: "drapto::progress",
+            "Retrying encode without hardware decoding: {} -> {}",
+            params.input_path.display(),
+            params.output_path.display()
+        );
+    } else {
+        log::info!(
+            target: "drapto::progress",
+            "Starting encode: {} -> {}",
+            params.input_path.display(),
+            params.output_path.display()
+        );
+    }
 
     debug!("Encode parameters: {params:?}");
 
@@ -285,21 +316,45 @@ pub fn run_ffmpeg_encode(
         )
     })?;
 
-    let filename = crate::utils::get_filename_safe(&params.input_path)
-        .unwrap_or_else(|_| params.input_path.display().to_string());
-
     if status.success() {
         log::info!("Encode finished successfully for {}", filename);
         Ok(())
     } else {
+        if params.use_hw_decode && !is_retry && should_retry_without_hw_decode(&stderr_buffer) {
+            let warning_message = format!(
+                "Hardware decoding failed for {}. Retrying without hardware acceleration.",
+                filename
+            );
+
+            log::warn!("{}", warning_message);
+
+            if let Some(dispatcher) = event_dispatcher {
+                dispatcher.emit(Event::Warning {
+                    message: warning_message.clone(),
+                });
+            }
+
+            log::debug!("VAAPI stderr output:\n{}", stderr_buffer.trim());
+
+            let mut software_params = params.clone();
+            software_params.use_hw_decode = false;
+
+            return run_ffmpeg_encode_internal(
+                &software_params,
+                disable_audio,
+                has_denoising,
+                total_frames,
+                event_dispatcher,
+                true,
+            );
+        }
+
         let error_message = format!(
             "FFmpeg process exited with non-zero status ({:?}). Stderr output:\n{}",
             status.code(),
             stderr_buffer.trim()
         );
 
-        let filename = crate::utils::get_filename_safe(&params.input_path)
-            .unwrap_or_else(|_| params.input_path.display().to_string());
         log::error!("FFmpeg error for {}: {}", filename, error_message);
 
         // Check for specific error types
@@ -313,6 +368,22 @@ pub fn run_ffmpeg_encode(
             ))
         }
     }
+}
+
+fn should_retry_without_hw_decode(stderr: &str) -> bool {
+    let stderr_lower = stderr.to_lowercase();
+    const PATTERNS: &[&str] = &[
+        "no va display found",
+        "hardware device setup failed",
+        "device creation failed",
+        "libva error",
+        "no device available for decoder",
+        "vainitialize failed",
+    ];
+
+    PATTERNS
+        .iter()
+        .any(|pattern| stderr_lower.contains(pattern))
 }
 
 #[cfg(test)]
@@ -1021,5 +1092,17 @@ mod tests {
             "Command should map all audio streams in fallback mode: {}",
             cmd_string
         );
+    }
+
+    #[test]
+    fn test_should_retry_without_hw_decode_detects_vaapi_failure() {
+        let stderr = "[VAAPI @ 0x0] No VA display found for device /dev/dri/renderD128.";
+        assert!(super::should_retry_without_hw_decode(stderr));
+    }
+
+    #[test]
+    fn test_should_retry_without_hw_decode_ignores_unrelated_errors() {
+        let stderr = "Unknown ffmpeg failure";
+        assert!(!super::should_retry_without_hw_decode(stderr));
     }
 }
