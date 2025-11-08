@@ -12,7 +12,9 @@ use crate::processing::audio;
 use ffmpeg_sidecar::command::FfmpegCommand;
 use log::debug;
 
-use std::path::PathBuf;
+use std::fs;
+use std::io::ErrorKind;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 /// Parameters required for running an `FFmpeg` encode operation.
@@ -336,6 +338,8 @@ fn run_ffmpeg_encode_internal(
 
             log::debug!("VAAPI stderr output:\n{}", stderr_buffer.trim());
 
+            cleanup_partial_output(&params.output_path);
+
             let mut software_params = params.clone();
             software_params.use_hw_decode = false;
 
@@ -384,6 +388,25 @@ fn should_retry_without_hw_decode(stderr: &str) -> bool {
     PATTERNS
         .iter()
         .any(|pattern| stderr_lower.contains(pattern))
+}
+
+fn cleanup_partial_output(path: &Path) {
+    match fs::remove_file(path) {
+        Ok(_) => {
+            log::warn!(
+                "Removed partial output created during failed hardware decode: {}",
+                path.display()
+            );
+        }
+        Err(err) if err.kind() == ErrorKind::NotFound => {}
+        Err(err) => {
+            log::warn!(
+                "Failed to remove partial output at {}: {}",
+                path.display(),
+                err
+            );
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1104,5 +1127,23 @@ mod tests {
     fn test_should_retry_without_hw_decode_ignores_unrelated_errors() {
         let stderr = "Unknown ffmpeg failure";
         assert!(!super::should_retry_without_hw_decode(stderr));
+    }
+
+    #[test]
+    fn test_cleanup_partial_output_removes_file_if_present() {
+        use std::env;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_nanos();
+        let path = env::temp_dir().join(format!("drapto_cleanup_partial_output_{unique}.tmp"));
+
+        std::fs::write(&path, b"test").expect("Failed to create temp file");
+        assert!(path.exists(), "Temp file should exist before cleanup");
+
+        super::cleanup_partial_output(&path);
+        assert!(!path.exists(), "Temp file should be removed by cleanup");
     }
 }
