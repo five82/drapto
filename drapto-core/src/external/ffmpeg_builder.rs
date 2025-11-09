@@ -126,7 +126,12 @@ impl SvtAv1ParamsBuilder {
     /// Creates a new SVT-AV1 parameters builder
     #[must_use]
     pub fn new() -> Self {
-        Self { params: vec![] }
+        Self {
+            params: vec![
+                ("ac-bias".to_string(), "1.0".to_string()),
+                ("enable-variance-boost".to_string(), "1".to_string()),
+            ],
+        }
     }
 
     /// Sets the tune parameter
@@ -228,31 +233,46 @@ mod tests {
     #[test]
     fn test_svtav1_params_builder_default() {
         let builder = SvtAv1ParamsBuilder::new();
-        assert_eq!(builder.build(), "");
+        assert_eq!(builder.build(), "ac-bias=1.0:enable-variance-boost=1");
     }
 
     #[test]
     fn test_svtav1_params_builder_with_tune() {
         let builder = SvtAv1ParamsBuilder::new().with_tune(3);
-        assert_eq!(builder.build(), "tune=3");
+        assert_eq!(
+            builder.build(),
+            "ac-bias=1.0:enable-variance-boost=1:tune=3"
+        );
 
         let builder = SvtAv1ParamsBuilder::new().with_tune(0);
-        assert_eq!(builder.build(), "tune=0");
+        assert_eq!(
+            builder.build(),
+            "ac-bias=1.0:enable-variance-boost=1:tune=0"
+        );
     }
 
     #[test]
     fn test_svtav1_params_builder_with_film_grain() {
         // Test with film grain
         let builder = SvtAv1ParamsBuilder::new().with_tune(3).with_film_grain(4);
-        assert_eq!(builder.build(), "tune=3:film-grain=4:film-grain-denoise=0");
+        assert_eq!(
+            builder.build(),
+            "ac-bias=1.0:enable-variance-boost=1:tune=3:film-grain=4:film-grain-denoise=0"
+        );
 
         // Test with no film grain (0)
         let builder = SvtAv1ParamsBuilder::new().with_tune(3).with_film_grain(0);
-        assert_eq!(builder.build(), "tune=3");
+        assert_eq!(
+            builder.build(),
+            "ac-bias=1.0:enable-variance-boost=1:tune=3"
+        );
 
         // Test with max film grain
         let builder = SvtAv1ParamsBuilder::new().with_tune(3).with_film_grain(50);
-        assert_eq!(builder.build(), "tune=3:film-grain=50:film-grain-denoise=0");
+        assert_eq!(
+            builder.build(),
+            "ac-bias=1.0:enable-variance-boost=1:tune=3:film-grain=50:film-grain-denoise=0"
+        );
     }
 
     #[test]
@@ -265,7 +285,7 @@ mod tests {
 
         assert_eq!(
             builder.build(),
-            "tune=3:preset=6:crf=27:film-grain=4:film-grain-denoise=0"
+            "ac-bias=1.0:enable-variance-boost=1:tune=3:preset=6:crf=27:film-grain=4:film-grain-denoise=0"
         );
     }
 
@@ -278,7 +298,10 @@ mod tests {
             .add_param("b", "2")
             .add_param("c", "3");
 
-        assert_eq!(builder.build(), "tune=3:a=1:b=2:c=3");
+        assert_eq!(
+            builder.build(),
+            "ac-bias=1.0:enable-variance-boost=1:tune=3:a=1:b=2:c=3"
+        );
     }
 
     #[test]
