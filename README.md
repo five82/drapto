@@ -39,7 +39,7 @@ drapto encode -i /videos/ -o /encoded/
 drapto encode --foreground -i input.mkv -o output/
 
 # Custom settings
-drapto encode -i input.mkv -o output/ --quality-hd 24 --preset 4
+drapto encode -i input.mkv -o output/ --quality-hd 24 --preset 6
 
 # With notifications
 drapto encode -i input.mkv -o output/ --ntfy https://ntfy.sh/your_topic
@@ -59,7 +59,7 @@ drapto encode -v -i input.mkv -o output/
 * `-v, --verbose`: Enable verbose output with detailed information
 * `--no-color`: Disable colored output
 * `-l, --log-dir <DIR>`: Directory for log files (defaults to OUTPUT_DIR/logs)
-* `--preset <0-13>`: SVT-AV1 encoder speed/quality (default: 4, lower = slower/better)
+* `--preset <0-13>`: SVT-AV1 encoder speed/quality (default: 6, lower = slower/better)
 * `--quality-sd/hd/uhd <CRF>`: Override quality settings (defaults: SD=23, HD=25, UHD=27)
 * `--denoise`: Enable denoising and film grain synthesis (disabled by default; experimental and significantly slows encoding)
 * `--responsive`: Reserve a few CPU threads so other applications stay responsive (disabled by default)

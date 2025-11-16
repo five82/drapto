@@ -126,18 +126,47 @@ impl SvtAv1ParamsBuilder {
     /// Creates a new SVT-AV1 parameters builder
     #[must_use]
     pub fn new() -> Self {
-        Self {
-            params: vec![
-                ("ac-bias".to_string(), "1.0".to_string()),
-                ("enable-variance-boost".to_string(), "1".to_string()),
-            ],
-        }
+        Self { params: vec![] }
     }
 
     /// Sets the tune parameter
     #[must_use]
     pub fn with_tune(mut self, tune: u8) -> Self {
         self.params.push(("tune".to_string(), tune.to_string()));
+        self
+    }
+
+    /// Sets the ac-bias parameter
+    #[must_use]
+    pub fn with_ac_bias(mut self, ac_bias: f32) -> Self {
+        self.params
+            .push(("ac-bias".to_string(), format!("{ac_bias}")));
+        self
+    }
+
+    /// Enables or disables variance boost
+    #[must_use]
+    pub fn with_enable_variance_boost(mut self, enabled: bool) -> Self {
+        self.params.push((
+            "enable-variance-boost".to_string(),
+            if enabled { "1" } else { "0" }.to_string(),
+        ));
+        self
+    }
+
+    /// Sets variance boost strength
+    #[must_use]
+    pub fn with_variance_boost_strength(mut self, strength: u8) -> Self {
+        self.params
+            .push(("variance-boost-strength".to_string(), strength.to_string()));
+        self
+    }
+
+    /// Sets variance octile
+    #[must_use]
+    pub fn with_variance_octile(mut self, octile: u8) -> Self {
+        self.params
+            .push(("variance-octile".to_string(), octile.to_string()));
         self
     }
 
@@ -232,52 +261,91 @@ mod tests {
 
     #[test]
     fn test_svtav1_params_builder_default() {
-        let builder = SvtAv1ParamsBuilder::new();
-        assert_eq!(builder.build(), "ac-bias=1.0:enable-variance-boost=1");
+        let builder = SvtAv1ParamsBuilder::new()
+            .with_ac_bias(0.0)
+            .with_enable_variance_boost(true)
+            .with_variance_boost_strength(1)
+            .with_variance_octile(7);
+        assert_eq!(
+            builder.build(),
+            "ac-bias=0:enable-variance-boost=1:variance-boost-strength=1:variance-octile=7"
+        );
     }
 
     #[test]
     fn test_svtav1_params_builder_with_tune() {
-        let builder = SvtAv1ParamsBuilder::new().with_tune(3);
+        let builder = SvtAv1ParamsBuilder::new()
+            .with_ac_bias(0.0)
+            .with_enable_variance_boost(true)
+            .with_variance_boost_strength(1)
+            .with_variance_octile(7)
+            .with_tune(3);
         assert_eq!(
             builder.build(),
-            "ac-bias=1.0:enable-variance-boost=1:tune=3"
+            "ac-bias=0:enable-variance-boost=1:variance-boost-strength=1:variance-octile=7:tune=3"
         );
 
-        let builder = SvtAv1ParamsBuilder::new().with_tune(0);
+        let builder = SvtAv1ParamsBuilder::new()
+            .with_ac_bias(0.0)
+            .with_enable_variance_boost(true)
+            .with_variance_boost_strength(1)
+            .with_variance_octile(7)
+            .with_tune(0);
         assert_eq!(
             builder.build(),
-            "ac-bias=1.0:enable-variance-boost=1:tune=0"
+            "ac-bias=0:enable-variance-boost=1:variance-boost-strength=1:variance-octile=7:tune=0"
         );
     }
 
     #[test]
     fn test_svtav1_params_builder_with_film_grain() {
         // Test with film grain
-        let builder = SvtAv1ParamsBuilder::new().with_tune(3).with_film_grain(4);
+        let builder = SvtAv1ParamsBuilder::new()
+            .with_ac_bias(0.0)
+            .with_enable_variance_boost(true)
+            .with_variance_boost_strength(1)
+            .with_variance_octile(7)
+            .with_tune(3)
+            .with_film_grain(4);
         assert_eq!(
             builder.build(),
-            "ac-bias=1.0:enable-variance-boost=1:tune=3:film-grain=4:film-grain-denoise=0"
+            "ac-bias=0:enable-variance-boost=1:variance-boost-strength=1:variance-octile=7:tune=3:film-grain=4:film-grain-denoise=0"
         );
 
         // Test with no film grain (0)
-        let builder = SvtAv1ParamsBuilder::new().with_tune(3).with_film_grain(0);
+        let builder = SvtAv1ParamsBuilder::new()
+            .with_ac_bias(0.0)
+            .with_enable_variance_boost(true)
+            .with_variance_boost_strength(1)
+            .with_variance_octile(7)
+            .with_tune(3)
+            .with_film_grain(0);
         assert_eq!(
             builder.build(),
-            "ac-bias=1.0:enable-variance-boost=1:tune=3"
+            "ac-bias=0:enable-variance-boost=1:variance-boost-strength=1:variance-octile=7:tune=3"
         );
 
         // Test with max film grain
-        let builder = SvtAv1ParamsBuilder::new().with_tune(3).with_film_grain(50);
+        let builder = SvtAv1ParamsBuilder::new()
+            .with_ac_bias(0.0)
+            .with_enable_variance_boost(true)
+            .with_variance_boost_strength(1)
+            .with_variance_octile(7)
+            .with_tune(3)
+            .with_film_grain(50);
         assert_eq!(
             builder.build(),
-            "ac-bias=1.0:enable-variance-boost=1:tune=3:film-grain=50:film-grain-denoise=0"
+            "ac-bias=0:enable-variance-boost=1:variance-boost-strength=1:variance-octile=7:tune=3:film-grain=50:film-grain-denoise=0"
         );
     }
 
     #[test]
     fn test_svtav1_params_builder_custom_params() {
         let builder = SvtAv1ParamsBuilder::new()
+            .with_ac_bias(0.0)
+            .with_enable_variance_boost(true)
+            .with_variance_boost_strength(1)
+            .with_variance_octile(7)
             .with_tune(3)
             .add_param("preset", "6")
             .add_param("crf", "27")
@@ -285,7 +353,7 @@ mod tests {
 
         assert_eq!(
             builder.build(),
-            "ac-bias=1.0:enable-variance-boost=1:tune=3:preset=6:crf=27:film-grain=4:film-grain-denoise=0"
+            "ac-bias=0:enable-variance-boost=1:variance-boost-strength=1:variance-octile=7:tune=3:preset=6:crf=27:film-grain=4:film-grain-denoise=0"
         );
     }
 
@@ -293,6 +361,10 @@ mod tests {
     fn test_svtav1_params_builder_order() {
         // Verify parameters maintain order
         let builder = SvtAv1ParamsBuilder::new()
+            .with_ac_bias(0.0)
+            .with_enable_variance_boost(true)
+            .with_variance_boost_strength(1)
+            .with_variance_octile(7)
             .with_tune(3)
             .add_param("a", "1")
             .add_param("b", "2")
@@ -300,7 +372,7 @@ mod tests {
 
         assert_eq!(
             builder.build(),
-            "ac-bias=1.0:enable-variance-boost=1:tune=3:a=1:b=2:c=3"
+            "ac-bias=0:enable-variance-boost=1:variance-boost-strength=1:variance-octile=7:tune=3:a=1:b=2:c=3"
         );
     }
 

@@ -23,11 +23,23 @@ pub const DEFAULT_CORE_QUALITY_UHD: u8 = 27;
 
 /// Default SVT-AV1 preset (0-13, lower is slower/better quality)
 /// Value 6 provides a good balance between speed and quality.
-pub const DEFAULT_SVT_AV1_PRESET: u8 = 4;
+pub const DEFAULT_SVT_AV1_PRESET: u8 = 6;
 
 /// Default SVT-AV1 tune parameter
 /// Different SVT-AV1 forks may use this value differently
 pub const DEFAULT_SVT_AV1_TUNE: u8 = 0;
+
+/// Default SVT-AV1 ac-bias parameter (controls adaptive quantization bias)
+pub const DEFAULT_SVT_AV1_AC_BIAS: f32 = 0.0;
+
+/// Default SVT-AV1 variance boost toggle (1 = enabled)
+pub const DEFAULT_SVT_AV1_ENABLE_VARIANCE_BOOST: bool = true;
+
+/// Default SVT-AV1 variance boost strength parameter
+pub const DEFAULT_SVT_AV1_VARIANCE_BOOST_STRENGTH: u8 = 1;
+
+/// Default SVT-AV1 variance octile parameter
+pub const DEFAULT_SVT_AV1_VARIANCE_OCTILE: u8 = 7;
 
 /// Default crop mode for the main encode.
 pub const DEFAULT_CROP_MODE: &str = "auto";
@@ -79,6 +91,18 @@ pub struct CoreConfig {
     /// Different SVT-AV1 forks may use this value differently
     pub svt_av1_tune: u8,
 
+    /// SVT-AV1 ac-bias parameter
+    pub svt_av1_ac_bias: f32,
+
+    /// Whether to enable variance boost in SVT-AV1
+    pub svt_av1_enable_variance_boost: bool,
+
+    /// SVT-AV1 variance boost strength parameter
+    pub svt_av1_variance_boost_strength: u8,
+
+    /// SVT-AV1 variance octile parameter
+    pub svt_av1_variance_octile: u8,
+
     /// CRF quality for Standard Definition videos (<1920 width)
     /// Lower values produce higher quality but larger files
     pub quality_sd: u8,
@@ -116,6 +140,10 @@ impl Default for CoreConfig {
             temp_dir: None,
             svt_av1_preset: DEFAULT_SVT_AV1_PRESET,
             svt_av1_tune: DEFAULT_SVT_AV1_TUNE,
+            svt_av1_ac_bias: DEFAULT_SVT_AV1_AC_BIAS,
+            svt_av1_enable_variance_boost: DEFAULT_SVT_AV1_ENABLE_VARIANCE_BOOST,
+            svt_av1_variance_boost_strength: DEFAULT_SVT_AV1_VARIANCE_BOOST_STRENGTH,
+            svt_av1_variance_octile: DEFAULT_SVT_AV1_VARIANCE_OCTILE,
             quality_sd: DEFAULT_CORE_QUALITY_SD,
             quality_hd: DEFAULT_CORE_QUALITY_HD,
             quality_uhd: DEFAULT_CORE_QUALITY_UHD,
@@ -188,6 +216,19 @@ mod tests {
         assert_eq!(config.quality_uhd, DEFAULT_CORE_QUALITY_UHD);
         assert_eq!(config.crop_mode, DEFAULT_CROP_MODE);
         assert_eq!(config.encode_cooldown_secs, DEFAULT_ENCODE_COOLDOWN_SECS);
+        assert_eq!(config.svt_av1_ac_bias, DEFAULT_SVT_AV1_AC_BIAS);
+        assert_eq!(
+            config.svt_av1_enable_variance_boost,
+            DEFAULT_SVT_AV1_ENABLE_VARIANCE_BOOST
+        );
+        assert_eq!(
+            config.svt_av1_variance_boost_strength,
+            DEFAULT_SVT_AV1_VARIANCE_BOOST_STRENGTH
+        );
+        assert_eq!(
+            config.svt_av1_variance_octile,
+            DEFAULT_SVT_AV1_VARIANCE_OCTILE
+        );
         assert!(!config.enable_denoise);
         assert!(!config.responsive_encoding);
         assert!(config.ntfy_topic.is_none());
