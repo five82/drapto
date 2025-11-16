@@ -1,14 +1,23 @@
 # drapto
 
-FFmpeg video encoding wrapper with intelligent optimization for high-quality, efficient AV1 encodes. The purpose is to apply sane defaults to encodes so you can run and forget or incorporate drapto into an automated workflow.
+drapto is a small Rust workspace that wraps FFmpeg/SVT-AV1 with the set of defaults I use when turning Blu-ray remuxes into Plex-friendly AV1 encodes. It is intentionally opinionated: the CLI focuses on a handful of switches so you can queue a directory of movies, walk away, and trust that the encode parameters will be sensible without hand-tuning every title.
+
+## Why this exists
+
+I got tired of re-deriving the same FFmpeg incantations for every rip. The workspace keeps the boring parts on autopilot:
+
+* **Keep Plex happy** – Always output 10-bit AV1 + Opus (unless the stream is spatial audio) so the files land in a format the server can direct-play.
+* **Catch surprises early** – Every encode runs through MediaInfo validation before being marked complete; failures kick back to the queue automatically.
+* **Set-and-forget defaults** – Resolution-aware CRFs, per-channel Opus bitrates, and the "do I denoise this?" decision tree all come from the same baseline that I use on my own UHD/1080p sources.
+* **Stay transparent** – All of the heuristics live in `drapto-core`, so you can read exactly why a title was cropped, denoised, or marked HDR in the log output.
 
 ## Features
 
-* **Intelligent Analysis**: Automatic black bar cropping, HDR-aware processing, adaptive noise analysis
-* **Optimized Encoding**: AV1 video (libsvtav1), intelligent audio processing with spatial audio preservation and Opus transcoding, resolution-based quality settings
-* **Adaptive Denoising**: Intelligent noise detection with tailored denoising and film grain synthesis
-* **Hardware Acceleration**: VideoToolbox and VAAPI decoding support (automatically detected)
-* **Flexible Workflow**: Daemon mode for background processing, interactive mode with progress bars, push notifications
+* **Analysis before encode** – Optional black-bar detection, HDR metadata detection, noise probes that influence filtering, and MediaInfo-based validation after each run.
+* **Optimized encoding defaults** – libsvtav1 video, Opus for non-spatial audio streams, automatic bitrate selection by channel count, and per-resolution CRF defaults that track the quality I prefer for 1080p/4K sources.
+* **Adaptive denoising (experimental)** – External HQDN3D plus film-grain synthesis that kicks in only when noise probes decide the content benefits from it.
+* **Hardware-aware decoding** – VideoToolbox/VAAPI detection so decoding can be offloaded when the platform supports it.
+* **Daemon or foreground workflows** – Run it as a queueing daemon, drop into an interactive foreground session with progress bars, and opt into ntfy notifications.
 
 ## Installation
 
@@ -68,21 +77,26 @@ drapto encode -v -i input.mkv -o output/
 
 ## Advanced Features
 
-### Adaptive Denoising
+### Adaptive Denoising (experimental)
 
-Drapto uses intelligent noise analysis to apply optimal denoising settings for each video:
+The denoiser is intentionally external to SVT-AV1 so its behavior is predictable and easy to reason about. Drapto samples a few clips with FFmpeg's `bitplanenoise`, averages the values per plane, and feeds that into a small decision tree (`drapto-core/src/noise.rs`) that picks an HQDN3D matrix and a matching film-grain value.
 
-1. **Noise Analysis**: Automatically analyzes video noise levels using FFmpeg's bitplanenoise filter
-2. **Adaptive Parameters**: Selects appropriate denoising strength based on detected noise:
-   - Very clean content: Minimal denoising (preserves pristine quality)
-   - Slightly noisy content: Very light denoising
-   - Somewhat noisy content: Light denoising
-   - Noisy content: Moderate denoising (still conservative)
-3. **HDR-Aware Processing**: Uses lighter denoising parameters for HDR content to preserve detail
-4. **Dynamic Film Grain**: Scales film grain synthesis (levels 4-16) to compensate for denoising artifacts
-5. **Quality-First Approach**: All parameters remain conservative to avoid visible quality loss
+What you should know before enabling it:
 
-This system reduces file size while maintaining visual quality by applying a conservative amount of denoising for each video's noise characteristics.
+1. **It costs time**: Each probe is a short FFmpeg run and HQDN3D itself is a 10-bit filter. Expect ~15‑25 % slower encodes on UHD sources. Pass `--no-denoise` if throughput matters more than squeezing a few extra percent of bitrate. (The CLI flag simply flips `Config::enable_denoise` to false, skipping the probes and filters entirely.)
+2. **It is conservative by design**: The four presets range from "barely touch it" to "moderate". HDR titles automatically use lighter matrices so highlights keep their texture.
+3. **Film grain is tied to the denoiser**: The amount of synthetic grain sent to SVT-AV1 is derived from the spatial luma term of HQDN3D. If denoise is off, no grain synthesis is added either.
+
+I consider the feature useful for catalog titles with visible grain, but experimental enough that it is disabled by default on my own queue. Keep it if you like the look; skip it if you just want speed.
+
+| Noise band (avg bitplane) | SDR HQDN3D matrix | HDR HQDN3D matrix | Typical grain level |
+| --- | --- | --- | --- |
+| `< 0.6` (clean) | `1:0.8:2:2` | `0.5:0.4:1.5:1.5` | 4–6 |
+| `0.6 – <0.7` (low) | `2:1.5:3:2.5` | `1:0.8:2.5:2` | 6–9 |
+| `0.7 – <0.8` (moderate) | `3:2.5:4:3.5` | `2:1.5:3.5:3` | 9–13 |
+| `≥ 0.8` (noticeable) | `4:3.5:5:4.5` | `3:2.5:4.5:4` | 13–16 |
+
+Those numbers come straight from [`drapto-core/src/processing/noise_analysis.rs`](drapto-core/src/processing/noise_analysis.rs). When the log prints something like `Noise analysis: avg=0.73`, you can map it to the table to see exactly why HQDN3D/film grain were applied. The guardrail is still manual: I usually leave `--no-denoise` on for animation and clean CGI, then re-run with denoise enabled only on titles where the probe average lands above ~0.65.
 
 ### HDR Support
 
