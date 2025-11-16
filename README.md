@@ -61,14 +61,14 @@ drapto encode -v -i input.mkv -o output/
 * `-l, --log-dir <DIR>`: Directory for log files (defaults to OUTPUT_DIR/logs)
 * `--preset <0-13>`: SVT-AV1 encoder speed/quality (default: 4, lower = slower/better)
 * `--quality-sd/hd/uhd <CRF>`: Override quality settings (defaults: SD=23, HD=25, UHD=27)
-* `--no-denoise`: Disable denoising and film grain synthesis (denoise is enabled by default)
+* `--denoise`: Enable denoising and film grain synthesis (disabled by default; experimental and significantly slows encoding)
 * `--responsive`: Reserve a few CPU threads so other applications stay responsive (disabled by default)
 * `--disable-autocrop`: Disable black bar cropping (auto-crop is enabled by default)
 * `--ntfy <URL>`: Send notifications to ntfy.sh
 
 ## Advanced Features
 
-### Adaptive Denoising
+### Adaptive Denoising (experimental)
 
 Drapto uses intelligent noise analysis to apply optimal denoising settings for each video:
 
@@ -78,6 +78,8 @@ Drapto uses intelligent noise analysis to apply optimal denoising settings for e
    - Slightly noisy content: Very light denoising
    - Somewhat noisy content: Light denoising
    - Noisy content: Moderate denoising (still conservative)
+
+> **Note:** Adaptive denoising is experimental. It adds per-file noise analysis and extra filtering, which can noticeably increase total encode time. Use `--denoise` only when you need cleaner output.
 3. **HDR-Aware Processing**: Uses lighter denoising parameters for HDR content to preserve detail
 4. **Dynamic Film Grain**: Scales film grain synthesis (levels 4-16) to compensate for denoising artifacts
 5. **Quality-First Approach**: All parameters remain conservative to avoid visible quality loss

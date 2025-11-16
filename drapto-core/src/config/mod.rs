@@ -121,7 +121,7 @@ impl Default for CoreConfig {
             quality_uhd: DEFAULT_CORE_QUALITY_UHD,
             crop_mode: DEFAULT_CROP_MODE.to_string(),
             ntfy_topic: None,
-            enable_denoise: true,
+            enable_denoise: false,
             responsive_encoding: false,
             encode_cooldown_secs: DEFAULT_ENCODE_COOLDOWN_SECS,
         }
@@ -188,7 +188,7 @@ mod tests {
         assert_eq!(config.quality_uhd, DEFAULT_CORE_QUALITY_UHD);
         assert_eq!(config.crop_mode, DEFAULT_CROP_MODE);
         assert_eq!(config.encode_cooldown_secs, DEFAULT_ENCODE_COOLDOWN_SECS);
-        assert!(config.enable_denoise);
+        assert!(!config.enable_denoise);
         assert!(!config.responsive_encoding);
         assert!(config.ntfy_topic.is_none());
         assert!(config.temp_dir.is_none());
