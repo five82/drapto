@@ -11,15 +11,15 @@ use std::path::PathBuf;
 /// Default CRF (Constant Rate Factor) quality value for Standard Definition videos (<1920 width).
 /// Lower values produce higher quality but larger files.
 /// Range: 0-63, with 0 being lossless.
-pub const DEFAULT_CORE_QUALITY_SD: u8 = 23;
+pub const DEFAULT_CORE_QUALITY_SD: u8 = 25;
 
 /// Default CRF quality value for High Definition videos (>=1920 width, <3840 width).
 /// Higher than SD to maintain reasonable file sizes for HD content.
-pub const DEFAULT_CORE_QUALITY_HD: u8 = 25;
+pub const DEFAULT_CORE_QUALITY_HD: u8 = 27;
 
 /// Default CRF quality value for Ultra High Definition videos (>=3840 width).
 /// Same as HD by default, but can be overridden separately.
-pub const DEFAULT_CORE_QUALITY_UHD: u8 = 27;
+pub const DEFAULT_CORE_QUALITY_UHD: u8 = 29;
 
 /// Default SVT-AV1 preset (0-13, lower is slower/better quality)
 /// Value 6 provides a good balance between speed and quality.
@@ -33,7 +33,7 @@ pub const DEFAULT_SVT_AV1_TUNE: u8 = 0;
 pub const DEFAULT_SVT_AV1_AC_BIAS: f32 = 0.0;
 
 /// Default SVT-AV1 variance boost toggle (1 = enabled)
-pub const DEFAULT_SVT_AV1_ENABLE_VARIANCE_BOOST: bool = true;
+pub const DEFAULT_SVT_AV1_ENABLE_VARIANCE_BOOST: bool = false;
 
 /// Default SVT-AV1 variance boost strength parameter
 pub const DEFAULT_SVT_AV1_VARIANCE_BOOST_STRENGTH: u8 = 1;
