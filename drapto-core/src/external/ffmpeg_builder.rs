@@ -273,6 +273,20 @@ mod tests {
     }
 
     #[test]
+    fn test_svtav1_params_builder_variance_disabled() {
+        let builder = SvtAv1ParamsBuilder::new()
+            .with_ac_bias(0.0)
+            .with_enable_variance_boost(false)
+            .with_tune(3);
+
+        // Strength/octile should be omitted when variance boost is off
+        assert_eq!(
+            builder.build(),
+            "ac-bias=0:enable-variance-boost=0:tune=3"
+        );
+    }
+
+    #[test]
     fn test_svtav1_params_builder_with_tune() {
         let builder = SvtAv1ParamsBuilder::new()
             .with_ac_bias(0.0)

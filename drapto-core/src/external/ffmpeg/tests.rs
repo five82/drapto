@@ -389,6 +389,20 @@ fn test_encode_params_match_ffmpeg_command() {
         params.tune
     );
 
+    // Variance boost disabled should not include strength/octile
+    assert!(
+        cmd_string.contains("enable-variance-boost=0"),
+        "Command should disable variance boost when configured off"
+    );
+    assert!(
+        !cmd_string.contains("variance-boost-strength"),
+        "Variance boost strength should not be set when feature is disabled"
+    );
+    assert!(
+        !cmd_string.contains("variance-octile"),
+        "Variance octile should not be set when feature is disabled"
+    );
+
     // Validate hqdn3d params match
     if let Some(ref hqdn3d) = params.hqdn3d_params {
         assert!(

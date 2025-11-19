@@ -89,9 +89,15 @@ pub fn build_ffmpeg_command(
 
     let mut svtav1_params_builder = crate::external::SvtAv1ParamsBuilder::new()
         .with_ac_bias(params.ac_bias)
-        .with_enable_variance_boost(params.enable_variance_boost)
-        .with_variance_boost_strength(params.variance_boost_strength)
-        .with_variance_octile(params.variance_octile)
+        .with_enable_variance_boost(params.enable_variance_boost);
+
+    if params.enable_variance_boost {
+        svtav1_params_builder = svtav1_params_builder
+            .with_variance_boost_strength(params.variance_boost_strength)
+            .with_variance_octile(params.variance_octile);
+    }
+
+    svtav1_params_builder = svtav1_params_builder
         .with_tune(params.tune)
         .with_film_grain(film_grain_value);
 
