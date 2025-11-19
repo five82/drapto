@@ -32,7 +32,7 @@ pub struct AudioStreamInfo {
     pub profile: Option<String>,
     /// Stream index
     pub index: usize,
-    /// Whether this is a spatial audio format that should be copied
+    /// Spatial audio preservation is no longer supported; this flag is always false.
     pub is_spatial: bool,
 }
 
@@ -81,7 +81,7 @@ pub fn get_audio_channels(input_path: &Path) -> CoreResult<Vec<u32>> {
     }
 }
 
-/// Gets detailed audio stream information including spatial audio detection
+/// Gets detailed audio stream information (spatial preservation removed)
 pub fn get_audio_stream_info(input_path: &Path) -> CoreResult<Vec<AudioStreamInfo>> {
     log::debug!(
         "Running ffprobe for detailed audio stream info on: {}",
@@ -109,53 +109,7 @@ pub fn get_audio_stream_info(input_path: &Path) -> CoreResult<Vec<AudioStreamInf
 
                 let codec_name = stream.codec_name.clone().unwrap_or_default();
                 let profile = stream.profile.clone();
-
-                // Detect spatial audio formats
-                // Dolby Atmos: TrueHD with Atmos profile or E-AC-3 with JOC (Joint Object Coding)
-                // DTS:X: DTS with DTS:X profile
-                let is_spatial = match codec_name.to_lowercase().as_str() {
-                    "truehd" => {
-                        // TrueHD with Atmos
-                        profile
-                            .as_ref()
-                            .map(|p| p.to_lowercase().contains("atmos"))
-                            .unwrap_or(false)
-                    }
-                    "eac3" => {
-                        // E-AC-3 with Atmos (JOC)
-                        // Note: ffprobe from git should detect this properly
-                        profile
-                            .as_ref()
-                            .map(|p| {
-                                let p_lower = p.to_lowercase();
-                                p_lower.contains("atmos") || p_lower.contains("joc")
-                            })
-                            .unwrap_or(false)
-                    }
-                    "dts" => {
-                        // DTS:X
-                        profile
-                            .as_ref()
-                            .map(|p| {
-                                let p_lower = p.to_lowercase();
-                                p_lower.contains("dts:x")
-                                    || p_lower.contains("dtsx")
-                                    || p_lower.contains("dts-x")
-                            })
-                            .unwrap_or(false)
-                    }
-                    _ => false,
-                };
-
-                if is_spatial {
-                    log::info!(
-                        "Detected spatial audio in stream {} (audio index {}): {} {}",
-                        stream_index,
-                        audio_index,
-                        codec_name,
-                        profile.as_deref().unwrap_or("")
-                    );
-                }
+                let is_spatial = false; // Spatial audio preservation removed; always transcode to Opus
 
                 audio_streams.push(AudioStreamInfo {
                     channels: channels as u32,
@@ -339,180 +293,6 @@ fn map_ffprobe_error(err: FfProbeError, context: &str) -> CoreError {
 mod tests {
     use super::*;
 
-    /// Test spatial audio detection for various codec and profile combinations
-    #[test]
-    fn test_spatial_audio_detection() {
-        // Test TrueHD with Atmos
-        let truehd_atmos = AudioStreamInfo {
-            channels: 8,
-            codec_name: "truehd".to_string(),
-            profile: Some("Dolby TrueHD + Dolby Atmos".to_string()),
-            index: 0,
-            is_spatial: true,
-        };
-        assert!(
-            truehd_atmos.is_spatial,
-            "TrueHD with Atmos profile should be spatial"
-        );
-
-        // Test TrueHD without Atmos
-        let truehd_normal = AudioStreamInfo {
-            channels: 8,
-            codec_name: "truehd".to_string(),
-            profile: Some("Dolby TrueHD".to_string()),
-            index: 0,
-            is_spatial: false,
-        };
-        assert!(
-            !truehd_normal.is_spatial,
-            "TrueHD without Atmos should not be spatial"
-        );
-
-        // Test E-AC-3 with JOC (Atmos)
-        let eac3_joc = AudioStreamInfo {
-            channels: 8,
-            codec_name: "eac3".to_string(),
-            profile: Some("Dolby Digital Plus + JOC".to_string()),
-            index: 0,
-            is_spatial: true,
-        };
-        assert!(eac3_joc.is_spatial, "E-AC-3 with JOC should be spatial");
-
-        // Test E-AC-3 with explicit Atmos
-        let eac3_atmos = AudioStreamInfo {
-            channels: 8,
-            codec_name: "eac3".to_string(),
-            profile: Some("Dolby Digital Plus + Dolby Atmos".to_string()),
-            index: 0,
-            is_spatial: true,
-        };
-        assert!(eac3_atmos.is_spatial, "E-AC-3 with Atmos should be spatial");
-
-        // Test regular E-AC-3
-        let eac3_normal = AudioStreamInfo {
-            channels: 6,
-            codec_name: "eac3".to_string(),
-            profile: Some("Dolby Digital Plus".to_string()),
-            index: 0,
-            is_spatial: false,
-        };
-        assert!(
-            !eac3_normal.is_spatial,
-            "Regular E-AC-3 should not be spatial"
-        );
-
-        // Test DTS:X
-        let dtsx = AudioStreamInfo {
-            channels: 8,
-            codec_name: "dts".to_string(),
-            profile: Some("DTS:X".to_string()),
-            index: 0,
-            is_spatial: true,
-        };
-        assert!(dtsx.is_spatial, "DTS:X should be spatial");
-
-        // Test DTS-X (alternative naming)
-        let dts_x_alt = AudioStreamInfo {
-            channels: 8,
-            codec_name: "dts".to_string(),
-            profile: Some("DTS-X".to_string()),
-            index: 0,
-            is_spatial: true,
-        };
-        assert!(
-            dts_x_alt.is_spatial,
-            "DTS-X (alternative naming) should be spatial"
-        );
-
-        // Test regular DTS
-        let dts_normal = AudioStreamInfo {
-            channels: 6,
-            codec_name: "dts".to_string(),
-            profile: Some("DTS-HD Master Audio".to_string()),
-            index: 0,
-            is_spatial: false,
-        };
-        assert!(!dts_normal.is_spatial, "Regular DTS should not be spatial");
-
-        // Test regular codec (AC-3)
-        let ac3 = AudioStreamInfo {
-            channels: 6,
-            codec_name: "ac3".to_string(),
-            profile: Some("Dolby Digital".to_string()),
-            index: 0,
-            is_spatial: false,
-        };
-        assert!(!ac3.is_spatial, "AC-3 should not be spatial");
-    }
-
-    /// Test case-insensitive profile matching
-    #[test]
-    fn test_case_insensitive_profile_matching() {
-        // Test various case combinations for Atmos
-        let test_cases = vec![
-            ("truehd", "DOLBY TRUEHD + DOLBY ATMOS", true),
-            ("truehd", "Dolby TrueHD + Dolby Atmos", true),
-            ("truehd", "dolby truehd + dolby atmos", true),
-            ("eac3", "DOLBY DIGITAL PLUS + JOC", true),
-            ("eac3", "dolby digital plus + joc", true),
-            ("dts", "DTS:X", true),
-            ("dts", "dts:x", true),
-            ("dts", "DTSX", true),
-        ];
-
-        for (codec, profile, expected_spatial) in test_cases {
-            // This tests the logic that would be used in the actual detection
-            let is_spatial = match codec {
-                "truehd" => profile.to_lowercase().contains("atmos"),
-                "eac3" => {
-                    let p_lower = profile.to_lowercase();
-                    p_lower.contains("atmos") || p_lower.contains("joc")
-                }
-                "dts" => {
-                    let p_lower = profile.to_lowercase();
-                    p_lower.contains("dts:x")
-                        || p_lower.contains("dtsx")
-                        || p_lower.contains("dts-x")
-                }
-                _ => false,
-            };
-
-            assert_eq!(
-                is_spatial, expected_spatial,
-                "Case insensitive matching failed for codec '{}' with profile '{}'",
-                codec, profile
-            );
-        }
-    }
-
-    /// Test spatial audio detection with no profile information
-    #[test]
-    fn test_spatial_detection_no_profile() {
-        let stream_no_profile = AudioStreamInfo {
-            channels: 8,
-            codec_name: "truehd".to_string(),
-            profile: None,
-            index: 0,
-            is_spatial: false,
-        };
-        assert!(
-            !stream_no_profile.is_spatial,
-            "Stream without profile should not be spatial"
-        );
-
-        let stream_empty_profile = AudioStreamInfo {
-            channels: 8,
-            codec_name: "truehd".to_string(),
-            profile: Some("".to_string()),
-            index: 0,
-            is_spatial: false,
-        };
-        assert!(
-            !stream_empty_profile.is_spatial,
-            "Stream with empty profile should not be spatial"
-        );
-    }
-
     /// Test audio stream indexing
     #[test]
     fn test_audio_stream_indexing() {
@@ -520,19 +300,19 @@ mod tests {
         let streams = vec![
             AudioStreamInfo {
                 channels: 2,
-                codec_name: "aac".to_string(),
-                profile: None,
-                index: 0, // First audio stream
-                is_spatial: false,
-            },
-            AudioStreamInfo {
-                channels: 8,
-                codec_name: "truehd".to_string(),
-                profile: Some("Dolby TrueHD + Dolby Atmos".to_string()),
-                index: 1, // Second audio stream
-                is_spatial: true,
-            },
-        ];
+            codec_name: "aac".to_string(),
+            profile: None,
+            index: 0, // First audio stream
+            is_spatial: false,
+        },
+        AudioStreamInfo {
+            channels: 6,
+            codec_name: "eac3".to_string(),
+            profile: Some("Dolby Digital Plus".to_string()),
+            index: 1, // Second audio stream
+            is_spatial: false,
+        },
+    ];
 
         assert_eq!(
             streams[0].index, 0,
@@ -542,10 +322,9 @@ mod tests {
             streams[1].index, 1,
             "Second audio stream should have index 1"
         );
-        assert!(!streams[0].is_spatial, "AAC stream should not be spatial");
         assert!(
-            streams[1].is_spatial,
-            "TrueHD + Atmos stream should be spatial"
+            !streams[0].is_spatial && !streams[1].is_spatial,
+            "Spatial flags should be false after removal of spatial support"
         );
     }
 }

@@ -220,16 +220,8 @@ fn generate_single_stream_description(stream: &crate::external::AudioStreamInfo)
         n => format!("{} channels", n),
     };
 
-    if stream.is_spatial {
-        format!(
-            "{} ({}), Preserved",
-            channel_desc,
-            format_codec_with_profile(&stream.codec_name, stream.profile.as_deref())
-        )
-    } else {
-        let bitrate = crate::processing::audio::calculate_audio_bitrate(stream.channels);
-        format!("{}, Opus, {} kb/s", channel_desc, bitrate)
-    }
+    let bitrate = crate::processing::audio::calculate_audio_bitrate(stream.channels);
+    format!("{}, Opus, {} kb/s", channel_desc, bitrate)
 }
 
 /// Generate description for multiple audio streams
@@ -246,30 +238,11 @@ fn generate_multi_stream_description(streams: &[crate::external::AudioStreamInfo
                 n => format!("{} channels", n),
             };
 
-            if stream.is_spatial {
-                format!(
-                    "Track {}: {} ({}), Preserved",
-                    i + 1,
-                    channel_desc,
-                    format_codec_with_profile(&stream.codec_name, stream.profile.as_deref())
-                )
-            } else {
-                let bitrate = crate::processing::audio::calculate_audio_bitrate(stream.channels);
-                format!("Track {}: {}, Opus, {} kb/s", i + 1, channel_desc, bitrate)
-            }
+            let bitrate = crate::processing::audio::calculate_audio_bitrate(stream.channels);
+            format!("Track {}: {}, Opus, {} kb/s", i + 1, channel_desc, bitrate)
         })
         .collect();
     track_descriptions.join("\n                     ")
-}
-
-/// Format codec name with profile for display
-fn format_codec_with_profile(codec_name: &str, profile: Option<&str>) -> String {
-    match profile {
-        Some(profile) if !profile.is_empty() => {
-            format!("{} {}", codec_name.to_uppercase(), profile)
-        }
-        _ => codec_name.to_uppercase(),
-    }
 }
 
 /// Calculate final output dimensions after crop is applied
@@ -554,7 +527,7 @@ pub fn process_videos(
         // Get audio channels early for consolidated reporting
         let audio_channels = audio::get_audio_channels_quiet(input_path);
 
-        // Get detailed audio stream info for spatial audio detection
+        // Get detailed audio stream info (used for logging/bitrate calculation)
         let audio_streams = audio::analyze_and_log_audio_detailed(input_path);
 
         // Format audio description - each track on its own line for multiple tracks
@@ -736,18 +709,8 @@ pub fn process_videos(
                     8 => "7.1".to_string(),
                     n => format!("{} channels", n),
                 };
-                if stream.is_spatial {
-                    format!(
-                        "{} ({} {}) - Preserved",
-                        channel_desc,
-                        stream.codec_name,
-                        stream.profile.as_deref().unwrap_or("")
-                    )
-                } else {
-                    let bitrate =
-                        crate::processing::audio::calculate_audio_bitrate(stream.channels);
-                    format!("{} @ {}kbps Opus", channel_desc, bitrate)
-                }
+                let bitrate = crate::processing::audio::calculate_audio_bitrate(stream.channels);
+                format!("{} @ {}kbps Opus", channel_desc, bitrate)
             } else {
                 // Multiple audio tracks - show each on its own line
                 let track_descriptions: Vec<String> = streams
@@ -760,24 +723,14 @@ pub fn process_videos(
                             8 => "7.1".to_string(),
                             n => format!("{} channels", n),
                         };
-                        if stream.is_spatial {
-                            format!(
-                                "Track {}: {} ({} {}) - Preserved",
-                                stream.index + 1,
-                                desc,
-                                stream.codec_name,
-                                stream.profile.as_deref().unwrap_or("")
-                            )
-                        } else {
-                            let bitrate =
-                                crate::processing::audio::calculate_audio_bitrate(stream.channels);
-                            format!(
-                                "Track {}: {} @ {}kbps Opus",
-                                stream.index + 1,
-                                desc,
-                                bitrate
-                            )
-                        }
+                        let bitrate =
+                            crate::processing::audio::calculate_audio_bitrate(stream.channels);
+                        format!(
+                            "Track {}: {} @ {}kbps Opus",
+                            stream.index + 1,
+                            desc,
+                            bitrate
+                        )
                     })
                     .collect();
                 track_descriptions.join("\n                     ") // Indent continuation lines
@@ -830,23 +783,7 @@ pub fn process_videos(
         };
 
         // Convert audio codec to display name - handle mixed spatial/non-spatial tracks
-        let audio_codec_display = if let Some(ref streams) = audio_streams {
-            let spatial_count = streams.iter().filter(|s| s.is_spatial).count();
-            let non_spatial_count = streams.len() - spatial_count;
-
-            match (spatial_count, non_spatial_count) {
-                (0, _) => "Opus".to_string(), // All non-spatial
-                (_, 0) => "Copy (Spatial Audio Preserved)".to_string(), // All spatial
-                (_, _) => "Mixed (Spatial + Opus)".to_string(), // Mixed
-            }
-        } else {
-            // Fallback when no detailed stream info
-            match final_encode_params.audio_codec.as_str() {
-                "libopus" => "Opus",
-                other => other,
-            }
-            .to_string()
-        };
+        let audio_codec_display = "Opus".to_string();
 
         // Emit encoding configuration event
         emit_event(
@@ -930,11 +867,6 @@ pub fn process_videos(
                     Some(audio_channels.len())
                 };
 
-                // Extract spatial audio information for validation
-                let spatial_audio_flags: Option<Vec<bool>> = audio_streams
-                    .as_ref()
-                    .map(|streams| streams.iter().map(|stream| stream.is_spatial).collect());
-
                 let (validation_passed, validation_steps) = match validate_output_video(
                     input_path,
                     &output_path,
@@ -942,7 +874,7 @@ pub fn process_videos(
                     Some(duration_secs),
                     Some(is_hdr),
                     expected_audio_track_count,
-                    spatial_audio_flags.as_deref(),
+                    None,
                 ) {
                     Ok(validation_result) => {
                         let steps = validation_result.get_validation_steps();
@@ -1240,7 +1172,7 @@ mod tests {
             codec_name: "truehd".to_string(),
             profile: Some("Dolby TrueHD + Dolby Atmos".to_string()),
             index: 0,
-            is_spatial: true,
+            is_spatial: false,
         }];
         let audio_channels = vec![8];
 
@@ -1248,7 +1180,7 @@ mod tests {
 
         assert_eq!(
             result,
-            "7.1 surround (TRUEHD Dolby TrueHD + Dolby Atmos), Preserved"
+            "7.1 surround, Opus, 384 kb/s"
         );
     }
 
@@ -1276,7 +1208,7 @@ mod tests {
                 codec_name: "truehd".to_string(),
                 profile: Some("Dolby TrueHD + Dolby Atmos".to_string()),
                 index: 0,
-                is_spatial: true,
+                is_spatial: false,
             },
             AudioStreamInfo {
                 channels: 2,
@@ -1297,7 +1229,7 @@ mod tests {
 
         let result = generate_audio_results_description(&audio_channels, Some(&streams));
 
-        let expected = "Track 1: 7.1 surround (TRUEHD Dolby TrueHD + Dolby Atmos), Preserved\n                     Track 2: Stereo, Opus, 128 kb/s\n                     Track 3: Stereo, Opus, 128 kb/s";
+        let expected = "Track 1: 7.1 surround, Opus, 384 kb/s\n                     Track 2: Stereo, Opus, 128 kb/s\n                     Track 3: Stereo, Opus, 128 kb/s";
         assert_eq!(result, expected);
     }
 
@@ -1309,21 +1241,21 @@ mod tests {
                 codec_name: "truehd".to_string(),
                 profile: Some("Dolby TrueHD + Dolby Atmos".to_string()),
                 index: 0,
-                is_spatial: true,
+                is_spatial: false,
             },
             AudioStreamInfo {
                 channels: 8,
                 codec_name: "dts".to_string(),
                 profile: Some("DTS:X".to_string()),
                 index: 1,
-                is_spatial: true,
+                is_spatial: false,
             },
         ];
         let audio_channels = vec![8, 8];
 
         let result = generate_audio_results_description(&audio_channels, Some(&streams));
 
-        let expected = "Track 1: 7.1 surround (TRUEHD Dolby TrueHD + Dolby Atmos), Preserved\n                     Track 2: 7.1 surround (DTS DTS:X), Preserved";
+        let expected = "Track 1: 7.1 surround, Opus, 384 kb/s\n                     Track 2: 7.1 surround, Opus, 384 kb/s";
         assert_eq!(result, expected);
     }
 
@@ -1373,21 +1305,6 @@ mod tests {
     }
 
     #[test]
-    fn test_codec_profile_formatting() {
-        // Test codec with profile
-        let result = format_codec_with_profile("truehd", Some("Dolby TrueHD + Dolby Atmos"));
-        assert_eq!(result, "TRUEHD Dolby TrueHD + Dolby Atmos");
-
-        // Test codec without profile
-        let result = format_codec_with_profile("dts", None);
-        assert_eq!(result, "DTS");
-
-        // Test codec with empty profile
-        let result = format_codec_with_profile("truehd", Some(""));
-        assert_eq!(result, "TRUEHD");
-    }
-
-    #[test]
     fn test_uncommon_channel_configurations() {
         let streams = vec![
             AudioStreamInfo {
@@ -1409,14 +1326,14 @@ mod tests {
                 codec_name: "dtshd".to_string(),
                 profile: Some("DTS-HD Master Audio".to_string()),
                 index: 2,
-                is_spatial: true,
+                is_spatial: false,
             },
         ];
         let audio_channels = vec![1, 4, 10];
 
         let result = generate_audio_results_description(&audio_channels, Some(&streams));
 
-        let expected = "Track 1: Mono, Opus, 64 kb/s\n                     Track 2: 4 channels, Opus, 192 kb/s\n                     Track 3: 10 channels (DTSHD DTS-HD Master Audio), Preserved";
+        let expected = "Track 1: Mono, Opus, 64 kb/s\n                     Track 2: 4 channels, Opus, 192 kb/s\n                     Track 3: 10 channels, Opus, 480 kb/s";
         assert_eq!(result, expected);
     }
 }

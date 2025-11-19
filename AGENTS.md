@@ -1,6 +1,8 @@
-# CLAUDE.md
+# AGENTS.md
 
 This file provides guidance when working with code in this repository.
+
+Use `python3` for all Python commands.
 
 ## Project Overview
 

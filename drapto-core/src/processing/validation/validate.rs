@@ -19,7 +19,7 @@ pub fn validate_output_video(
     expected_duration: Option<f64>,
     expected_hdr: Option<bool>,
     expected_audio_track_count: Option<usize>,
-    spatial_audio_streams: Option<&[bool]>,
+    spatial_audio_streams: Option<&[bool]>, // Legacy parameter; spatial audio preservation removed
 ) -> CoreResult<ValidationResult> {
     log::debug!("Validating output video: {}", output_path.display());
 

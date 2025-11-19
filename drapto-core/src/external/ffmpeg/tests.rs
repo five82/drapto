@@ -452,16 +452,16 @@ fn test_encode_params_film_grain_disabled() {
 }
 
 #[test]
-fn test_spatial_audio_command_generation() {
+fn test_audio_command_generation_transcodes_all() {
     use crate::external::AudioStreamInfo;
 
-    // Test single spatial audio track (Dolby Atmos)
+    // Test single audio track (previously spatial)
     let spatial_stream = AudioStreamInfo {
         channels: 8,
         codec_name: "truehd".to_string(),
         profile: Some("Dolby TrueHD + Dolby Atmos".to_string()),
         index: 0,
-        is_spatial: true,
+        is_spatial: false,
     };
 
     let params = EncodeParams {
@@ -491,39 +491,22 @@ fn test_spatial_audio_command_generation() {
     let cmd = build_ffmpeg_command(&params, None, false, false).unwrap();
     let cmd_string = format!("{:?}", cmd);
 
-    // Should use copy codec for spatial audio
-    assert!(
-        cmd_string.contains("-c:a:0") && cmd_string.contains("copy"),
-        "Command should contain copy codec for spatial audio: {}",
-        cmd_string
-    );
-
-    // Should map audio stream correctly
-    assert!(
-        cmd_string.contains("-map") && cmd_string.contains("0:a:0"),
-        "Command should map first audio stream: {}",
-        cmd_string
-    );
-
-    // Should NOT contain opus bitrate settings for spatial audio
-    assert!(
-        !cmd_string.contains("-b:a:0"),
-        "Command should not contain bitrate for copied spatial audio: {}",
-        cmd_string
-    );
+    // Should transcode to Opus with bitrate
+    assert!(cmd_string.contains("-c:a:0") && cmd_string.contains("libopus"));
+    assert!(cmd_string.contains("-b:a:0") && cmd_string.contains("384k"));
 }
 
 #[test]
-fn test_mixed_spatial_non_spatial_audio_command() {
+fn test_multiple_audio_streams_all_transcoded() {
     use crate::external::AudioStreamInfo;
 
-    // Mixed scenario: spatial + commentary track
+    // Mixed scenario: primary + commentary track (both transcoded)
     let spatial_stream = AudioStreamInfo {
         channels: 8,
         codec_name: "truehd".to_string(),
         profile: Some("Dolby TrueHD + Dolby Atmos".to_string()),
         index: 0,
-        is_spatial: true,
+        is_spatial: false,
     };
 
     let commentary_stream = AudioStreamInfo {
@@ -561,46 +544,24 @@ fn test_mixed_spatial_non_spatial_audio_command() {
     let cmd = build_ffmpeg_command(&params, None, false, false).unwrap();
     let cmd_string = format!("{:?}", cmd);
 
-    // First stream should be copied (spatial)
-    assert!(
-        cmd_string.contains("-c:a:0") && cmd_string.contains("copy"),
-        "First stream should use copy codec: {}",
-        cmd_string
-    );
-
-    // Second stream should use opus
-    assert!(
-        cmd_string.contains("-c:a:1") && cmd_string.contains("libopus"),
-        "Second stream should use opus codec: {}",
-        cmd_string
-    );
-
-    // Second stream should have bitrate
-    assert!(
-        cmd_string.contains("-b:a:1") && cmd_string.contains("128k"),
-        "Second stream should have opus bitrate: {}",
-        cmd_string
-    );
-
-    // Should map both streams
-    assert!(
-        cmd_string.contains("0:a:0") && cmd_string.contains("0:a:1"),
-        "Command should map both audio streams: {}",
-        cmd_string
-    );
+    // Both streams should be transcoded to Opus with bitrates
+    assert!(cmd_string.contains("-c:a:0") && cmd_string.contains("libopus"));
+    assert!(cmd_string.contains("-c:a:1") && cmd_string.contains("libopus"));
+    assert!(cmd_string.contains("-b:a:0") && cmd_string.contains("384k"));
+    assert!(cmd_string.contains("-b:a:1") && cmd_string.contains("128k"));
 }
 
 #[test]
-fn test_dtsx_audio_command_generation() {
+fn test_dtsx_audio_command_generation_transcoded() {
     use crate::external::AudioStreamInfo;
 
-    // Test DTS:X spatial audio track
+    // Test DTS:X audio track (now transcoded)
     let dtsx_stream = AudioStreamInfo {
         channels: 8,
         codec_name: "dts".to_string(),
         profile: Some("DTS:X".to_string()),
         index: 0,
-        is_spatial: true,
+        is_spatial: false,
     };
 
     let params = EncodeParams {
@@ -630,25 +591,22 @@ fn test_dtsx_audio_command_generation() {
     let cmd = build_ffmpeg_command(&params, None, false, false).unwrap();
     let cmd_string = format!("{:?}", cmd);
 
-    // Should use copy codec for DTS:X
-    assert!(
-        cmd_string.contains("-c:a:0") && cmd_string.contains("copy"),
-        "Command should contain copy codec for DTS:X audio: {}",
-        cmd_string
-    );
+    // Should transcode to Opus with appropriate bitrate
+    assert!(cmd_string.contains("-c:a:0") && cmd_string.contains("libopus"));
+    assert!(cmd_string.contains("-b:a:0") && cmd_string.contains("384k"));
 }
 
 #[test]
 fn test_eac3_joc_audio_command_generation() {
     use crate::external::AudioStreamInfo;
 
-    // Test E-AC-3 with JOC (Atmos) spatial audio track
+    // Test E-AC-3 with JOC (Atmos) audio track (transcoded)
     let eac3_joc_stream = AudioStreamInfo {
         channels: 8,
         codec_name: "eac3".to_string(),
         profile: Some("Dolby Digital Plus + JOC".to_string()),
         index: 0,
-        is_spatial: true,
+        is_spatial: false,
     };
 
     let params = EncodeParams {
@@ -678,12 +636,9 @@ fn test_eac3_joc_audio_command_generation() {
     let cmd = build_ffmpeg_command(&params, None, false, false).unwrap();
     let cmd_string = format!("{:?}", cmd);
 
-    // Should use copy codec for E-AC-3 + JOC
-    assert!(
-        cmd_string.contains("-c:a:0") && cmd_string.contains("copy"),
-        "Command should contain copy codec for E-AC-3 JOC audio: {}",
-        cmd_string
-    );
+    // Should transcode to Opus with bitrate
+    assert!(cmd_string.contains("-c:a:0") && cmd_string.contains("libopus"));
+    assert!(cmd_string.contains("-b:a:0") && cmd_string.contains("384k"));
 }
 
 #[test]

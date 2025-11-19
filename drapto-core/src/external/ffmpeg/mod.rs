@@ -119,26 +119,15 @@ pub fn build_ffmpeg_command(
             for (output_index, stream) in audio_streams.iter().enumerate() {
                 cmd.args(["-map", &format!("0:a:{}", stream.index)]);
 
-                if stream.is_spatial {
-                    // Copy spatial audio tracks to preserve Atmos/DTS:X
-                    cmd.args([&format!("-c:a:{}", output_index), "copy"]);
-                    log::info!(
-                        "Copying spatial audio stream {} ({} {})",
-                        output_index,
-                        stream.codec_name,
-                        stream.profile.as_deref().unwrap_or("")
-                    );
-                } else {
-                    // Transcode non-spatial audio to Opus
-                    cmd.args([&format!("-c:a:{}", output_index), &params.audio_codec]);
-                    let bitrate = audio::calculate_audio_bitrate(stream.channels);
-                    cmd.args([&format!("-b:a:{}", output_index), &format!("{bitrate}k")]);
-                    // Apply audio format filter only to transcoded streams
-                    cmd.args([
-                        &format!("-filter:a:{}", output_index),
-                        "aformat=channel_layouts=7.1|5.1|stereo|mono",
-                    ]);
-                }
+                // Always transcode audio to Opus
+                cmd.args([&format!("-c:a:{}", output_index), &params.audio_codec]);
+                let bitrate = audio::calculate_audio_bitrate(stream.channels);
+                cmd.args([&format!("-b:a:{}", output_index), &format!("{bitrate}k")]);
+                // Apply audio format filter to all audio streams
+                cmd.args([
+                    &format!("-filter:a:{}", output_index),
+                    "aformat=channel_layouts=7.1|5.1|stereo|mono",
+                ]);
             }
         } else {
             // Fallback to old behavior if no detailed stream info
