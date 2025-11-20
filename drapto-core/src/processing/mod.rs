@@ -22,6 +22,18 @@ pub mod noise_analysis;
 /// Post-encode validation
 pub mod validation;
 
+/// Encoding parameter helpers
+pub mod encode_params;
+
+/// Shared formatting helpers
+pub mod formatting;
+
+/// Event and notification helpers
+pub mod reporting;
+
+/// Analysis wrappers for workflow steps
+pub mod analysis;
+
 pub use crop_detection::detect_crop;
 pub use validation::{ValidationResult, validate_output_video};
 pub use video::process_videos;

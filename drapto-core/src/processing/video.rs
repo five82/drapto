@@ -17,234 +17,31 @@
 //!    - Handle results and send notifications
 
 use crate::EncodeResult;
-use crate::config::{CoreConfig, HD_WIDTH_THRESHOLD, UHD_WIDTH_THRESHOLD};
+use crate::config::CoreConfig;
 use crate::error::{CoreError, CoreResult};
 use crate::events::{Event, EventDispatcher};
-use crate::external::ffmpeg::{EncodeParams, run_ffmpeg_encode};
+use crate::external::ffmpeg::run_ffmpeg_encode;
 use crate::external::ffprobe_executor::get_media_info;
-use crate::external::{AudioStreamInfo, get_file_size as external_get_file_size};
+use crate::external::get_file_size as external_get_file_size;
 use crate::notifications::NotificationSender;
+use crate::processing::analysis::{run_crop_detection, run_noise_analysis};
 use crate::processing::audio;
-use crate::processing::crop_detection;
-use crate::processing::noise_analysis;
+use crate::processing::encode_params::{
+    EncodingSetupParams, determine_quality_settings, setup_encoding_parameters,
+};
+use crate::processing::formatting::{
+    format_audio_description_basic, format_audio_description_config,
+    generate_audio_results_description,
+};
+use crate::processing::reporting::{
+    emit_event, send_notification_safe, send_validation_failure_notifications,
+};
 use crate::processing::validation::validate_output_video;
-use crate::processing::video_properties::VideoProperties;
 use crate::system_info::SystemInfo;
 use crate::utils::{SafePath, calculate_size_reduction, resolve_output_path};
 
-use log::warn;
-
-/// Parameters for setting up encoding configuration
-struct EncodingSetupParams<'a> {
-    input_path: &'a std::path::Path,
-    output_path: &'a std::path::Path,
-    quality: u32,
-    config: &'a CoreConfig,
-    crop_filter_opt: Option<String>,
-    audio_channels: Vec<u32>,
-    audio_streams: Option<Vec<AudioStreamInfo>>,
-    duration_secs: f64,
-    video_props: &'a VideoProperties,
-    noise_analysis: Option<&'a noise_analysis::NoiseAnalysis>,
-}
-
-/// Determine how many logical processors SVT-AV1 should use in responsive mode.
-/// Returns (processors_for_encoder, processors_reserved).
-fn plan_responsive_threads(total_logical: usize) -> Option<(u32, usize)> {
-    if total_logical <= 1 {
-        return None;
-    }
-
-    let mut reserve = if total_logical <= 8 { 2 } else { 4 };
-    if reserve >= total_logical {
-        reserve = total_logical.saturating_sub(1);
-    }
-
-    let usable = total_logical.saturating_sub(reserve);
-    if usable == 0 {
-        None
-    } else {
-        Some((usable as u32, reserve))
-    }
-}
-
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
-
-/// Helper function to safely send notifications with consistent error handling.
-fn send_notification_safe(sender: Option<&dyn NotificationSender>, message: &str, context: &str) {
-    if let Some(sender) = sender {
-        if let Err(e) = sender.send(message) {
-            warn!("Failed to send {} notification: {e}", context);
-        }
-    }
-}
-
-/// Helper function to send individual validation failure notifications
-fn send_validation_failure_notifications(
-    sender: Option<&dyn NotificationSender>,
-    filename: &str,
-    validation_steps: &[(String, bool, String)],
-) {
-    let failures: Vec<&(String, bool, String)> = validation_steps
-        .iter()
-        .filter(|(_, passed, _)| !passed)
-        .collect();
-
-    if failures.is_empty() {
-        return;
-    }
-
-    // Send individual notifications for each failure
-    for (step_name, _, message) in failures.iter() {
-        let notification_msg = format!(
-            "{}: {} validation failed - {}",
-            filename, step_name, message
-        );
-        send_notification_safe(sender, &notification_msg, "validation_failure");
-    }
-
-    // Send summary notification if multiple failures
-    if failures.len() > 1 {
-        let summary_msg = format!(
-            "{}: {} validation checks failed (encoding completed)",
-            filename,
-            failures.len()
-        );
-        send_notification_safe(sender, &summary_msg, "validation_summary");
-    }
-}
-
-/// Helper function to emit events if event dispatcher is available
-fn emit_event(event_dispatcher: Option<&EventDispatcher>, event: Event) {
-    if let Some(dispatcher) = event_dispatcher {
-        dispatcher.emit(event);
-    }
-}
-
-/// Generate audio results description for encoding complete summary
-fn generate_audio_results_description(
-    audio_channels: &[u32],
-    audio_streams: Option<&[crate::external::AudioStreamInfo]>,
-) -> String {
-    if audio_channels.is_empty() {
-        return "No audio".to_string();
-    }
-
-    // If we don't have detailed stream info, fall back to basic Opus description
-    let Some(streams) = audio_streams else {
-        return generate_basic_audio_description(audio_channels);
-    };
-
-    if streams.len() == 1 {
-        generate_single_stream_description(&streams[0])
-    } else {
-        generate_multi_stream_description(streams)
-    }
-}
-
-#[cfg(test)]
-mod responsive_thread_tests {
-    use super::plan_responsive_threads;
-
-    #[test]
-    fn reserves_two_threads_for_medium_systems() {
-        let plan = plan_responsive_threads(8).expect("Plan should exist for 8 logical threads");
-        assert_eq!(plan.0, 6);
-        assert_eq!(plan.1, 2);
-    }
-
-    #[test]
-    fn reserves_four_threads_for_large_systems() {
-        let plan = plan_responsive_threads(16).expect("Plan should exist for 16 logical threads");
-        assert_eq!(plan.0, 12);
-        assert_eq!(plan.1, 4);
-    }
-
-    #[test]
-    fn scales_down_reserve_for_two_thread_systems() {
-        let plan = plan_responsive_threads(2).expect("Plan should exist for 2 logical threads");
-        assert_eq!(plan.0, 1);
-        assert_eq!(plan.1, 1);
-    }
-
-    #[test]
-    fn returns_none_when_insufficient_threads() {
-        assert!(plan_responsive_threads(1).is_none());
-        assert!(plan_responsive_threads(0).is_none());
-    }
-}
-
-/// Generate basic audio description assuming Opus (fallback)
-fn generate_basic_audio_description(audio_channels: &[u32]) -> String {
-    if audio_channels.len() == 1 {
-        let channel_desc = match audio_channels[0] {
-            1 => "Mono".to_string(),
-            2 => "Stereo".to_string(),
-            6 => "5.1 surround".to_string(),
-            8 => "7.1 surround".to_string(),
-            n => format!("{} channels", n),
-        };
-        format!(
-            "{}, Opus, {} kb/s",
-            channel_desc,
-            crate::processing::audio::calculate_audio_bitrate(audio_channels[0])
-        )
-    } else {
-        let track_descriptions: Vec<String> = audio_channels
-            .iter()
-            .enumerate()
-            .map(|(i, &channels)| {
-                let bitrate = crate::processing::audio::calculate_audio_bitrate(channels);
-                let desc = match channels {
-                    1 => "Mono".to_string(),
-                    2 => "Stereo".to_string(),
-                    6 => "5.1 surround".to_string(),
-                    8 => "7.1 surround".to_string(),
-                    n => format!("{} channels", n),
-                };
-                format!("Track {}: {}, Opus, {} kb/s", i + 1, desc, bitrate)
-            })
-            .collect();
-        track_descriptions.join("\n                     ")
-    }
-}
-
-/// Generate description for a single audio stream
-fn generate_single_stream_description(stream: &crate::external::AudioStreamInfo) -> String {
-    let channel_desc = match stream.channels {
-        1 => "Mono".to_string(),
-        2 => "Stereo".to_string(),
-        6 => "5.1 surround".to_string(),
-        8 => "7.1 surround".to_string(),
-        n => format!("{} channels", n),
-    };
-
-    let bitrate = crate::processing::audio::calculate_audio_bitrate(stream.channels);
-    format!("{}, Opus, {} kb/s", channel_desc, bitrate)
-}
-
-/// Generate description for multiple audio streams
-fn generate_multi_stream_description(streams: &[crate::external::AudioStreamInfo]) -> String {
-    let track_descriptions: Vec<String> = streams
-        .iter()
-        .enumerate()
-        .map(|(i, stream)| {
-            let channel_desc = match stream.channels {
-                1 => "Mono".to_string(),
-                2 => "Stereo".to_string(),
-                6 => "5.1 surround".to_string(),
-                8 => "7.1 surround".to_string(),
-                n => format!("{} channels", n),
-            };
-
-            let bitrate = crate::processing::audio::calculate_audio_bitrate(stream.channels);
-            format!("Track {}: {}, Opus, {} kb/s", i + 1, channel_desc, bitrate)
-        })
-        .collect();
-    track_descriptions.join("\n                     ")
-}
-
 /// Calculate final output dimensions after crop is applied
 fn get_output_dimensions(
     original_width: u32,
@@ -265,129 +62,6 @@ fn get_output_dimensions(
     }
     // Return original dimensions if no crop or parsing fails
     (original_width, original_height)
-}
-
-/// Determines quality settings based on video resolution and config.
-///
-/// Returns (quality, category, is_hdr)
-fn determine_quality_settings(
-    video_props: &VideoProperties,
-    config: &CoreConfig,
-) -> (u32, &'static str, bool) {
-    let video_width = video_props.width;
-
-    // Select quality (CRF) based on video resolution
-    let quality = if video_width >= UHD_WIDTH_THRESHOLD {
-        // UHD (4K) quality setting
-        config.quality_uhd
-    } else if video_width >= HD_WIDTH_THRESHOLD {
-        // HD (1080p) quality setting
-        config.quality_hd
-    } else {
-        // SD (below 1080p) quality setting
-        config.quality_sd
-    };
-
-    // Determine the category label for logging
-    let category = if video_width >= UHD_WIDTH_THRESHOLD {
-        "UHD"
-    } else if video_width >= HD_WIDTH_THRESHOLD {
-        "HD"
-    } else {
-        "SD"
-    };
-
-    // Detect HDR/SDR status using MediaInfo
-    let is_hdr = video_props.hdr_info.is_hdr;
-
-    (quality.into(), category, is_hdr)
-}
-
-/// Sets up encoding parameters from analysis results and config.
-fn setup_encoding_parameters(params: EncodingSetupParams) -> EncodeParams {
-    let preset_value = params.config.svt_av1_preset;
-    let tune_value = params.config.svt_av1_tune;
-
-    let mut initial_encode_params = EncodeParams {
-        input_path: params.input_path.to_path_buf(),
-        output_path: params.output_path.to_path_buf(),
-        quality: params.quality,
-        preset: preset_value,
-        tune: tune_value,
-        ac_bias: params.config.svt_av1_ac_bias,
-        enable_variance_boost: params.config.svt_av1_enable_variance_boost,
-        variance_boost_strength: params.config.svt_av1_variance_boost_strength,
-        variance_octile: params.config.svt_av1_variance_octile,
-        use_hw_decode: true,
-        logical_processors: None,
-        crop_filter: params.crop_filter_opt,
-        audio_channels: params.audio_channels,
-        audio_streams: params.audio_streams,
-        duration: params.duration_secs,
-        hqdn3d_params: None,
-        // Actual values that will be used in FFmpeg command
-        video_codec: "libsvtav1".to_string(),
-        pixel_format: "yuv420p10le".to_string(),
-        matrix_coefficients: params
-            .video_props
-            .hdr_info
-            .matrix_coefficients
-            .clone()
-            .unwrap_or_else(|| "bt709".to_string()),
-        audio_codec: "libopus".to_string(),
-        film_grain_level: 0, // Will be set below
-    };
-
-    let logical_processors = if params.config.responsive_encoding {
-        let total_logical = num_cpus::get();
-        match plan_responsive_threads(total_logical) {
-            Some((lp, reserved)) => {
-                log::info!(
-                    "Responsive mode enabled: reserving {} of {} logical threads (SVT-AV1 using {})",
-                    reserved,
-                    total_logical,
-                    lp
-                );
-                Some(lp)
-            }
-            None => {
-                log::warn!(
-                    "Responsive mode requested but system has insufficient logical processors ({}); using default threading",
-                    total_logical
-                );
-                None
-            }
-        }
-    } else {
-        None
-    };
-
-    // Apply denoising parameters if enabled
-    let (final_hqdn3d_params, film_grain_level) = if params.config.enable_denoise {
-        // Noise analysis is required when denoising is enabled - no fallback
-        let noise_analysis = params
-            .noise_analysis
-            .expect("Noise analysis should be available when denoising is enabled");
-
-        log::info!(
-            "Using adaptive denoising: hqdn3d={}, film_grain={}",
-            noise_analysis.recommended_hqdn3d,
-            noise_analysis.recommended_film_grain
-        );
-        (
-            Some(noise_analysis.recommended_hqdn3d.clone()),
-            noise_analysis.recommended_film_grain,
-        )
-    } else {
-        log::debug!("Denoising disabled via config.");
-        (None, 0)
-    };
-
-    // Finalize encoding parameters
-    initial_encode_params.hqdn3d_params = final_hqdn3d_params;
-    initial_encode_params.film_grain_level = film_grain_level;
-    initial_encode_params.logical_processors = logical_processors;
-    initial_encode_params
 }
 
 /// Main entry point for video processing. Orchestrates analysis, encoding, and notifications.
@@ -531,34 +205,7 @@ pub fn process_videos(
         let audio_streams = audio::analyze_and_log_audio_detailed(input_path);
 
         // Format audio description - each track on its own line for multiple tracks
-        let audio_description = if audio_channels.is_empty() {
-            "No audio".to_string()
-        } else if audio_channels.len() == 1 {
-            match audio_channels[0] {
-                1 => "Mono".to_string(),
-                2 => "Stereo".to_string(),
-                6 => "5.1 surround".to_string(),
-                8 => "7.1 surround".to_string(),
-                n => format!("{} channels", n),
-            }
-        } else {
-            // Multiple audio tracks - format each on a new line
-            let track_descriptions: Vec<String> = audio_channels
-                .iter()
-                .enumerate()
-                .map(|(i, &channels)| {
-                    let desc = match channels {
-                        1 => "Mono".to_string(),
-                        2 => "Stereo".to_string(),
-                        6 => "5.1 surround".to_string(),
-                        8 => "7.1 surround".to_string(),
-                        n => format!("{} channels", n),
-                    };
-                    format!("Track {}: {}", i + 1, desc)
-                })
-                .collect();
-            track_descriptions.join("\n                     ") // Indent continuation lines
-        };
+        let audio_description = format_audio_description_basic(&audio_channels);
 
         // Emit initialization event
         emit_event(
@@ -583,103 +230,27 @@ pub fn process_videos(
         );
 
         // Perform video analysis (crop detection)
-        emit_event(event_dispatcher, Event::VideoAnalysisStarted);
-
-        let disable_crop = config.crop_mode == "none";
-        let (crop_filter_opt, _is_hdr) = if disable_crop {
-            // Crop detection is disabled - emit a special event to show this
-            emit_event(
-                event_dispatcher,
-                Event::BlackBarDetectionComplete {
-                    crop_required: false,
-                    crop_params: Some("disabled".to_string()),
-                },
-            );
-            (None, false)
-        } else {
-            // Crop detection is enabled - proceed normally
-            emit_event(event_dispatcher, Event::BlackBarDetectionStarted);
-
-            match crop_detection::detect_crop(
-                input_path,
-                &video_props,
-                disable_crop,
-                event_dispatcher,
-            ) {
-                Ok(result) => {
-                    emit_event(
-                        event_dispatcher,
-                        Event::BlackBarDetectionComplete {
-                            crop_required: result.0.is_some(),
-                            crop_params: result.0.clone(),
-                        },
-                    );
-                    result
-                }
-                Err(e) => {
-                    let warning_msg = format!(
-                        "Crop detection failed for {input_filename}: {e}. Proceeding without cropping."
-                    );
-                    emit_event(
-                        event_dispatcher,
-                        Event::Warning {
-                            message: warning_msg,
-                        },
-                    );
-                    emit_event(
-                        event_dispatcher,
-                        Event::BlackBarDetectionComplete {
-                            crop_required: false,
-                            crop_params: None,
-                        },
-                    );
-                    (None, false)
-                }
-            }
-        };
+        let (crop_filter_opt, _is_hdr) = run_crop_detection(
+            input_path,
+            &video_props,
+            config,
+            event_dispatcher,
+            &input_filename,
+        );
 
         // Audio channels already analyzed above
 
         // Perform noise analysis if denoising is enabled
-        let noise_analysis_result = if config.enable_denoise {
-            emit_event(event_dispatcher, Event::NoiseAnalysisStarted);
-            match noise_analysis::analyze_noise(input_path, &video_props, event_dispatcher) {
-                Ok(analysis) => {
-                    emit_event(
-                        event_dispatcher,
-                        Event::NoiseAnalysisComplete {
-                            average_noise: analysis.average_noise,
-                            has_significant_noise: analysis.has_significant_noise,
-                            recommended_params: analysis.recommended_hqdn3d.clone(),
-                        },
-                    );
-                    Some(analysis)
-                }
-                Err(e) => {
-                    let error_msg = format!("Noise analysis failed for {input_filename}: {e}");
-                    emit_event(
-                        event_dispatcher,
-                        Event::Error {
-                            title: "Noise Analysis Failed".to_string(),
-                            message: error_msg.clone(),
-                            context: Some(format!("File: {}", input_path.display())),
-                            suggestion: Some(
-                                "Check if the video file is valid and accessible".to_string(),
-                            ),
-                        },
-                    );
-
-                    send_notification_safe(
-                        notification_sender,
-                        &format!("Error encoding {input_filename}: Noise analysis failed"),
-                        "error",
-                    );
-
-                    continue;
-                }
-            }
-        } else {
-            None
+        let noise_analysis_result = match run_noise_analysis(
+            input_path,
+            &video_props,
+            config,
+            notification_sender,
+            event_dispatcher,
+            &input_filename,
+        ) {
+            Ok(result) => result,
+            Err(_) => continue,
         };
 
         // Setup encoding parameters
@@ -697,77 +268,8 @@ pub fn process_videos(
         });
 
         // Format audio description for the config display
-        let audio_description = if let Some(ref streams) = audio_streams {
-            if streams.is_empty() {
-                "No audio".to_string()
-            } else if streams.len() == 1 {
-                let stream = &streams[0];
-                let channel_desc = match stream.channels {
-                    1 => "Mono".to_string(),
-                    2 => "Stereo".to_string(),
-                    6 => "5.1".to_string(),
-                    8 => "7.1".to_string(),
-                    n => format!("{} channels", n),
-                };
-                let bitrate = crate::processing::audio::calculate_audio_bitrate(stream.channels);
-                format!("{} @ {}kbps Opus", channel_desc, bitrate)
-            } else {
-                // Multiple audio tracks - show each on its own line
-                let track_descriptions: Vec<String> = streams
-                    .iter()
-                    .map(|stream| {
-                        let desc = match stream.channels {
-                            1 => "Mono".to_string(),
-                            2 => "Stereo".to_string(),
-                            6 => "5.1".to_string(),
-                            8 => "7.1".to_string(),
-                            n => format!("{} channels", n),
-                        };
-                        let bitrate =
-                            crate::processing::audio::calculate_audio_bitrate(stream.channels);
-                        format!(
-                            "Track {}: {} @ {}kbps Opus",
-                            stream.index + 1,
-                            desc,
-                            bitrate
-                        )
-                    })
-                    .collect();
-                track_descriptions.join("\n                     ") // Indent continuation lines
-            }
-        } else {
-            // Fallback to simple channel info if detailed analysis failed
-            if audio_channels.is_empty() {
-                "No audio".to_string()
-            } else if audio_channels.len() == 1 {
-                let bitrate = crate::processing::audio::calculate_audio_bitrate(audio_channels[0]);
-                let channel_desc = match audio_channels[0] {
-                    1 => "Mono".to_string(),
-                    2 => "Stereo".to_string(),
-                    6 => "5.1".to_string(),
-                    8 => "7.1".to_string(),
-                    n => format!("{} channels", n),
-                };
-                format!("{} @ {}kbps", channel_desc, bitrate)
-            } else {
-                let track_descriptions: Vec<String> = audio_channels
-                    .iter()
-                    .enumerate()
-                    .map(|(i, &channels)| {
-                        let bitrate = crate::processing::audio::calculate_audio_bitrate(channels);
-                        let desc = match channels {
-                            1 => "Mono".to_string(),
-                            2 => "Stereo".to_string(),
-                            6 => "5.1".to_string(),
-                            8 => "7.1".to_string(),
-                            n => format!("{} channels", n),
-                        };
-                        format!("Track {}: {} @ {}kbps", i + 1, desc, bitrate)
-                    })
-                    .collect();
-                track_descriptions.join("\n                     ")
-            }
-        };
+        let audio_description =
+            format_audio_description_config(&audio_channels, audio_streams.as_deref());
 
         // Format film grain display
         let film_grain_display = if final_encode_params.film_grain_level > 0 {
@@ -1158,182 +660,4 @@ pub fn process_videos(
     }
 
     Ok(results)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::external::AudioStreamInfo;
-
-    #[test]
-    fn test_single_spatial_audio_description() {
-        let streams = vec![AudioStreamInfo {
-            channels: 8,
-            codec_name: "truehd".to_string(),
-            profile: Some("Dolby TrueHD + Dolby Atmos".to_string()),
-            index: 0,
-            is_spatial: false,
-        }];
-        let audio_channels = vec![8];
-
-        let result = generate_audio_results_description(&audio_channels, Some(&streams));
-
-        assert_eq!(
-            result,
-            "7.1 surround, Opus, 384 kb/s"
-        );
-    }
-
-    #[test]
-    fn test_single_non_spatial_audio_description() {
-        let streams = vec![AudioStreamInfo {
-            channels: 2,
-            codec_name: "aac".to_string(),
-            profile: Some("LC".to_string()),
-            index: 0,
-            is_spatial: false,
-        }];
-        let audio_channels = vec![2];
-
-        let result = generate_audio_results_description(&audio_channels, Some(&streams));
-
-        assert_eq!(result, "Stereo, Opus, 128 kb/s");
-    }
-
-    #[test]
-    fn test_multiple_audio_tracks_mixed() {
-        let streams = vec![
-            AudioStreamInfo {
-                channels: 8,
-                codec_name: "truehd".to_string(),
-                profile: Some("Dolby TrueHD + Dolby Atmos".to_string()),
-                index: 0,
-                is_spatial: false,
-            },
-            AudioStreamInfo {
-                channels: 2,
-                codec_name: "aac".to_string(),
-                profile: Some("LC".to_string()),
-                index: 1,
-                is_spatial: false,
-            },
-            AudioStreamInfo {
-                channels: 2,
-                codec_name: "ac3".to_string(),
-                profile: Some("Dolby Digital".to_string()),
-                index: 2,
-                is_spatial: false,
-            },
-        ];
-        let audio_channels = vec![8, 2, 2];
-
-        let result = generate_audio_results_description(&audio_channels, Some(&streams));
-
-        let expected = "Track 1: 7.1 surround, Opus, 384 kb/s\n                     Track 2: Stereo, Opus, 128 kb/s\n                     Track 3: Stereo, Opus, 128 kb/s";
-        assert_eq!(result, expected);
-    }
-
-    #[test]
-    fn test_multiple_spatial_audio_tracks() {
-        let streams = vec![
-            AudioStreamInfo {
-                channels: 8,
-                codec_name: "truehd".to_string(),
-                profile: Some("Dolby TrueHD + Dolby Atmos".to_string()),
-                index: 0,
-                is_spatial: false,
-            },
-            AudioStreamInfo {
-                channels: 8,
-                codec_name: "dts".to_string(),
-                profile: Some("DTS:X".to_string()),
-                index: 1,
-                is_spatial: false,
-            },
-        ];
-        let audio_channels = vec![8, 8];
-
-        let result = generate_audio_results_description(&audio_channels, Some(&streams));
-
-        let expected = "Track 1: 7.1 surround, Opus, 384 kb/s\n                     Track 2: 7.1 surround, Opus, 384 kb/s";
-        assert_eq!(result, expected);
-    }
-
-    #[test]
-    fn test_multiple_non_spatial_audio_tracks() {
-        let streams = vec![
-            AudioStreamInfo {
-                channels: 6,
-                codec_name: "ac3".to_string(),
-                profile: Some("Dolby Digital".to_string()),
-                index: 0,
-                is_spatial: false,
-            },
-            AudioStreamInfo {
-                channels: 2,
-                codec_name: "aac".to_string(),
-                profile: Some("LC".to_string()),
-                index: 1,
-                is_spatial: false,
-            },
-        ];
-        let audio_channels = vec![6, 2];
-
-        let result = generate_audio_results_description(&audio_channels, Some(&streams));
-
-        let expected = "Track 1: 5.1 surround, Opus, 256 kb/s\n                     Track 2: Stereo, Opus, 128 kb/s";
-        assert_eq!(result, expected);
-    }
-
-    #[test]
-    fn test_fallback_without_stream_info() {
-        let audio_channels = vec![8, 2];
-
-        let result = generate_audio_results_description(&audio_channels, None);
-
-        let expected = "Track 1: 7.1 surround, Opus, 384 kb/s\n                     Track 2: Stereo, Opus, 128 kb/s";
-        assert_eq!(result, expected);
-    }
-
-    #[test]
-    fn test_no_audio_tracks() {
-        let audio_channels = vec![];
-
-        let result = generate_audio_results_description(&audio_channels, Some(&[]));
-
-        assert_eq!(result, "No audio");
-    }
-
-    #[test]
-    fn test_uncommon_channel_configurations() {
-        let streams = vec![
-            AudioStreamInfo {
-                channels: 1,
-                codec_name: "aac".to_string(),
-                profile: Some("LC".to_string()),
-                index: 0,
-                is_spatial: false,
-            },
-            AudioStreamInfo {
-                channels: 4,
-                codec_name: "ac3".to_string(),
-                profile: Some("Dolby Digital".to_string()),
-                index: 1,
-                is_spatial: false,
-            },
-            AudioStreamInfo {
-                channels: 10,
-                codec_name: "dtshd".to_string(),
-                profile: Some("DTS-HD Master Audio".to_string()),
-                index: 2,
-                is_spatial: false,
-            },
-        ];
-        let audio_channels = vec![1, 4, 10];
-
-        let result = generate_audio_results_description(&audio_channels, Some(&streams));
-
-        let expected = "Track 1: Mono, Opus, 64 kb/s\n                     Track 2: 4 channels, Opus, 192 kb/s\n                     Track 3: 10 channels, Opus, 480 kb/s";
-        assert_eq!(result, expected);
-    }
 }
