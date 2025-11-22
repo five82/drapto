@@ -18,7 +18,6 @@
 use crate::EncodeResult;
 use crate::config::CoreConfig;
 use crate::error::{CoreError, CoreResult};
-use crate::events::{Event, EventDispatcher};
 use crate::external::ffmpeg::run_ffmpeg_encode;
 use crate::external::ffprobe_executor::get_media_info;
 use crate::external::get_file_size as external_get_file_size;
@@ -31,8 +30,12 @@ use crate::processing::formatting::{
     format_audio_description_basic, format_audio_description_config,
     generate_audio_results_description,
 };
-use crate::processing::reporting::emit_event;
 use crate::processing::validation::validate_output_video;
+use crate::reporting::{
+    BatchStartInfo, BatchSummary, EncodingConfigSummary, EncodingOutcome, FileProgressContext,
+    HardwareSummary, InitializationSummary, Reporter, ReporterError, StageProgress,
+    ValidationSummary,
+};
 use crate::system_info::SystemInfo;
 use crate::utils::{SafePath, calculate_size_reduction, resolve_output_path};
 
@@ -65,27 +68,25 @@ pub fn process_videos(
     config: &CoreConfig,
     files_to_process: &[PathBuf],
     target_filename_override: Option<PathBuf>,
-    event_dispatcher: Option<&EventDispatcher>,
+    reporter: Option<&dyn Reporter>,
 ) -> CoreResult<Vec<EncodeResult>> {
     let mut results: Vec<EncodeResult> = Vec::new();
 
     // Emit hardware information at the very beginning
     let system_info = SystemInfo::collect();
-    emit_event(
-        event_dispatcher,
-        Event::HardwareInfo {
+    if let Some(rep) = reporter {
+        rep.hardware(&HardwareSummary {
             hostname: system_info.hostname,
             os: system_info.os,
             cpu: system_info.cpu,
             memory: system_info.memory,
-        },
-    );
+        });
+    }
 
     // Show batch initialization for multiple files
     if files_to_process.len() > 1 {
-        emit_event(
-            event_dispatcher,
-            Event::BatchInitializationStarted {
+        if let Some(rep) = reporter {
+            rep.batch_started(&BatchStartInfo {
                 total_files: files_to_process.len(),
                 file_list: files_to_process
                     .iter()
@@ -94,8 +95,8 @@ pub fn process_videos(
                     .map(|s| s.to_string())
                     .collect(),
                 output_dir: config.output_dir.display().to_string(),
-            },
-        );
+            });
+        }
     }
 
     for (file_index, input_path) in files_to_process.iter().enumerate() {
@@ -103,13 +104,12 @@ pub fn process_videos(
 
         // Show file progress context for multiple files
         if files_to_process.len() > 1 {
-            emit_event(
-                event_dispatcher,
-                Event::FileProgressContext {
+            if let Some(rep) = reporter {
+                rep.file_progress(&FileProgressContext {
                     current_file: file_index + 1,
                     total_files: files_to_process.len(),
-                },
-            );
+                });
+            }
         }
 
         let input_filename = crate::utils::get_filename_safe(input_path)?;
@@ -133,12 +133,9 @@ pub fn process_videos(
                 output_path.display()
             );
 
-            emit_event(
-                event_dispatcher,
-                Event::Warning {
-                    message: message.clone(),
-                },
-            );
+            if let Some(rep) = reporter {
+                rep.warning(&message);
+            }
 
             continue;
         }
@@ -148,15 +145,14 @@ pub fn process_videos(
             Ok(props) => props,
             Err(e) => {
                 let error_msg = format!("Could not analyze {input_filename}: {e}");
-                emit_event(
-                    event_dispatcher,
-                    Event::Error {
+                if let Some(rep) = reporter {
+                    rep.error(&ReporterError {
                         title: "Analysis Error".to_string(),
                         message: error_msg.clone(),
                         context: Some(format!("File: {}", input_path.display())),
                         suggestion: Some("Check if the file is a valid video format".to_string()),
-                    },
-                );
+                    });
+                }
 
                 continue;
             }
@@ -179,9 +175,8 @@ pub fn process_videos(
         let audio_description = format_audio_description_basic(&audio_channels);
 
         // Emit initialization event
-        emit_event(
-            event_dispatcher,
-            Event::InitializationStarted {
+        if let Some(rep) = reporter {
+            rep.initialization(&InitializationSummary {
                 input_file: input_filename.clone(),
                 output_file: output_path
                     .file_name()
@@ -196,18 +191,20 @@ pub fn process_videos(
                 } else {
                     "SDR".to_string()
                 },
-                audio_description,
-            },
-        );
+                audio_description: audio_description.clone(),
+            });
+
+            rep.stage_progress(&StageProgress {
+                stage: "analysis".to_string(),
+                percent: 0.0,
+                message: "Analyzing video".to_string(),
+                eta: None,
+            });
+        }
 
         // Perform video analysis (crop detection)
-        let (crop_filter_opt, _is_hdr) = run_crop_detection(
-            input_path,
-            &video_props,
-            config,
-            event_dispatcher,
-            &input_filename,
-        );
+        let (crop_filter_opt, _is_hdr) =
+            run_crop_detection(input_path, &video_props, config, reporter, &input_filename);
 
         // Audio channels already analyzed above
 
@@ -238,9 +235,8 @@ pub fn process_videos(
         let audio_codec_display = "Opus".to_string();
 
         // Emit encoding configuration event
-        emit_event(
-            event_dispatcher,
-            Event::EncodingConfigurationDisplayed {
+        if let Some(rep) = reporter {
+            rep.encoding_config(&EncodingConfigSummary {
                 encoder: encoder_display.to_string(),
                 preset: final_encode_params.preset.to_string(),
                 tune: final_encode_params.tune.to_string(),
@@ -249,8 +245,8 @@ pub fn process_videos(
                 matrix_coefficients: final_encode_params.matrix_coefficients.clone(),
                 audio_codec: audio_codec_display.to_string(),
                 audio_description,
-            },
-        );
+            });
+        }
 
         // Get total frame count for progress reporting
         let total_frames = match get_media_info(input_path) {
@@ -261,14 +257,15 @@ pub fn process_videos(
             }
         };
 
-        // Emit encoding started event
-        emit_event(event_dispatcher, Event::EncodingStarted { total_frames });
+        if let Some(rep) = reporter {
+            rep.encoding_started(total_frames);
+        }
 
         let encode_result = run_ffmpeg_encode(
             &final_encode_params,
             false, // disable_audio: Keep audio in the output
             total_frames,
-            event_dispatcher,
+            reporter,
         );
 
         // Handle encoding results
@@ -294,16 +291,6 @@ pub fn process_videos(
                     };
 
                 // Emit validation start event
-                emit_event(
-                    event_dispatcher,
-                    Event::StageProgress {
-                        stage: "validation".to_string(),
-                        percent: 0.0,
-                        message: "Starting output validation".to_string(),
-                        eta: None,
-                    },
-                );
-
                 // Perform post-encode validation
                 let expected_audio_track_count = if audio_channels.is_empty() {
                     Some(0)
@@ -403,28 +390,12 @@ pub fn process_videos(
                 });
 
                 // Emit validation stage completion event
-                emit_event(
-                    event_dispatcher,
-                    Event::StageProgress {
-                        stage: "validation".to_string(),
-                        percent: 100.0,
-                        message: if validation_passed {
-                            "Validation completed successfully".to_string()
-                        } else {
-                            "Validation completed with issues".to_string()
-                        },
-                        eta: None,
-                    },
-                );
-
-                // Emit validation complete event
-                emit_event(
-                    event_dispatcher,
-                    Event::ValidationComplete {
-                        validation_passed,
-                        validation_steps: validation_steps.clone(),
-                    },
-                );
+                if let Some(rep) = reporter {
+                    rep.validation_complete(&ValidationSummary {
+                        passed: validation_passed,
+                        steps: validation_steps.clone(),
+                    });
+                }
 
                 // Calculate final output dimensions (considering crop)
                 let (final_width, final_height) = get_output_dimensions(
@@ -434,9 +405,8 @@ pub fn process_videos(
                 );
 
                 // Emit encoding complete event
-                emit_event(
-                    event_dispatcher,
-                    Event::EncodingComplete {
+                if let Some(rep) = reporter {
+                    rep.encoding_complete(&EncodingOutcome {
                         input_file: input_filename.clone(),
                         output_file: output_path
                             .file_name()
@@ -453,8 +423,8 @@ pub fn process_videos(
                         total_time: file_elapsed_time,
                         average_speed: duration_secs as f32 / file_elapsed_time.as_secs_f32(),
                         output_path: output_path.display().to_string(),
-                    },
-                );
+                    });
+                }
             }
 
             Err(e) => {
@@ -462,23 +432,19 @@ pub fn process_videos(
                     let warning_msg = format!(
                         "Skipping encode for {input_filename}: FFmpeg reported no processable streams found in '{path}'."
                     );
-                    emit_event(
-                        event_dispatcher,
-                        Event::Warning {
-                            message: warning_msg,
-                        },
-                    );
+                    if let Some(rep) = reporter {
+                        rep.warning(&warning_msg);
+                    }
                 } else {
                     let error_msg = format!("FFmpeg failed to encode {input_filename}: {e}");
-                    emit_event(
-                        event_dispatcher,
-                        Event::Error {
+                    if let Some(rep) = reporter {
+                        rep.error(&ReporterError {
                             title: "Encoding Error".to_string(),
                             message: error_msg.clone(),
                             context: Some(format!("File: {}", input_path.display())),
                             suggestion: Some("Check FFmpeg logs for more details".to_string()),
-                        },
-                    );
+                        });
+                    }
                 }
             }
         }
@@ -496,21 +462,15 @@ pub fn process_videos(
     // Generate appropriate summary based on number of files processed
     match results.len() {
         0 => {
-            emit_event(
-                event_dispatcher,
-                Event::Warning {
-                    message: "No files were successfully encoded".to_string(),
-                },
-            );
+            if let Some(rep) = reporter {
+                rep.warning("No files were successfully encoded");
+            }
         }
         1 => {
             // Single file - keep existing behavior
-            emit_event(
-                event_dispatcher,
-                Event::OperationComplete {
-                    message: format!("Successfully encoded {}", results[0].filename),
-                },
-            );
+            if let Some(rep) = reporter {
+                rep.operation_complete(&format!("Successfully encoded {}", results[0].filename));
+            }
         }
         _ => {
             // Multiple files - emit detailed batch summary
@@ -540,9 +500,8 @@ pub fn process_videos(
             let validation_passed_count = results.iter().filter(|r| r.validation_passed).count();
             let validation_failed_count = results.len() - validation_passed_count;
 
-            emit_event(
-                event_dispatcher,
-                Event::BatchComplete {
+            if let Some(rep) = reporter {
+                rep.batch_complete(&BatchSummary {
                     successful_count: results.len(),
                     total_files: files_to_process.len(),
                     total_original_size,
@@ -552,8 +511,8 @@ pub fn process_videos(
                     file_results,
                     validation_passed_count,
                     validation_failed_count,
-                },
-            );
+                });
+            }
         }
     }
 

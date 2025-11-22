@@ -9,13 +9,11 @@ use drapto::error::CliResult;
 use drapto::logging::get_timestamp;
 use drapto::{Commands, parse_cli, run_encode};
 use drapto_core::CoreError;
-use drapto_core::events::EventDispatcher;
-use drapto_core::file_logging::{FileLoggingHandler, setup::setup_file_logging};
-use drapto_core::presentation::template_event_handler::TemplateEventHandler;
+use drapto_core::file_logging::setup::setup_file_logging;
+use drapto_core::reporting::{JsonReporter, Reporter, TerminalReporter};
 
 use log::LevelFilter;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 /// Main entry point with clean separation of concerns
 fn main() -> CliResult<()> {
@@ -76,27 +74,18 @@ fn main() -> CliResult<()> {
                 ))
             })?;
 
-            // Create event dispatcher
-            let mut event_dispatcher = EventDispatcher::new();
-
-            // Always add file logging handler
-            event_dispatcher.add_handler(Arc::new(FileLoggingHandler::new()));
-
-            // Add JSON progress handler if requested
-            if args.progress_json {
-                use drapto_core::events::json_handler::JsonProgressHandler;
-                event_dispatcher.add_handler(Arc::new(JsonProgressHandler::new()));
-            } else {
-                // Add terminal handler for human-friendly output
-                event_dispatcher.add_handler(Arc::new(TemplateEventHandler::new()));
-            }
-
             // Log startup information
             log::info!("Drapto encoder starting in foreground mode");
 
             if log_level == LevelFilter::Debug {
                 log::info!("Debug level logging enabled");
             }
+
+            let reporter: Box<dyn Reporter> = if args.progress_json {
+                Box::new(JsonReporter::new())
+            } else {
+                Box::new(TerminalReporter::new())
+            };
 
             // Update args to use the calculated actual output directory
             let mut corrected_args = args.clone();
@@ -107,7 +96,7 @@ fn main() -> CliResult<()> {
                 discovered_files,
                 effective_input_dir,
                 target_filename_override_os,
-                event_dispatcher,
+                reporter.as_ref(),
             )
         }
     };

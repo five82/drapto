@@ -5,9 +5,9 @@
 //! progress reporting, and error handling.
 
 use crate::error::{CoreError, CoreResult, command_failed_error};
-use crate::events::{Event, EventDispatcher};
 use crate::external::AudioStreamInfo;
 use crate::processing::audio;
+use crate::reporting::{ProgressSnapshot, Reporter};
 
 use ffmpeg_sidecar::command::FfmpegCommand;
 use log::debug;
@@ -141,16 +141,16 @@ pub fn run_ffmpeg_encode(
     params: &EncodeParams,
     disable_audio: bool,
     total_frames: u64,
-    event_dispatcher: Option<&EventDispatcher>,
+    reporter: Option<&dyn Reporter>,
 ) -> CoreResult<()> {
-    run_ffmpeg_encode_internal(params, disable_audio, total_frames, event_dispatcher)
+    run_ffmpeg_encode_internal(params, disable_audio, total_frames, reporter)
 }
 
 fn run_ffmpeg_encode_internal(
     params: &EncodeParams,
     disable_audio: bool,
     total_frames: u64,
-    event_dispatcher: Option<&EventDispatcher>,
+    reporter: Option<&dyn Reporter>,
 ) -> CoreResult<()> {
     debug!("Output: {}", params.output_path.display());
 
@@ -237,9 +237,8 @@ fn run_ffmpeg_encode_internal(
                         Duration::from_secs(0)
                     };
 
-                    // Emit progress event
-                    if let Some(dispatcher) = event_dispatcher {
-                        dispatcher.emit(Event::EncodingProgress {
+                    if let Some(rep) = reporter {
+                        rep.encoding_progress(&ProgressSnapshot {
                             current_frame: frame,
                             total_frames,
                             percent: percent as f32,

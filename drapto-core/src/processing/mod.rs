@@ -25,9 +25,6 @@ pub mod encode_params;
 /// Shared formatting helpers
 pub mod formatting;
 
-/// Event and notification helpers
-pub mod reporting;
-
 /// Analysis wrappers for workflow steps
 pub mod analysis;
 

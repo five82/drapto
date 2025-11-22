@@ -1,4 +1,4 @@
-//! Encode command implementation using event-based architecture
+//! Encode command implementation with direct reporter integration.
 
 use crate::EncodeArgs;
 use crate::error::CliResult;
@@ -6,8 +6,8 @@ use crate::error::CliResult;
 use drapto_core::{
     CoreConfig, CoreError,
     discovery::find_processable_files,
-    events::{Event, EventDispatcher},
     processing::process_videos,
+    reporting::{Reporter, ReporterError},
     utils::{SafePath, calculate_size_reduction, validate_paths},
 };
 
@@ -43,7 +43,7 @@ pub fn run_encode(
     discovered_files: Vec<PathBuf>,
     effective_input_dir: PathBuf,
     target_filename_override: Option<std::ffi::OsString>,
-    event_dispatcher: EventDispatcher,
+    reporter: &dyn Reporter,
 ) -> CliResult<()> {
     let start_time = SystemTime::now();
 
@@ -91,22 +91,15 @@ pub fn run_encode(
     config.validate()?;
 
     let results = if discovered_files.is_empty() {
-        event_dispatcher.emit(Event::Warning {
-            message: "No video files found to process".to_string(),
-        });
+        reporter.warning("No video files found to process");
         vec![]
     } else {
-        // Process videos with the new event-based system
+        // Process videos with the reporter
         let target_filename = target_filename_override.map(PathBuf::from);
-        match process_videos(
-            &config,
-            &discovered_files,
-            target_filename,
-            Some(&event_dispatcher),
-        ) {
+        match process_videos(&config, &discovered_files, target_filename, Some(reporter)) {
             Ok(results) => results,
             Err(e) => {
-                event_dispatcher.emit(Event::Error {
+                reporter.error(&ReporterError {
                     title: "Processing failed".to_string(),
                     message: e.to_string(),
                     context: None,

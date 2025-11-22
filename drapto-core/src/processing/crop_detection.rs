@@ -5,9 +5,7 @@
 //! and uses the most common crop result.
 
 use crate::error::CoreResult;
-use crate::events::{Event, EventDispatcher};
 use crate::processing::video_properties::VideoProperties;
-// Removed unused log::info import
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::path::Path;
@@ -17,22 +15,11 @@ pub fn detect_crop(
     input_file: &Path,
     video_props: &VideoProperties,
     disable_crop: bool,
-    event_dispatcher: Option<&EventDispatcher>,
 ) -> CoreResult<(Option<String>, bool)> {
     // Check if crop detection is disabled
     if disable_crop {
         log::info!("Crop detection: Disabled");
         return Ok((None, false));
-    }
-
-    // Emit start event
-    if let Some(dispatcher) = event_dispatcher {
-        dispatcher.emit(Event::StageProgress {
-            stage: "crop_detection".to_string(),
-            percent: 0.0,
-            message: "Starting black bar detection".to_string(),
-            eta: None,
-        });
     }
 
     // Detect HDR content using MediaInfo data
@@ -120,15 +107,7 @@ pub fn detect_crop(
         }
     };
 
-    // Emit completion event
-    if let Some(dispatcher) = event_dispatcher {
-        dispatcher.emit(Event::StageProgress {
-            stage: "crop_detection".to_string(),
-            percent: 100.0,
-            message,
-            eta: None,
-        });
-    }
+    log::debug!("Crop detection summary: {}", message);
 
     Ok((best_crop, is_hdr))
 }

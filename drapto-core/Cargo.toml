@@ -45,8 +45,8 @@ num_cpus = "1.16"                # Determine available logical processors
 ffmpeg-sidecar = "2.3.0"         # FFmpeg process execution and management
 
 # ---- Terminal UI ----
-console = "0.16"                 # Terminal utilities and color detection
 indicatif = { version = "0.18", features = ["improved_unicode"] }  # Progress bars and spinners
+console = "0.16"                 # Lightweight color/formatting utilities
 
 # ---- Media Analysis ----
 ffprobe = "0.4.0"                # FFprobe media file analysis

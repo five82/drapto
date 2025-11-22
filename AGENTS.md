@@ -69,6 +69,14 @@ The progress reporting system provides feedback during long-running operations:
 1. Terminal-based progress bars for foreground mode
 2. Detailed logging for automated consumers
 
+### CLI Output Style
+
+1. Render just four sections in human mode: Hardware → Video → Encoding → Validation → Results; keep each section to a handful of lines.
+2. Use plain `println!` plus `indicatif` for the progress bar—no template engine or ASCII art. Colors are fine when they reinforce meaning (cyan headers, magenta stage bullets, green checkmarks, yellow warnings, red errors).
+3. Show real progress information only once: rely on the progress bar during encoding, and print a single validation summary after it completes.
+4. Keep the JSON stream (`--progress-json`) backward-compatible with the existing objects Spindle consumes (`encoding_progress`, `validation_complete`, `encoding_complete`, `warning`, `error`, `batch_complete`).
+5. Prefer natural language sentences (“Encoding finished successfully”) and reserve emphatic formatting for values that matter (reduction %, warnings, output paths).
+
 ## Code Style Guidelines
 
 1. Use descriptive variable names and comprehensive documentation

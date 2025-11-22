@@ -38,11 +38,10 @@
 pub mod config;
 pub mod discovery;
 pub mod error;
-pub mod events;
 pub mod external;
 pub mod file_logging;
-pub mod presentation;
 pub mod processing;
+pub mod reporting;
 pub mod system_info;
 pub mod temp_files;
 pub mod utils;
