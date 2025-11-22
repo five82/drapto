@@ -28,9 +28,6 @@ clap = { version = "4", features = ["derive", "cargo", "env"] }  # Command-line 
 # ---- Date and Time ----
 chrono = "0.4"                   # Date and time utilities
 
-# ---- Process Management ----
-daemonize = "0.5"                # Background process (daemon) support
-
 # ---- Drapto Core ----
 drapto-core = { path = "../drapto-core" }  # Core library for video processing
 

@@ -7,7 +7,6 @@
 //!
 //! ```rust,no_run
 //! use drapto_core::{CoreConfig, process_videos};
-//! use drapto_core::notifications::NtfyNotificationSender;
 //! use std::path::PathBuf;
 //!
 //! // Create configuration
@@ -27,12 +26,8 @@
 //! // Find video files to process
 //! let files = drapto_core::find_processable_files(&config.input_dir).unwrap();
 //!
-//! // Optional: Set up notifications
-//! let notification_sender = NtfyNotificationSender::new("https://ntfy.sh/my-topic").unwrap();
-//!
 //! // Process videos
 //! let results = process_videos(
-//!     Some(&notification_sender),
 //!     &config,
 //!     &files,
 //!     None,
@@ -47,7 +42,6 @@ pub mod events;
 pub mod external;
 pub mod file_logging;
 pub mod hardware_decode;
-pub mod notifications;
 pub mod presentation;
 pub mod processing;
 pub mod system_info;
@@ -64,7 +58,6 @@ pub use external::{
 pub use hardware_decode::{
     HardwareDecoding, add_hardware_decoding_to_command, is_hardware_decoding_available, is_macos,
 };
-pub use notifications::{Notification, NtfyNotificationSender};
 pub use processing::process_videos;
 pub use temp_files::{create_temp_dir, create_temp_file, create_temp_file_path};
 pub use utils::{format_bytes, format_duration, parse_ffmpeg_time};

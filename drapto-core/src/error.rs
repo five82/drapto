@@ -79,10 +79,6 @@ pub enum CoreError {
     #[error("Analysis error: {0}")]
     Analysis(String),
 
-    /// Notification sending errors
-    #[error("Notification error: {0}")]
-    NotificationError(String),
-
     /// Error indicating that ffmpeg reported no streams found
     #[error("FFmpeg reported 'No streams found' for input file: {0}")]
     NoStreamsFound(String),

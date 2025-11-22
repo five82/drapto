@@ -876,7 +876,7 @@ Drapto follows these conventions for command line arguments:
 | `-i` | `--input` | Specify input file |
 | `-o` | `--output` | Specify output file |
 | | `--no-color` | Disable colored output |
-| | `--interactive` | Run in foreground instead of as daemon |
+| | `--progress-json` | Emit structured progress for automation |
 
 Future flags that may be added:
 - `-q` / `--quiet`: Show only warnings and errors

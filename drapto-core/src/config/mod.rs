@@ -108,9 +108,6 @@ pub struct CoreConfig {
     /// Crop mode for the main encode ("auto", "none", etc.)
     pub crop_mode: String,
 
-    /// Optional ntfy.sh topic URL for sending notifications
-    pub ntfy_topic: Option<String>,
-
     /// Whether to reserve CPU threads for improved system responsiveness.
     pub responsive_encoding: bool,
 
@@ -136,7 +133,6 @@ impl Default for CoreConfig {
             quality_hd: DEFAULT_CORE_QUALITY_HD,
             quality_uhd: DEFAULT_CORE_QUALITY_UHD,
             crop_mode: DEFAULT_CROP_MODE.to_string(),
-            ntfy_topic: None,
             responsive_encoding: false,
             encode_cooldown_secs: DEFAULT_ENCODE_COOLDOWN_SECS,
         }
@@ -217,7 +213,6 @@ mod tests {
             DEFAULT_SVT_AV1_VARIANCE_OCTILE
         );
         assert!(!config.responsive_encoding);
-        assert!(config.ntfy_topic.is_none());
         assert!(config.temp_dir.is_none());
 
         // Validate default config should pass

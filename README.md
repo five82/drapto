@@ -34,14 +34,8 @@ drapto encode -i input.mkv -o output/
 # Encode directory (processes all video files)
 drapto encode -i /videos/ -o /encoded/
 
-# Foreground mode (with progress bars and terminal output)
-drapto encode --foreground -i input.mkv -o output/
-
 # Custom settings
 drapto encode -i input.mkv -o output/ --quality-hd 24 --preset 6
-
-# With notifications
-drapto encode -i input.mkv -o output/ --ntfy https://ntfy.sh/your_topic
 
 # Verbose output
 drapto encode -v -i input.mkv -o output/
@@ -54,7 +48,6 @@ drapto encode -v -i input.mkv -o output/
 * `-o, --output <DIR>`: Output directory (or filename if single file)
 
 **Common Options:**
-* `--foreground`: Run in foreground instead of daemon mode
 * `-v, --verbose`: Enable verbose output with detailed information
 * `--no-color`: Disable colored output
 * `-l, --log-dir <DIR>`: Directory for log files (defaults to OUTPUT_DIR/logs)
@@ -62,7 +55,7 @@ drapto encode -v -i input.mkv -o output/
 * `--quality-sd/hd/uhd <CRF>`: Override quality settings (defaults: SD=23, HD=25, UHD=27)
 * `--responsive`: Reserve a few CPU threads so other applications stay responsive (disabled by default)
 * `--disable-autocrop`: Disable black bar cropping (auto-crop is enabled by default)
-* `--ntfy <URL>`: Send notifications to ntfy.sh
+* `--progress-json`: Emit structured progress events for external tools (also controls Spindle integration)
 
 ## Advanced Features
 
@@ -109,17 +102,8 @@ In foreground mode:
 
 ### Environment Variables
 
-* `DRAPTO_NTFY_TOPIC`: Default ntfy.sh topic URL
 * `NO_COLOR`: Disable colored output
 * `RUST_LOG`: Control logging level (e.g., `debug`, `trace`)
-
-### Notifications
-
-Push notifications via ntfy.sh include:
-* Encode start notification
-* Encode completion with file sizes and duration
-* Error notifications
-* Size reduction percentage
 
 ## Building from Source
 
@@ -136,7 +120,7 @@ Drapto is built as a Rust workspace with two main components:
 
 * **drapto-cli**: Command-line interface
   * Argument parsing and validation
-  * Daemon/interactive mode handling
+  * Interactive progress reporting and JSON output selection
   * Progress reporting and user feedback
   * Terminal color support
 
@@ -145,7 +129,6 @@ Drapto is built as a Rust workspace with two main components:
   * FFmpeg/FFprobe and MediaInfo integration
   * Audio stream processing and validation
   * Post-encode validation system
-  * Notification services (ntfy.sh)
   * Hardware acceleration detection
   * Event-based progress reporting
   * System information collection

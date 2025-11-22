@@ -13,7 +13,7 @@ Drapto is an advanced video encoding tool that uses ffmpeg to optimize and encod
 The project follows a modular Rust workspace architecture with two main components:
 
 1. **drapto-cli**: Command-line interface and user interaction
-   - Handles argument parsing, logging, daemonization
+   - Handles argument parsing, logging, and progress orchestration
    - Provides user-friendly command interface
    - Manages progress reporting and feedback
 
@@ -21,7 +21,6 @@ The project follows a modular Rust workspace architecture with two main componen
    - Video analysis (crop detection, HDR awareness)
    - FFmpeg integration and command generation
    - Video encoding orchestration
-   - Notification services
 
 ## Development Commands
 
@@ -41,9 +40,6 @@ cargo build --release
 # Run a build from the project directory
 cargo run -- encode -i /path/to/video.mkv -o /path/to/output/
 
-# Run with foreground mode (no daemon)
-cargo run -- encode --foreground -i /path/to/video.mkv -o /path/to/output/
-
 # Enable debug logging
 RUST_LOG=debug cargo run -- encode -i /path/to/video.mkv -o /path/to/output/
 ```
@@ -52,7 +48,7 @@ RUST_LOG=debug cargo run -- encode -i /path/to/video.mkv -o /path/to/output/
 
 ```bash
 # Enable trace-level logging for more detailed output
-RUST_LOG=trace cargo run -- encode --foreground -i input.mkv -o output/
+RUST_LOG=trace cargo run -- encode -i input.mkv -o output/
 ```
 
 ## Key Components
@@ -70,8 +66,7 @@ The project uses FFmpeg for video processing via:
 The progress reporting system provides feedback during long-running operations:
 
 1. Terminal-based progress bars for foreground mode
-2. Detailed logging for daemon mode
-3. Push notifications via ntfy.sh
+2. Detailed logging for automated consumers
 
 ## Code Style Guidelines
 
@@ -89,7 +84,6 @@ The core functionality is organized into modules:
 - **external**: FFmpeg and FFprobe integrations
 - **processing**: Video and audio processing pipelines
 - **config**: Configuration management
-- **notifications**: Notification systems
 
 When working with the codebase, understand the flow:
 1. CLI parses arguments and initializes components

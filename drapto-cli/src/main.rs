@@ -1,8 +1,8 @@
 //! Main entry point for the Drapto CLI application.
 //!
-//! This handles command-line argument parsing, logging setup, daemonization,
-//! and dispatching to the appropriate command handlers. The application can run
-//! in either interactive mode (with terminal output) or daemon mode (background process).
+//! This handles command-line argument parsing, logging setup, and dispatching
+//! to the appropriate command handlers. The application now always runs in
+//! foreground mode, emitting either a terminal UI or JSON progress events.
 
 use drapto::commands::encode::discover_encode_files;
 use drapto::error::CliResult;
@@ -10,22 +10,18 @@ use drapto::logging::get_timestamp;
 use drapto::{Cli, Commands, run_encode};
 
 use clap::Parser;
-use daemonize::Daemonize;
 use drapto_core::CoreError;
-use drapto_core::events::{Event, EventDispatcher};
+use drapto_core::events::EventDispatcher;
 use drapto_core::file_logging::{FileLoggingHandler, setup::setup_file_logging};
-use drapto_core::notifications::{NotificationSender, NtfyNotificationSender};
 use drapto_core::presentation::template_event_handler::TemplateEventHandler;
 
 use log::LevelFilter;
-use std::io::{self, Write};
 use std::path::PathBuf;
 use std::sync::Arc;
 
 /// Main entry point with clean separation of concerns
 fn main() -> CliResult<()> {
     let cli_args = Cli::parse();
-    let foreground_mode = cli_args.foreground;
 
     // Determine log level based on verbose flag
     let log_level = if cli_args.verbose {
@@ -36,8 +32,6 @@ fn main() -> CliResult<()> {
 
     let _ = match cli_args.command {
         Commands::Encode(args) => {
-            // --progress-json automatically implies foreground mode for external tool integration
-            let foreground_mode = foreground_mode || args.progress_json;
 
             let (discovered_files, effective_input_dir) =
                 discover_encode_files(&args).map_err(|e| {
@@ -95,75 +89,13 @@ fn main() -> CliResult<()> {
             if args.progress_json {
                 use drapto_core::events::json_handler::JsonProgressHandler;
                 event_dispatcher.add_handler(Arc::new(JsonProgressHandler::new()));
-            } else if foreground_mode {
-                // Add terminal handler only in foreground mode without JSON progress
+            } else {
+                // Add terminal handler for human-friendly output
                 event_dispatcher.add_handler(Arc::new(TemplateEventHandler::new()));
             }
 
-            if !foreground_mode {
-                // Pre-daemonization output
-                eprintln!("===== DAEMON MODE =====");
-                eprintln!();
-                eprintln!("Files to process: {}", discovered_files.len());
-                for (i, file) in discovered_files.iter().enumerate() {
-                    eprintln!("  {}. {}", i + 1, file.display());
-                }
-                eprintln!();
-                eprintln!("Log file: {}", main_log_path.display());
-                eprintln!();
-                eprintln!("Starting daemon process...");
-
-                if let Err(e) = io::stderr().flush() {
-                    eprintln!("Failed to flush stderr: {}", e);
-                }
-
-                // Open log file for daemon stdout/stderr redirection
-                let log_file = std::fs::File::create(&main_log_path).map_err(|e| {
-                    CoreError::OperationFailed(format!(
-                        "Failed to create log file: {}: {}",
-                        main_log_path.display(),
-                        e
-                    ))
-                })?;
-
-                let log_file_stderr = log_file.try_clone().map_err(|e| {
-                    CoreError::OperationFailed(format!("Failed to clone log file handle: {e}"))
-                })?;
-
-                let daemonize = Daemonize::new()
-                    .working_directory(".")
-                    .stdout(log_file)
-                    .stderr(log_file_stderr);
-
-                daemonize.start().map_err(|e| {
-                    CoreError::OperationFailed(format!("Failed to start daemon process: {e}"))
-                })?;
-            }
-
-            // Create notification sender if provided
-            let notification_sender = if let Some(ref topic) = args.ntfy {
-                match NtfyNotificationSender::new(topic) {
-                    Ok(sender) => Some(sender),
-                    Err(e) => {
-                        event_dispatcher.emit(Event::Warning {
-                            message: format!("Failed to create notification sender: {}", e),
-                        });
-                        None
-                    }
-                }
-            } else {
-                None
-            };
-
             // Log startup information
-            log::info!(
-                "Drapto encoder starting in {} mode",
-                if foreground_mode {
-                    "foreground"
-                } else {
-                    "daemon"
-                }
-            );
+            log::info!("Drapto encoder starting in foreground mode");
 
             if log_level == LevelFilter::Debug {
                 log::info!("Debug level logging enabled");
@@ -174,11 +106,7 @@ fn main() -> CliResult<()> {
             corrected_args.output_dir = actual_output_dir;
 
             run_encode(
-                notification_sender
-                    .as_ref()
-                    .map(|s| s as &dyn NotificationSender),
                 corrected_args,
-                foreground_mode,
                 discovered_files,
                 effective_input_dir,
                 target_filename_override_os,

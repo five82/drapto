@@ -7,7 +7,6 @@ use drapto_core::{
     CoreConfig, CoreError,
     discovery::find_processable_files,
     events::{Event, EventDispatcher},
-    notifications::NotificationSender,
     processing::process_videos,
     utils::{SafePath, calculate_size_reduction, validate_paths},
 };
@@ -40,36 +39,12 @@ pub fn discover_encode_files(args: &EncodeArgs) -> CliResult<(Vec<PathBuf>, Path
 
 /// Run the encode command with the event-based architecture
 pub fn run_encode(
-    notification_sender: Option<&dyn NotificationSender>,
     args: EncodeArgs,
-    foreground_mode: bool,
     discovered_files: Vec<PathBuf>,
     effective_input_dir: PathBuf,
     target_filename_override: Option<std::ffi::OsString>,
     event_dispatcher: EventDispatcher,
 ) -> CliResult<()> {
-    // Log startup information for daemon mode
-    if !foreground_mode {
-        log::info!("Starting drapto encoding in daemon mode");
-        log::info!("Processing {} files", discovered_files.len());
-        log::info!("Output directory: {}", args.output_dir.display());
-        if let Some(ref log_dir) = args.log_dir {
-            log::info!("Log directory: {}", log_dir.display());
-        }
-    }
-
-    // Notify about startup
-    if let Some(sender) = notification_sender {
-        let hostname = std::env::var("HOSTNAME")
-            .or_else(|_| std::env::var("COMPUTERNAME"))
-            .unwrap_or_else(|_| "local".to_string());
-
-        let _ = sender.send(&format!(
-            "Drapto encoding started on {} - Processing {} files",
-            hostname,
-            discovered_files.len()
-        ));
-    }
 
     let start_time = SystemTime::now();
 
@@ -109,10 +84,6 @@ pub fn run_encode(
         drapto_core::config::DEFAULT_CROP_MODE.to_string()
     };
 
-    if let Some(topic) = args.ntfy.clone() {
-        config.ntfy_topic = Some(topic);
-    }
-
     if let Some(preset) = args.preset {
         config.svt_av1_preset = preset;
     }
@@ -128,13 +99,7 @@ pub fn run_encode(
     } else {
         // Process videos with the new event-based system
         let target_filename = target_filename_override.map(PathBuf::from);
-        match process_videos(
-            notification_sender,
-            &config,
-            &discovered_files,
-            target_filename,
-            Some(&event_dispatcher),
-        ) {
+        match process_videos(&config, &discovered_files, target_filename, Some(&event_dispatcher)) {
             Ok(results) => results,
             Err(e) => {
                 event_dispatcher.emit(Event::Error {
@@ -174,34 +139,6 @@ pub fn run_encode(
             drapto_core::format_bytes(total_input_size),
             drapto_core::format_bytes(total_output_size)
         );
-    }
-
-    // Send completion notification
-    if let Some(sender) = notification_sender {
-        let hostname = std::env::var("HOSTNAME")
-            .or_else(|_| std::env::var("COMPUTERNAME"))
-            .unwrap_or_else(|_| "local".to_string());
-
-        let message = if results.is_empty() {
-            format!(
-                "Drapto encoding on {} completed - No files processed",
-                hostname
-            )
-        } else {
-            format!(
-                "Drapto encoding on {} completed - {} files processed in {}",
-                hostname,
-                results.len(),
-                total_duration
-            )
-        };
-
-        let _ = sender.send(&message);
-    }
-
-    // Log completion for daemon mode
-    if !foreground_mode {
-        log::info!("Drapto encoding completed");
     }
 
     Ok(())

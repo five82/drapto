@@ -22,7 +22,6 @@ use crate::events::{Event, EventDispatcher};
 use crate::external::ffmpeg::run_ffmpeg_encode;
 use crate::external::ffprobe_executor::get_media_info;
 use crate::external::get_file_size as external_get_file_size;
-use crate::notifications::NotificationSender;
 use crate::processing::analysis::run_crop_detection;
 use crate::processing::audio;
 use crate::processing::encode_params::{
@@ -32,9 +31,7 @@ use crate::processing::formatting::{
     format_audio_description_basic, format_audio_description_config,
     generate_audio_results_description,
 };
-use crate::processing::reporting::{
-    emit_event, send_notification_safe, send_validation_failure_notifications,
-};
+use crate::processing::reporting::emit_event;
 use crate::processing::validation::validate_output_video;
 use crate::system_info::SystemInfo;
 use crate::utils::{SafePath, calculate_size_reduction, resolve_output_path};
@@ -65,7 +62,6 @@ fn get_output_dimensions(
 
 /// Main entry point for video processing. Orchestrates analysis, encoding, and notifications.
 pub fn process_videos(
-    notification_sender: Option<&dyn NotificationSender>,
     config: &CoreConfig,
     files_to_process: &[PathBuf],
     target_filename_override: Option<PathBuf>,
@@ -145,25 +141,8 @@ pub fn process_videos(
                 },
             );
 
-            send_notification_safe(
-                notification_sender,
-                &format!(
-                    "Skipped encode for {}: Output file already exists at {}",
-                    input_filename,
-                    output_path.display()
-                ),
-                "skip",
-            );
-
             continue;
         }
-
-        // Send encoding start notification
-        send_notification_safe(
-            notification_sender,
-            &format!("Started encoding {input_filename}"),
-            "start",
-        );
 
         // Analyze video properties
         let video_props = match crate::external::get_video_properties(input_path) {
@@ -178,12 +157,6 @@ pub fn process_videos(
                         context: Some(format!("File: {}", input_path.display())),
                         suggestion: Some("Check if the file is a valid video format".to_string()),
                     },
-                );
-
-                send_notification_safe(
-                    notification_sender,
-                    &format!("Error encoding {input_filename}: Failed to get video properties"),
-                    "error",
                 );
 
                 continue;
@@ -361,13 +334,6 @@ pub fn process_videos(
                                 input_filename,
                                 failures.join(", ")
                             );
-
-                            // Send detailed individual notifications for each failure
-                            send_validation_failure_notifications(
-                                notification_sender,
-                                &input_filename,
-                                &steps,
-                            );
                         } else {
                             log::debug!(
                                 "Post-encode validation passed for {}: All validation checks confirmed",
@@ -492,30 +458,6 @@ pub fn process_videos(
                     },
                 );
 
-                // Send success notification
-                let reduction = calculate_size_reduction(input_size, output_size) as u32;
-
-                let duration_secs = file_elapsed_time.as_secs();
-                let duration_str = if duration_secs >= 3600 {
-                    format!(
-                        "{}h {}m {}s",
-                        duration_secs / 3600,
-                        (duration_secs % 3600) / 60,
-                        duration_secs % 60
-                    )
-                } else if duration_secs >= 60 {
-                    format!("{}m {}s", duration_secs / 60, duration_secs % 60)
-                } else {
-                    format!("{duration_secs}s")
-                };
-
-                send_notification_safe(
-                    notification_sender,
-                    &format!(
-                        "Completed encoding {input_filename} in {duration_str}. Reduced by {reduction}%"
-                    ),
-                    "success",
-                );
             }
 
             Err(e) => {
@@ -530,11 +472,6 @@ pub fn process_videos(
                         },
                     );
 
-                    send_notification_safe(
-                        notification_sender,
-                        &format!("Skipped encode for {input_filename}: No streams found."),
-                        "skip",
-                    );
                 } else {
                     let error_msg = format!("FFmpeg failed to encode {input_filename}: {e}");
                     emit_event(
@@ -547,17 +484,12 @@ pub fn process_videos(
                         },
                     );
 
-                    send_notification_safe(
-                        notification_sender,
-                        &format!("Error encoding {input_filename}: ffmpeg failed: {e}"),
-                        "error",
-                    );
                 }
             }
         }
 
         // Apply cooldown between encodes when processing multiple files
-        // This helps ensure notifications arrive in order
+        // This keeps log events readable during rapid batch operations
         if files_to_process.len() > 1
             && input_path != files_to_process.last().unwrap()
             && config.encode_cooldown_secs > 0
