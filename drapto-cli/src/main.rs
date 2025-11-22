@@ -7,9 +7,7 @@
 use drapto::commands::encode::discover_encode_files;
 use drapto::error::CliResult;
 use drapto::logging::get_timestamp;
-use drapto::{Cli, Commands, run_encode};
-
-use clap::Parser;
+use drapto::{Commands, parse_cli, run_encode};
 use drapto_core::CoreError;
 use drapto_core::events::EventDispatcher;
 use drapto_core::file_logging::{FileLoggingHandler, setup::setup_file_logging};
@@ -21,7 +19,7 @@ use std::sync::Arc;
 
 /// Main entry point with clean separation of concerns
 fn main() -> CliResult<()> {
-    let cli_args = Cli::parse();
+    let cli_args = parse_cli();
 
     // Determine log level based on verbose flag
     let log_level = if cli_args.verbose {

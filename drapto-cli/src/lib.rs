@@ -17,5 +17,5 @@ pub mod error;
 pub mod logging;
 
 // Re-exports for convenience
-pub use cli::{Cli, Commands, EncodeArgs};
+pub use cli::{Cli, Commands, EncodeArgs, parse_cli, parse_cli_from};
 pub use commands::encode::run_encode;

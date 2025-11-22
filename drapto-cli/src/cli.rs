@@ -3,7 +3,14 @@
 //! This module defines the CLI structure using clap, including all commands,
 //! subcommands, and their associated arguments.
 
-use clap::{Parser, Subcommand};
+use clap::{Command, CommandFactory, FromArgMatches, Parser, Subcommand};
+use drapto_core::config::{
+    DEFAULT_CORE_QUALITY_HD, DEFAULT_CORE_QUALITY_SD, DEFAULT_CORE_QUALITY_UHD,
+    DEFAULT_SVT_AV1_PRESET,
+};
+use std::env;
+use std::ffi::OsString;
+use std::fmt::Display;
 use std::path::PathBuf;
 
 /// Main CLI structure with global flags and subcommands.
@@ -90,4 +97,86 @@ pub struct EncodeArgs {
     /// Output progress as structured JSON to stdout for machine parsing (automatically runs in foreground).
     #[arg(long)]
     pub progress_json: bool,
+}
+
+/// Parse CLI arguments while dynamically embedding core defaults into the help text.
+pub fn parse_cli() -> Cli {
+    parse_cli_from(env::args_os())
+}
+
+/// Parse CLI arguments from a custom iterator (primarily for testing).
+pub fn parse_cli_from<I, T>(itr: I) -> Cli
+where
+    I: IntoIterator<Item = T>,
+    T: Into<OsString> + Clone,
+{
+    let command = command_with_dynamic_defaults();
+    let matches = command
+        .try_get_matches_from(itr)
+        .unwrap_or_else(|err| err.exit());
+
+    Cli::from_arg_matches(&matches).unwrap_or_else(|err| err.exit())
+}
+
+fn command_with_dynamic_defaults() -> Command {
+    apply_encode_default_help(Cli::command())
+}
+
+fn apply_encode_default_help(command: Command) -> Command {
+    command.mut_subcommand("encode", |encode_cmd| {
+        encode_cmd.mut_args(|arg| match arg.get_long() {
+            Some("quality-sd") => {
+                arg.help(help_with_default(QUALITY_SD_HELP, DEFAULT_CORE_QUALITY_SD))
+            }
+            Some("quality-hd") => {
+                arg.help(help_with_default(QUALITY_HD_HELP, DEFAULT_CORE_QUALITY_HD))
+            }
+            Some("quality-uhd") => arg.help(help_with_default(
+                QUALITY_UHD_HELP,
+                DEFAULT_CORE_QUALITY_UHD,
+            )),
+            Some("preset") => arg.help(help_with_default(PRESET_HELP, DEFAULT_SVT_AV1_PRESET)),
+            _ => arg,
+        })
+    })
+}
+
+const QUALITY_SD_HELP: &str =
+    "CRF quality for SD videos (<1920 width). Lower=better quality, larger files.";
+const QUALITY_HD_HELP: &str =
+    "CRF quality for HD videos (≥1920 width). Lower=better quality, larger files.";
+const QUALITY_UHD_HELP: &str =
+    "CRF quality for UHD videos (≥3840 width). Lower=better quality, larger files.";
+const PRESET_HELP: &str = "Encoder preset (0-13). Lower=slower/better, higher=faster.";
+
+fn help_with_default<T: Display>(base: &str, default: T) -> String {
+    format!("{base} Default: {default}.")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn encode_help_includes_core_defaults() {
+        let mut command = command_with_dynamic_defaults();
+        let encode_help = command
+            .get_subcommands_mut()
+            .find(|sub| sub.get_name() == "encode")
+            .expect("encode subcommand missing");
+        let help = encode_help.render_long_help().to_string();
+
+        for default in [
+            DEFAULT_CORE_QUALITY_SD.to_string(),
+            DEFAULT_CORE_QUALITY_HD.to_string(),
+            DEFAULT_CORE_QUALITY_UHD.to_string(),
+            DEFAULT_SVT_AV1_PRESET.to_string(),
+        ] {
+            let needle = format!("Default: {default}");
+            assert!(
+                help.contains(&needle),
+                "Expected help output to contain `{needle}`, but it was missing.\nHelp:\n{help}"
+            );
+        }
+    }
 }
