@@ -1,7 +1,7 @@
 //! Core library for video processing and encoding tasks using ffmpeg and ffprobe.
 //!
 //! This crate provides video file discovery, property detection, crop analysis,
-//! denoising, and encoding with optimized parameters.
+//! and encoding with optimized parameters.
 //!
 //! ## Usage Example
 //!
@@ -18,7 +18,6 @@
 //! );
 //!
 //! // Configure encoding settings
-//! config.enable_denoise = true;
 //! config.svt_av1_preset = 6;
 //! config.quality_hd = 27;
 //!

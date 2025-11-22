@@ -95,31 +95,11 @@ impl EventHandler for FileLoggingHandler {
                 }
             }
 
-            Event::ProcessingConfigurationStarted => {
-                info!("Applying processing configuration");
-            }
-
-            Event::ProcessingConfigurationApplied {
-                denoising,
-                denoising_params,
-                film_grain,
-                estimated_size,
-                estimated_savings,
-            } => {
-                info!("Processing configuration applied:");
-                info!("  Denoising: {} ({})", denoising, denoising_params);
-                info!("  Film grain: {}", film_grain);
-                info!("  Estimated output size: {}", estimated_size);
-                info!("  Estimated savings: {}", estimated_savings);
-            }
-
             Event::EncodingConfigurationDisplayed {
                 encoder,
                 preset,
                 tune,
                 quality,
-                denoising,
-                film_grain,
                 hardware_accel,
                 pixel_format,
                 matrix_coefficients,
@@ -131,8 +111,6 @@ impl EventHandler for FileLoggingHandler {
                 info!("  Preset: {}", preset);
                 info!("  Tune: {}", tune);
                 info!("  Quality (CRF): {}", quality);
-                info!("  Denoising: {}", denoising);
-                info!("  Film grain synthesis: {}", film_grain);
                 if let Some(hw) = hardware_accel {
                     info!("  Hardware acceleration: {}", hw);
                 }
@@ -335,21 +313,6 @@ impl EventHandler for FileLoggingHandler {
                 for (filename, reduction) in file_results {
                     info!("  {} - {:.1}% reduction", filename, reduction);
                 }
-            }
-
-            Event::NoiseAnalysisStarted => {
-                info!("Analyzing video noise levels...");
-            }
-
-            Event::NoiseAnalysisComplete {
-                average_noise,
-                has_significant_noise,
-                recommended_params,
-            } => {
-                info!(
-                    "Noise analysis complete: avg={:.4}, significant={}, recommended={}",
-                    average_noise, has_significant_noise, recommended_params
-                );
             }
 
             Event::StageProgress {

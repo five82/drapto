@@ -75,19 +75,6 @@ impl VideoFilterChain {
         Self::default()
     }
 
-    /// Adds a denoising filter to the chain
-    #[must_use]
-    pub fn add_denoise(mut self, params: &str) -> Self {
-        if !params.is_empty() {
-            if params.starts_with("hqdn3d=") {
-                self.filters.push(params.to_string());
-            } else {
-                self.filters.push(format!("hqdn3d={params}"));
-            }
-        }
-        self
-    }
-
     /// Adds a crop filter to the chain
     #[must_use]
     pub fn add_crop(mut self, crop: &str) -> Self {
@@ -170,18 +157,6 @@ impl SvtAv1ParamsBuilder {
         self
     }
 
-    /// Sets the film grain synthesis level
-    #[must_use]
-    pub fn with_film_grain(mut self, level: u8) -> Self {
-        if level > 0 {
-            self.params
-                .push(("film-grain".to_string(), level.to_string()));
-            self.params
-                .push(("film-grain-denoise".to_string(), "0".to_string()));
-        }
-        self
-    }
-
     /// Adds a custom parameter
     #[must_use]
     pub fn add_param(mut self, key: &str, value: &str) -> Self {
@@ -222,14 +197,6 @@ mod tests {
         let chain = VideoFilterChain::new().add_crop("crop=1920:800:0:140");
         assert_eq!(chain.build(), Some("crop=1920:800:0:140".to_string()));
 
-        // Test denoise filter with full format
-        let chain = VideoFilterChain::new().add_denoise("hqdn3d=0.5:0.4:2:2");
-        assert_eq!(chain.build(), Some("hqdn3d=0.5:0.4:2:2".to_string()));
-
-        // Test denoise filter without prefix
-        let chain = VideoFilterChain::new().add_denoise("0.5:0.4:2:2");
-        assert_eq!(chain.build(), Some("hqdn3d=0.5:0.4:2:2".to_string()));
-
         // Test custom filter
         let chain = VideoFilterChain::new().add_filter("scale=1920:1080".to_string());
         assert_eq!(chain.build(), Some("scale=1920:1080".to_string()));
@@ -239,12 +206,11 @@ mod tests {
     fn test_video_filter_chain_multiple_filters() {
         let chain = VideoFilterChain::new()
             .add_crop("crop=1920:800:0:140")
-            .add_denoise("0.5:0.4:2:2")
             .add_filter("scale=1920:1080".to_string());
 
         assert_eq!(
             chain.build(),
-            Some("crop=1920:800:0:140,hqdn3d=0.5:0.4:2:2,scale=1920:1080".to_string())
+            Some("crop=1920:800:0:140,scale=1920:1080".to_string())
         );
     }
 
@@ -252,7 +218,6 @@ mod tests {
     fn test_video_filter_chain_empty_filters_ignored() {
         let chain = VideoFilterChain::new()
             .add_crop("")
-            .add_denoise("")
             .add_filter("".to_string())
             .add_crop("crop=1920:1080:0:0");
 
@@ -280,10 +245,7 @@ mod tests {
             .with_tune(3);
 
         // Strength/octile should be omitted when variance boost is off
-        assert_eq!(
-            builder.build(),
-            "ac-bias=0:enable-variance-boost=0:tune=3"
-        );
+        assert_eq!(builder.build(), "ac-bias=0:enable-variance-boost=0:tune=3");
     }
 
     #[test]
@@ -312,48 +274,6 @@ mod tests {
     }
 
     #[test]
-    fn test_svtav1_params_builder_with_film_grain() {
-        // Test with film grain
-        let builder = SvtAv1ParamsBuilder::new()
-            .with_ac_bias(0.0)
-            .with_enable_variance_boost(true)
-            .with_variance_boost_strength(1)
-            .with_variance_octile(7)
-            .with_tune(3)
-            .with_film_grain(4);
-        assert_eq!(
-            builder.build(),
-            "ac-bias=0:enable-variance-boost=1:variance-boost-strength=1:variance-octile=7:tune=3:film-grain=4:film-grain-denoise=0"
-        );
-
-        // Test with no film grain (0)
-        let builder = SvtAv1ParamsBuilder::new()
-            .with_ac_bias(0.0)
-            .with_enable_variance_boost(true)
-            .with_variance_boost_strength(1)
-            .with_variance_octile(7)
-            .with_tune(3)
-            .with_film_grain(0);
-        assert_eq!(
-            builder.build(),
-            "ac-bias=0:enable-variance-boost=1:variance-boost-strength=1:variance-octile=7:tune=3"
-        );
-
-        // Test with max film grain
-        let builder = SvtAv1ParamsBuilder::new()
-            .with_ac_bias(0.0)
-            .with_enable_variance_boost(true)
-            .with_variance_boost_strength(1)
-            .with_variance_octile(7)
-            .with_tune(3)
-            .with_film_grain(50);
-        assert_eq!(
-            builder.build(),
-            "ac-bias=0:enable-variance-boost=1:variance-boost-strength=1:variance-octile=7:tune=3:film-grain=50:film-grain-denoise=0"
-        );
-    }
-
-    #[test]
     fn test_svtav1_params_builder_custom_params() {
         let builder = SvtAv1ParamsBuilder::new()
             .with_ac_bias(0.0)
@@ -362,12 +282,11 @@ mod tests {
             .with_variance_octile(7)
             .with_tune(3)
             .add_param("preset", "6")
-            .add_param("crf", "27")
-            .with_film_grain(4);
+            .add_param("crf", "27");
 
         assert_eq!(
             builder.build(),
-            "ac-bias=0:enable-variance-boost=1:variance-boost-strength=1:variance-octile=7:tune=3:preset=6:crf=27:film-grain=4:film-grain-denoise=0"
+            "ac-bias=0:enable-variance-boost=1:variance-boost-strength=1:variance-octile=7:tune=3:preset=6:crf=27"
         );
     }
 

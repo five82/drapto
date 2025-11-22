@@ -5,7 +5,6 @@
 
 use crate::config::{CoreConfig, HD_WIDTH_THRESHOLD, UHD_WIDTH_THRESHOLD};
 use crate::external::ffmpeg::EncodeParams;
-use crate::processing::noise_analysis;
 use crate::processing::video_properties::VideoProperties;
 use std::path::Path;
 
@@ -20,7 +19,6 @@ pub struct EncodingSetupParams<'a> {
     pub audio_streams: Option<Vec<crate::external::AudioStreamInfo>>,
     pub duration_secs: f64,
     pub video_props: &'a VideoProperties,
-    pub noise_analysis: Option<&'a noise_analysis::NoiseAnalysis>,
 }
 
 /// Determine how many logical processors SVT-AV1 should use in responsive mode.
@@ -100,7 +98,6 @@ pub fn setup_encoding_parameters(params: EncodingSetupParams) -> EncodeParams {
         audio_channels: params.audio_channels,
         audio_streams: params.audio_streams,
         duration: params.duration_secs,
-        hqdn3d_params: None,
         // Actual values that will be used in FFmpeg command
         video_codec: "libsvtav1".to_string(),
         pixel_format: "yuv420p10le".to_string(),
@@ -111,7 +108,6 @@ pub fn setup_encoding_parameters(params: EncodingSetupParams) -> EncodeParams {
             .clone()
             .unwrap_or_else(|| "bt709".to_string()),
         audio_codec: "libopus".to_string(),
-        film_grain_level: 0, // Will be set below
     };
 
     let logical_processors = if params.config.responsive_encoding {
@@ -138,30 +134,6 @@ pub fn setup_encoding_parameters(params: EncodingSetupParams) -> EncodeParams {
         None
     };
 
-    // Apply denoising parameters if enabled
-    let (final_hqdn3d_params, film_grain_level) = if params.config.enable_denoise {
-        // Noise analysis is required when denoising is enabled - no fallback
-        let noise_analysis = params
-            .noise_analysis
-            .expect("Noise analysis should be available when denoising is enabled");
-
-        log::info!(
-            "Using adaptive denoising: hqdn3d={}, film_grain={}",
-            noise_analysis.recommended_hqdn3d,
-            noise_analysis.recommended_film_grain
-        );
-        (
-            Some(noise_analysis.recommended_hqdn3d.clone()),
-            noise_analysis.recommended_film_grain,
-        )
-    } else {
-        log::debug!("Denoising disabled via config.");
-        (None, 0)
-    };
-
-    // Finalize encoding parameters
-    initial_encode_params.hqdn3d_params = final_hqdn3d_params;
-    initial_encode_params.film_grain_level = film_grain_level;
     initial_encode_params.logical_processors = logical_processors;
     initial_encode_params
 }

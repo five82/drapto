@@ -4,9 +4,8 @@ FFmpeg video encoding wrapper with intelligent optimization for high-quality, ef
 
 ## Features
 
-* **Intelligent Analysis**: Automatic black bar cropping, HDR-aware processing, adaptive noise analysis
+* **Intelligent Analysis**: Automatic black bar cropping and HDR-aware processing
 * **Optimized Encoding**: AV1 video (libsvtav1) and Opus audio transcoding with resolution-based quality settings
-* **Adaptive Denoising**: Intelligent noise detection with tailored denoising and film grain synthesis
 * **Hardware Acceleration**: VideoToolbox and VAAPI decoding support (automatically detected)
 * **Flexible Workflow**: Daemon mode for background processing, interactive mode with progress bars, push notifications
 
@@ -61,30 +60,11 @@ drapto encode -v -i input.mkv -o output/
 * `-l, --log-dir <DIR>`: Directory for log files (defaults to OUTPUT_DIR/logs)
 * `--preset <0-13>`: SVT-AV1 encoder speed/quality (default: 6, lower = slower/better)
 * `--quality-sd/hd/uhd <CRF>`: Override quality settings (defaults: SD=23, HD=25, UHD=27)
-* `--denoise`: Enable denoising and film grain synthesis (disabled by default; experimental and significantly slows encoding)
 * `--responsive`: Reserve a few CPU threads so other applications stay responsive (disabled by default)
 * `--disable-autocrop`: Disable black bar cropping (auto-crop is enabled by default)
 * `--ntfy <URL>`: Send notifications to ntfy.sh
 
 ## Advanced Features
-
-### Adaptive Denoising (experimental)
-
-Drapto uses intelligent noise analysis to apply optimal denoising settings for each video:
-
-1. **Noise Analysis**: Automatically analyzes video noise levels using FFmpeg's bitplanenoise filter
-2. **Adaptive Parameters**: Selects appropriate denoising strength based on detected noise:
-   - Very clean content: Minimal denoising (preserves pristine quality)
-   - Slightly noisy content: Very light denoising
-   - Somewhat noisy content: Light denoising
-   - Noisy content: Moderate denoising (still conservative)
-
-> **Note:** Adaptive denoising is experimental. It adds per-file noise analysis and extra filtering, which can noticeably increase total encode time. Use `--denoise` only when you need cleaner output.
-3. **HDR-Aware Processing**: Uses lighter denoising parameters for HDR content to preserve detail
-4. **Dynamic Film Grain**: Scales film grain synthesis (levels 4-16) to compensate for denoising artifacts
-5. **Quality-First Approach**: All parameters remain conservative to avoid visible quality loss
-
-This system reduces file size while maintaining visual quality by applying a conservative amount of denoising for each video's noise characteristics.
 
 ### HDR Support
 

@@ -200,7 +200,11 @@ mod tests {
         assert!(!is_valid, "Non-Opus codec should be invalid");
         assert!(is_count_valid);
         assert_eq!(codecs, vec!["truehd"]);
-        assert!(message.unwrap().contains("Expected Opus for all audio tracks"));
+        assert!(
+            message
+                .unwrap()
+                .contains("Expected Opus for all audio tracks")
+        );
     }
 
     #[test]
@@ -222,6 +226,10 @@ mod tests {
             validate_audio_codec(&metadata, Some(2), None);
         assert!(is_valid, "Codec is still Opus");
         assert!(!is_count_valid, "Track count should be invalid");
-        assert!(message.unwrap().contains("Expected 2 audio tracks, found 1"));
+        assert!(
+            message
+                .unwrap()
+                .contains("Expected 2 audio tracks, found 1")
+        );
     }
 }

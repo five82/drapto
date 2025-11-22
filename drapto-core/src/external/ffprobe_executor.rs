@@ -300,19 +300,19 @@ mod tests {
         let streams = vec![
             AudioStreamInfo {
                 channels: 2,
-            codec_name: "aac".to_string(),
-            profile: None,
-            index: 0, // First audio stream
-            is_spatial: false,
-        },
-        AudioStreamInfo {
-            channels: 6,
-            codec_name: "eac3".to_string(),
-            profile: Some("Dolby Digital Plus".to_string()),
-            index: 1, // Second audio stream
-            is_spatial: false,
-        },
-    ];
+                codec_name: "aac".to_string(),
+                profile: None,
+                index: 0, // First audio stream
+                is_spatial: false,
+            },
+            AudioStreamInfo {
+                channels: 6,
+                codec_name: "eac3".to_string(),
+                profile: Some("Dolby Digital Plus".to_string()),
+                index: 1, // Second audio stream
+                is_spatial: false,
+            },
+        ];
 
         assert_eq!(
             streams[0].index, 0,

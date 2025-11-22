@@ -44,14 +44,6 @@ pub const DEFAULT_SVT_AV1_VARIANCE_OCTILE: u8 = 7;
 /// Default crop mode for the main encode.
 pub const DEFAULT_CROP_MODE: &str = "auto";
 
-/// Minimum film grain synthesis value for SVT-AV1.
-/// Range: 0-50, where 0 is no grain and 50 is maximum grain.
-pub const MIN_FILM_GRAIN_VALUE: u8 = 4;
-
-/// Maximum film grain synthesis value for SVT-AV1.
-/// Used for high noise content with strong denoising.
-pub const MAX_FILM_GRAIN_VALUE: u8 = 16;
-
 /// Width threshold for Ultra High Definition (4K) videos.
 /// Videos with width >= this value are considered UHD.
 pub const UHD_WIDTH_THRESHOLD: u32 = 3840;
@@ -119,10 +111,6 @@ pub struct CoreConfig {
     /// Optional ntfy.sh topic URL for sending notifications
     pub ntfy_topic: Option<String>,
 
-    /// Whether to enable adaptive video denoising (hqdn3d)
-    /// When true, analyzes video noise and applies appropriate denoising with film grain synthesis
-    pub enable_denoise: bool,
-
     /// Whether to reserve CPU threads for improved system responsiveness.
     pub responsive_encoding: bool,
 
@@ -149,7 +137,6 @@ impl Default for CoreConfig {
             quality_uhd: DEFAULT_CORE_QUALITY_UHD,
             crop_mode: DEFAULT_CROP_MODE.to_string(),
             ntfy_topic: None,
-            enable_denoise: false,
             responsive_encoding: false,
             encode_cooldown_secs: DEFAULT_ENCODE_COOLDOWN_SECS,
         }
@@ -229,7 +216,6 @@ mod tests {
             config.svt_av1_variance_octile,
             DEFAULT_SVT_AV1_VARIANCE_OCTILE
         );
-        assert!(!config.enable_denoise);
         assert!(!config.responsive_encoding);
         assert!(config.ntfy_topic.is_none());
         assert!(config.temp_dir.is_none());
@@ -324,9 +310,6 @@ mod tests {
         assert!(DEFAULT_CORE_QUALITY_HD <= 63);
         assert!(DEFAULT_CORE_QUALITY_UHD <= 63);
         assert!(DEFAULT_SVT_AV1_PRESET <= 13);
-        assert!(MIN_FILM_GRAIN_VALUE <= 50);
-        assert!(MAX_FILM_GRAIN_VALUE <= 50);
-        assert!(MIN_FILM_GRAIN_VALUE < MAX_FILM_GRAIN_VALUE);
         assert!(HD_WIDTH_THRESHOLD < UHD_WIDTH_THRESHOLD);
         assert!(DEFAULT_ENCODE_COOLDOWN_SECS > 0);
     }

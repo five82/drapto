@@ -37,30 +37,12 @@ pub enum Event {
         crop_params: Option<String>,
     },
 
-    NoiseAnalysisStarted,
-    NoiseAnalysisComplete {
-        average_noise: f64,
-        has_significant_noise: bool,
-        recommended_params: String,
-    },
-
-    ProcessingConfigurationStarted,
-    ProcessingConfigurationApplied {
-        denoising: String,
-        denoising_params: String,
-        film_grain: String,
-        estimated_size: String,
-        estimated_savings: String,
-    },
-
     // Encoding events
     EncodingConfigurationDisplayed {
         encoder: String,
         preset: String,
         tune: String,
         quality: String,
-        denoising: String,
-        film_grain: String,
         hardware_accel: Option<String>,
         pixel_format: String,
         matrix_coefficients: String,

@@ -83,7 +83,6 @@ pub fn run_encode(
     );
 
     // Apply command line arguments to config
-    config.enable_denoise = args.denoise;
     config.responsive_encoding = args.responsive;
 
     if args.responsive {

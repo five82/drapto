@@ -12,7 +12,6 @@
 //!    - Select quality settings based on resolution
 //!    - Perform crop detection if enabled
 //!    - Analyze audio streams and determine bitrates
-//!    - Apply denoising if enabled
 //!    - Execute ffmpeg with the determined parameters
 //!    - Handle results and send notifications
 
@@ -24,7 +23,7 @@ use crate::external::ffmpeg::run_ffmpeg_encode;
 use crate::external::ffprobe_executor::get_media_info;
 use crate::external::get_file_size as external_get_file_size;
 use crate::notifications::NotificationSender;
-use crate::processing::analysis::{run_crop_detection, run_noise_analysis};
+use crate::processing::analysis::run_crop_detection;
 use crate::processing::audio;
 use crate::processing::encode_params::{
     EncodingSetupParams, determine_quality_settings, setup_encoding_parameters,
@@ -240,19 +239,6 @@ pub fn process_videos(
 
         // Audio channels already analyzed above
 
-        // Perform noise analysis if denoising is enabled
-        let noise_analysis_result = match run_noise_analysis(
-            input_path,
-            &video_props,
-            config,
-            notification_sender,
-            event_dispatcher,
-            &input_filename,
-        ) {
-            Ok(result) => result,
-            Err(_) => continue,
-        };
-
         // Setup encoding parameters
         let final_encode_params = setup_encoding_parameters(EncodingSetupParams {
             input_path,
@@ -264,19 +250,11 @@ pub fn process_videos(
             audio_streams: audio_streams.clone(),
             duration_secs,
             video_props: &video_props,
-            noise_analysis: noise_analysis_result.as_ref(),
         });
 
         // Format audio description for the config display
         let audio_description =
             format_audio_description_config(&audio_channels, audio_streams.as_deref());
-
-        // Format film grain display
-        let film_grain_display = if final_encode_params.film_grain_level > 0 {
-            format!("Level {}", final_encode_params.film_grain_level)
-        } else {
-            "None".to_string()
-        };
 
         // Convert video codec to display name
         let encoder_display = match final_encode_params.video_codec.as_str() {
@@ -295,12 +273,6 @@ pub fn process_videos(
                 preset: final_encode_params.preset.to_string(),
                 tune: final_encode_params.tune.to_string(),
                 quality: format!("CRF {}", final_encode_params.quality),
-                denoising: final_encode_params
-                    .hqdn3d_params
-                    .as_ref()
-                    .map(|p| format!("hqdn3d={}", p))
-                    .unwrap_or_else(|| "None".to_string()),
-                film_grain: film_grain_display,
                 hardware_accel: None, // Hardware info is already shown in VIDEO DETAILS section
                 pixel_format: final_encode_params.pixel_format.clone(),
                 matrix_coefficients: final_encode_params.matrix_coefficients.clone(),
@@ -324,7 +296,6 @@ pub fn process_videos(
         let encode_result = run_ffmpeg_encode(
             &final_encode_params,
             false, // disable_audio: Keep audio in the output
-            final_encode_params.hqdn3d_params.is_some(), // has_denoising: Whether denoising is applied
             total_frames,
             event_dispatcher,
         );

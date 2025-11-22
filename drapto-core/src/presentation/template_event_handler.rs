@@ -5,7 +5,6 @@ use super::template_presenter::{
 use super::templates;
 use crate::events::{Event, EventHandler};
 use crate::utils::calculate_size_reduction;
-use console;
 use std::sync::Mutex;
 
 pub struct TemplateEventHandler {
@@ -92,29 +91,11 @@ impl EventHandler for TemplateEventHandler {
                 );
             }
 
-            Event::ProcessingConfigurationStarted => {
-                // This event can be removed or ignored in template system
-                // Configuration is shown when applied
-            }
-
-            Event::ProcessingConfigurationApplied {
-                denoising: _,
-                denoising_params: _,
-                film_grain: _,
-                estimated_size: _,
-                estimated_savings: _,
-            } => {
-                // Template system doesn't show intermediate configuration
-                // All configuration shown in EncodingConfigurationDisplayed
-            }
-
             Event::EncodingConfigurationDisplayed {
                 encoder,
                 preset,
                 tune,
                 quality,
-                denoising,
-                film_grain,
                 hardware_accel,
                 pixel_format,
                 matrix_coefficients,
@@ -126,8 +107,6 @@ impl EventHandler for TemplateEventHandler {
                     preset,
                     tune,
                     quality,
-                    denoising,
-                    film_grain,
                     hardware_accel: hardware_accel.as_deref(),
                     pixel_format,
                     matrix_coefficients,
@@ -299,62 +278,6 @@ impl EventHandler for TemplateEventHandler {
                     validation_passed_count: *validation_passed_count,
                     validation_failed_count: *validation_failed_count,
                 });
-            }
-
-            Event::NoiseAnalysisStarted => {
-                presenter.render_template(&templates::ProcessingStep {
-                    message: "Analyzing video noise levels...",
-                });
-            }
-
-            Event::NoiseAnalysisComplete {
-                average_noise,
-                has_significant_noise: _,
-                recommended_params,
-            } => {
-                let noise_level_desc = if *average_noise >= 0.8 {
-                    "noisy"
-                } else if *average_noise >= 0.7 {
-                    "somewhat noisy"
-                } else if *average_noise >= 0.6 {
-                    "slightly noisy"
-                } else {
-                    "very clean"
-                };
-
-                let denoising_strength = if recommended_params.starts_with("4:3.5:5:4.5")
-                    || recommended_params.starts_with("3:2.5:4.5:4")
-                {
-                    "moderate denoising"
-                } else if recommended_params.starts_with("3:2.5:4:3.5")
-                    || recommended_params.starts_with("2:1.5:3.5:3")
-                {
-                    "light denoising"
-                } else if recommended_params.starts_with("2:1.5:3:2.5")
-                    || recommended_params.starts_with("1:0.8:2.5:2")
-                {
-                    "very light denoising"
-                } else {
-                    "minimal denoising"
-                };
-
-                // Level 2: Success message (subsection level)
-                println!(
-                    "  {} {}",
-                    console::style("✓").dim(),
-                    console::style("Noise analysis complete").dim()
-                );
-
-                // Level 4: Primary findings (key-value level)
-                println!(
-                    "      Video quality:    {} ({:.0}%)",
-                    noise_level_desc,
-                    average_noise * 100.0
-                );
-                println!(
-                    "      Denoising:        {} ({})",
-                    denoising_strength, recommended_params
-                );
             }
 
             Event::StageProgress { .. } => {

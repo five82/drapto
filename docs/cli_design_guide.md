@@ -318,7 +318,7 @@ Use bold formatting for emphasis when color isn't appropriate:
 **Contextual Information Colors:**
 - 🔵 Blue: Technical specifications (resolution, dynamic range, codecs, formats)
 - 🩵 Light Blue: Encoder settings (SVT-AV1, presets, quality, codecs)
-- 🟣 Purple: Applied processing (denoising parameters, film grain settings)
+- 🟣 Purple: Applied processing (crop parameters or other filters)
 - ⚪ White/Default: Standard information and labels
 
 #### When NOT to Use Color
@@ -409,7 +409,7 @@ Shows essential information for normal operation:
 
   ✓ Analysis complete
     Crop detected: None required
-    Processing: VeryLight denoising with film grain synthesis
+    Processing: Encoding preset 6 (no crop adjustments required)
 ```
 
 #### Verbose Output (Debug Level)
@@ -423,14 +423,9 @@ Includes technical details for troubleshooting:
 
 [debug] Crop detection threshold: 0.1
 [debug] Black border detected: none
-[debug] Denoising parameters: hqdn3d=0.5:0.4:2:2
-[debug] Film grain synthesis: level 4
-
   ✓ Analysis complete
     Crop detected: None required
-    Processing: VeryLight denoising with film grain synthesis
-    Denoise Parameters: hqdn3d=0.5:0.4:2:2
-    Film Grain Level: 4
+    Processing: Encoding preset 6 (SVT-AV1)
 ```
 
 ### Design Philosophy
@@ -686,8 +681,7 @@ ffmpeg
   -hwaccel videotoolbox -hwaccel_output_format nv12
   -i movie.mkv
   -c:v libsvtav1 -preset 6 -crf 27 -g 240 -pix_fmt yuv420p10le
-  -svtav1-params film-grain=4
-  -vf hqdn3d=0.5:0.4:2:2
+  -vf crop=1920:1036:0:22
   -c:a libopus -b:a 128k -ac 6 -ar 48000
   -movflags +faststart
   -y movie.av1.mp4
@@ -695,21 +689,22 @@ ffmpeg
 
 ### Processing Configuration Output
 
-- Show applied denoising and film grain settings
+- Show applied crop settings and encoder parameters
 - Highlight the applied configuration
-- Include brief explanation of conservative approach
+- Include brief explanation of the balanced defaults
 
 ```
 ----- PROCESSING CONFIGURATION -----
 
 ✓ Configuration applied
 
-  Denoising:             VeryLight (hqdn3d=0.5:0.4:2:2)
-  Film Grain:            Level 4 (applied)  ← "Level 4 (applied)" in green
+  Crop Filter:           crop=1920:1036:0:22 (applied)
+  Encoder Preset:        6 (balanced)
+  Quality:               CRF 27 (HD profile)
   Estimated Size:        1.24 GB
   Estimated Savings:     65% vs. no processing
 
-  Explanation: Conservative denoising with film grain synthesis provides modest file size reduction while preserving excellent visual quality.
+  Explanation: Balanced defaults (preset 6 / CRF 27) target visually transparent encodes while keeping files compact.
 ```
 
 ### Encoding Progress
@@ -1026,23 +1021,23 @@ $ drapto encode -i movie.mkv -o output_dir/
 ```
 ----- PROCESSING CONFIGURATION -----
 
-  » Applying conservative denoising configuration
+  » Applying encoding configuration
 
-    ◆ Denoising: VeryLight (hqdn3d=0.5:0.4:2:2)
-    ◆ Film Grain: Level 4 synthesis
-    ◆ Estimated impact: ~10-15% size reduction
+    ◆ Crop Filter: crop=1920:1036:0:22
+    ◆ Encoder Preset: 6 (balanced)
+    ◆ Quality: CRF 27 (HD profile)
 
   ✓ Configuration applied
 
     Processing Settings:
-      Denoising:           VeryLight (hqdn3d=0.5:0.4:2:2)
-      Film Grain:          Level 4
-      Quality Impact:      Minimal (conservative settings)
-      Size Reduction:      Modest but reliable
+      Crop Filter:        crop=1920:1036:0:22 (applied)
+      Encoder Preset:     6 (balanced)
+      Quality:            CRF 27 (HD profile)
+      Size Reduction:     Estimated 60–65%
 
     Technical Details:
-      hqdn3d filter:       0.5:0.4:2:2
-      Film grain synthesis: Level 4
+      Pixel format:       yuv420p10le
+      Matrix coefficients: bt709
       Approach:            Conservative for quality preservation
 ```
 
@@ -1195,10 +1190,10 @@ $ drapto encode -i movie.mkv -o output_dir/
 » Applying processing configuration...
 
 # Progress indicators (clear status)
-⧖ Configuring denoising and film grain... (80% complete)
+⧖ Applying encoding parameters... (80% complete)
 
 # Exit point (clear result and next steps)
-✓ Configuration applied: VeryLight denoising with Level 4 film grain
+✓ Configuration applied: Preset 6, CRF 27 (crop=none)
   Next: Beginning encoding with configured settings
 ```
 

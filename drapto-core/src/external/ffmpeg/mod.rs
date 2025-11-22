@@ -37,22 +37,17 @@ pub struct EncodeParams {
     pub audio_channels: Vec<u32>,
     pub audio_streams: Option<Vec<AudioStreamInfo>>,
     pub duration: f64,
-    /// The adaptive hqdn3d parameters based on noise analysis (used if override is not provided).
-    pub hqdn3d_params: Option<String>,
     // Actual values that will be used in FFmpeg command (for display purposes)
     pub video_codec: String,
     pub pixel_format: String,
     pub matrix_coefficients: String,
     pub audio_codec: String,
-    pub film_grain_level: u8,
 }
 
 /// Builds FFmpeg command for libsvtav1 video and libopus audio encoding.
 pub fn build_ffmpeg_command(
     params: &EncodeParams,
-    hqdn3d_override: Option<&str>,
     disable_audio: bool,
-    has_denoising: bool,
 ) -> CoreResult<FfmpegCommand> {
     // Use the new builder for common setup
     let mut cmd = crate::external::FfmpegCommandBuilder::new()
@@ -61,13 +56,7 @@ pub fn build_ffmpeg_command(
     cmd.input(params.input_path.to_string_lossy().as_ref());
 
     // Audio filter will be applied per-stream later for transcoded streams only
-    let hqdn3d_to_use = if has_denoising {
-        hqdn3d_override.or(params.hqdn3d_params.as_deref())
-    } else {
-        None
-    };
     let filter_chain = crate::external::VideoFilterChain::new()
-        .add_denoise(hqdn3d_to_use.unwrap_or(""))
         .add_crop(params.crop_filter.as_deref().unwrap_or(""))
         .build();
 
@@ -77,9 +66,6 @@ pub fn build_ffmpeg_command(
     } else {
         log::debug!("No video filters applied.");
     }
-
-    // Use film grain level from params (single source of truth)
-    let film_grain_value = params.film_grain_level;
 
     // Video encoding configuration - use actual codec from params
     cmd.args(["-c:v", &params.video_codec]);
@@ -97,9 +83,7 @@ pub fn build_ffmpeg_command(
             .with_variance_octile(params.variance_octile);
     }
 
-    svtav1_params_builder = svtav1_params_builder
-        .with_tune(params.tune)
-        .with_film_grain(film_grain_value);
+    svtav1_params_builder = svtav1_params_builder.with_tune(params.tune);
 
     if let Some(lp) = params.logical_processors {
         svtav1_params_builder = svtav1_params_builder.add_param("lp", &lp.to_string());
@@ -109,11 +93,6 @@ pub fn build_ffmpeg_command(
     let svtav1_params = svtav1_params_builder.build();
     cmd.args(["-svtav1-params", &svtav1_params]);
 
-    if film_grain_value > 0 {
-        log::debug!("Applying film grain synthesis: level={}", film_grain_value);
-    } else {
-        log::debug!("No film grain synthesis applied (denoise level is None or 0).");
-    }
 
     if !disable_audio {
         // Map video stream
@@ -168,14 +147,12 @@ pub fn build_ffmpeg_command(
 pub fn run_ffmpeg_encode(
     params: &EncodeParams,
     disable_audio: bool,
-    has_denoising: bool,
     total_frames: u64,
     event_dispatcher: Option<&EventDispatcher>,
 ) -> CoreResult<()> {
     run_ffmpeg_encode_internal(
         params,
         disable_audio,
-        has_denoising,
         total_frames,
         event_dispatcher,
         false,
@@ -185,7 +162,6 @@ pub fn run_ffmpeg_encode(
 fn run_ffmpeg_encode_internal(
     params: &EncodeParams,
     disable_audio: bool,
-    has_denoising: bool,
     total_frames: u64,
     event_dispatcher: Option<&EventDispatcher>,
     is_retry: bool,
@@ -213,7 +189,7 @@ fn run_ffmpeg_encode_internal(
 
     debug!("Encode parameters: {params:?}");
 
-    let mut cmd = build_ffmpeg_command(params, None, disable_audio, has_denoising)?;
+    let mut cmd = build_ffmpeg_command(params, disable_audio)?;
     let cmd_string = format!("{cmd:?}");
     debug!("FFmpeg command: {}", cmd_string);
     let _start_time = Instant::now();
@@ -349,7 +325,6 @@ fn run_ffmpeg_encode_internal(
             return run_ffmpeg_encode_internal(
                 &software_params,
                 disable_audio,
-                has_denoising,
                 total_frames,
                 event_dispatcher,
                 true,

@@ -19,8 +19,6 @@ pub struct EncodingConfigParams<'a> {
     pub preset: &'a str,
     pub tune: &'a str,
     pub quality: &'a str,
-    pub denoising: &'a str,
-    pub film_grain: &'a str,
     pub hardware_accel: Option<&'a str>,
     pub pixel_format: &'a str,
     pub matrix_coefficients: &'a str,
@@ -160,9 +158,6 @@ impl TemplatePresenter {
 
     /// Render encoding configuration with grouped settings
     pub fn render_encoding_configuration(&self, params: EncodingConfigParams) {
-        // Format film grain value to be more concise
-        let film_grain_formatted = format!("{} (synthesis)", params.film_grain);
-
         let mut groups = vec![
             GroupData {
                 name: "Video",
@@ -171,8 +166,6 @@ impl TemplatePresenter {
                     ("Preset", params.preset, false),
                     ("Tune", params.tune, false),
                     ("Quality", params.quality, false),
-                    ("Denoising", params.denoising, false),
-                    ("Film grain", &film_grain_formatted, false),
                 ],
             },
             GroupData {

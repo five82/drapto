@@ -6,7 +6,7 @@ Use `python3` for all Python commands.
 
 ## Project Overview
 
-Drapto is an advanced video encoding tool that uses ffmpeg to optimize and encode videos with intelligent analysis and high-quality compression. The tool automates video encoding tasks using ffmpeg with libsvtav1 (for video) and libopus (for audio), providing features like automatic grain analysis, adaptive denoising, and HDR-aware processing.
+Drapto is an advanced video encoding tool that uses ffmpeg to optimize and encode videos with intelligent analysis and high-quality compression. The tool automates video encoding tasks using ffmpeg with libsvtav1 (for video) and libopus (for audio), providing features like automatic crop detection and HDR-aware processing.
 
 ## Architecture
 
@@ -18,7 +18,7 @@ The project follows a modular Rust workspace architecture with two main componen
    - Manages progress reporting and feedback
 
 2. **drapto-core**: Core video processing and analysis library
-   - Video analysis (crop detection, grain analysis)
+   - Video analysis (crop detection, HDR awareness)
    - FFmpeg integration and command generation
    - Video encoding orchestration
    - Notification services
@@ -57,16 +57,6 @@ RUST_LOG=trace cargo run -- encode --foreground -i input.mkv -o output/
 
 ## Key Components
 
-### Adaptive Denoising System
-
-The project uses an intelligent, adaptive denoising approach:
-
-1. Analyzes video noise levels using FFmpeg's bitplanenoise filter
-2. Applies appropriate hqdn3d denoising based on detected noise levels
-3. Compensates with proportional film grain synthesis (levels 4-16)
-4. Provides HDR/SDR-aware processing for optimal quality
-5. Conservative approach ensures quality preservation while reducing file size
-
 ### FFmpeg Integration
 
 The project uses FFmpeg for video processing via:
@@ -95,7 +85,7 @@ The progress reporting system provides feedback during long-running operations:
 
 The core functionality is organized into modules:
 
-- **detection**: Film grain and crop detection algorithms
+- **detection**: Crop detection algorithms
 - **external**: FFmpeg and FFprobe integrations
 - **processing**: Video and audio processing pipelines
 - **config**: Configuration management

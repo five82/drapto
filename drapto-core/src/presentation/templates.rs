@@ -170,9 +170,7 @@ fn render_grouped_key_values(title: &str, groups: &[GroupData]) {
             } else {
                 // Apply contextual formatting based on key type
                 match *key {
-                    // Applied processing settings (purple)
-                    "Denoising" | "Film grain" => format_applied_setting(value),
-                    // Encoder settings (amber/yellow)
+                    // Encoder settings (light blue)
                     "Encoder" | "Preset" | "Tune" | "Quality" | "Audio codec" | "Audio" => {
                         format_encoder_setting(value)
                     }
@@ -298,21 +296,6 @@ pub fn format_technical_info(value: &str) -> String {
        value.contains("yuv") || value.contains("p10le") || value.contains("p8")
     {
         style(value).blue().to_string()
-    } else {
-        value.to_string()
-    }
-}
-
-/// Format applied processing settings with purple highlighting
-///
-/// Highlights entire values that represent applied processing:
-/// - Film grain levels: Level 4 (synthesis)
-/// - Denoising parameters: hqdn3d values
-/// - Applied indicators: (applied)
-pub fn format_applied_setting(value: &str) -> String {
-    // Check if this is an applied setting that should be entirely purple
-    if value.contains("Level ") || value.contains("hqdn3d=") || value.contains("(applied)") {
-        style(value).magenta().to_string()
     } else {
         value.to_string()
     }
@@ -487,37 +470,6 @@ mod tests {
         // Test that non-technical values are unchanged
         let regular_text = format_technical_info("regular text");
         assert_eq!(regular_text, "regular text");
-    }
-
-    #[test]
-    fn test_applied_setting_formatting() {
-        // Test film grain levels
-        let grain_level = format_applied_setting("Level 4 (synthesis)");
-        assert!(grain_level.contains("Level"));
-        assert!(grain_level.contains("4"));
-        assert!(grain_level.contains("synthesis"));
-
-        // Test denoising parameters
-        let denoise_param = format_applied_setting("hqdn3d=2:1.5:3:2.5");
-        assert!(denoise_param.contains("hqdn3d=2:1.5:3:2.5"));
-
-        let another_denoise = format_applied_setting("hqdn3d=1:0.8:2.5:2");
-        assert!(another_denoise.contains("hqdn3d=1:0.8:2.5:2"));
-
-        // Test applied indicators
-        let applied_indicator = format_applied_setting("VeryLight (applied)");
-        assert!(applied_indicator.contains("applied"));
-
-        let synthesis_indicator = format_applied_setting("Level 4 (synthesis)");
-        assert!(synthesis_indicator.contains("synthesis"));
-
-        // Test that non-applied settings are unchanged
-        let regular_setting = format_applied_setting("regular setting");
-        assert_eq!(regular_setting, "regular setting");
-
-        // Test that encoder settings without parameters are unchanged
-        let encoder_name = format_applied_setting("SVT-AV1");
-        assert_eq!(encoder_name, "SVT-AV1");
     }
 
     #[test]

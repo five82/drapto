@@ -87,10 +87,6 @@ pub struct EncodeArgs {
     #[arg(long)]
     pub disable_autocrop: bool,
 
-    /// Enable light denoising filter.
-    #[arg(long, default_value_t = false)]
-    pub denoise: bool,
-
     /// Reserve CPU threads for improved system responsiveness during encoding.
     #[arg(long, default_value_t = false)]
     pub responsive: bool,
