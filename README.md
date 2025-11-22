@@ -6,8 +6,8 @@ FFmpeg video encoding wrapper with intelligent optimization for high-quality, ef
 
 * **Intelligent Analysis**: Automatic black bar cropping and HDR-aware processing
 * **Optimized Encoding**: AV1 video (libsvtav1) and Opus audio transcoding with resolution-based quality settings
-* **Hardware Acceleration**: VideoToolbox and VAAPI decoding support (automatically detected)
-* **Flexible Workflow**: Daemon mode for background processing, interactive mode with progress bars, push notifications
+* **Automation-Friendly Reporting**: Structured progress JSON stream plus rich TUI output for manual runs
+* **Foreground Workflow**: Always runs in-process with progress bars; designed to be driven by Spindle or other orchestration tools
 
 ## Installation
 
@@ -77,11 +77,6 @@ Includes comprehensive validation to ensure encoding success:
 * **HDR/Color Space**: Uses MediaInfo to verify HDR content preservation and color space accuracy
 * **Failure Reporting**: Logs and notifies about validation issues
 
-### Hardware Acceleration
-
-* VideoToolbox and VAAPI hardware decoding support (automatically enabled when available)
-* Improves performance by hardware-accelerating video decoding
-
 ### Multi-Stream Audio
 
 * Automatic detection of all audio streams; every track is transcoded to Opus
@@ -129,7 +124,6 @@ Drapto is built as a Rust workspace with two main components:
   * FFmpeg/FFprobe and MediaInfo integration
   * Audio stream processing and validation
   * Post-encode validation system
-  * Hardware acceleration detection
   * Event-based progress reporting
   * System information collection
   * Temporary file management

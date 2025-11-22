@@ -34,9 +34,6 @@ pub fn get_file_size(path: &Path) -> CoreResult<u64> {
     Ok(std::fs::metadata(path)?.len())
 }
 
-// Re-export platform detection for backward compatibility
-pub use crate::hardware_decode::is_macos;
-
 /// List of FFmpeg error messages that should be treated as non-critical.
 /// These messages appear in stderr but don't indicate actual problems.
 pub const NON_CRITICAL_FFMPEG_MESSAGES: &[&str] = &[

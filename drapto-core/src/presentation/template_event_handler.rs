@@ -35,9 +35,8 @@ impl EventHandler for TemplateEventHandler {
                 os,
                 cpu,
                 memory,
-                decoder,
             } => {
-                presenter.render_hardware_info(hostname, os, cpu, memory, decoder);
+                presenter.render_hardware_info(hostname, os, cpu, memory);
             }
 
             Event::InitializationStarted {
@@ -96,7 +95,6 @@ impl EventHandler for TemplateEventHandler {
                 preset,
                 tune,
                 quality,
-                hardware_accel,
                 pixel_format,
                 matrix_coefficients,
                 audio_codec,
@@ -107,7 +105,6 @@ impl EventHandler for TemplateEventHandler {
                     preset,
                     tune,
                     quality,
-                    hardware_accel: hardware_accel.as_deref(),
                     pixel_format,
                     matrix_coefficients,
                     audio_codec,

@@ -41,7 +41,6 @@ pub mod error;
 pub mod events;
 pub mod external;
 pub mod file_logging;
-pub mod hardware_decode;
 pub mod presentation;
 pub mod processing;
 pub mod system_info;
@@ -54,9 +53,6 @@ pub use discovery::find_processable_files;
 pub use error::{CoreError, CoreResult};
 pub use external::{
     MediaInfo, get_audio_channels, get_file_size, get_media_info, get_video_properties,
-};
-pub use hardware_decode::{
-    HardwareDecoding, add_hardware_decoding_to_command, is_hardware_decoding_available, is_macos,
 };
 pub use processing::process_videos;
 pub use temp_files::{create_temp_dir, create_temp_file, create_temp_file_path};

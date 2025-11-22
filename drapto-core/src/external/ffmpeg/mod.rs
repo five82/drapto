@@ -12,9 +12,7 @@ use crate::processing::audio;
 use ffmpeg_sidecar::command::FfmpegCommand;
 use log::debug;
 
-use std::fs;
-use std::io::ErrorKind;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 /// Parameters required for running an `FFmpeg` encode operation.
@@ -29,8 +27,6 @@ pub struct EncodeParams {
     pub enable_variance_boost: bool,
     pub variance_boost_strength: u8,
     pub variance_octile: u8,
-    /// Whether to use hardware decoding (when available)
-    pub use_hw_decode: bool,
     /// Optional override for SVT-AV1 logical processor usage.
     pub logical_processors: Option<u32>,
     pub crop_filter: Option<String>,
@@ -50,9 +46,7 @@ pub fn build_ffmpeg_command(
     disable_audio: bool,
 ) -> CoreResult<FfmpegCommand> {
     // Use the new builder for common setup
-    let mut cmd = crate::external::FfmpegCommandBuilder::new()
-        .with_hardware_accel(params.use_hw_decode)
-        .build();
+    let mut cmd = crate::external::FfmpegCommandBuilder::new().build();
     cmd.input(params.input_path.to_string_lossy().as_ref());
 
     // Audio filter will be applied per-stream later for transcoded streams only
@@ -92,7 +86,6 @@ pub fn build_ffmpeg_command(
 
     let svtav1_params = svtav1_params_builder.build();
     cmd.args(["-svtav1-params", &svtav1_params]);
-
 
     if !disable_audio {
         // Map video stream
@@ -150,13 +143,7 @@ pub fn run_ffmpeg_encode(
     total_frames: u64,
     event_dispatcher: Option<&EventDispatcher>,
 ) -> CoreResult<()> {
-    run_ffmpeg_encode_internal(
-        params,
-        disable_audio,
-        total_frames,
-        event_dispatcher,
-        false,
-    )
+    run_ffmpeg_encode_internal(params, disable_audio, total_frames, event_dispatcher)
 }
 
 fn run_ffmpeg_encode_internal(
@@ -164,28 +151,18 @@ fn run_ffmpeg_encode_internal(
     disable_audio: bool,
     total_frames: u64,
     event_dispatcher: Option<&EventDispatcher>,
-    is_retry: bool,
 ) -> CoreResult<()> {
     debug!("Output: {}", params.output_path.display());
 
     let filename = crate::utils::get_filename_safe(&params.input_path)
         .unwrap_or_else(|_| params.input_path.display().to_string());
 
-    if is_retry {
-        log::info!(
-            target: "drapto::progress",
-            "Retrying encode without hardware decoding: {} -> {}",
-            params.input_path.display(),
-            params.output_path.display()
-        );
-    } else {
-        log::info!(
-            target: "drapto::progress",
-            "Starting encode: {} -> {}",
-            params.input_path.display(),
-            params.output_path.display()
-        );
-    }
+    log::info!(
+        target: "drapto::progress",
+        "Starting encode: {} -> {}",
+        params.input_path.display(),
+        params.output_path.display()
+    );
 
     debug!("Encode parameters: {params:?}");
 
@@ -301,36 +278,6 @@ fn run_ffmpeg_encode_internal(
         log::info!("Encode finished successfully for {}", filename);
         Ok(())
     } else {
-        if params.use_hw_decode && !is_retry && should_retry_without_hw_decode(&stderr_buffer) {
-            let warning_message = format!(
-                "Hardware decoding failed for {}. Retrying without hardware acceleration.",
-                filename
-            );
-
-            log::warn!("{}", warning_message);
-
-            if let Some(dispatcher) = event_dispatcher {
-                dispatcher.emit(Event::Warning {
-                    message: warning_message.clone(),
-                });
-            }
-
-            log::debug!("VAAPI stderr output:\n{}", stderr_buffer.trim());
-
-            cleanup_partial_output(&params.output_path);
-
-            let mut software_params = params.clone();
-            software_params.use_hw_decode = false;
-
-            return run_ffmpeg_encode_internal(
-                &software_params,
-                disable_audio,
-                total_frames,
-                event_dispatcher,
-                true,
-            );
-        }
-
         let error_message = format!(
             "FFmpeg process exited with non-zero status ({:?}). Stderr output:\n{}",
             status.code(),
@@ -348,41 +295,6 @@ fn run_ffmpeg_encode_internal(
                 status,
                 error_message,
             ))
-        }
-    }
-}
-
-fn should_retry_without_hw_decode(stderr: &str) -> bool {
-    let stderr_lower = stderr.to_lowercase();
-    const PATTERNS: &[&str] = &[
-        "no va display found",
-        "hardware device setup failed",
-        "device creation failed",
-        "libva error",
-        "no device available for decoder",
-        "vainitialize failed",
-    ];
-
-    PATTERNS
-        .iter()
-        .any(|pattern| stderr_lower.contains(pattern))
-}
-
-fn cleanup_partial_output(path: &Path) {
-    match fs::remove_file(path) {
-        Ok(_) => {
-            log::warn!(
-                "Removed partial output created during failed hardware decode: {}",
-                path.display()
-            );
-        }
-        Err(err) if err.kind() == ErrorKind::NotFound => {}
-        Err(err) => {
-            log::warn!(
-                "Failed to remove partial output at {}: {}",
-                path.display(),
-                err
-            );
         }
     }
 }

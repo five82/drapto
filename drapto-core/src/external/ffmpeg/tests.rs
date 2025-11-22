@@ -13,7 +13,6 @@ fn create_test_params() -> EncodeParams {
         enable_variance_boost: crate::config::DEFAULT_SVT_AV1_ENABLE_VARIANCE_BOOST,
         variance_boost_strength: crate::config::DEFAULT_SVT_AV1_VARIANCE_BOOST_STRENGTH,
         variance_octile: crate::config::DEFAULT_SVT_AV1_VARIANCE_OCTILE,
-        use_hw_decode: false,
         logical_processors: None,
         crop_filter: None,
         audio_channels: vec![6], // 5.1 audio
@@ -34,7 +33,6 @@ fn create_test_params_with_crop(crop: Option<&str>) -> EncodeParams {
     params
 }
 
-
 #[test]
 fn test_svt_av1_params_with_logical_processor_limit() {
     let mut params = create_test_params();
@@ -49,7 +47,6 @@ fn test_svt_av1_params_with_logical_processor_limit() {
         cmd_string
     );
 }
-
 
 #[test]
 fn test_audio_bitrate_calculation() {
@@ -114,7 +111,6 @@ fn test_encode_params_match_ffmpeg_command() {
         enable_variance_boost: true,
         variance_boost_strength: crate::config::DEFAULT_SVT_AV1_VARIANCE_BOOST_STRENGTH,
         variance_octile: crate::config::DEFAULT_SVT_AV1_VARIANCE_OCTILE,
-        use_hw_decode: false,
         logical_processors: Some(10),
         crop_filter: Some("crop=1920:1036:0:22".to_string()),
         audio_channels: vec![6], // 5.1 surround
@@ -244,7 +240,6 @@ fn test_audio_command_generation_transcodes_all() {
         enable_variance_boost: crate::config::DEFAULT_SVT_AV1_ENABLE_VARIANCE_BOOST,
         variance_boost_strength: crate::config::DEFAULT_SVT_AV1_VARIANCE_BOOST_STRENGTH,
         variance_octile: crate::config::DEFAULT_SVT_AV1_VARIANCE_OCTILE,
-        use_hw_decode: false,
         logical_processors: None,
         crop_filter: None,
         audio_channels: vec![8],
@@ -295,7 +290,6 @@ fn test_multiple_audio_streams_all_transcoded() {
         enable_variance_boost: crate::config::DEFAULT_SVT_AV1_ENABLE_VARIANCE_BOOST,
         variance_boost_strength: crate::config::DEFAULT_SVT_AV1_VARIANCE_BOOST_STRENGTH,
         variance_octile: crate::config::DEFAULT_SVT_AV1_VARIANCE_OCTILE,
-        use_hw_decode: false,
         logical_processors: None,
         crop_filter: None,
         audio_channels: vec![8, 2],
@@ -340,7 +334,6 @@ fn test_dtsx_audio_command_generation_transcoded() {
         enable_variance_boost: crate::config::DEFAULT_SVT_AV1_ENABLE_VARIANCE_BOOST,
         variance_boost_strength: crate::config::DEFAULT_SVT_AV1_VARIANCE_BOOST_STRENGTH,
         variance_octile: crate::config::DEFAULT_SVT_AV1_VARIANCE_OCTILE,
-        use_hw_decode: false,
         logical_processors: None,
         crop_filter: None,
         audio_channels: vec![8],
@@ -383,7 +376,6 @@ fn test_eac3_joc_audio_command_generation() {
         enable_variance_boost: crate::config::DEFAULT_SVT_AV1_ENABLE_VARIANCE_BOOST,
         variance_boost_strength: crate::config::DEFAULT_SVT_AV1_VARIANCE_BOOST_STRENGTH,
         variance_octile: crate::config::DEFAULT_SVT_AV1_VARIANCE_OCTILE,
-        use_hw_decode: false,
         logical_processors: None,
         crop_filter: None,
         audio_channels: vec![8],
@@ -416,7 +408,6 @@ fn test_fallback_behavior_without_detailed_streams() {
         enable_variance_boost: crate::config::DEFAULT_SVT_AV1_ENABLE_VARIANCE_BOOST,
         variance_boost_strength: crate::config::DEFAULT_SVT_AV1_VARIANCE_BOOST_STRENGTH,
         variance_octile: crate::config::DEFAULT_SVT_AV1_VARIANCE_OCTILE,
-        use_hw_decode: false,
         logical_processors: None,
         crop_filter: None,
         audio_channels: vec![6], // 5.1 surround
@@ -449,34 +440,4 @@ fn test_fallback_behavior_without_detailed_streams() {
         "Command should map all audio streams in fallback mode: {}",
         cmd_string
     );
-}
-
-#[test]
-fn test_should_retry_without_hw_decode_detects_vaapi_failure() {
-    let stderr = "[VAAPI @ 0x0] No VA display found for device /dev/dri/renderD128.";
-    assert!(super::should_retry_without_hw_decode(stderr));
-}
-
-#[test]
-fn test_should_retry_without_hw_decode_ignores_unrelated_errors() {
-    let stderr = "Unknown ffmpeg failure";
-    assert!(!super::should_retry_without_hw_decode(stderr));
-}
-
-#[test]
-fn test_cleanup_partial_output_removes_file_if_present() {
-    use std::env;
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    let unique = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("Time went backwards")
-        .as_nanos();
-    let path = env::temp_dir().join(format!("drapto_cleanup_partial_output_{unique}.tmp"));
-
-    std::fs::write(&path, b"test").expect("Failed to create temp file");
-    assert!(path.exists(), "Temp file should exist before cleanup");
-
-    super::cleanup_partial_output(&path);
-    assert!(!path.exists(), "Temp file should be removed by cleanup");
 }

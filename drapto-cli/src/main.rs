@@ -32,7 +32,6 @@ fn main() -> CliResult<()> {
 
     let _ = match cli_args.command {
         Commands::Encode(args) => {
-
             let (discovered_files, effective_input_dir) =
                 discover_encode_files(&args).map_err(|e| {
                     CoreError::OperationFailed(format!("Error during file discovery: {}", e))

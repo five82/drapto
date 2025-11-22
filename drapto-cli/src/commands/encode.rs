@@ -45,7 +45,6 @@ pub fn run_encode(
     target_filename_override: Option<std::ffi::OsString>,
     event_dispatcher: EventDispatcher,
 ) -> CliResult<()> {
-
     let start_time = SystemTime::now();
 
     // Convert args to CoreConfig
@@ -99,7 +98,12 @@ pub fn run_encode(
     } else {
         // Process videos with the new event-based system
         let target_filename = target_filename_override.map(PathBuf::from);
-        match process_videos(&config, &discovered_files, target_filename, Some(&event_dispatcher)) {
+        match process_videos(
+            &config,
+            &discovered_files,
+            target_filename,
+            Some(&event_dispatcher),
+        ) {
             Ok(results) => results,
             Err(e) => {
                 event_dispatcher.emit(Event::Error {

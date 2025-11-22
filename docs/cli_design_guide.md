@@ -156,9 +156,9 @@ Use for warnings and performance issues:
 - Performance metrics requiring attention
 
 ```
-⚠ Hardware acceleration unavailable  ← Yellow warning
-  Speed: 0.1x          ← Yellow value (very slow)
-  Reduction: 15.3%     ← Yellow value (disappointing)
+⚠ Encoding speed degraded  ← Yellow warning
+  Speed: 0.1x              ← Yellow value (very slow)
+  Reduction: 15.3%         ← Yellow value (disappointing)
 ```
 
 ##### Red (Critical Errors Only)

@@ -38,14 +38,12 @@ impl EventHandler for FileLoggingHandler {
                 os,
                 cpu,
                 memory,
-                decoder,
             } => {
                 info!("Hardware information:");
                 info!("  Hostname: {}", hostname);
                 info!("  OS: {}", os);
                 info!("  CPU: {}", cpu);
                 info!("  Memory: {}", memory);
-                info!("  Decoder: {}", decoder);
             }
 
             Event::InitializationStarted {
@@ -100,7 +98,6 @@ impl EventHandler for FileLoggingHandler {
                 preset,
                 tune,
                 quality,
-                hardware_accel,
                 pixel_format,
                 matrix_coefficients,
                 audio_codec,
@@ -111,9 +108,6 @@ impl EventHandler for FileLoggingHandler {
                 info!("  Preset: {}", preset);
                 info!("  Tune: {}", tune);
                 info!("  Quality (CRF): {}", quality);
-                if let Some(hw) = hardware_accel {
-                    info!("  Hardware acceleration: {}", hw);
-                }
                 info!("  Pixel format: {}", pixel_format);
                 info!("  Matrix: {}", matrix_coefficients);
                 info!("  Audio codec: {}", audio_codec);

@@ -3,16 +3,11 @@
 //! This module provides a builder pattern for constructing FFmpeg commands
 //! with common options and configurations used throughout the application.
 //!
-//! IMPORTANT: Hardware acceleration in this module refers ONLY to hardware
-//! DECODING. We exclusively use software encoding (libsvtav1) for output.
-
-use crate::hardware_decode::add_hardware_decoding_to_command;
 use ffmpeg_sidecar::command::FfmpegCommand;
 
 /// Builder for creating `FFmpeg` commands with common configurations
 pub struct FfmpegCommandBuilder {
     cmd: FfmpegCommand,
-    use_hw_decode: bool,
     hide_banner: bool,
 }
 
@@ -28,16 +23,8 @@ impl FfmpegCommandBuilder {
     pub fn new() -> Self {
         Self {
             cmd: FfmpegCommand::new(),
-            use_hw_decode: false,
             hide_banner: true,
         }
-    }
-
-    /// Enables hardware decoding (`VideoToolbox` on macOS, `VAAPI` on Linux)
-    #[must_use]
-    pub fn with_hardware_accel(mut self, enabled: bool) -> Self {
-        self.use_hw_decode = enabled;
-        self
     }
 
     /// Sets whether to hide the `FFmpeg` banner
@@ -52,10 +39,6 @@ impl FfmpegCommandBuilder {
     pub fn build(mut self) -> FfmpegCommand {
         if self.hide_banner {
             self.cmd.arg("-hide_banner");
-        }
-
-        if self.use_hw_decode {
-            add_hardware_decoding_to_command(&mut self.cmd, true);
         }
 
         self.cmd
@@ -313,24 +296,16 @@ mod tests {
     fn test_ffmpeg_command_builder_defaults() {
         let builder = FfmpegCommandBuilder::new();
         assert_eq!(builder.hide_banner, true);
-        assert_eq!(builder.use_hw_decode, false);
     }
 
     #[test]
     fn test_ffmpeg_command_builder_with_options() {
-        // Test with hardware acceleration
-        let builder = FfmpegCommandBuilder::new().with_hardware_accel(true);
-        assert_eq!(builder.use_hw_decode, true);
-
         // Test without hide banner
         let builder = FfmpegCommandBuilder::new().with_hide_banner(false);
         assert_eq!(builder.hide_banner, false);
 
         // Test chaining
-        let builder = FfmpegCommandBuilder::new()
-            .with_hardware_accel(true)
-            .with_hide_banner(false);
-        assert_eq!(builder.use_hw_decode, true);
+        let builder = FfmpegCommandBuilder::new().with_hide_banner(false);
         assert_eq!(builder.hide_banner, false);
     }
 }

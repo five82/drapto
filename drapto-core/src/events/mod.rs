@@ -11,7 +11,6 @@ pub enum Event {
         os: String,
         cpu: String,
         memory: String,
-        decoder: String,
     },
 
     // Initialization events
@@ -43,7 +42,6 @@ pub enum Event {
         preset: String,
         tune: String,
         quality: String,
-        hardware_accel: Option<String>,
         pixel_format: String,
         matrix_coefficients: String,
         audio_codec: String,

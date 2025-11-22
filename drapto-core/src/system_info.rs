@@ -6,7 +6,6 @@ pub struct SystemInfo {
     pub os: String,
     pub cpu: String,
     pub memory: String,
-    pub decoder: String,
 }
 
 impl SystemInfo {
@@ -16,7 +15,6 @@ impl SystemInfo {
             os: get_os_info(),
             cpu: get_cpu_info(),
             memory: get_memory_info(),
-            decoder: get_decoder_info(),
         }
     }
 }
@@ -183,8 +181,4 @@ fn format_memory_size(bytes: u64) -> String {
     // Round up to nearest 4 GB increment (modern memory configurations)
     let gb_rounded = ((gb_float / 4.0).ceil() * 4.0) as u64;
     format!("{} GB", gb_rounded)
-}
-
-fn get_decoder_info() -> String {
-    crate::hardware_decode::get_hardware_decoding_info().unwrap_or_else(|| "Software".to_string())
 }

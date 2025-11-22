@@ -5,7 +5,7 @@
 //!
 //! # Workflow
 //!
-//! 1. Initialize processing and check hardware decoding
+//! 1. Initialize processing and gather system info
 //! 2. For each video file:
 //!    - Determine output path and check for existing files
 //!    - Detect video properties (resolution, duration, etc.)
@@ -78,7 +78,6 @@ pub fn process_videos(
             os: system_info.os,
             cpu: system_info.cpu,
             memory: system_info.memory,
-            decoder: system_info.decoder,
         },
     );
 
@@ -246,7 +245,6 @@ pub fn process_videos(
                 preset: final_encode_params.preset.to_string(),
                 tune: final_encode_params.tune.to_string(),
                 quality: format!("CRF {}", final_encode_params.quality),
-                hardware_accel: None, // Hardware info is already shown in VIDEO DETAILS section
                 pixel_format: final_encode_params.pixel_format.clone(),
                 matrix_coefficients: final_encode_params.matrix_coefficients.clone(),
                 audio_codec: audio_codec_display.to_string(),
@@ -457,7 +455,6 @@ pub fn process_videos(
                         output_path: output_path.display().to_string(),
                     },
                 );
-
             }
 
             Err(e) => {
@@ -471,7 +468,6 @@ pub fn process_videos(
                             message: warning_msg,
                         },
                     );
-
                 } else {
                     let error_msg = format!("FFmpeg failed to encode {input_filename}: {e}");
                     emit_event(
@@ -483,7 +479,6 @@ pub fn process_videos(
                             suggestion: Some("Check FFmpeg logs for more details".to_string()),
                         },
                     );
-
                 }
             }
         }

@@ -19,7 +19,6 @@ pub struct EncodingConfigParams<'a> {
     pub preset: &'a str,
     pub tune: &'a str,
     pub quality: &'a str,
-    pub hardware_accel: Option<&'a str>,
     pub pixel_format: &'a str,
     pub matrix_coefficients: &'a str,
     pub audio_codec: &'a str,
@@ -75,20 +74,12 @@ impl TemplatePresenter {
     }
 
     /// Render hardware information section
-    pub fn render_hardware_info(
-        &self,
-        hostname: &str,
-        os: &str,
-        cpu: &str,
-        memory: &str,
-        decoder: &str,
-    ) {
+    pub fn render_hardware_info(&self, hostname: &str, os: &str, cpu: &str, memory: &str) {
         let items = vec![
             ("Hostname", hostname),
             ("OS", os),
             ("CPU", cpu),
             ("Memory", memory),
-            ("Decoder", decoder),
         ];
 
         templates::render(TemplateData::HardwareHeader { title: "HARDWARE" });
@@ -176,13 +167,6 @@ impl TemplatePresenter {
                 ],
             },
         ];
-
-        if let Some(hw) = params.hardware_accel {
-            groups.push(GroupData {
-                name: "Hardware",
-                items: vec![("Acceleration", hw, false)],
-            });
-        }
 
         let formatted_matrix_coefficients =
             templates::format_technical_info(params.matrix_coefficients);

@@ -145,9 +145,7 @@ fn sample_crop_at_position(
         threshold
     );
 
-    let mut cmd = crate::external::FfmpegCommandBuilder::new()
-        .with_hardware_accel(true)
-        .build();
+    let mut cmd = crate::external::FfmpegCommandBuilder::new().build();
 
     // Start at the specified time
     cmd.args(["-ss", &format!("{:.2}", start_time)]);
