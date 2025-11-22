@@ -9,9 +9,6 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 #[derive(Clone, Debug)]
 pub struct HardwareSummary {
     pub hostname: String,
-    pub os: String,
-    pub cpu: String,
-    pub memory: String,
 }
 
 /// Description of the current file before encoding begins.
@@ -203,9 +200,6 @@ impl Reporter for TerminalReporter {
     fn hardware(&self, summary: &HardwareSummary) {
         println!("\n{}", style("HARDWARE").bold().cyan());
         println!("  {:<10} {}", style("Hostname:").bold(), summary.hostname);
-        println!("  {:<10} {}", style("OS:").bold(), summary.os);
-        println!("  {:<10} {}", style("CPU:").bold(), summary.cpu);
-        println!("  {:<10} {}", style("Memory:").bold(), summary.memory);
     }
 
     fn initialization(&self, summary: &InitializationSummary) {

@@ -77,9 +77,6 @@ pub fn process_videos(
     if let Some(rep) = reporter {
         rep.hardware(&HardwareSummary {
             hostname: system_info.hostname,
-            os: system_info.os,
-            cpu: system_info.cpu,
-            memory: system_info.memory,
         });
     }
 
