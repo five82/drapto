@@ -56,6 +56,10 @@ pub fn run_encode(
             .unwrap_or_else(|| args.output_dir.join("logs")),
     );
 
+    if let Some(preset) = args.drapto_preset {
+        config.apply_drapto_preset(preset);
+    }
+
     // Apply command line arguments to config
     config.responsive_encoding = args.responsive;
 

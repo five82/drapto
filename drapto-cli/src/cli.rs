@@ -6,12 +6,13 @@
 use clap::{Command, CommandFactory, FromArgMatches, Parser, Subcommand};
 use drapto_core::config::{
     DEFAULT_CORE_QUALITY_HD, DEFAULT_CORE_QUALITY_SD, DEFAULT_CORE_QUALITY_UHD,
-    DEFAULT_SVT_AV1_PRESET,
+    DEFAULT_SVT_AV1_PRESET, DraptoPreset,
 };
 use std::env;
 use std::ffi::OsString;
 use std::fmt::Display;
 use std::path::PathBuf;
+use std::str::FromStr;
 
 /// Main CLI structure with global flags and subcommands.
 #[derive(Parser, Debug)]
@@ -85,6 +86,14 @@ pub struct EncodeArgs {
     #[arg(long, value_name = "PRESET_INT", value_parser = clap::value_parser!(u8).range(0..=13))]
     pub preset: Option<u8>,
 
+    /// Drapto preset grouping core quality/tuning defaults.
+    #[arg(
+        long = "drapto-preset",
+        value_name = "PRESET",
+        value_parser = parse_drapto_preset
+    )]
+    pub drapto_preset: Option<DraptoPreset>,
+
     // Processing Options
     /// Disable automatic black bar crop detection.
     #[arg(long)]
@@ -136,6 +145,7 @@ fn apply_encode_default_help(command: Command) -> Command {
                 DEFAULT_CORE_QUALITY_UHD,
             )),
             Some("preset") => arg.help(help_with_default(PRESET_HELP, DEFAULT_SVT_AV1_PRESET)),
+            Some("drapto-preset") => arg.help(DRAPTO_PRESET_HELP),
             _ => arg,
         })
     })
@@ -148,6 +158,8 @@ const QUALITY_HD_HELP: &str =
 const QUALITY_UHD_HELP: &str =
     "CRF quality for UHD videos (≥3840 width). Lower=better quality, larger files.";
 const PRESET_HELP: &str = "Encoder preset (0-13). Lower=slower/better, higher=faster.";
+const DRAPTO_PRESET_HELP: &str =
+    "Apply grouped Drapto defaults (grain, clean). Later flags can override.";
 
 fn help_with_default<T: Display>(base: &str, default: T) -> String {
     format!("{base} Default: {default}.")
@@ -179,4 +191,8 @@ mod tests {
             );
         }
     }
+}
+
+fn parse_drapto_preset(value: &str) -> Result<DraptoPreset, String> {
+    DraptoPreset::from_str(value).map_err(|err| err.to_string())
 }

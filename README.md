@@ -52,12 +52,25 @@ drapto encode -v -i input.mkv -o output/
 * `--no-color`: Disable colored output
 * `-l, --log-dir <DIR>`: Directory for log files (defaults to OUTPUT_DIR/logs)
 * `--preset <0-13>`: SVT-AV1 encoder speed/quality (default: 6, lower = slower/better)
-* `--quality-sd/hd/uhd <CRF>`: Override quality settings (defaults: SD=23, HD=25, UHD=27)
+* `--drapto-preset <grain|clean>`: Apply a bundled profile that sets CRF, SVT preset/tune, AC bias, and variance boost values together (omit to keep the baseline defaults)
+* `--quality-sd/hd/uhd <CRF>`: Override quality settings (defaults: SD=24, HD=26, UHD=28)
 * `--responsive`: Reserve a few CPU threads so other applications stay responsive (disabled by default)
 * `--disable-autocrop`: Disable black bar cropping (auto-crop is enabled by default)
 * `--progress-json`: Emit structured progress events for external tools (also controls Spindle integration)
 
 ## Advanced Features
+
+### Preset Profiles
+
+`--drapto-preset` lets you switch between project-defined bundles without manually passing every quality/tuning flag. Each preset maps to a `DraptoPresetValues` struct inside `drapto-core/src/config/mod.rs`, so you can adjust the exact numbers in one place. Current presets ship with the following values:
+
+| Profile | CRF (SD/HD/UHD) | SVT Preset | Tune | AC Bias | Variance Boost | Boost Strength | Octile |
+|---------|-----------------|------------|------|---------|----------------|----------------|--------|
+| _Base defaults (no preset)_ | 24 / 26 / 28 | 6 | 0 | 0.30 | Enabled | 1 | 6 |
+| `grain` | 22 / 24 / 26 | 5 | 0 | 0.50 | Enabled | 2 | 5 |
+| `clean` | 26 / 28 / 30 | 6 | 0 | 0.20 | Disabled | 0 | 0 |
+
+CLI overrides such as `--quality-hd` or `--preset` still win over the preset-provided values, so you can start from a profile and tweak selectively per encode. For deeper guidance (including how to edit the constants), see [`docs/PRESETS.md`](docs/PRESETS.md).
 
 ### HDR Support
 
