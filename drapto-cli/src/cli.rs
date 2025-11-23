@@ -159,7 +159,7 @@ const QUALITY_UHD_HELP: &str =
     "CRF quality for UHD videos (≥3840 width). Lower=better quality, larger files.";
 const PRESET_HELP: &str = "Encoder preset (0-13). Lower=slower/better, higher=faster.";
 const DRAPTO_PRESET_HELP: &str =
-    "Apply grouped Drapto defaults (grain, clean). Later flags can override.";
+    "Apply grouped Drapto defaults (grain, clean, quick). Later flags can override.";
 
 fn help_with_default<T: Display>(base: &str, default: T) -> String {
     format!("{base} Default: {default}.")

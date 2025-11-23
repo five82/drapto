@@ -69,6 +69,8 @@ pub enum DraptoPreset {
     Grain,
     /// Settings tuned for clean, low-noise sources.
     Clean,
+    /// Fast, non-archival encodes that favor turnaround time.
+    Quick,
 }
 
 impl DraptoPreset {
@@ -77,16 +79,17 @@ impl DraptoPreset {
         match self {
             DraptoPreset::Grain => "grain",
             DraptoPreset::Clean => "clean",
+            DraptoPreset::Quick => "quick",
         }
     }
 
     /// Returns the supported preset identifiers for error messages.
     pub const fn variants() -> &'static [&'static str] {
-        &["grain", "clean"]
+        &["grain", "clean", "quick"]
     }
 
     pub const fn variants_display() -> &'static str {
-        "grain, clean"
+        "grain, clean, quick"
     }
 
     /// Bundled parameter defaults for this preset.
@@ -94,6 +97,7 @@ impl DraptoPreset {
         match self {
             DraptoPreset::Grain => DRAPTO_PRESET_GRAIN_VALUES,
             DraptoPreset::Clean => DRAPTO_PRESET_CLEAN_VALUES,
+            DraptoPreset::Quick => DRAPTO_PRESET_QUICK_VALUES,
         }
     }
 }
@@ -139,6 +143,8 @@ impl FromStr for DraptoPreset {
             Ok(DraptoPreset::Grain)
         } else if s.eq_ignore_ascii_case("clean") {
             Ok(DraptoPreset::Clean)
+        } else if s.eq_ignore_ascii_case("quick") {
+            Ok(DraptoPreset::Quick)
         } else {
             Err(DraptoPresetParseError::new(s))
         }
@@ -179,6 +185,18 @@ pub const DRAPTO_PRESET_CLEAN_VALUES: DraptoPresetValues = DraptoPresetValues {
     svt_av1_preset: DEFAULT_SVT_AV1_PRESET,
     svt_av1_tune: DEFAULT_SVT_AV1_TUNE,
     svt_av1_ac_bias: 0.2,
+    svt_av1_enable_variance_boost: false,
+    svt_av1_variance_boost_strength: 0,
+    svt_av1_variance_octile: 0,
+};
+
+pub const DRAPTO_PRESET_QUICK_VALUES: DraptoPresetValues = DraptoPresetValues {
+    quality_sd: 32,
+    quality_hd: 35,
+    quality_uhd: 36,
+    svt_av1_preset: 8,
+    svt_av1_tune: DEFAULT_SVT_AV1_TUNE,
+    svt_av1_ac_bias: 0.0,
     svt_av1_enable_variance_boost: false,
     svt_av1_variance_boost_strength: 0,
     svt_av1_variance_octile: 0,
@@ -392,9 +410,15 @@ mod tests {
 
         assert_eq!(config.drapto_preset, Some(DraptoPreset::Grain));
         assert_eq!(config.quality_sd, DRAPTO_PRESET_GRAIN_VALUES.quality_sd);
-        assert_eq!(config.svt_av1_preset, DRAPTO_PRESET_GRAIN_VALUES.svt_av1_preset);
+        assert_eq!(
+            config.svt_av1_preset,
+            DRAPTO_PRESET_GRAIN_VALUES.svt_av1_preset
+        );
         assert_eq!(config.svt_av1_tune, DRAPTO_PRESET_GRAIN_VALUES.svt_av1_tune);
-        assert_eq!(config.svt_av1_ac_bias, DRAPTO_PRESET_GRAIN_VALUES.svt_av1_ac_bias);
+        assert_eq!(
+            config.svt_av1_ac_bias,
+            DRAPTO_PRESET_GRAIN_VALUES.svt_av1_ac_bias
+        );
         assert_eq!(
             config.svt_av1_enable_variance_boost,
             DRAPTO_PRESET_GRAIN_VALUES.svt_av1_enable_variance_boost
@@ -418,6 +442,10 @@ mod tests {
         assert_eq!(
             "clean".parse::<DraptoPreset>().unwrap(),
             DraptoPreset::Clean
+        );
+        assert_eq!(
+            "Quick".parse::<DraptoPreset>().unwrap(),
+            DraptoPreset::Quick
         );
         assert!("unknown".parse::<DraptoPreset>().is_err());
     }

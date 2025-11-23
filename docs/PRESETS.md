@@ -22,13 +22,14 @@ When you omit `--drapto-preset`, Drapto uses the global defaults embedded in `Co
 |--------|-----------------|------------|------|---------|-----------|----------------|--------|--------|
 | `grain` | `22 / 24 / 26` | `5` | `0` | `0.50` | `true` | `2` | `5` | Preserve texture and film grain even at the cost of extra bitrate/time. |
 | `clean` | `26 / 28 / 30` | `6` | `0` | `0.20` | `false` | `0` | `0` | Target already clean/animated content; prioritizes speed/size. |
+| `quick` | `32 / 35 / 36` | `8` | `0` | `0.00` | `false` | `0` | `0` | Fast, non-archival encodes. |
 
-Pass `--drapto-preset grain` (or `clean`) to apply one of these bundles before any per-flag overrides.
+Pass `--drapto-preset grain`, `clean`, or `quick` to apply one of these bundles before any per-flag overrides.
 
 ## Customizing Presets
 
 1. Open `drapto-core/src/config/mod.rs`.
-2. Locate the `DRAPTO_PRESET_GRAIN_VALUES` / `DRAPTO_PRESET_CLEAN_VALUES` constants.
+2. Locate the `DRAPTO_PRESET_GRAIN_VALUES` / `DRAPTO_PRESET_CLEAN_VALUES` / `DRAPTO_PRESET_QUICK_VALUES` constants.
 3. Replace the literal values with the numbers you want. Example:
 
 ```rust

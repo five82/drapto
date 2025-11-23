@@ -18,7 +18,7 @@
 use crate::EncodeResult;
 use crate::config::{CoreConfig, DraptoPreset};
 use crate::error::{CoreError, CoreResult};
-use crate::external::ffmpeg::{run_ffmpeg_encode, EncodeParams};
+use crate::external::ffmpeg::{EncodeParams, run_ffmpeg_encode};
 use crate::external::ffprobe_executor::get_media_info;
 use crate::external::get_file_size as external_get_file_size;
 use crate::processing::analysis::run_crop_detection;
@@ -67,6 +67,7 @@ fn drapto_preset_slug(preset: Option<DraptoPreset>) -> &'static str {
     match preset {
         Some(DraptoPreset::Grain) => "grain",
         Some(DraptoPreset::Clean) => "clean",
+        Some(DraptoPreset::Quick) => "quick",
         None => "default",
     }
 }
@@ -75,6 +76,7 @@ fn drapto_preset_display(preset: Option<DraptoPreset>) -> String {
     match preset {
         Some(DraptoPreset::Grain) => "Grain".to_string(),
         Some(DraptoPreset::Clean) => "Clean".to_string(),
+        Some(DraptoPreset::Quick) => "Quick".to_string(),
         None => "Default".to_string(),
     }
 }
