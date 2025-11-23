@@ -43,6 +43,9 @@ pub struct EncodingConfigSummary {
     pub matrix_coefficients: String,
     pub audio_codec: String,
     pub audio_description: String,
+    pub drapto_preset: String,
+    pub drapto_preset_settings: Vec<(String, String)>,
+    pub svtav1_params: String,
 }
 
 /// Snapshot of encoding progress.
@@ -278,6 +281,31 @@ impl Reporter for TerminalReporter {
             style("Audio:").bold(),
             summary.audio_description
         );
+        println!(
+            "  {:<13} {}",
+            style("Drapto preset:").bold(),
+            summary.drapto_preset
+        );
+        if !summary.drapto_preset_settings.is_empty() {
+            let combined = summary
+                .drapto_preset_settings
+                .iter()
+                .map(|(k, v)| format!("{k}={v}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            println!(
+                "  {:<13} {}",
+                style("Preset values:").bold(),
+                combined
+            );
+        }
+        if !summary.svtav1_params.is_empty() {
+            println!(
+                "  {:<13} {}",
+                style("SVT params:").bold(),
+                summary.svtav1_params
+            );
+        }
     }
 
     fn encoding_started(&self, _total_frames: u64) {

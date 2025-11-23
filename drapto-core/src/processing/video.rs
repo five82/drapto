@@ -16,9 +16,9 @@
 //!    - Handle results and send notifications
 
 use crate::EncodeResult;
-use crate::config::CoreConfig;
+use crate::config::{CoreConfig, DraptoPreset};
 use crate::error::{CoreError, CoreResult};
-use crate::external::ffmpeg::run_ffmpeg_encode;
+use crate::external::ffmpeg::{run_ffmpeg_encode, EncodeParams};
 use crate::external::ffprobe_executor::get_media_info;
 use crate::external::get_file_size as external_get_file_size;
 use crate::processing::analysis::run_crop_detection;
@@ -61,6 +61,49 @@ fn get_output_dimensions(
     }
     // Return original dimensions if no crop or parsing fails
     (original_width, original_height)
+}
+
+fn drapto_preset_slug(preset: Option<DraptoPreset>) -> &'static str {
+    match preset {
+        Some(DraptoPreset::Grain) => "grain",
+        Some(DraptoPreset::Clean) => "clean",
+        None => "default",
+    }
+}
+
+fn drapto_preset_display(preset: Option<DraptoPreset>) -> String {
+    match preset {
+        Some(DraptoPreset::Grain) => "Grain".to_string(),
+        Some(DraptoPreset::Clean) => "Clean".to_string(),
+        None => "Default".to_string(),
+    }
+}
+
+fn collect_preset_settings(params: &EncodeParams) -> Vec<(String, String)> {
+    let mut settings = vec![
+        ("CRF".to_string(), params.quality.to_string()),
+        ("SVT preset".to_string(), params.preset.to_string()),
+        ("Tune".to_string(), params.tune.to_string()),
+        ("AC bias".to_string(), format!("{:.2}", params.ac_bias)),
+    ];
+
+    if params.enable_variance_boost {
+        settings.push((
+            "Variance boost".to_string(),
+            format!(
+                "enabled (strength {}, octile {})",
+                params.variance_boost_strength, params.variance_octile
+            ),
+        ));
+    } else {
+        settings.push(("Variance boost".to_string(), "disabled".to_string()));
+    }
+
+    if let Some(lp) = params.logical_processors {
+        settings.push(("Logical processors".to_string(), lp.to_string()));
+    }
+
+    settings
 }
 
 /// Main entry point for video processing. Orchestrates analysis, encoding, and notifications.
@@ -231,6 +274,24 @@ pub fn process_videos(
         // Convert audio codec to display name - handle mixed spatial/non-spatial tracks
         let audio_codec_display = "Opus".to_string();
 
+        let drapto_preset_display = drapto_preset_display(config.drapto_preset);
+        let drapto_preset_slug = drapto_preset_slug(config.drapto_preset);
+        let preset_settings = collect_preset_settings(&final_encode_params);
+        let preset_settings_display = preset_settings
+            .iter()
+            .map(|(name, value)| format!("{name}={value}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let svtav1_params_cli = final_encode_params.svtav1_cli_params();
+
+        log::info!(
+            target: "drapto::preset",
+            "Drapto preset '{}' -> {} (svtav1 params: {})",
+            drapto_preset_slug,
+            preset_settings_display,
+            svtav1_params_cli
+        );
+
         // Emit encoding configuration event
         if let Some(rep) = reporter {
             rep.encoding_config(&EncodingConfigSummary {
@@ -242,6 +303,9 @@ pub fn process_videos(
                 matrix_coefficients: final_encode_params.matrix_coefficients.clone(),
                 audio_codec: audio_codec_display.to_string(),
                 audio_description,
+                drapto_preset: drapto_preset_display,
+                drapto_preset_settings: preset_settings.clone(),
+                svtav1_params: svtav1_params_cli.clone(),
             });
         }
 

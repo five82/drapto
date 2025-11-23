@@ -40,6 +40,29 @@ pub struct EncodeParams {
     pub audio_codec: String,
 }
 
+impl EncodeParams {
+    /// Builds the exact `-svtav1-params` string used in the FFmpeg command.
+    pub fn svtav1_cli_params(&self) -> String {
+        let mut builder = crate::external::SvtAv1ParamsBuilder::new()
+            .with_ac_bias(self.ac_bias)
+            .with_enable_variance_boost(self.enable_variance_boost);
+
+        if self.enable_variance_boost {
+            builder = builder
+                .with_variance_boost_strength(self.variance_boost_strength)
+                .with_variance_octile(self.variance_octile);
+        }
+
+        builder = builder.with_tune(self.tune);
+
+        if let Some(lp) = self.logical_processors {
+            builder = builder.add_param("lp", &lp.to_string());
+        }
+
+        builder.build()
+    }
+}
+
 /// Builds FFmpeg command for libsvtav1 video and libopus audio encoding.
 pub fn build_ffmpeg_command(
     params: &EncodeParams,
@@ -67,24 +90,11 @@ pub fn build_ffmpeg_command(
     cmd.args(["-crf", &params.quality.to_string()]);
     cmd.args(["-preset", &params.preset.to_string()]);
 
-    let mut svtav1_params_builder = crate::external::SvtAv1ParamsBuilder::new()
-        .with_ac_bias(params.ac_bias)
-        .with_enable_variance_boost(params.enable_variance_boost);
-
-    if params.enable_variance_boost {
-        svtav1_params_builder = svtav1_params_builder
-            .with_variance_boost_strength(params.variance_boost_strength)
-            .with_variance_octile(params.variance_octile);
-    }
-
-    svtav1_params_builder = svtav1_params_builder.with_tune(params.tune);
-
     if let Some(lp) = params.logical_processors {
-        svtav1_params_builder = svtav1_params_builder.add_param("lp", &lp.to_string());
         log::debug!("SVT-AV1 logical processors limited to {}", lp);
     }
 
-    let svtav1_params = svtav1_params_builder.build();
+    let svtav1_params = params.svtav1_cli_params();
     cmd.args(["-svtav1-params", &svtav1_params]);
 
     if !disable_audio {
