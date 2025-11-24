@@ -13,15 +13,15 @@ use std::str::FromStr;
 /// Default CRF (Constant Rate Factor) quality value for Standard Definition videos (<1920 width).
 /// Lower values produce higher quality but larger files.
 /// Range: 0-63, with 0 being lossless.
-pub const DEFAULT_CORE_QUALITY_SD: u8 = 24;
+pub const DEFAULT_CORE_QUALITY_SD: u8 = 25;
 
 /// Default CRF quality value for High Definition videos (>=1920 width, <3840 width).
 /// Higher than SD to maintain reasonable file sizes for HD content.
-pub const DEFAULT_CORE_QUALITY_HD: u8 = 26;
+pub const DEFAULT_CORE_QUALITY_HD: u8 = 27;
 
 /// Default CRF quality value for Ultra High Definition videos (>=3840 width).
 /// Same as HD by default, but can be overridden separately.
-pub const DEFAULT_CORE_QUALITY_UHD: u8 = 28;
+pub const DEFAULT_CORE_QUALITY_UHD: u8 = 29;
 
 /// Default SVT-AV1 preset (0-13, lower is slower/better quality)
 /// Value 6 provides a good balance between speed and quality.
@@ -32,16 +32,16 @@ pub const DEFAULT_SVT_AV1_PRESET: u8 = 6;
 pub const DEFAULT_SVT_AV1_TUNE: u8 = 0;
 
 /// Default SVT-AV1 ac-bias parameter (controls adaptive quantization bias)
-pub const DEFAULT_SVT_AV1_AC_BIAS: f32 = 0.3;
+pub const DEFAULT_SVT_AV1_AC_BIAS: f32 = 0.1;
 
 /// Default SVT-AV1 variance boost toggle (1 = enabled)
-pub const DEFAULT_SVT_AV1_ENABLE_VARIANCE_BOOST: bool = true;
+pub const DEFAULT_SVT_AV1_ENABLE_VARIANCE_BOOST: bool = false;
 
 /// Default SVT-AV1 variance boost strength parameter
-pub const DEFAULT_SVT_AV1_VARIANCE_BOOST_STRENGTH: u8 = 1;
+pub const DEFAULT_SVT_AV1_VARIANCE_BOOST_STRENGTH: u8 = 0;
 
 /// Default SVT-AV1 variance octile parameter
-pub const DEFAULT_SVT_AV1_VARIANCE_OCTILE: u8 = 6;
+pub const DEFAULT_SVT_AV1_VARIANCE_OCTILE: u8 = 0;
 
 /// Default crop mode for the main encode.
 pub const DEFAULT_CROP_MODE: &str = "auto";
@@ -167,24 +167,24 @@ pub struct DraptoPresetValues {
 
 /// Tweak these constants to customize the built-in Drapto presets.
 pub const DRAPTO_PRESET_GRAIN_VALUES: DraptoPresetValues = DraptoPresetValues {
-    quality_sd: 22,
-    quality_hd: 24,
-    quality_uhd: 26,
-    svt_av1_preset: 5,
+    quality_sd: 23,
+    quality_hd: 25,
+    quality_uhd: 27,
+    svt_av1_preset: DEFAULT_SVT_AV1_PRESET,
     svt_av1_tune: DEFAULT_SVT_AV1_TUNE,
-    svt_av1_ac_bias: 0.5,
-    svt_av1_enable_variance_boost: DEFAULT_SVT_AV1_ENABLE_VARIANCE_BOOST,
-    svt_av1_variance_boost_strength: 2,
+    svt_av1_ac_bias: 0.2,
+    svt_av1_enable_variance_boost: true,
+    svt_av1_variance_boost_strength: 1,
     svt_av1_variance_octile: 5,
 };
 
 pub const DRAPTO_PRESET_CLEAN_VALUES: DraptoPresetValues = DraptoPresetValues {
-    quality_sd: 26,
-    quality_hd: 28,
-    quality_uhd: 30,
+    quality_sd: 27,
+    quality_hd: 29,
+    quality_uhd: 31,
     svt_av1_preset: DEFAULT_SVT_AV1_PRESET,
     svt_av1_tune: DEFAULT_SVT_AV1_TUNE,
-    svt_av1_ac_bias: 0.2,
+    svt_av1_ac_bias: 0.05,
     svt_av1_enable_variance_boost: false,
     svt_av1_variance_boost_strength: 0,
     svt_av1_variance_octile: 0,
