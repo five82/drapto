@@ -106,6 +106,10 @@ pub struct EncodeArgs {
     /// Output progress as structured JSON to stdout for machine parsing (automatically runs in foreground).
     #[arg(long)]
     pub progress_json: bool,
+
+    /// Disable Drapto log file creation (stdout/JSON output only).
+    #[arg(long = "no-log", default_value_t = false)]
+    pub no_log: bool,
 }
 
 /// Parse CLI arguments while dynamically embedding core defaults into the help text.

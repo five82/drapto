@@ -53,32 +53,34 @@ fn main() -> CliResult<()> {
                 .clone()
                 .unwrap_or_else(|| actual_output_dir.join("logs"));
 
-            let main_log_filename = format!("drapto_encode_run_{}.log", get_timestamp());
-            let main_log_path = log_dir.join(&main_log_filename);
+            if !args.no_log {
+                let main_log_filename = format!("drapto_encode_run_{}.log", get_timestamp());
+                let main_log_path = log_dir.join(&main_log_filename);
 
-            // Create log directory
-            std::fs::create_dir_all(&log_dir).map_err(|e| {
-                CoreError::OperationFailed(format!(
-                    "Failed to create log directory: {}: {}",
-                    log_dir.display(),
-                    e
-                ))
-            })?;
+                // Create log directory
+                std::fs::create_dir_all(&log_dir).map_err(|e| {
+                    CoreError::OperationFailed(format!(
+                        "Failed to create log directory: {}: {}",
+                        log_dir.display(),
+                        e
+                    ))
+                })?;
 
-            // Set up file logging for both modes
-            setup_file_logging(&main_log_path, log_level).map_err(|e| {
-                CoreError::OperationFailed(format!(
-                    "Failed to set up file logging to {}: {}",
-                    main_log_path.display(),
-                    e
-                ))
-            })?;
+                // Set up file logging for both modes
+                setup_file_logging(&main_log_path, log_level).map_err(|e| {
+                    CoreError::OperationFailed(format!(
+                        "Failed to set up file logging to {}: {}",
+                        main_log_path.display(),
+                        e
+                    ))
+                })?;
 
-            // Log startup information
-            log::info!("Drapto encoder starting in foreground mode");
+                // Log startup information
+                log::info!("Drapto encoder starting in foreground mode");
 
-            if log_level == LevelFilter::Debug {
-                log::info!("Debug level logging enabled");
+                if log_level == LevelFilter::Debug {
+                    log::info!("Debug level logging enabled");
+                }
             }
 
             let reporter: Box<dyn Reporter> = if args.progress_json {

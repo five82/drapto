@@ -152,6 +152,88 @@ pub struct NullReporter;
 
 impl Reporter for NullReporter {}
 
+/// Reporter that fan-outs every event to a set of child reporters.
+pub struct CompositeReporter {
+    reporters: Vec<Box<dyn Reporter>>,
+}
+
+impl CompositeReporter {
+    pub fn new(reporters: Vec<Box<dyn Reporter>>) -> Self {
+        Self { reporters }
+    }
+
+    fn broadcast<F>(&self, f: F)
+    where
+        F: Fn(&Box<dyn Reporter>),
+    {
+        for reporter in &self.reporters {
+            f(reporter);
+        }
+    }
+}
+
+impl Reporter for CompositeReporter {
+    fn hardware(&self, summary: &HardwareSummary) {
+        self.broadcast(|r| r.hardware(summary));
+    }
+
+    fn initialization(&self, summary: &InitializationSummary) {
+        self.broadcast(|r| r.initialization(summary));
+    }
+
+    fn stage_progress(&self, update: &StageProgress) {
+        self.broadcast(|r| r.stage_progress(update));
+    }
+
+    fn crop_result(&self, summary: &CropSummary) {
+        self.broadcast(|r| r.crop_result(summary));
+    }
+
+    fn encoding_config(&self, summary: &EncodingConfigSummary) {
+        self.broadcast(|r| r.encoding_config(summary));
+    }
+
+    fn encoding_started(&self, total_frames: u64) {
+        self.broadcast(|r| r.encoding_started(total_frames));
+    }
+
+    fn encoding_progress(&self, progress: &ProgressSnapshot) {
+        self.broadcast(|r| r.encoding_progress(progress));
+    }
+
+    fn validation_complete(&self, summary: &ValidationSummary) {
+        self.broadcast(|r| r.validation_complete(summary));
+    }
+
+    fn encoding_complete(&self, summary: &EncodingOutcome) {
+        self.broadcast(|r| r.encoding_complete(summary));
+    }
+
+    fn warning(&self, message: &str) {
+        self.broadcast(|r| r.warning(message));
+    }
+
+    fn error(&self, error: &ReporterError) {
+        self.broadcast(|r| r.error(error));
+    }
+
+    fn operation_complete(&self, message: &str) {
+        self.broadcast(|r| r.operation_complete(message));
+    }
+
+    fn batch_started(&self, info: &BatchStartInfo) {
+        self.broadcast(|r| r.batch_started(info));
+    }
+
+    fn file_progress(&self, context: &FileProgressContext) {
+        self.broadcast(|r| r.file_progress(context));
+    }
+
+    fn batch_complete(&self, summary: &BatchSummary) {
+        self.broadcast(|r| r.batch_complete(summary));
+    }
+}
+
 /// Human-friendly reporter that prints concise text output.
 pub struct TerminalReporter {
     progress: Mutex<Option<ProgressBar>>,
@@ -293,11 +375,7 @@ impl Reporter for TerminalReporter {
                 .map(|(k, v)| format!("{k}={v}"))
                 .collect::<Vec<_>>()
                 .join(", ");
-            println!(
-                "  {:<13} {}",
-                style("Preset values:").bold(),
-                combined
-            );
+            println!("  {:<13} {}", style("Preset values:").bold(), combined);
         }
         if !summary.svtav1_params.is_empty() {
             println!(
@@ -451,6 +529,130 @@ impl Reporter for TerminalReporter {
     }
 }
 
+/// Reporter that mirrors the terminal narrative into the structured log output.
+pub struct LogReporter {
+    last_stage: Mutex<Option<String>>,
+    last_progress_bucket: Mutex<i32>,
+}
+
+impl LogReporter {
+    pub fn new() -> Self {
+        Self {
+            last_stage: Mutex::new(None),
+            last_progress_bucket: Mutex::new(-1),
+        }
+    }
+
+    fn log_section(&self, heading: &str, lines: &[String]) {
+        log::info!("");
+        log::info!("{}", heading);
+        for line in lines {
+            log::info!("{}", line);
+        }
+    }
+
+    fn log_plain_block(&self, heading: &str, lines: &[String]) {
+        if !heading.is_empty() {
+            self.log_section(heading, lines);
+        } else {
+            log::info!("");
+            for line in lines {
+                log::info!("{}", line);
+            }
+        }
+    }
+}
+
+impl Reporter for LogReporter {
+    fn hardware(&self, summary: &HardwareSummary) {
+        self.log_section("HARDWARE", &hardware_lines(summary));
+    }
+
+    fn initialization(&self, summary: &InitializationSummary) {
+        self.log_section("VIDEO", &video_lines(summary));
+    }
+
+    fn stage_progress(&self, update: &StageProgress) {
+        let mut last = self.last_stage.lock().unwrap();
+        if last.as_deref() != Some(update.stage.as_str()) {
+            log::info!("");
+            log::info!("{}", update.stage.to_uppercase());
+            *last = Some(update.stage.clone());
+        }
+        log::info!("  {}{}", "\u{203A} ", update.message);
+    }
+
+    fn crop_result(&self, summary: &CropSummary) {
+        let line = crop_line(summary);
+        log::info!("{}", line);
+    }
+
+    fn encoding_config(&self, summary: &EncodingConfigSummary) {
+        self.log_section("ENCODING", &encoding_config_lines(summary));
+    }
+
+    fn encoding_started(&self, _total_frames: u64) {
+        *self.last_progress_bucket.lock().unwrap() = -1;
+    }
+
+    fn encoding_progress(&self, progress: &ProgressSnapshot) {
+        let bucket = (progress.percent as i32) / 5;
+        let mut guard = self.last_progress_bucket.lock().unwrap();
+        if bucket <= *guard && progress.percent < 99.0 {
+            return;
+        }
+        *guard = bucket;
+        log::info!(
+            "Encoding progress: {:>5.1}% | speed {:.1}x | fps {:.1} | eta {}",
+            progress.percent,
+            progress.speed,
+            progress.fps,
+            format_duration(&progress.eta)
+        );
+    }
+
+    fn validation_complete(&self, summary: &ValidationSummary) {
+        self.log_section("VALIDATION", &validation_lines(summary));
+    }
+
+    fn encoding_complete(&self, summary: &EncodingOutcome) {
+        self.log_section("RESULTS", &result_lines(summary));
+    }
+
+    fn warning(&self, message: &str) {
+        self.log_plain_block("", &[format!("WARN: {}", message)]);
+    }
+
+    fn error(&self, error: &ReporterError) {
+        log::error!("");
+        log::error!("ERROR {}", error.title);
+        log::error!("  {}", error.message);
+        if let Some(ctx) = &error.context {
+            log::error!("  Context: {}", ctx);
+        }
+        if let Some(suggestion) = &error.suggestion {
+            log::error!("  Suggestion: {}", suggestion);
+        }
+    }
+
+    fn operation_complete(&self, message: &str) {
+        self.log_plain_block("", &[format!("✓ {}", message)]);
+    }
+
+    fn batch_started(&self, info: &BatchStartInfo) {
+        self.log_section("BATCH", &batch_start_lines(info));
+    }
+
+    fn file_progress(&self, context: &FileProgressContext) {
+        log::info!("");
+        log::info!("File {} of {}", context.current_file, context.total_files);
+    }
+
+    fn batch_complete(&self, summary: &BatchSummary) {
+        self.log_section("BATCH SUMMARY", &batch_complete_lines(summary));
+    }
+}
+
 /// JSON reporter compatible with Spindle's expectations.
 pub struct JsonReporter {
     writer: Mutex<Box<dyn Write + Send>>,
@@ -485,6 +687,15 @@ impl JsonReporter {
 }
 
 impl Reporter for JsonReporter {
+    fn hardware(&self, summary: &HardwareSummary) {
+        let value = json!({
+            "type": "hardware",
+            "hostname": summary.hostname,
+            "timestamp": Self::timestamp(),
+        });
+        self.write_value(value);
+    }
+
     fn initialization(&self, summary: &InitializationSummary) {
         let value = json!({
             "type": "initialization",
@@ -512,8 +723,50 @@ impl Reporter for JsonReporter {
         self.write_value(value);
     }
 
-    fn encoding_started(&self, _total_frames: u64) {
+    fn crop_result(&self, summary: &CropSummary) {
+        let value = json!({
+            "type": "crop_result",
+            "message": summary.message,
+            "crop": summary.crop,
+            "required": summary.required,
+            "disabled": summary.disabled,
+            "timestamp": Self::timestamp(),
+        });
+        self.write_value(value);
+    }
+
+    fn encoding_config(&self, summary: &EncodingConfigSummary) {
+        let preset_settings: Vec<_> = summary
+            .drapto_preset_settings
+            .iter()
+            .map(|(key, value)| json!({"key": key, "value": value}))
+            .collect();
+        let value = json!({
+            "type": "encoding_config",
+            "encoder": summary.encoder,
+            "preset": summary.preset,
+            "tune": summary.tune,
+            "quality": summary.quality,
+            "pixel_format": summary.pixel_format,
+            "matrix_coefficients": summary.matrix_coefficients,
+            "audio_codec": summary.audio_codec,
+            "audio_description": summary.audio_description,
+            "drapto_preset": summary.drapto_preset,
+            "drapto_preset_settings": preset_settings,
+            "svtav1_params": summary.svtav1_params,
+            "timestamp": Self::timestamp(),
+        });
+        self.write_value(value);
+    }
+
+    fn encoding_started(&self, total_frames: u64) {
         *self.last_progress_bucket.lock().unwrap() = -1;
+        let value = json!({
+            "type": "encoding_started",
+            "total_frames": total_frames,
+            "timestamp": Self::timestamp(),
+        });
+        self.write_value(value);
     }
 
     fn encoding_progress(&self, progress: &ProgressSnapshot) {
@@ -568,6 +821,10 @@ impl Reporter for JsonReporter {
             "output_file": summary.output_file,
             "original_size": summary.original_size,
             "encoded_size": summary.encoded_size,
+            "video_stream": summary.video_stream,
+            "audio_stream": summary.audio_stream,
+            "average_speed": summary.average_speed,
+            "output_path": summary.output_path,
             "duration_seconds": summary.total_time.as_secs(),
             "size_reduction_percent": calculate_reduction(summary.original_size, summary.encoded_size),
             "timestamp": Self::timestamp(),
@@ -596,6 +853,36 @@ impl Reporter for JsonReporter {
         self.write_value(value);
     }
 
+    fn operation_complete(&self, message: &str) {
+        let value = json!({
+            "type": "operation_complete",
+            "message": message,
+            "timestamp": Self::timestamp(),
+        });
+        self.write_value(value);
+    }
+
+    fn batch_started(&self, info: &BatchStartInfo) {
+        let value = json!({
+            "type": "batch_started",
+            "total_files": info.total_files,
+            "file_list": info.file_list,
+            "output_dir": info.output_dir,
+            "timestamp": Self::timestamp(),
+        });
+        self.write_value(value);
+    }
+
+    fn file_progress(&self, context: &FileProgressContext) {
+        let value = json!({
+            "type": "file_progress",
+            "current_file": context.current_file,
+            "total_files": context.total_files,
+            "timestamp": Self::timestamp(),
+        });
+        self.write_value(value);
+    }
+
     fn batch_complete(&self, summary: &BatchSummary) {
         let value = json!({
             "type": "batch_complete",
@@ -609,6 +896,152 @@ impl Reporter for JsonReporter {
         });
         self.write_value(value);
     }
+}
+
+fn hardware_lines(summary: &HardwareSummary) -> Vec<String> {
+    vec![format!("  {:<10} {}", "Hostname:", summary.hostname)]
+}
+
+fn video_lines(summary: &InitializationSummary) -> Vec<String> {
+    vec![
+        format!("  {:<10} {}", "File:", summary.input_file),
+        format!("  {:<10} {}", "Output:", summary.output_file),
+        format!("  {:<10} {}", "Duration:", summary.duration),
+        format!(
+            "  {:<10} {} ({})",
+            "Resolution:", summary.resolution, summary.category
+        ),
+        format!("  {:<10} {}", "Dynamic:", summary.dynamic_range),
+        format!("  {:<10} {}", "Audio:", summary.audio_description),
+    ]
+}
+
+fn crop_line(summary: &CropSummary) -> String {
+    let status = if summary.disabled {
+        "auto-crop disabled".to_string()
+    } else if summary.required {
+        summary
+            .crop
+            .clone()
+            .unwrap_or_else(|| "crop params unavailable".to_string())
+    } else {
+        "no crop needed".to_string()
+    };
+    format!("  {} {} ({})", "Crop detection:", summary.message, status)
+}
+
+fn encoding_config_lines(summary: &EncodingConfigSummary) -> Vec<String> {
+    let mut lines = vec![
+        format!("  {:<13} {}", "Encoder:", summary.encoder),
+        format!("  {:<13} {}", "Preset:", summary.preset),
+        format!("  {:<13} {}", "Tune:", summary.tune),
+        format!("  {:<13} {}", "Quality:", summary.quality),
+        format!("  {:<13} {}", "Pixel format:", summary.pixel_format),
+        format!("  {:<13} {}", "Matrix:", summary.matrix_coefficients),
+        format!("  {:<13} {}", "Audio codec:", summary.audio_codec),
+        format!("  {:<13} {}", "Audio:", summary.audio_description),
+        format!("  {:<13} {}", "Drapto preset:", summary.drapto_preset),
+    ];
+
+    if !summary.drapto_preset_settings.is_empty() {
+        let combined = summary
+            .drapto_preset_settings
+            .iter()
+            .map(|(k, v)| format!("{k}={v}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        lines.push(format!("  {:<13} {}", "Preset values:", combined));
+    }
+
+    if !summary.svtav1_params.is_empty() {
+        lines.push(format!(
+            "  {:<13} {}",
+            "SVT params:",
+            summary.svtav1_params.clone()
+        ));
+    }
+
+    lines
+}
+
+fn validation_lines(summary: &ValidationSummary) -> Vec<String> {
+    let mut lines = Vec::new();
+    if summary.passed {
+        lines.push("  All checks passed".to_string());
+    } else {
+        lines.push("  Validation failed".to_string());
+    }
+
+    for (name, passed, details) in &summary.steps {
+        let status = if *passed { "ok" } else { "failed" };
+        lines.push(format!("  - {}: {} ({})", name, status, details));
+    }
+    lines
+}
+
+fn result_lines(summary: &EncodingOutcome) -> Vec<String> {
+    vec![
+        format!("  {} {}", "Output:", summary.output_file),
+        format!(
+            "  Size: {} -> {}",
+            format_size_readable(summary.original_size),
+            format_size_readable(summary.encoded_size)
+        ),
+        format!(
+            "  Reduction: {:.1}%",
+            calculate_reduction(summary.original_size, summary.encoded_size)
+        ),
+        format!("  {:<8} {}", "Video:", summary.video_stream),
+        format!("  {:<8} {}", "Audio:", summary.audio_stream),
+        format!(
+            "  Time: {} (avg speed {:.1}x)",
+            format_duration(&summary.total_time),
+            summary.average_speed
+        ),
+        format!("  {} {}", "Saved to", summary.output_path.clone()),
+    ]
+}
+
+fn batch_start_lines(info: &BatchStartInfo) -> Vec<String> {
+    let mut lines = vec![format!(
+        "  Processing {} files -> {}",
+        info.total_files, info.output_dir
+    )];
+    for (idx, name) in info.file_list.iter().enumerate() {
+        lines.push(format!("  {}. {}", idx + 1, name));
+    }
+    lines
+}
+
+fn batch_complete_lines(summary: &BatchSummary) -> Vec<String> {
+    let mut lines = vec![
+        format!(
+            "  {}",
+            format!(
+                "{} of {} succeeded",
+                summary.successful_count, summary.total_files
+            )
+        ),
+        format!(
+            "  Validation: {} passed, {} failed",
+            summary.validation_passed_count, summary.validation_failed_count
+        ),
+        format!(
+            "  Size: {} -> {} bytes ({:.1}% reduction)",
+            summary.total_original_size,
+            summary.total_encoded_size,
+            calculate_reduction(summary.total_original_size, summary.total_encoded_size)
+        ),
+        format!(
+            "  Time: {} (avg speed {:.1}x)",
+            format_duration(&summary.total_duration),
+            summary.average_speed
+        ),
+    ];
+    for (file, reduction) in &summary.file_results {
+        lines.push(format!("  - {} ({:.1}% reduction)", file, reduction));
+    }
+    lines
 }
 
 fn calculate_reduction(original: u64, encoded: u64) -> f64 {
