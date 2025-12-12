@@ -3,7 +3,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use serde_json::json;
 use std::io::{self, Write};
 use std::sync::Mutex;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// Summary of host hardware for display.
 #[derive(Clone, Debug)]
@@ -656,7 +656,12 @@ impl Reporter for LogReporter {
 /// JSON reporter compatible with Spindle's expectations.
 pub struct JsonReporter {
     writer: Mutex<Box<dyn Write + Send>>,
-    last_progress_bucket: Mutex<i32>,
+    progress_state: Mutex<JsonProgressState>,
+}
+
+struct JsonProgressState {
+    last_progress_bucket: i32,
+    last_progress_emit: Option<Instant>,
 }
 
 impl JsonReporter {
@@ -667,7 +672,10 @@ impl JsonReporter {
     pub fn with_writer(writer: Box<dyn Write + Send>) -> Self {
         Self {
             writer: Mutex::new(writer),
-            last_progress_bucket: Mutex::new(-1),
+            progress_state: Mutex::new(JsonProgressState {
+                last_progress_bucket: -1,
+                last_progress_emit: None,
+            }),
         }
     }
 
@@ -760,7 +768,10 @@ impl Reporter for JsonReporter {
     }
 
     fn encoding_started(&self, total_frames: u64) {
-        *self.last_progress_bucket.lock().unwrap() = -1;
+        if let Ok(mut guard) = self.progress_state.lock() {
+            guard.last_progress_bucket = -1;
+            guard.last_progress_emit = None;
+        }
         let value = json!({
             "type": "encoding_started",
             "total_frames": total_frames,
@@ -770,12 +781,27 @@ impl Reporter for JsonReporter {
     }
 
     fn encoding_progress(&self, progress: &ProgressSnapshot) {
-        let bucket = (progress.percent as i32) / 5;
-        let mut guard = self.last_progress_bucket.lock().unwrap();
-        if bucket <= *guard && progress.percent < 99.0 {
-            return;
+        const PROGRESS_PERCENT_BUCKET: i32 = 1;
+        const PROGRESS_MIN_INTERVAL: Duration = Duration::from_secs(5);
+
+        let bucket = (progress.percent as i32) / PROGRESS_PERCENT_BUCKET;
+        let now = Instant::now();
+
+        if let Ok(mut guard) = self.progress_state.lock() {
+            let interval_elapsed = guard
+                .last_progress_emit
+                .map(|last| now.duration_since(last) >= PROGRESS_MIN_INTERVAL)
+                .unwrap_or(true);
+
+            if bucket <= guard.last_progress_bucket && !interval_elapsed && progress.percent < 99.0 {
+                return;
+            }
+
+            if bucket > guard.last_progress_bucket {
+                guard.last_progress_bucket = bucket;
+            }
+            guard.last_progress_emit = Some(now);
         }
-        *guard = bucket;
 
         let value = json!({
             "type": "encoding_progress",
