@@ -13,6 +13,9 @@ fn create_test_params() -> EncodeParams {
         enable_variance_boost: crate::config::DEFAULT_SVT_AV1_ENABLE_VARIANCE_BOOST,
         variance_boost_strength: crate::config::DEFAULT_SVT_AV1_VARIANCE_BOOST_STRENGTH,
         variance_octile: crate::config::DEFAULT_SVT_AV1_VARIANCE_OCTILE,
+        video_denoise_filter: None,
+        film_grain: None,
+        film_grain_denoise: None,
         logical_processors: None,
         crop_filter: None,
         audio_channels: vec![6], // 5.1 audio
@@ -99,6 +102,43 @@ fn test_build_ffmpeg_command_without_crop_filter() {
 }
 
 #[test]
+fn test_build_ffmpeg_command_with_denoise_filter() {
+    let mut params = create_test_params();
+    params.video_denoise_filter = Some("hqdn3d=1.5:1.5:3:3".to_string());
+
+    let cmd = build_ffmpeg_command(&params, false).unwrap();
+    let cmd_string = format!("{:?}", cmd);
+
+    assert!(
+        cmd_string.contains("-vf"),
+        "Command should contain video filter argument"
+    );
+    assert!(
+        cmd_string.contains("hqdn3d=1.5:1.5:3:3"),
+        "Command should contain hqdn3d denoise filter"
+    );
+}
+
+#[test]
+fn test_svt_av1_params_include_film_grain_when_set() {
+    let mut params = create_test_params();
+    params.film_grain = Some(6);
+    params.film_grain_denoise = Some(false);
+
+    let cmd = build_ffmpeg_command(&params, false).unwrap();
+    let cmd_string = format!("{:?}", cmd);
+
+    assert!(
+        cmd_string.contains("film-grain=6"),
+        "Command should include film-grain when configured on"
+    );
+    assert!(
+        cmd_string.contains("film-grain-denoise=0"),
+        "Command should include film-grain-denoise=0 when configured off"
+    );
+}
+
+#[test]
 fn test_encode_params_match_ffmpeg_command() {
     // Test that EncodeParams fields accurately reflect what's used in the FFmpeg command
     let params = EncodeParams {
@@ -111,6 +151,9 @@ fn test_encode_params_match_ffmpeg_command() {
         enable_variance_boost: true,
         variance_boost_strength: crate::config::DEFAULT_SVT_AV1_VARIANCE_BOOST_STRENGTH,
         variance_octile: crate::config::DEFAULT_SVT_AV1_VARIANCE_OCTILE,
+        video_denoise_filter: None,
+        film_grain: None,
+        film_grain_denoise: None,
         logical_processors: Some(10),
         crop_filter: Some("crop=1920:1036:0:22".to_string()),
         audio_channels: vec![6], // 5.1 surround
@@ -240,6 +283,9 @@ fn test_audio_command_generation_transcodes_all() {
         enable_variance_boost: crate::config::DEFAULT_SVT_AV1_ENABLE_VARIANCE_BOOST,
         variance_boost_strength: crate::config::DEFAULT_SVT_AV1_VARIANCE_BOOST_STRENGTH,
         variance_octile: crate::config::DEFAULT_SVT_AV1_VARIANCE_OCTILE,
+        video_denoise_filter: None,
+        film_grain: None,
+        film_grain_denoise: None,
         logical_processors: None,
         crop_filter: None,
         audio_channels: vec![8],
@@ -290,6 +336,9 @@ fn test_multiple_audio_streams_all_transcoded() {
         enable_variance_boost: crate::config::DEFAULT_SVT_AV1_ENABLE_VARIANCE_BOOST,
         variance_boost_strength: crate::config::DEFAULT_SVT_AV1_VARIANCE_BOOST_STRENGTH,
         variance_octile: crate::config::DEFAULT_SVT_AV1_VARIANCE_OCTILE,
+        video_denoise_filter: None,
+        film_grain: None,
+        film_grain_denoise: None,
         logical_processors: None,
         crop_filter: None,
         audio_channels: vec![8, 2],
@@ -334,6 +383,9 @@ fn test_dtsx_audio_command_generation_transcoded() {
         enable_variance_boost: crate::config::DEFAULT_SVT_AV1_ENABLE_VARIANCE_BOOST,
         variance_boost_strength: crate::config::DEFAULT_SVT_AV1_VARIANCE_BOOST_STRENGTH,
         variance_octile: crate::config::DEFAULT_SVT_AV1_VARIANCE_OCTILE,
+        video_denoise_filter: None,
+        film_grain: None,
+        film_grain_denoise: None,
         logical_processors: None,
         crop_filter: None,
         audio_channels: vec![8],
@@ -376,6 +428,9 @@ fn test_eac3_joc_audio_command_generation() {
         enable_variance_boost: crate::config::DEFAULT_SVT_AV1_ENABLE_VARIANCE_BOOST,
         variance_boost_strength: crate::config::DEFAULT_SVT_AV1_VARIANCE_BOOST_STRENGTH,
         variance_octile: crate::config::DEFAULT_SVT_AV1_VARIANCE_OCTILE,
+        video_denoise_filter: None,
+        film_grain: None,
+        film_grain_denoise: None,
         logical_processors: None,
         crop_filter: None,
         audio_channels: vec![8],
@@ -408,6 +463,9 @@ fn test_fallback_behavior_without_detailed_streams() {
         enable_variance_boost: crate::config::DEFAULT_SVT_AV1_ENABLE_VARIANCE_BOOST,
         variance_boost_strength: crate::config::DEFAULT_SVT_AV1_VARIANCE_BOOST_STRENGTH,
         variance_octile: crate::config::DEFAULT_SVT_AV1_VARIANCE_OCTILE,
+        video_denoise_filter: None,
+        film_grain: None,
+        film_grain_denoise: None,
         logical_processors: None,
         crop_filter: None,
         audio_channels: vec![6], // 5.1 surround

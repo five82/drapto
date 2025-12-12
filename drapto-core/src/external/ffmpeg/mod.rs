@@ -27,6 +27,12 @@ pub struct EncodeParams {
     pub enable_variance_boost: bool,
     pub variance_boost_strength: u8,
     pub variance_octile: u8,
+    /// Optional denoise filter applied via `-vf` (e.g., `hqdn3d=1.5:1.5:3:3`).
+    pub video_denoise_filter: Option<String>,
+    /// Optional SVT-AV1 film grain synthesis strength (e.g., `6`).
+    pub film_grain: Option<u8>,
+    /// Optional SVT-AV1 film grain denoise toggle (`false` -> `0`, `true` -> `1`).
+    pub film_grain_denoise: Option<bool>,
     /// Optional override for SVT-AV1 logical processor usage.
     pub logical_processors: Option<u32>,
     pub crop_filter: Option<String>,
@@ -55,6 +61,13 @@ impl EncodeParams {
 
         builder = builder.with_tune(self.tune);
 
+        if let Some(film_grain) = self.film_grain {
+            builder = builder.add_param("film-grain", &film_grain.to_string());
+            if let Some(denoise) = self.film_grain_denoise {
+                builder = builder.add_param("film-grain-denoise", if denoise { "1" } else { "0" });
+            }
+        }
+
         if let Some(lp) = self.logical_processors {
             builder = builder.add_param("lp", &lp.to_string());
         }
@@ -73,9 +86,12 @@ pub fn build_ffmpeg_command(
     cmd.input(params.input_path.to_string_lossy().as_ref());
 
     // Audio filter will be applied per-stream later for transcoded streams only
-    let filter_chain = crate::external::VideoFilterChain::new()
-        .add_crop(params.crop_filter.as_deref().unwrap_or(""))
-        .build();
+    let mut filter_chain_builder = crate::external::VideoFilterChain::new()
+        .add_crop(params.crop_filter.as_deref().unwrap_or(""));
+    if let Some(denoise) = params.video_denoise_filter.as_deref() {
+        filter_chain_builder = filter_chain_builder.add_filter(denoise.to_string());
+    }
+    let filter_chain = filter_chain_builder.build();
 
     if let Some(ref filters) = filter_chain {
         cmd.args(["-vf", filters]);

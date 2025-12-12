@@ -65,7 +65,8 @@ pub const PROGRESS_LOG_INTERVAL_PERCENT: u8 = 5;
 /// Drapto preset groupings for encoding-related defaults.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DraptoPreset {
-    /// Settings designed to preserve grain-heavy material.
+    /// Film-sourced or noisy material where Drapto applies light denoising and relies on
+    /// film-grain synthesis to recreate texture (balanced bitrate + “film look”).
     Grain,
     /// Settings tuned for clean, low-noise sources.
     Clean,
@@ -163,6 +164,9 @@ pub struct DraptoPresetValues {
     pub svt_av1_enable_variance_boost: bool,
     pub svt_av1_variance_boost_strength: u8,
     pub svt_av1_variance_octile: u8,
+    pub video_denoise_filter: Option<&'static str>,
+    pub svt_av1_film_grain: Option<u8>,
+    pub svt_av1_film_grain_denoise: Option<bool>,
 }
 
 /// Tweak these constants to customize the built-in Drapto presets.
@@ -172,10 +176,13 @@ pub const DRAPTO_PRESET_GRAIN_VALUES: DraptoPresetValues = DraptoPresetValues {
     quality_uhd: 27,
     svt_av1_preset: DEFAULT_SVT_AV1_PRESET,
     svt_av1_tune: DEFAULT_SVT_AV1_TUNE,
-    svt_av1_ac_bias: 0.2,
+    svt_av1_ac_bias: 0.10,
     svt_av1_enable_variance_boost: true,
     svt_av1_variance_boost_strength: 1,
-    svt_av1_variance_octile: 5,
+    svt_av1_variance_octile: 6,
+    video_denoise_filter: Some("hqdn3d=1.5:1.5:3:3"),
+    svt_av1_film_grain: Some(6),
+    svt_av1_film_grain_denoise: Some(false),
 };
 
 pub const DRAPTO_PRESET_CLEAN_VALUES: DraptoPresetValues = DraptoPresetValues {
@@ -188,6 +195,9 @@ pub const DRAPTO_PRESET_CLEAN_VALUES: DraptoPresetValues = DraptoPresetValues {
     svt_av1_enable_variance_boost: false,
     svt_av1_variance_boost_strength: 0,
     svt_av1_variance_octile: 0,
+    video_denoise_filter: None,
+    svt_av1_film_grain: None,
+    svt_av1_film_grain_denoise: None,
 };
 
 pub const DRAPTO_PRESET_QUICK_VALUES: DraptoPresetValues = DraptoPresetValues {
@@ -200,6 +210,9 @@ pub const DRAPTO_PRESET_QUICK_VALUES: DraptoPresetValues = DraptoPresetValues {
     svt_av1_enable_variance_boost: false,
     svt_av1_variance_boost_strength: 0,
     svt_av1_variance_octile: 0,
+    video_denoise_filter: None,
+    svt_av1_film_grain: None,
+    svt_av1_film_grain_denoise: None,
 };
 
 /// Configuration for video processing including paths and encoding settings.
@@ -236,6 +249,15 @@ pub struct CoreConfig {
 
     /// SVT-AV1 variance octile parameter
     pub svt_av1_variance_octile: u8,
+
+    /// Optional denoise filter applied via `-vf` (e.g., `hqdn3d=1.5:1.5:3:3`).
+    pub video_denoise_filter: Option<String>,
+
+    /// Optional SVT-AV1 film grain synthesis strength (passed via `-svtav1-params film-grain=...`).
+    pub svt_av1_film_grain: Option<u8>,
+
+    /// Optional SVT-AV1 film grain denoise toggle (`false` -> `0`, `true` -> `1`).
+    pub svt_av1_film_grain_denoise: Option<bool>,
 
     /// CRF quality for Standard Definition videos (<1920 width)
     /// Lower values produce higher quality but larger files
@@ -274,6 +296,9 @@ impl Default for CoreConfig {
             svt_av1_enable_variance_boost: DEFAULT_SVT_AV1_ENABLE_VARIANCE_BOOST,
             svt_av1_variance_boost_strength: DEFAULT_SVT_AV1_VARIANCE_BOOST_STRENGTH,
             svt_av1_variance_octile: DEFAULT_SVT_AV1_VARIANCE_OCTILE,
+            video_denoise_filter: None,
+            svt_av1_film_grain: None,
+            svt_av1_film_grain_denoise: None,
             quality_sd: DEFAULT_CORE_QUALITY_SD,
             quality_hd: DEFAULT_CORE_QUALITY_HD,
             quality_uhd: DEFAULT_CORE_QUALITY_UHD,
@@ -309,6 +334,9 @@ impl CoreConfig {
         self.svt_av1_enable_variance_boost = values.svt_av1_enable_variance_boost;
         self.svt_av1_variance_boost_strength = values.svt_av1_variance_boost_strength;
         self.svt_av1_variance_octile = values.svt_av1_variance_octile;
+        self.video_denoise_filter = values.video_denoise_filter.map(str::to_string);
+        self.svt_av1_film_grain = values.svt_av1_film_grain;
+        self.svt_av1_film_grain_denoise = values.svt_av1_film_grain_denoise;
     }
 
     /// Validates svt_av1_preset (0-13) and quality values (0-63).
@@ -339,6 +367,12 @@ impl CoreConfig {
                 "quality_uhd must be 0-63, got {}",
                 self.quality_uhd
             )));
+        }
+
+        if self.svt_av1_film_grain.is_none() && self.svt_av1_film_grain_denoise.is_some() {
+            return Err(CoreError::Config(
+                "svt_av1_film_grain_denoise set without svt_av1_film_grain".to_string(),
+            ));
         }
 
         Ok(())
@@ -373,6 +407,9 @@ mod tests {
             config.svt_av1_variance_octile,
             DEFAULT_SVT_AV1_VARIANCE_OCTILE
         );
+        assert!(config.video_denoise_filter.is_none());
+        assert!(config.svt_av1_film_grain.is_none());
+        assert!(config.svt_av1_film_grain_denoise.is_none());
         assert!(!config.responsive_encoding);
         assert!(config.temp_dir.is_none());
         assert!(config.drapto_preset.is_none());
@@ -430,6 +467,18 @@ mod tests {
         assert_eq!(
             config.svt_av1_variance_octile,
             DRAPTO_PRESET_GRAIN_VALUES.svt_av1_variance_octile
+        );
+        assert_eq!(
+            config.video_denoise_filter.as_deref(),
+            DRAPTO_PRESET_GRAIN_VALUES.video_denoise_filter
+        );
+        assert_eq!(
+            config.svt_av1_film_grain,
+            DRAPTO_PRESET_GRAIN_VALUES.svt_av1_film_grain
+        );
+        assert_eq!(
+            config.svt_av1_film_grain_denoise,
+            DRAPTO_PRESET_GRAIN_VALUES.svt_av1_film_grain_denoise
         );
     }
 

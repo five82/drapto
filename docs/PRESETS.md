@@ -15,14 +15,17 @@ When you omit `--drapto-preset`, Drapto uses the global defaults embedded in `Co
 | `svt_av1_enable_variance_boost` | `false` | Adaptive quantization disabled by default |
 | `svt_av1_variance_boost_strength` | `0` | N/A when variance boost is disabled |
 | `svt_av1_variance_octile` | `0` | N/A when variance boost is disabled |
+| `video_denoise_filter` | _(none)_ | No denoising filter unless a preset enables it |
+| `svt_av1_film_grain` | _(none)_ | Film-grain synthesis disabled by default |
+| `svt_av1_film_grain_denoise` | _(none)_ | N/A unless `svt_av1_film_grain` is set |
 
 ## Built-in Presets
 
-| Preset | CRF (SD/HD/UHD) | SVT Preset | Tune | AC Bias | Var Boost | Boost Strength | Octile | Intent |
-|--------|-----------------|------------|------|---------|-----------|----------------|--------|--------|
-| `grain` | `23 / 25 / 27` | `6` | `0` | `0.20` | `true` | `1` | `5` | Preserve texture and film grain even at the cost of extra bitrate/time. |
-| `clean` | `27 / 29 / 31` | `6` | `0` | `0.05` | `false` | `0` | `0` | Target already clean/animated content; prioritizes speed/size. |
-| `quick` | `32 / 35 / 36` | `8` | `0` | `0.00` | `false` | `0` | `0` | Fast, non-archival encodes. |
+| Preset | CRF (SD/HD/UHD) | SVT Preset | Tune | AC Bias | Var Boost | Boost Strength | Octile | Denoise (`-vf`) | Film Grain | Grain Denoise | Intent |
+|--------|-----------------|------------|------|---------|-----------|----------------|--------|------------------|-----------|--------------|--------|
+| `grain` | `23 / 25 / 27` | `6` | `0` | `0.10` | `true` | `1` | `6` | `hqdn3d=1.5:1.5:3:3` | `6` | `0` | Film-sourced or noisy captures: apply light denoising, then synthesize film grain for a balanced bitrate + “film look”. |
+| `clean` | `27 / 29 / 31` | `6` | `0` | `0.05` | `false` | `0` | `0` | _(none)_ | _(none)_ | _(none)_ | Target already clean/animated content; prioritizes speed/size. |
+| `quick` | `32 / 35 / 36` | `8` | `0` | `0.00` | `false` | `0` | `0` | _(none)_ | _(none)_ | _(none)_ | Fast, non-archival encodes. |
 
 Pass `--drapto-preset grain`, `clean`, or `quick` to apply one of these bundles before any per-flag overrides.
 
@@ -43,6 +46,9 @@ pub const DRAPTO_PRESET_GRAIN_VALUES: DraptoPresetValues = DraptoPresetValues {
     svt_av1_enable_variance_boost: true,
     svt_av1_variance_boost_strength: 3,
     svt_av1_variance_octile: 4,
+    video_denoise_filter: None,
+    svt_av1_film_grain: None,
+    svt_av1_film_grain_denoise: None,
 };
 ```
 

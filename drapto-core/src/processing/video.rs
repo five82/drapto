@@ -101,6 +101,21 @@ fn collect_preset_settings(params: &EncodeParams) -> Vec<(String, String)> {
         settings.push(("Variance boost".to_string(), "disabled".to_string()));
     }
 
+    if let Some(ref denoise) = params.video_denoise_filter {
+        settings.push(("Denoise".to_string(), denoise.clone()));
+    }
+
+    if let Some(film_grain) = params.film_grain {
+        let denoise = params
+            .film_grain_denoise
+            .map(|v| if v { "1" } else { "0" })
+            .unwrap_or("-");
+        settings.push((
+            "Film grain synth".to_string(),
+            format!("film-grain {film_grain}, denoise {denoise}"),
+        ));
+    }
+
     if let Some(lp) = params.logical_processors {
         settings.push(("Logical processors".to_string(), lp.to_string()));
     }
