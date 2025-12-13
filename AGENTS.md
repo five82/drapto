@@ -2,8 +2,23 @@
 
 This file provides guidance when working with code in this repository.
 
-Use `python3` for all Python commands.
-Do not git commit or git push unless explicitly ask to.
+Do not run `git commit` or `git push` unless explicitly instructed.
+
+## Related Repos (Local Dev Layout)
+
+Drapto is one of three sibling repos that are developed together on this machine:
+
+- **drapto** (this repo): `~/projects/drapto/` — ffmpeg encoding wrapper + JSON progress stream
+- **spindle**: `~/projects/spindle/` — orchestrator that shells out to Drapto during `ENCODING`
+- **flyer**: `~/projects/flyer/` — read-only TUI for Spindle (not a Drapto consumer)
+
+GitHub:
+
+- flyer - https://github.com/five82/flyer
+- spindle - https://github.com/five82/spindle
+- drapto - https://github.com/five82/drapto
+
+Key contract: keep the `--progress-json` stream backward-compatible with the objects Spindle consumes (`encoding_progress`, `validation_complete`, `encoding_complete`, `warning`, `error`, `batch_complete`).
 
 ## Project Overview
 
@@ -28,10 +43,7 @@ The project follows a modular Rust workspace architecture with two main componen
 ### Building
 
 ```bash
-# Clean and build the project
-./build.sh
-
-# Or manually build with cargo
+# Build with cargo
 cargo build --release
 ```
 
