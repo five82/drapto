@@ -139,6 +139,26 @@ fn test_svt_av1_params_include_film_grain_when_set() {
 }
 
 #[test]
+fn test_svt_av1_params_include_scene_cut_controls() {
+    let params = create_test_params();
+    let cmd = build_ffmpeg_command(&params, false).unwrap();
+    let cmd_string = format!("{:?}", cmd);
+
+    assert!(
+        cmd_string.contains("keyint=10s"),
+        "Command should include keyint=10s in svt-av1 params"
+    );
+    assert!(
+        cmd_string.contains("scd=1"),
+        "Command should include scd=1 in svt-av1 params"
+    );
+    assert!(
+        cmd_string.contains("scm=0"),
+        "Command should include scm=0 in svt-av1 params"
+    );
+}
+
+#[test]
 fn test_encode_params_match_ffmpeg_command() {
     // Test that EncodeParams fields accurately reflect what's used in the FFmpeg command
     let params = EncodeParams {

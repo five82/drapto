@@ -60,6 +60,10 @@ impl EncodeParams {
         }
 
         builder = builder.with_tune(self.tune);
+        builder = builder
+            .add_param("keyint", "10s")
+            .add_param("scd", "1")
+            .add_param("scm", "0");
 
         if let Some(film_grain) = self.film_grain {
             builder = builder.add_param("film-grain", &film_grain.to_string());
