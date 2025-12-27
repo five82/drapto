@@ -42,7 +42,7 @@ rayon = "1.11"                   # Data parallelism for concurrent processing
 num_cpus = "1.16"                # Determine available logical processors
 
 # ---- FFmpeg Integration ----
-ffmpeg-sidecar = "2.3.0"         # FFmpeg process execution and management
+ffmpeg-sidecar = "2.4.0"         # FFmpeg process execution and management
 
 # ---- Terminal UI ----
 indicatif = { version = "0.18", features = ["improved_unicode"] }  # Progress bars and spinners
