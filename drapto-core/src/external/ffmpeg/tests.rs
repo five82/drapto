@@ -1,4 +1,5 @@
 use super::*;
+use ffprobe::Disposition;
 use std::path::PathBuf;
 
 /// Create test parameters with common defaults
@@ -291,6 +292,7 @@ fn test_audio_command_generation_transcodes_all() {
         profile: Some("Dolby TrueHD + Dolby Atmos".to_string()),
         index: 0,
         is_spatial: false,
+        disposition: Disposition::default(),
     };
 
     let params = EncodeParams {
@@ -336,14 +338,18 @@ fn test_multiple_audio_streams_all_transcoded() {
         profile: Some("Dolby TrueHD + Dolby Atmos".to_string()),
         index: 0,
         is_spatial: false,
+        disposition: Disposition::default(),
     };
 
+    let mut commentary_disposition = Disposition::default();
+    commentary_disposition.comment = 1;
     let commentary_stream = AudioStreamInfo {
         channels: 2,
         codec_name: "aac".to_string(),
         profile: Some("LC".to_string()),
         index: 1,
         is_spatial: false,
+        disposition: commentary_disposition,
     };
 
     let params = EncodeParams {
@@ -378,6 +384,9 @@ fn test_multiple_audio_streams_all_transcoded() {
     assert!(cmd_string.contains("-c:a:1") && cmd_string.contains("libopus"));
     assert!(cmd_string.contains("-b:a:0") && cmd_string.contains("384k"));
     assert!(cmd_string.contains("-b:a:1") && cmd_string.contains("128k"));
+    assert!(cmd_string.contains("-map_metadata:s:a:0") && cmd_string.contains("0:s:a:0"));
+    assert!(cmd_string.contains("-map_metadata:s:a:1") && cmd_string.contains("0:s:a:1"));
+    assert!(cmd_string.contains("-disposition:a:1") && cmd_string.contains("comment"));
 }
 
 #[test]
@@ -391,6 +400,7 @@ fn test_dtsx_audio_command_generation_transcoded() {
         profile: Some("DTS:X".to_string()),
         index: 0,
         is_spatial: false,
+        disposition: Disposition::default(),
     };
 
     let params = EncodeParams {
@@ -436,6 +446,7 @@ fn test_eac3_joc_audio_command_generation() {
         profile: Some("Dolby Digital Plus + JOC".to_string()),
         index: 0,
         is_spatial: false,
+        disposition: Disposition::default(),
     };
 
     let params = EncodeParams {

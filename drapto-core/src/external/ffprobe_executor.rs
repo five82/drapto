@@ -5,7 +5,7 @@
 //! for video analysis.
 use crate::error::{CoreError, CoreResult, command_failed_error, command_start_error};
 use crate::processing::video_properties::VideoProperties;
-use ffprobe::{FfProbeError, ffprobe};
+use ffprobe::{Disposition, FfProbeError, ffprobe};
 use std::path::Path;
 
 /// Struct containing media information.
@@ -34,6 +34,8 @@ pub struct AudioStreamInfo {
     pub index: usize,
     /// Spatial audio preservation is no longer supported; this flag is always false.
     pub is_spatial: bool,
+    /// Stream disposition flags captured from ffprobe.
+    pub disposition: Disposition,
 }
 
 /// Gets audio channel counts for a given input file.
@@ -117,6 +119,7 @@ pub fn get_audio_stream_info(input_path: &Path) -> CoreResult<Vec<AudioStreamInf
                     profile,
                     index: audio_index,
                     is_spatial,
+                    disposition: stream.disposition.clone(),
                 });
 
                 audio_index += 1;
@@ -304,6 +307,7 @@ mod tests {
                 profile: None,
                 index: 0, // First audio stream
                 is_spatial: false,
+                disposition: Disposition::default(),
             },
             AudioStreamInfo {
                 channels: 6,
@@ -311,6 +315,7 @@ mod tests {
                 profile: Some("Dolby Digital Plus".to_string()),
                 index: 1, // Second audio stream
                 is_spatial: false,
+                disposition: Disposition::default(),
             },
         ];
 

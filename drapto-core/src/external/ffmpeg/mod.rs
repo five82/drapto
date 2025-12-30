@@ -80,6 +80,52 @@ impl EncodeParams {
     }
 }
 
+fn build_disposition_value(disposition: &ffprobe::Disposition) -> String {
+    let mut flags = Vec::new();
+    if disposition.default != 0 {
+        flags.push("default");
+    }
+    if disposition.dub != 0 {
+        flags.push("dub");
+    }
+    if disposition.original != 0 {
+        flags.push("original");
+    }
+    if disposition.comment != 0 {
+        flags.push("comment");
+    }
+    if disposition.lyrics != 0 {
+        flags.push("lyrics");
+    }
+    if disposition.karaoke != 0 {
+        flags.push("karaoke");
+    }
+    if disposition.forced != 0 {
+        flags.push("forced");
+    }
+    if disposition.hearing_impaired != 0 {
+        flags.push("hearing_impaired");
+    }
+    if disposition.visual_impaired != 0 {
+        flags.push("visual_impaired");
+    }
+    if disposition.clean_effects != 0 {
+        flags.push("clean_effects");
+    }
+    if disposition.attached_pic != 0 {
+        flags.push("attached_pic");
+    }
+    if disposition.timed_thumbnails != 0 {
+        flags.push("timed_thumbnails");
+    }
+
+    if flags.is_empty() {
+        "0".to_string()
+    } else {
+        flags.join("+")
+    }
+}
+
 /// Builds FFmpeg command for libsvtav1 video and libopus audio encoding.
 pub fn build_ffmpeg_command(
     params: &EncodeParams,
@@ -126,6 +172,17 @@ pub fn build_ffmpeg_command(
             // Always use per-stream mapping for consistency and precise control
             for (output_index, stream) in audio_streams.iter().enumerate() {
                 cmd.args(["-map", &format!("0:a:{}", stream.index)]);
+
+                // Preserve stream metadata and dispositions despite filtergraphs.
+                cmd.args([
+                    &format!("-map_metadata:s:a:{}", output_index),
+                    &format!("0:s:a:{}", stream.index),
+                ]);
+                let disposition_value = build_disposition_value(&stream.disposition);
+                cmd.args([
+                    &format!("-disposition:a:{}", output_index),
+                    &disposition_value,
+                ]);
 
                 // Always transcode audio to Opus
                 cmd.args([&format!("-c:a:{}", output_index), &params.audio_codec]);

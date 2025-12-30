@@ -149,6 +149,7 @@ pub fn analyze_and_log_audio_detailed(input_path: &Path) -> Option<Vec<AudioStre
 mod tests {
     use super::*;
     use crate::external::AudioStreamInfo;
+    use ffprobe::Disposition;
 
     #[test]
     fn test_calculate_audio_bitrate() {
@@ -180,6 +181,7 @@ mod tests {
             profile: Some("Dolby TrueHD + Dolby Atmos".to_string()),
             index: 0,
             is_spatial: false,
+            disposition: Disposition::default(),
         };
 
         // Validate stored metadata
@@ -197,6 +199,7 @@ mod tests {
             profile: Some("Dolby TrueHD + Dolby Atmos".to_string()),
             index: 0,
             is_spatial: false,
+            disposition: Disposition::default(),
         };
 
         let commentary_stream = AudioStreamInfo {
@@ -205,6 +208,7 @@ mod tests {
             profile: Some("LC".to_string()),
             index: 1,
             is_spatial: false,
+            disposition: Disposition::default(),
         };
 
         let streams = vec![primary_stream, commentary_stream];

@@ -158,6 +158,7 @@ fn format_audio_description_without_streams(audio_channels: &[u32]) -> String {
 mod tests {
     use super::generate_audio_results_description;
     use crate::external::AudioStreamInfo;
+    use ffprobe::Disposition;
 
     #[test]
     fn test_single_spatial_audio_description() {
@@ -167,6 +168,7 @@ mod tests {
             profile: Some("Dolby TrueHD + Dolby Atmos".to_string()),
             index: 0,
             is_spatial: false,
+            disposition: Disposition::default(),
         }];
         let audio_channels = vec![8];
 
@@ -183,6 +185,7 @@ mod tests {
             profile: Some("LC".to_string()),
             index: 0,
             is_spatial: false,
+            disposition: Disposition::default(),
         }];
         let audio_channels = vec![2];
 
@@ -200,6 +203,7 @@ mod tests {
                 profile: Some("Dolby TrueHD + Dolby Atmos".to_string()),
                 index: 0,
                 is_spatial: false,
+                disposition: Disposition::default(),
             },
             AudioStreamInfo {
                 channels: 2,
@@ -207,6 +211,7 @@ mod tests {
                 profile: Some("LC".to_string()),
                 index: 1,
                 is_spatial: false,
+                disposition: Disposition::default(),
             },
             AudioStreamInfo {
                 channels: 2,
@@ -214,6 +219,7 @@ mod tests {
                 profile: Some("Dolby Digital".to_string()),
                 index: 2,
                 is_spatial: false,
+                disposition: Disposition::default(),
             },
         ];
         let audio_channels = vec![8, 2, 2];
@@ -233,6 +239,7 @@ mod tests {
                 profile: Some("Dolby TrueHD + Dolby Atmos".to_string()),
                 index: 0,
                 is_spatial: false,
+                disposition: Disposition::default(),
             },
             AudioStreamInfo {
                 channels: 8,
@@ -240,6 +247,7 @@ mod tests {
                 profile: Some("DTS:X".to_string()),
                 index: 1,
                 is_spatial: false,
+                disposition: Disposition::default(),
             },
         ];
         let audio_channels = vec![8, 8];
@@ -259,6 +267,7 @@ mod tests {
                 profile: Some("Dolby Digital".to_string()),
                 index: 0,
                 is_spatial: false,
+                disposition: Disposition::default(),
             },
             AudioStreamInfo {
                 channels: 2,
@@ -266,6 +275,7 @@ mod tests {
                 profile: Some("LC".to_string()),
                 index: 1,
                 is_spatial: false,
+                disposition: Disposition::default(),
             },
         ];
         let audio_channels = vec![6, 2];
@@ -304,6 +314,7 @@ mod tests {
                 profile: Some("LC".to_string()),
                 index: 0,
                 is_spatial: false,
+                disposition: Disposition::default(),
             },
             AudioStreamInfo {
                 channels: 4,
@@ -311,6 +322,7 @@ mod tests {
                 profile: Some("Dolby Digital".to_string()),
                 index: 1,
                 is_spatial: false,
+                disposition: Disposition::default(),
             },
             AudioStreamInfo {
                 channels: 10,
@@ -318,6 +330,7 @@ mod tests {
                 profile: Some("DTS-HD Master Audio".to_string()),
                 index: 2,
                 is_spatial: false,
+                disposition: Disposition::default(),
             },
         ];
         let audio_channels = vec![1, 4, 10];
