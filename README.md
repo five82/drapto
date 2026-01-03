@@ -1,46 +1,47 @@
 # drapto
 
-High-quality AV1 encoding wrapper that layers intelligent analysis and ergonomic reporting atop FFmpeg. Drapto ships sane defaults so you can run it once manually or wire it into an automated workflow like Spindle.
+FFmpeg wrapper for AV1 encoding with SVT-AV1 and Opus audio. Uses opinionated defaults so you can encode without dealing with ffmpeg's complexity.
 
-## Why Drapto
+## Features
 
-- Automatic black-bar cropping plus HDR-aware processing
-- SVT-AV1 + Opus pipelines tuned per resolution, with preset bundles for common scenes
-- Foreground-friendly UX: concise terminal sections, colored progress bar, and JSON progress stream for automation
-- Post-encode validation covering codecs, dimensions, HDR metadata, and duration sanity checks
+- Automatic black bar crop detection
+- HDR10/HLG metadata preservation
+- Resolution-based CRF defaults (SD/HD/UHD)
+- Multi-track audio transcoding to Opus
+- Post-encode validation (codec, dimensions, duration, HDR)
+- Preset profiles: `grain`, `clean`, `quick`
+- JSON progress output for automation
+
+## Requirements
+
+- FFmpeg with `libsvtav1` and `libopus`
+- MediaInfo
 
 ## Install
 
-1. Install FFmpeg (with `libsvtav1` + `libopus`) and MediaInfo.
-2. Install Drapto from source:
-   ```bash
-   cargo install --git https://github.com/five82/drapto
-   ```
-
-## Quick Start
-
 ```bash
-# Encode one file
-drapto encode -i input.mkv -o output/
-
-# Encode an entire directory
-drapto encode -i /videos/ -o /encoded/
+cargo install --git https://github.com/five82/drapto
 ```
 
-Need granular flag descriptions, preset tables, and diagnostics? See [`docs/USAGE.md`](docs/USAGE.md) plus [`docs/PRESETS.md`](docs/PRESETS.md).
+## Usage
 
-## Project Layout
+```bash
+drapto encode -i input.mkv -o output/
+drapto encode -i /videos/ -o /encoded/
+drapto encode -i input.mkv -o output/ --drapto-preset grain
+drapto encode -i input.mkv -o output/ --progress-json
+```
 
-- `drapto-cli`: CLI entrypoint, argument parsing, colored terminal output, progress + JSON reporting
-- `drapto-core`: Video/audio analysis, FFmpeg/FFprobe integration, preset logic, validation, and automation hooks
+See [docs/USAGE.md](docs/USAGE.md) for all options and [docs/PRESETS.md](docs/PRESETS.md) for preset details.
+
+## Project Structure
+
+- **drapto-cli** - CLI, progress display, JSON output
+- **drapto-core** - Video analysis, ffmpeg integration, validation
 
 ## Development
 
 ```bash
-git clone https://github.com/five82/drapto.git
-cd drapto
-./build.sh # or cargo build --release
-./target/release/drapto --help
+cargo build --release
+RUST_LOG=debug cargo run -- encode -i input.mkv -o output/
 ```
-
-Enable additional logging with `RUST_LOG=debug` or `trace`. Unit tests are preferred over full encodes for iteration speed.

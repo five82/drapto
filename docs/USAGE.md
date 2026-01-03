@@ -1,6 +1,6 @@
 # Usage Guide
 
-This guide collects the detailed CLI switches and behavior notes that were previously in the top-level README. Run `drapto encode --help` for the authoritative flag list; the sections below provide practical context.
+Run `drapto encode --help` for the authoritative flag list. The sections below provide practical context.
 
 ## CLI Basics
 

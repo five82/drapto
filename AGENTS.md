@@ -22,7 +22,7 @@ Key contract: keep the `--progress-json` stream backward-compatible with the obj
 
 ## Project Overview
 
-Drapto is an advanced video encoding tool that uses ffmpeg to optimize and encode videos with intelligent analysis and high-quality compression. The tool automates video encoding tasks using ffmpeg with libsvtav1 (for video) and libopus (for audio), providing features like automatic crop detection and HDR-aware processing.
+Drapto is an ffmpeg wrapper for AV1 encoding with SVT-AV1 and Opus audio. It uses opinionated defaults so you can encode without dealing with ffmpeg's complexity. Features include automatic crop detection, HDR metadata preservation, and post-encode validation.
 
 ## Architecture
 
@@ -89,40 +89,51 @@ The progress reporting system provides feedback during long-running operations:
 4. Keep the JSON stream (`--progress-json`) backward-compatible with the existing objects Spindle consumes (`encoding_progress`, `validation_complete`, `encoding_complete`, `warning`, `error`, `batch_complete`).
 5. Prefer natural language sentences (“Encoding finished successfully”) and reserve emphatic formatting for values that matter (reduction %, warnings, output paths).
 
-## Code Style Guidelines
+## Project Structure (drapto-core/src/)
 
-1. Use descriptive variable names and comprehensive documentation
-2. Follow Rust's naming conventions (snake_case for variables/functions, CamelCase for types)
-3. Organize code into modular components with clear responsibilities
-4. Use Rust's type system to enforce invariants where possible
-5. Use Result and Option types for proper error handling and state representation
+- **config/** - `CoreConfig`, preset definitions (`DraptoPresetValues`)
+- **discovery.rs** - File discovery and filtering
+- **external/** - FFmpeg, FFprobe, MediaInfo command execution
+  - `ffmpeg_builder.rs` - Builds ffmpeg command arguments
+  - `ffprobe_executor.rs` - Extracts video metadata
+  - `mediainfo_executor.rs` - HDR detection
+- **processing/** - Core encoding logic
+  - `video.rs` - Main encoding orchestration
+  - `crop_detection.rs` - Black bar detection
+  - `audio.rs` - Opus transcoding setup
+  - `validation/` - Post-encode checks (codec, dimensions, duration, HDR)
+- **reporting/** - Progress reporting (`Reporter` trait, `JsonReporter`, `TerminalReporter`)
 
-## Project Structure
+## JSON Events (Spindle Contract)
 
-The core functionality is organized into modules:
+The `--progress-json` flag emits newline-delimited JSON. Spindle depends on these event types:
 
-- **detection**: Crop detection algorithms
-- **external**: FFmpeg and FFprobe integrations
-- **processing**: Video and audio processing pipelines
-- **config**: Configuration management
+| Event | Key Fields |
+|-------|------------|
+| `encoding_progress` | `percent`, `speed`, `fps`, `eta_seconds` |
+| `validation_complete` | `validation_passed`, `validation_steps[]` |
+| `encoding_complete` | `output_file`, `original_size`, `encoded_size`, `size_reduction_percent` |
+| `warning` | `message` |
+| `error` | `title`, `message`, `context`, `suggestion` |
+| `batch_complete` | `successful_count`, `total_files`, `total_size_reduction_percent` |
 
-When working with the codebase, understand the flow:
-1. CLI parses arguments and initializes components
-2. Core detection modules analyze input video
-3. Processing modules apply transformations
-4. External tools execute the actual encoding
+All events include a `timestamp` field. Schema is defined in `reporting/mod.rs` (`JsonReporter` impl).
+
+## Entry Points
+
+| Task | Start Here |
+|------|------------|
+| Add/modify encoding parameters | `config/mod.rs` (presets), `external/ffmpeg_builder.rs` (command args) |
+| Change crop detection | `processing/crop_detection.rs` |
+| Add validation check | `processing/validation/` |
+| Modify JSON output | `reporting/mod.rs` (`JsonReporter`) |
+| Change terminal output | `reporting/mod.rs` (`TerminalReporter`) |
+| HDR detection | `external/mediainfo_executor.rs` |
 
 ## Principles
 
-1. Follow Rust idioms
-2. Use strong typing and Results for error handling
-3. Leverage Rust's ownership model for memory safety
-4. Use traits to define interfaces between components
-5. Implement concurrency with Rust's safety guarantees
-6. Focus on minimalism and performance
-7. Avoid scope creap and bloat.
-8. Avoid overengineering solutions.
-9. Use proper rust file and directory structure according to Rust best practices.
-10. This is a small hobby project maintained by a single develper. The project scope should reflect this.
-11. When running drapto with a timeout, do not use a timeout value of less than 120 seconds so the encoding processing steps have a chance to finish.
-12. Video encoding takes significant time. When testing drapto, use unit tests to test logic over running actual encodes when possible.
+1. Keep it simple. This is a small hobby project maintained by a single developer.
+2. Avoid scope creep and overengineering.
+3. Prefer unit tests over running actual encodes (encoding is slow).
+4. When running drapto with a timeout, use at least 120 seconds so encoding steps can complete.
+5. Do not break the JSON event schema without updating Spindle.
