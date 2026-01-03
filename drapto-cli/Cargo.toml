@@ -37,3 +37,6 @@ fern = "0.7"                     # Advanced logging configuration with file outp
 
 # ---- Terminal UI ----
 console = "0.16"                 # Terminal utilities and color detection
+
+[dev-dependencies]
+tempfile = "3"                   # Temporary file/directory creation for tests

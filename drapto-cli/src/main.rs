@@ -7,13 +7,13 @@
 use drapto::commands::encode::discover_encode_files;
 use drapto::error::CliResult;
 use drapto::logging::get_timestamp;
+use drapto::output_path::resolve_output_path;
 use drapto::{Commands, parse_cli, run_encode};
 use drapto_core::CoreError;
 use drapto_core::file_logging::setup::setup_file_logging;
 use drapto_core::reporting::{JsonReporter, Reporter, TerminalReporter};
 
 use log::LevelFilter;
-use std::path::PathBuf;
 
 /// Main entry point with clean separation of concerns
 fn main() -> CliResult<()> {
@@ -28,25 +28,19 @@ fn main() -> CliResult<()> {
 
     let _ = match cli_args.command {
         Commands::Encode(args) => {
+            // Resolve output path BEFORE discover_encode_files to avoid creating it as a directory
+            let output_info = resolve_output_path(&args.input_path, &args.output_dir)?;
+            let actual_output_dir = output_info.output_dir;
+            let target_filename_override_os = output_info.filename_override;
+
+            // Update args with the correct output directory before discovery
+            let mut corrected_args = args.clone();
+            corrected_args.output_dir = actual_output_dir.clone();
+
             let (discovered_files, effective_input_dir) =
-                discover_encode_files(&args).map_err(|e| {
+                discover_encode_files(&corrected_args).map_err(|e| {
                     CoreError::OperationFailed(format!("Error during file discovery: {}", e))
                 })?;
-
-            // Calculate log path
-            let (actual_output_dir, target_filename_override_os) =
-                if discovered_files.len() == 1 && args.output_dir.extension().is_some() {
-                    let target_file = args.output_dir.clone();
-                    let parent_dir = target_file
-                        .parent()
-                        .map(std::path::Path::to_path_buf)
-                        .filter(|p| !p.as_os_str().is_empty())
-                        .unwrap_or_else(|| PathBuf::from("."));
-                    let filename_os = target_file.file_name().map(std::ffi::OsStr::to_os_string);
-                    (parent_dir, filename_os)
-                } else {
-                    (args.output_dir.clone(), None)
-                };
 
             let log_dir = args
                 .log_dir
@@ -83,15 +77,11 @@ fn main() -> CliResult<()> {
                 }
             }
 
-            let reporter: Box<dyn Reporter> = if args.progress_json {
+            let reporter: Box<dyn Reporter> = if corrected_args.progress_json {
                 Box::new(JsonReporter::new())
             } else {
                 Box::new(TerminalReporter::new())
             };
-
-            // Update args to use the calculated actual output directory
-            let mut corrected_args = args.clone();
-            corrected_args.output_dir = actual_output_dir;
 
             run_encode(
                 corrected_args,
