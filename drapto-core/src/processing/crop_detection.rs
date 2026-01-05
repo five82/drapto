@@ -87,8 +87,11 @@ pub fn detect_crop(
         }
     };
 
+    // Filter out crops that match the source resolution (no actual cropping needed)
+    let effective_crop = best_crop.filter(|crop| is_effective_crop(crop, video_props));
+
     // Report results
-    let message = match &best_crop {
+    let message = match &effective_crop {
         Some(crop) => {
             log::info!("Crop detection: {}", crop);
             log::debug!("Applied crop filter: {}", crop);
@@ -109,7 +112,7 @@ pub fn detect_crop(
 
     log::debug!("Crop detection summary: {}", message);
 
-    Ok((best_crop, is_hdr))
+    Ok((effective_crop, is_hdr))
 }
 
 /// Sample crop detection at a specific position in the video.
@@ -211,6 +214,30 @@ fn is_valid_crop_format(crop: &str) -> bool {
     parts.iter().all(|part| part.parse::<u32>().is_ok())
 }
 
+/// Check if a crop filter actually removes pixels compared to source resolution.
+/// Returns false if the crop dimensions match the source (no effective cropping).
+fn is_effective_crop(crop: &str, video_props: &VideoProperties) -> bool {
+    // Strip "crop=" prefix if present
+    let crop_values = crop.strip_prefix("crop=").unwrap_or(crop);
+
+    let parts: Vec<&str> = crop_values.split(':').collect();
+    if parts.len() < 2 {
+        return true; // Can't parse, assume it's effective
+    }
+
+    let crop_width: u32 = match parts[0].parse() {
+        Ok(w) => w,
+        Err(_) => return true,
+    };
+    let crop_height: u32 = match parts[1].parse() {
+        Ok(h) => h,
+        Err(_) => return true,
+    };
+
+    // If crop dimensions match source, no pixels are removed
+    crop_width != video_props.width || crop_height != video_props.height
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -299,5 +326,55 @@ mod tests {
 
         // Test empty output
         assert_eq!(parse_crop_from_output("").unwrap(), None);
+    }
+
+    #[test]
+    fn test_is_effective_crop() {
+        // 1080p source
+        let props_1080p = VideoProperties {
+            width: 1920,
+            height: 1080,
+            ..Default::default()
+        };
+
+        // 4K source
+        let props_4k = VideoProperties {
+            width: 3840,
+            height: 2160,
+            ..Default::default()
+        };
+
+        // DVD NTSC
+        let props_dvd_ntsc = VideoProperties {
+            width: 720,
+            height: 480,
+            ..Default::default()
+        };
+
+        // DVD PAL
+        let props_dvd_pal = VideoProperties {
+            width: 720,
+            height: 576,
+            ..Default::default()
+        };
+
+        // Crop matching source = not effective (no pixels removed)
+        assert!(!is_effective_crop("crop=1920:1080:0:0", &props_1080p));
+        assert!(!is_effective_crop("crop=3840:2160:0:0", &props_4k));
+        assert!(!is_effective_crop("1920:1080:0:0", &props_1080p)); // without prefix
+        assert!(!is_effective_crop("crop=720:480:0:0", &props_dvd_ntsc));
+        assert!(!is_effective_crop("crop=720:576:0:0", &props_dvd_pal));
+
+        // Crop differing from source = effective (pixels removed)
+        assert!(is_effective_crop("crop=1920:800:0:140", &props_1080p)); // letterbox
+        assert!(is_effective_crop("crop=3840:1600:0:280", &props_4k)); // letterbox
+        assert!(is_effective_crop("crop=1440:1080:240:0", &props_1080p)); // pillarbox
+        assert!(is_effective_crop("crop=720:360:0:60", &props_dvd_ntsc)); // letterbox DVD
+        assert!(is_effective_crop("crop=720:432:0:72", &props_dvd_pal)); // letterbox DVD
+
+        // Edge cases - unparseable should assume effective
+        assert!(is_effective_crop("invalid", &props_1080p));
+        assert!(is_effective_crop("crop=", &props_1080p));
+        assert!(is_effective_crop("crop=abc:def:0:0", &props_1080p));
     }
 }
