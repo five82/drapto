@@ -171,15 +171,15 @@ pub struct DraptoPresetValues {
 
 /// Tweak these constants to customize the built-in Drapto presets.
 pub const DRAPTO_PRESET_GRAIN_VALUES: DraptoPresetValues = DraptoPresetValues {
-    quality_sd: 23,
-    quality_hd: 25,
-    quality_uhd: 27,
+    quality_sd: DEFAULT_CORE_QUALITY_SD,
+    quality_hd: DEFAULT_CORE_QUALITY_HD,
+    quality_uhd: DEFAULT_CORE_QUALITY_UHD,
     svt_av1_preset: DEFAULT_SVT_AV1_PRESET,
     svt_av1_tune: DEFAULT_SVT_AV1_TUNE,
     svt_av1_ac_bias: 0.10,
     svt_av1_enable_variance_boost: true,
     svt_av1_variance_boost_strength: 1,
-    svt_av1_variance_octile: 6,
+    svt_av1_variance_octile: 5,
     video_denoise_filter: Some("hqdn3d=1.5:1.5:3:3"),
     svt_av1_film_grain: Some(6),
     svt_av1_film_grain_denoise: Some(false),

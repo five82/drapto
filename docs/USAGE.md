@@ -42,7 +42,7 @@ CLI overrides such as `--quality-hd` still take precedence over the preset-provi
 | Profile | CRF (SD/HD/UHD) | SVT Preset | Tune | AC Bias | Variance Boost | Boost Strength | Octile | Denoise (`-vf`) | Film Grain | Grain Denoise |
 |---------|-----------------|------------|------|---------|----------------|----------------|--------|------------------|-----------|--------------|
 | _Base defaults (no preset)_ | 25 / 27 / 29 | 6 | 0 | 0.10 | Disabled | 0 | 0 | _(none)_ | _(none)_ | _(none)_ |
-| `grain` | 23 / 25 / 27 | 6 | 0 | 0.10 | Enabled | 1 | 6 | `hqdn3d=1.5:1.5:3:3` | 6 | 0 |
+| `grain` | 25 / 27 / 29 | 6 | 0 | 0.10 | Enabled | 1 | 5 | `hqdn3d=1.5:1.5:3:3` | 6 | 0 |
 | `clean` | 27 / 29 / 31 | 6 | 0 | 0.05 | Disabled | 0 | 0 | _(none)_ | _(none)_ | _(none)_ |
 | `quick` | 32 / 35 / 36 | 8 | 0 | 0.00 | Disabled | 0 | 0 | _(none)_ | _(none)_ | _(none)_ |
 
