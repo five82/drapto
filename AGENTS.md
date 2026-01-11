@@ -1,8 +1,19 @@
 # AGENTS.md
 
-This file provides guidance when working with code in this repository.
+This file provides guidance when working with code in this repository. CLAUDE.md and GEMINI.md are symlinks to this file so all agent guidance stays in one place.
 
 Do not run `git commit` or `git push` unless explicitly instructed.
+
+## System Dependencies
+
+Building requires `libmediainfo-dev` and `pkg-config`:
+
+```bash
+# Ubuntu/Debian
+sudo apt-get install libmediainfo-dev pkg-config
+
+# Runtime also requires FFmpeg with libsvtav1 and libopus, plus MediaInfo
+```
 
 ## Related Repos (Local Dev Layout)
 
@@ -40,28 +51,23 @@ The project follows a modular Rust workspace architecture with two main componen
 
 ## Development Commands
 
-### Building
-
 ```bash
-# Build with cargo
+# Build
 cargo build --release
-```
 
-### Running
+# Run
+cargo run -- encode -i input.mkv -o output/
+RUST_LOG=debug cargo run -- encode -i input.mkv -o output/
 
-```bash
-# Run a build from the project directory
-cargo run -- encode -i /path/to/video.mkv -o /path/to/output/
+# Test
+cargo test --workspace              # all tests
+cargo test -p drapto-core           # just core library
+cargo test test_name                # single test by name
 
-# Enable debug logging
-RUST_LOG=debug cargo run -- encode -i /path/to/video.mkv -o /path/to/output/
-```
-
-### Debugging
-
-```bash
-# Enable trace-level logging for more detailed output
-RUST_LOG=trace cargo run -- encode -i input.mkv -o output/
+# Lint and format
+cargo clippy --workspace
+cargo fmt --check                   # check formatting
+cargo fmt                           # fix formatting
 ```
 
 ## Key Components
