@@ -23,7 +23,7 @@ When you omit `--drapto-preset`, Drapto uses the global defaults embedded in `Co
 
 | Preset | CRF (SD/HD/UHD) | SVT Preset | Tune | AC Bias | Var Boost | Boost Strength | Octile | Denoise (`-vf`) | Film Grain | Grain Denoise | Intent |
 |--------|-----------------|------------|------|---------|-----------|----------------|--------|------------------|-----------|--------------|--------|
-| `grain` | `25 / 27 / 29` | `6` | `0` | `0.10` | `true` | `1` | `5` | `hqdn3d=3:3:6:6` | `8` | `0` | Film-sourced or noisy captures: apply moderate denoising, then synthesize film grain for a balanced bitrate + "film look". |
+| `grain` | `25 / 27 / 29` | `6` | `0` | `0.10` | `false` | `0` | `0` | _(none)_ | _(none)_ | _(none)_ | Currently matches defaults; placeholder for future film-grain tuning. |
 | `clean` | `27 / 29 / 31` | `6` | `0` | `0.05` | `false` | `0` | `0` | _(none)_ | _(none)_ | _(none)_ | Target already clean/animated content; prioritizes speed/size. |
 | `quick` | `32 / 35 / 36` | `8` | `0` | `0.00` | `false` | `0` | `0` | _(none)_ | _(none)_ | _(none)_ | Fast, non-archival encodes. |
 

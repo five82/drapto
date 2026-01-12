@@ -29,7 +29,7 @@ drapto encode -v -i input.mkv -o output/
 - `--no-color`: Disable colored output
 - `-l, --log-dir <DIR>`: Override the log directory (defaults to `<output>/logs`)
 - `--preset <0-13>`: SVT-AV1 encoder speed/quality (default `6`, lower is slower but higher quality)
-- `--drapto-preset <grain|clean|quick>`: Project-defined bundles that set CRF, SVT preset/tune, AC bias/variance boost, and (for `grain`) light denoising + SVT film-grain synthesis
+- `--drapto-preset <grain|clean|quick>`: Project-defined bundles that set CRF, SVT preset/tune, and AC bias/variance boost
 - `--quality-sd/hd/uhd <CRF>`: Override CRF defaults (SD=25, HD=27, UHD=29)
 - `--responsive`: Reserve a few CPU threads so other apps stay responsive
 - `--disable-autocrop`: Skip black-bar detection and cropping
@@ -42,7 +42,7 @@ CLI overrides such as `--quality-hd` still take precedence over the preset-provi
 | Profile | CRF (SD/HD/UHD) | SVT Preset | Tune | AC Bias | Variance Boost | Boost Strength | Octile | Denoise (`-vf`) | Film Grain | Grain Denoise |
 |---------|-----------------|------------|------|---------|----------------|----------------|--------|------------------|-----------|--------------|
 | _Base defaults (no preset)_ | 25 / 27 / 29 | 6 | 0 | 0.10 | Disabled | 0 | 0 | _(none)_ | _(none)_ | _(none)_ |
-| `grain` | 25 / 27 / 29 | 6 | 0 | 0.10 | Enabled | 1 | 5 | `hqdn3d=3:3:6:6` | 8 | 0 |
+| `grain` | 25 / 27 / 29 | 6 | 0 | 0.10 | Disabled | 0 | 0 | _(none)_ | _(none)_ | _(none)_ |
 | `clean` | 27 / 29 / 31 | 6 | 0 | 0.05 | Disabled | 0 | 0 | _(none)_ | _(none)_ | _(none)_ |
 | `quick` | 32 / 35 / 36 | 8 | 0 | 0.00 | Disabled | 0 | 0 | _(none)_ | _(none)_ | _(none)_ |
 

@@ -65,8 +65,7 @@ pub const PROGRESS_LOG_INTERVAL_PERCENT: u8 = 5;
 /// Drapto preset groupings for encoding-related defaults.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DraptoPreset {
-    /// Film-sourced or noisy material where Drapto applies light denoising and relies on
-    /// film-grain synthesis to recreate texture (balanced bitrate + “film look”).
+    /// Placeholder for future film-grain tuning; currently matches defaults.
     Grain,
     /// Settings tuned for clean, low-noise sources.
     Clean,
@@ -176,13 +175,13 @@ pub const DRAPTO_PRESET_GRAIN_VALUES: DraptoPresetValues = DraptoPresetValues {
     quality_uhd: DEFAULT_CORE_QUALITY_UHD,
     svt_av1_preset: DEFAULT_SVT_AV1_PRESET,
     svt_av1_tune: DEFAULT_SVT_AV1_TUNE,
-    svt_av1_ac_bias: 0.10,
-    svt_av1_enable_variance_boost: true,
-    svt_av1_variance_boost_strength: 1,
-    svt_av1_variance_octile: 5,
-    video_denoise_filter: Some("hqdn3d=3:3:6:6"),
-    svt_av1_film_grain: Some(8),
-    svt_av1_film_grain_denoise: Some(false),
+    svt_av1_ac_bias: DEFAULT_SVT_AV1_AC_BIAS,
+    svt_av1_enable_variance_boost: DEFAULT_SVT_AV1_ENABLE_VARIANCE_BOOST,
+    svt_av1_variance_boost_strength: DEFAULT_SVT_AV1_VARIANCE_BOOST_STRENGTH,
+    svt_av1_variance_octile: DEFAULT_SVT_AV1_VARIANCE_OCTILE,
+    video_denoise_filter: None,
+    svt_av1_film_grain: None,
+    svt_av1_film_grain_denoise: None,
 };
 
 pub const DRAPTO_PRESET_CLEAN_VALUES: DraptoPresetValues = DraptoPresetValues {
