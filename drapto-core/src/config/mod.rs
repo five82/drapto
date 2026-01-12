@@ -180,8 +180,8 @@ pub const DRAPTO_PRESET_GRAIN_VALUES: DraptoPresetValues = DraptoPresetValues {
     svt_av1_enable_variance_boost: true,
     svt_av1_variance_boost_strength: 1,
     svt_av1_variance_octile: 5,
-    video_denoise_filter: Some("hqdn3d=1.5:1.5:3:3"),
-    svt_av1_film_grain: Some(6),
+    video_denoise_filter: Some("hqdn3d=3:3:6:6"),
+    svt_av1_film_grain: Some(8),
     svt_av1_film_grain_denoise: Some(false),
 };
 
