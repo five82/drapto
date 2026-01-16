@@ -34,6 +34,10 @@ GitHub:
 
 Key contract: keep the `--progress-json` stream backward-compatible with the objects Spindle consumes (`encoding_progress`, `validation_complete`, `encoding_complete`, `warning`, `error`, `batch_complete`).
 
+## MCP
+
+Always use Context7 MCP when I need library/API documentation, code generation, setup or configuration steps without me having to explicitly ask.
+
 ## Project Overview
 
 Drapto is an ffmpeg wrapper for AV1 encoding with SVT-AV1 and Opus audio. It uses opinionated defaults so you can encode without dealing with ffmpeg's complexity. Features include automatic crop detection, HDR metadata preservation, and post-encode validation.
