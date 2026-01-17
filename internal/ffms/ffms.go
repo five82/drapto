@@ -97,6 +97,17 @@ const (
 	B8CropStride
 )
 
+// FFmpeg pixel format constants for 10-bit detection.
+// These correspond to AVPixelFormat values from libavutil/pixfmt.h.
+const (
+	pixFmtYUV420P10LE = 62 // AV_PIX_FMT_YUV420P10LE
+	pixFmtYUV420P10BE = 63 // AV_PIX_FMT_YUV420P10BE
+	pixFmtYUV422P10LE = 64 // AV_PIX_FMT_YUV422P10LE
+	pixFmtYUV422P10BE = 65 // AV_PIX_FMT_YUV422P10BE
+	pixFmtYUV444P10LE = 66 // AV_PIX_FMT_YUV444P10LE
+	pixFmtYUV444P10BE = 67 // AV_PIX_FMT_YUV444P10BE
+)
+
 // CropCalc contains crop calculation parameters for frame extraction.
 type CropCalc struct {
 	NewW     uint32 // Cropped width
@@ -194,10 +205,8 @@ func GetVidInf(idx *VidIdx) (*VidInf, error) {
 	}
 
 	// Determine if 10-bit based on pixel format
-	// Common 10-bit formats: AV_PIX_FMT_YUV420P10LE (62), YUV420P10BE (63)
-	// 8-bit: AV_PIX_FMT_YUV420P (0)
 	pixFmt := int(frame.ConvertedPixelFormat)
-	inf.Is10Bit = pixFmt >= 62 && pixFmt <= 67 // 10-bit range
+	inf.Is10Bit = pixFmt >= pixFmtYUV420P10LE && pixFmt <= pixFmtYUV444P10BE
 
 	// Extract color metadata if available
 	if frame.ColorPrimaries > 0 {
@@ -354,7 +363,10 @@ func ExtractFrame(src *VidSrc, frameIdx int, output []byte, inf *VidInf, strat D
 		return fmt.Errorf("output buffer too small: need %d, got %d", expectedSize, len(output))
 	}
 
-	// Get source data pointers
+	// Get source data pointers with nil checks
+	if frame.Data[0] == nil || frame.Data[1] == nil || frame.Data[2] == nil {
+		return fmt.Errorf("frame %d has nil plane data", frameIdx)
+	}
 	yData := unsafe.Slice((*byte)(unsafe.Pointer(frame.Data[0])), int(frame.Linesize[0])*int(inf.Height))
 	uData := unsafe.Slice((*byte)(unsafe.Pointer(frame.Data[1])), int(frame.Linesize[1])*int(inf.Height/2))
 	vData := unsafe.Slice((*byte)(unsafe.Pointer(frame.Data[2])), int(frame.Linesize[2])*int(inf.Height/2))
@@ -389,11 +401,17 @@ func ExtractFrame(src *VidSrc, frameIdx int, output []byte, inf *VidInf, strat D
 }
 
 // copyPlane10bit copies a 10-bit plane handling stride differences.
+// Copies dstStride bytes per row, reading from src with srcStride spacing.
 func copyPlane10bit(dst, src []byte, rows, dstStride, srcStride int) {
 	srcOff := 0
 	dstOff := 0
+	// Copy the minimum of src available bytes and dst needed bytes
+	copyLen := dstStride
+	if srcStride < dstStride {
+		copyLen = srcStride
+	}
 	for row := 0; row < rows; row++ {
-		copy(dst[dstOff:dstOff+dstStride], src[srcOff:srcOff+dstStride])
+		copy(dst[dstOff:dstOff+copyLen], src[srcOff:srcOff+copyLen])
 		srcOff += srcStride
 		dstOff += dstStride
 	}

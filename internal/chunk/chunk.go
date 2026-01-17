@@ -103,6 +103,11 @@ func ValidateScenes(scenes []Scene, fpsNum, fpsDen uint32) error {
 		return fmt.Errorf("no scenes provided")
 	}
 
+	// Validate FPS denominator to prevent division by zero
+	if fpsDen == 0 {
+		return fmt.Errorf("invalid FPS denominator: 0")
+	}
+
 	// Calculate max scene length (10 seconds or 300 frames)
 	fps := float64(fpsNum) / float64(fpsDen)
 	maxFrames := int(fps * 10)

@@ -10,8 +10,39 @@ import (
 	"github.com/five82/drapto/internal/ffms"
 )
 
+// writeConcatFile writes a FFmpeg concat file with the given paths.
+// Uses defer for proper resource cleanup.
+func writeConcatFile(concatPath string, paths []string) (err error) {
+	f, err := os.Create(concatPath)
+	if err != nil {
+		return fmt.Errorf("failed to create concat file: %w", err)
+	}
+	defer func() {
+		if cerr := f.Close(); cerr != nil && err == nil {
+			err = fmt.Errorf("failed to close concat file: %w", cerr)
+		}
+	}()
+
+	for _, p := range paths {
+		absPath, err := filepath.Abs(p)
+		if err != nil {
+			return fmt.Errorf("failed to get absolute path for %s: %w", p, err)
+		}
+		if _, err := fmt.Fprintf(f, "file '%s'\n", absPath); err != nil {
+			return fmt.Errorf("failed to write to concat file: %w", err)
+		}
+	}
+
+	return nil
+}
+
 // MergeOutput concatenates all IVF files into a single video file.
 func MergeOutput(workDir, outputPath string, inf *ffms.VidInf, inputPath string) error {
+	// Validate FPS to prevent division by zero
+	if inf.FPSDen == 0 {
+		return fmt.Errorf("invalid video info: FPS denominator is 0")
+	}
+
 	encodeDir := filepath.Join(workDir, "encode")
 
 	// Find all IVF files
@@ -26,25 +57,8 @@ func MergeOutput(workDir, outputPath string, inf *ffms.VidInf, inputPath string)
 
 	// Create concat list file
 	concatPath := filepath.Join(workDir, "concat.txt")
-	concatFile, err := os.Create(concatPath)
-	if err != nil {
-		return fmt.Errorf("failed to create concat file: %w", err)
-	}
-
-	for _, ivf := range ivfFiles {
-		// Use absolute paths to avoid issues with special characters
-		absPath, err := filepath.Abs(ivf)
-		if err != nil {
-			_ = concatFile.Close()
-			return fmt.Errorf("failed to get absolute path: %w", err)
-		}
-		if _, err := fmt.Fprintf(concatFile, "file '%s'\n", absPath); err != nil {
-			_ = concatFile.Close()
-			return fmt.Errorf("failed to write to concat file: %w", err)
-		}
-	}
-	if err := concatFile.Close(); err != nil {
-		return fmt.Errorf("failed to close concat file: %w", err)
+	if err := writeConcatFile(concatPath, ivfFiles); err != nil {
+		return err
 	}
 
 	// Calculate FPS for output
@@ -108,25 +122,12 @@ func MergeBatched(workDir string, numChunks int) error {
 
 		// Create concat list for this batch
 		concatPath := filepath.Join(tempDir, fmt.Sprintf("batch_%04d.txt", batchNum))
-		concatFile, err := os.Create(concatPath)
-		if err != nil {
-			return fmt.Errorf("failed to create batch concat file: %w", err)
-		}
-
+		batchPaths := make([]string, 0, end-start)
 		for i := start; i < end; i++ {
-			ivfPath := IVFPath(workDir, i)
-			absPath, err := filepath.Abs(ivfPath)
-			if err != nil {
-				_ = concatFile.Close()
-				return fmt.Errorf("failed to get absolute path: %w", err)
-			}
-			if _, err := fmt.Fprintf(concatFile, "file '%s'\n", absPath); err != nil {
-				_ = concatFile.Close()
-				return fmt.Errorf("failed to write to concat file: %w", err)
-			}
+			batchPaths = append(batchPaths, IVFPath(workDir, i))
 		}
-		if err := concatFile.Close(); err != nil {
-			return fmt.Errorf("failed to close concat file: %w", err)
+		if err := writeConcatFile(concatPath, batchPaths); err != nil {
+			return fmt.Errorf("failed to create batch %d concat file: %w", batchNum, err)
 		}
 
 		// Merge this batch
@@ -153,21 +154,12 @@ func MergeBatched(workDir string, numChunks int) error {
 
 	// Now merge all batch outputs
 	finalConcatPath := filepath.Join(tempDir, "final.txt")
-	finalConcat, err := os.Create(finalConcatPath)
-	if err != nil {
-		return fmt.Errorf("failed to create final concat file: %w", err)
-	}
-
+	finalBatchPaths := make([]string, batchNum)
 	for i := 0; i < batchNum; i++ {
-		batchPath := filepath.Join(tempDir, fmt.Sprintf("batch_%04d.ivf", i))
-		absPath, _ := filepath.Abs(batchPath)
-		if _, err := fmt.Fprintf(finalConcat, "file '%s'\n", absPath); err != nil {
-			_ = finalConcat.Close()
-			return fmt.Errorf("failed to write to final concat file: %w", err)
-		}
+		finalBatchPaths[i] = filepath.Join(tempDir, fmt.Sprintf("batch_%04d.ivf", i))
 	}
-	if err := finalConcat.Close(); err != nil {
-		return fmt.Errorf("failed to close final concat file: %w", err)
+	if err := writeConcatFile(finalConcatPath, finalBatchPaths); err != nil {
+		return fmt.Errorf("failed to create final concat file: %w", err)
 	}
 
 	// Final merge to encode directory

@@ -81,6 +81,12 @@ func (s *Semaphore) Available() int {
 	return len(s.permits)
 }
 
+// Chan returns the underlying permit channel for use with select.
+// This allows context-aware acquisition of permits.
+func (s *Semaphore) Chan() <-chan struct{} {
+	return s.permits
+}
+
 // EncodeResult contains the result of encoding a single chunk.
 type EncodeResult struct {
 	ChunkIdx int

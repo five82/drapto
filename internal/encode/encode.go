@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"sync"
+	"sync/atomic"
 
 	"github.com/five82/drapto/internal/chunk"
 	"github.com/five82/drapto/internal/encoder"
@@ -116,9 +117,17 @@ func EncodeAll(
 		BytesComplete:  resume.TotalEncodedSize(),
 	}
 
-	// Error handling
-	var encodeErr error
-	var errOnce sync.Once
+	// Error handling with atomic pointer for thread-safe access
+	var encodeErr atomic.Pointer[error]
+	setError := func(err error) {
+		encodeErr.CompareAndSwap(nil, &err)
+	}
+	getError := func() error {
+		if p := encodeErr.Load(); p != nil {
+			return *p
+		}
+		return nil
+	}
 
 	// Start encoder workers
 	var encoderWg sync.WaitGroup
@@ -137,9 +146,7 @@ func EncodeAll(
 		defer collectorWg.Done()
 		for result := range resultChan {
 			if result.Error != nil {
-				errOnce.Do(func() {
-					encodeErr = result.Error
-				})
+				setError(result.Error)
 				continue
 			}
 
@@ -179,25 +186,36 @@ func EncodeAll(
 			default:
 			}
 
-			// Check for error
-			if encodeErr != nil {
+			// Check for error (atomic read)
+			if getError() != nil {
 				return
 			}
 
-			// Acquire semaphore (blocks if too many chunks in flight)
-			sem.Acquire()
+			// Acquire semaphore with context cancellation support
+			select {
+			case <-sem.Chan():
+				// Permit acquired
+			case <-ctx.Done():
+				return
+			}
 
 			// Decode chunk frames
 			pkg, err := decodeChunk(src, ch, inf, strat, cropCalc, width, height)
 			if err != nil {
-				errOnce.Do(func() {
-					encodeErr = fmt.Errorf("failed to decode chunk %d: %w", ch.Idx, err)
-				})
+				setError(fmt.Errorf("failed to decode chunk %d: %w", ch.Idx, err))
 				sem.Release()
 				return
 			}
 
-			workChan <- pkg
+			// Send to work channel with cancellation check to prevent blocking forever
+			select {
+			case workChan <- pkg:
+				// Successfully sent
+			case <-ctx.Done():
+				// Context cancelled while waiting to send
+				sem.Release()
+				return
+			}
 		}
 	}()
 
@@ -208,7 +226,7 @@ func EncodeAll(
 	// Wait for result collector
 	collectorWg.Wait()
 
-	return encodeErr
+	return getError()
 }
 
 // decodeChunk extracts all frames for a chunk.

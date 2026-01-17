@@ -91,10 +91,18 @@ fn main() -> Result<()> {
         None
     };
 
-    // Run scene detection
-    let results: av_scenechange::DetectionResults =
+    // Run scene detection with appropriate pixel type based on bit depth
+    let bit_depth = decoder.get_video_details()
+        .context("Failed to get video details")?
+        .bit_depth;
+
+    let results: av_scenechange::DetectionResults = if bit_depth > 8 {
+        detect_scene_changes::<std::io::Empty, u16>(&mut decoder, opts, None, progress_callback)
+            .context("Scene detection failed")?
+    } else {
         detect_scene_changes::<std::io::Empty, u8>(&mut decoder, opts, None, progress_callback)
-            .context("Scene detection failed")?;
+            .context("Scene detection failed")?
+    };
 
     if args.progress {
         eprintln!(
