@@ -53,7 +53,6 @@ The project is written in Go with a library-first design for Spindle integration
    - `EventHandler` callback for progress events
 
 2. **CLI** (`cmd/drapto/main.go`): Thin wrapper using Cobra
-   - Matches the original Rust CLI flags
    - `--progress-json` for machine-readable output
 
 3. **Internal packages**:
@@ -145,7 +144,6 @@ drapto/
 │   ├── validation/                 # Post-encode validation checks
 │   ├── reporter/                   # Reporter interface + implementations
 │   └── util/                       # Formatting, file utils, system info
-└── reference/                      # Rust source (kept for reference)
 ```
 
 ## JSON Events (Spindle Contract)
@@ -212,19 +210,3 @@ result, err := encoder.Encode(ctx, "input.mkv", "output/", func(event drapto.Eve
 4. When running drapto with a timeout, use at least 120 seconds so encoding steps can complete.
 5. Do not break the JSON event schema without updating Spindle.
 
-## Go vs Rust Reference
-
-The `reference/` directory contains the original Rust implementation. The Go rewrite has **full feature parity** with Rust. Do not report these as gaps:
-
-| Feature | Go Location | Status |
-|---------|-------------|--------|
-| Film grain CLI flags | `cmd/drapto/main.go:73-74,179-183` | Implemented |
-| Film grain public API | `drapto.go:131-143` (`WithFilmGrain`, `WithFilmGrainDenoise`) | Implemented |
-| Film grain config | `internal/config/config.go:161-162` | Implemented |
-| All presets (grain/clean/quick) | `internal/config/config.go` | Implemented |
-| Crop detection (141 samples) | `internal/processing/crop.go` | Implemented |
-| HDR detection | `internal/mediainfo/mediainfo.go` | Implemented |
-| Validation (7 checks) | `internal/validation/validate.go` | Implemented |
-| Spindle JSON contract | `internal/reporter/json.go` | Implemented |
-
-When comparing Go to Rust, verify features by reading the actual Go code before reporting gaps.

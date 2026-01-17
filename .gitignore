@@ -35,9 +35,6 @@ dmypy.json
 # AI
 .roomodes
 
-# Rust (reference/)
-target/
-
 # Go
 drapto
 *.exe
