@@ -50,25 +50,28 @@ func (r *TerminalReporter) finishProgress() {
 func (r *TerminalReporter) Hardware(summary HardwareSummary) {
 	fmt.Println()
 	_, _ = r.cyan.Println("HARDWARE")
-	r.printLabel(10, "Hostname:", summary.Hostname)
+	r.printLabel("Hostname:", summary.Hostname)
 }
 
+// labelWidth is the global width for all labels to ensure consistent alignment.
+// Set to 18 to accommodate "Audio/video sync:" in validation output.
+const labelWidth = 18
+
 // printLabel prints a bold label with fixed width padding followed by a value.
-// Width is applied to the plain text before styling to ensure proper alignment.
-func (r *TerminalReporter) printLabel(width int, label, value string) {
-	paddedLabel := fmt.Sprintf("%-*s", width, label)
+func (r *TerminalReporter) printLabel(label, value string) {
+	paddedLabel := fmt.Sprintf("%-*s", labelWidth, label)
 	fmt.Printf("  %s %s\n", r.bold.Sprint(paddedLabel), value)
 }
 
 func (r *TerminalReporter) Initialization(summary InitializationSummary) {
 	fmt.Println()
 	_, _ = r.cyan.Println("VIDEO")
-	r.printLabel(10, "File:", summary.InputFile)
-	r.printLabel(10, "Output:", summary.OutputFile)
-	r.printLabel(10, "Duration:", summary.Duration)
-	r.printLabel(10, "Resolution:", fmt.Sprintf("%s (%s)", summary.Resolution, summary.Category))
-	r.printLabel(10, "Dynamic:", summary.DynamicRange)
-	r.printLabel(10, "Audio:", summary.AudioDescription)
+	r.printLabel("File:", summary.InputFile)
+	r.printLabel("Output:", summary.OutputFile)
+	r.printLabel("Duration:", summary.Duration)
+	r.printLabel("Resolution:", fmt.Sprintf("%s (%s)", summary.Resolution, summary.Category))
+	r.printLabel("Dynamic:", summary.DynamicRange)
+	r.printLabel("Audio:", summary.AudioDescription)
 }
 
 func (r *TerminalReporter) StageProgress(update StageProgress) {
@@ -93,33 +96,32 @@ func (r *TerminalReporter) CropResult(summary CropSummary) {
 	} else {
 		status = color.New(color.Faint).Sprint("no crop needed")
 	}
-	fmt.Printf("  %s %s (%s)\n", r.bold.Sprint("Crop detection:"), summary.Message, status)
+	r.printLabel("Crop detection:", fmt.Sprintf("%s (%s)", summary.Message, status))
 }
 
 func (r *TerminalReporter) EncodingConfig(summary EncodingConfigSummary) {
 	fmt.Println()
 	_, _ = r.cyan.Println("ENCODING")
-	const w = 14 // Width to fit "Drapto preset:" and "Preset values:"
-	r.printLabel(w, "Encoder:", summary.Encoder)
-	r.printLabel(w, "Preset:", summary.Preset)
-	r.printLabel(w, "Tune:", summary.Tune)
-	r.printLabel(w, "Quality:", summary.Quality)
-	r.printLabel(w, "Pixel format:", summary.PixelFormat)
-	r.printLabel(w, "Matrix:", summary.MatrixCoefficients)
-	r.printLabel(w, "Audio codec:", summary.AudioCodec)
-	r.printLabel(w, "Audio:", summary.AudioDescription)
-	r.printLabel(w, "Drapto preset:", summary.DraptoPreset)
+	r.printLabel("Encoder:", summary.Encoder)
+	r.printLabel("Preset:", summary.Preset)
+	r.printLabel("Tune:", summary.Tune)
+	r.printLabel("Quality:", summary.Quality)
+	r.printLabel("Pixel format:", summary.PixelFormat)
+	r.printLabel("Matrix:", summary.MatrixCoefficients)
+	r.printLabel("Audio codec:", summary.AudioCodec)
+	r.printLabel("Audio:", summary.AudioDescription)
+	r.printLabel("Drapto preset:", summary.DraptoPreset)
 
 	if len(summary.DraptoPresetSettings) > 0 {
 		var parts []string
 		for _, kv := range summary.DraptoPresetSettings {
 			parts = append(parts, fmt.Sprintf("%s=%s", kv[0], kv[1]))
 		}
-		r.printLabel(w, "Preset values:", strings.Join(parts, ", "))
+		r.printLabel("Preset values:", strings.Join(parts, ", "))
 	}
 
 	if summary.SVTAV1Params != "" {
-		r.printLabel(w, "SVT params:", summary.SVTAV1Params)
+		r.printLabel("SVT params:", summary.SVTAV1Params)
 	}
 }
 
@@ -182,17 +184,9 @@ func (r *TerminalReporter) ValidationComplete(summary ValidationSummary) {
 	_, _ = r.cyan.Println("VALIDATION")
 
 	if summary.Passed {
-		fmt.Printf("  %s\n", r.green.Add(color.Bold).Sprint("All checks passed"))
+		r.printLabel("Status:", fmt.Sprintf("%s %s", r.green.Sprint("✓"), r.green.Add(color.Bold).Sprint("All checks passed")))
 	} else {
-		fmt.Printf("  %s\n", r.red.Sprint("Validation failed"))
-	}
-
-	// Find the longest step name for alignment
-	maxLen := 0
-	for _, step := range summary.Steps {
-		if len(step.Name) > maxLen {
-			maxLen = len(step.Name)
-		}
+		r.printLabel("Status:", fmt.Sprintf("%s %s", r.red.Sprint("✗"), r.red.Sprint("Validation failed")))
 	}
 
 	for _, step := range summary.Steps {
@@ -202,9 +196,7 @@ func (r *TerminalReporter) ValidationComplete(summary ValidationSummary) {
 		} else {
 			status = r.red.Sprint("✗")
 		}
-		// Pad the name for alignment
-		paddedName := fmt.Sprintf("%-*s", maxLen, step.Name)
-		fmt.Printf("  - %s: %s (%s)\n", paddedName, status, step.Details)
+		r.printLabel(step.Name+":", fmt.Sprintf("%s %s", status, step.Details))
 	}
 }
 
@@ -213,19 +205,17 @@ func (r *TerminalReporter) EncodingComplete(summary EncodingOutcome) {
 
 	fmt.Println()
 	_, _ = r.cyan.Println("RESULTS")
-	fmt.Printf("  %s %s\n", r.bold.Sprint("Output:"), r.bold.Sprint(summary.OutputFile))
-	fmt.Printf("  %s %s -> %s\n",
-		r.bold.Sprint("Size:"),
+	r.printLabel("Output:", summary.OutputFile)
+	r.printLabel("Size:", fmt.Sprintf("%s -> %s",
 		util.FormatBytesReadable(summary.OriginalSize),
-		util.FormatBytesReadable(summary.EncodedSize))
-	fmt.Printf("  %s %s\n", r.bold.Sprint("Reduction:"), r.bold.Sprintf("%.1f%%", reduction))
-	r.printLabel(8, "Video:", summary.VideoStream)
-	r.printLabel(8, "Audio:", summary.AudioStream)
-	fmt.Printf("  %s %s (avg speed %.1fx)\n",
-		r.bold.Sprint("Time:"),
+		util.FormatBytesReadable(summary.EncodedSize)))
+	r.printLabel("Reduction:", fmt.Sprintf("%.1f%%", reduction))
+	r.printLabel("Video:", summary.VideoStream)
+	r.printLabel("Audio:", summary.AudioStream)
+	r.printLabel("Time:", fmt.Sprintf("%s (avg speed %.1fx)",
 		util.FormatDurationFromSecs(int64(summary.TotalTime.Seconds())),
-		summary.AverageSpeed)
-	fmt.Printf("  %s %s\n", r.bold.Sprint("Saved to"), r.green.Sprint(summary.OutputPath))
+		summary.AverageSpeed))
+	r.printLabel("Saved to:", r.green.Sprint(summary.OutputPath))
 }
 
 func (r *TerminalReporter) Warning(message string) {
