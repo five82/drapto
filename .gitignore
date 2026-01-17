@@ -36,7 +36,7 @@ dmypy.json
 .roomodes
 
 # Go
-drapto
+/drapto
 *.exe
 *.exe~
 *.dll
