@@ -5,7 +5,7 @@ go 1.25
 require (
 	github.com/fatih/color v1.18.0
 	github.com/schollz/progressbar/v3 v3.17.1
-	golang.org/x/sys v0.28.0
+	golang.org/x/sys v0.40.0
 )
 
 require (
