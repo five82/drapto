@@ -15,7 +15,7 @@ FFmpeg wrapper for AV1 encoding with SVT-AV1 and Opus audio. Uses opinionated de
 
 ## Requirements
 
-- Go 1.23+
+- Go 1.25+
 - FFmpeg with `libsvtav1` and `libopus`
 - MediaInfo
 

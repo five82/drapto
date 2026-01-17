@@ -17,7 +17,7 @@ Do not modify this header.
 Drapto is an **FFmpeg wrapper** for AV1 encoding with SVT-AV1 and Opus audio. It provides opinionated defaults, automatic crop detection, HDR preservation, and post-encode validation.
 
 - **Scope**: Single-developer hobby project - avoid over-engineering
-- **Environment**: Go 1.23+, FFmpeg (libsvtav1, libopus), MediaInfo
+- **Environment**: Go 1.25+, FFmpeg (libsvtav1, libopus), MediaInfo
 - **Design**: Library-first for Spindle embedding, with CLI wrapper
 
 ## Related Repos
