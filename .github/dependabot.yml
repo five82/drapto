@@ -1,7 +1,7 @@
 version: 2
 updates:
-    # Enable version updates for Cargo dependencies
-    - package-ecosystem: "cargo"
+    # Enable version updates for Go modules
+    - package-ecosystem: "gomod"
       directory: "/"
       schedule:
           interval: "weekly"
@@ -15,4 +15,4 @@ updates:
           - "five82"
       labels:
           - "dependencies"
-          - "rust"
+          - "go"
