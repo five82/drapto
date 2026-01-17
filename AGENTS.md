@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This file provides guidance when working with code in this repository. 
+This file provides guidance when working with code in this repository.
 
 CLAUDE.md and GEMINI.md are symlinks to this file so all agent guidance stays in one place.
 Do not modify this header.
@@ -9,13 +9,14 @@ Do not run `git commit` or `git push` unless explicitly instructed.
 
 ## System Dependencies
 
-Building requires `libmediainfo-dev` and `pkg-config`:
+Runtime requires FFmpeg with libsvtav1 and libopus, plus MediaInfo:
 
 ```bash
 # Ubuntu/Debian
-sudo apt-get install libmediainfo-dev pkg-config
+sudo apt-get install ffmpeg mediainfo
 
-# Runtime also requires FFmpeg with libsvtav1 and libopus, plus MediaInfo
+# FFmpeg must have libsvtav1 and libopus support
+ffmpeg -encoders | grep -E "svtav1|opus"
 ```
 
 ## Related Repos (Local Dev Layout)
@@ -44,38 +45,62 @@ Drapto is an ffmpeg wrapper for AV1 encoding with SVT-AV1 and Opus audio. It use
 
 ## Architecture
 
-The project follows a modular Rust workspace architecture with two main components:
+The project is written in Go with a library-first design for Spindle integration:
 
-1. **drapto-cli**: Command-line interface and user interaction
-   - Handles argument parsing, logging, and progress orchestration
-   - Provides user-friendly command interface
-   - Manages progress reporting and feedback
+1. **Public API** (`drapto.go`, `events.go`): Library interface for embedding
+   - `Encoder` type with `Encode()` and `EncodeBatch()` methods
+   - Functional options pattern for configuration
+   - `EventHandler` callback for progress events
 
-2. **drapto-core**: Core video processing and analysis library
-   - Video analysis (crop detection, HDR awareness)
-   - FFmpeg integration and command generation
-   - Video encoding orchestration
+2. **CLI** (`cmd/drapto/main.go`): Thin wrapper using Cobra
+   - Matches the original Rust CLI flags
+   - `--progress-json` for machine-readable output
 
-## Development Commands
+3. **Internal packages**:
+   - `internal/config/` - Configuration types and presets
+   - `internal/ffmpeg/` - FFmpeg command builder and executor
+   - `internal/ffprobe/` - Media analysis
+   - `internal/mediainfo/` - HDR detection
+   - `internal/processing/` - Encoding orchestration, crop detection, audio
+   - `internal/validation/` - Post-encode validation checks
+   - `internal/reporter/` - Progress reporting (JSON, Terminal, Composite)
+   - `internal/discovery/` - Video file discovery
+   - `internal/util/` - Formatting and file utilities
+
+## Build, Test, Lint Commands
 
 ```bash
 # Build
-cargo build --release
+go build ./...                          # Build all packages
+go build -o drapto ./cmd/drapto         # Build CLI binary
 
 # Run
-cargo run -- encode -i input.mkv -o output/
-RUST_LOG=debug cargo run -- encode -i input.mkv -o output/
+./drapto encode -i input.mkv -o output/            # output as output/input.mkv
+./drapto encode -i input.mkv -o output/custom.mkv  # specific filename
+./drapto encode -i input.mkv -o output/ --progress-json
 
 # Test
-cargo test --workspace              # all tests
-cargo test -p drapto-core           # just core library
-cargo test test_name                # single test by name
+go test ./...                           # Run all tests
+go test -race ./...                     # Run all tests with race detector
+go test ./internal/config              # Run tests for a specific package
+go test -v ./internal/config -run TestName  # Run a single test by name
 
-# Lint and format
-cargo clippy --workspace
-cargo fmt --check                   # check formatting
-cargo fmt                           # fix formatting
+# Lint
+golangci-lint run                       # Run linter
+golangci-lint run --fix                 # Auto-fix safe issues
+
+# Full CI check (recommended before handing off)
+./check-ci.sh                           # Runs: go mod tidy, go test, go test -race,
+                                        # go build, golangci-lint, govulncheck
+
+# Dependencies
+go mod tidy                             # sync go.mod
 ```
+
+## Development Workflow
+
+- Install Go 1.23+ and keep `golangci-lint` v2.0+ up to date via `go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest`.
+- Before handing off, execute `./check-ci.sh`. If you cannot run it, state why.
 
 ## Key Components
 
@@ -83,39 +108,45 @@ cargo fmt                           # fix formatting
 
 The project uses FFmpeg for video processing via:
 
-1. `ffmpeg-sidecar` for command execution
-2. `ffprobe` for media file analysis
-3. Custom command builders that generate optimized encoding commands
+1. Direct `exec.Command` calls for FFmpeg/FFprobe
+2. Progress parsing from FFmpeg stderr
+3. Custom command builders in `internal/ffmpeg/`
 
 ### Progress Reporting
 
 The progress reporting system provides feedback during long-running operations:
 
-1. Terminal-based progress bars for foreground mode
-2. Detailed logging for automated consumers
+1. Terminal-based progress bars (`schollz/progressbar`)
+2. NDJSON events for Spindle integration
 
 ### CLI Output Style
 
 1. Render just four sections in human mode: Hardware → Video → Encoding → Validation → Results; keep each section to a handful of lines.
-2. Use plain `println!` plus `indicatif` for the progress bar—no template engine or ASCII art. Colors are fine when they reinforce meaning (cyan headers, magenta stage bullets, green checkmarks, yellow warnings, red errors).
+2. Use `fatih/color` for colored output and `schollz/progressbar` for progress. Colors reinforce meaning (cyan headers, magenta stage bullets, green checkmarks, yellow warnings, red errors).
 3. Show real progress information only once: rely on the progress bar during encoding, and print a single validation summary after it completes.
-4. Keep the JSON stream (`--progress-json`) backward-compatible with the existing objects Spindle consumes (`encoding_progress`, `validation_complete`, `encoding_complete`, `warning`, `error`, `batch_complete`).
-5. Prefer natural language sentences (“Encoding finished successfully”) and reserve emphatic formatting for values that matter (reduction %, warnings, output paths).
+4. Keep the JSON stream (`--progress-json`) backward-compatible with the existing objects Spindle consumes.
+5. Prefer natural language sentences ("Encoding finished successfully") and reserve emphatic formatting for values that matter (reduction %, warnings, output paths).
 
-## Project Structure (drapto-core/src/)
+## Project Structure
 
-- **config/** - `CoreConfig`, preset definitions (`DraptoPresetValues`)
-- **discovery.rs** - File discovery and filtering
-- **external/** - FFmpeg, FFprobe, MediaInfo command execution
-  - `ffmpeg_builder.rs` - Builds ffmpeg command arguments
-  - `ffprobe_executor.rs` - Extracts video metadata
-  - `mediainfo_executor.rs` - HDR detection
-- **processing/** - Core encoding logic
-  - `video.rs` - Main encoding orchestration
-  - `crop_detection.rs` - Black bar detection
-  - `audio.rs` - Opus transcoding setup
-  - `validation/` - Post-encode checks (codec, dimensions, duration, HDR)
-- **reporting/** - Progress reporting (`Reporter` trait, `JsonReporter`, `TerminalReporter`)
+```
+drapto/
+├── go.mod                          # github.com/five82/drapto
+├── drapto.go                       # Public API: Encoder, Options
+├── events.go                       # Event types (Spindle contract)
+├── cmd/drapto/main.go              # CLI wrapper
+├── internal/
+│   ├── config/                     # Configuration and presets
+│   ├── discovery/                  # File discovery
+│   ├── ffmpeg/                     # FFmpeg command builder + executor
+│   ├── ffprobe/                    # FFprobe executor + parsing
+│   ├── mediainfo/                  # MediaInfo executor + HDR detection
+│   ├── processing/                 # Orchestrator, crop, audio
+│   ├── validation/                 # Post-encode validation checks
+│   ├── reporter/                   # Reporter interface + implementations
+│   └── util/                       # Formatting, file utils, system info
+└── reference/                      # Rust source (kept for reference)
+```
 
 ## JSON Events (Spindle Contract)
 
@@ -123,25 +154,55 @@ The `--progress-json` flag emits newline-delimited JSON. Spindle depends on thes
 
 | Event | Key Fields |
 |-------|------------|
-| `encoding_progress` | `percent`, `speed`, `fps`, `eta_seconds` |
-| `validation_complete` | `validation_passed`, `validation_steps[]` |
-| `encoding_complete` | `output_file`, `original_size`, `encoded_size`, `size_reduction_percent` |
-| `warning` | `message` |
-| `error` | `title`, `message`, `context`, `suggestion` |
-| `batch_complete` | `successful_count`, `total_files`, `total_size_reduction_percent` |
+| `encoding_progress` | `type`, `percent`, `speed`, `fps`, `eta_seconds`, `timestamp` |
+| `validation_complete` | `type`, `validation_passed`, `validation_steps[]`, `timestamp` |
+| `encoding_complete` | `type`, `output_file`, `original_size`, `encoded_size`, `size_reduction_percent`, `timestamp` |
+| `warning` | `type`, `message`, `timestamp` |
+| `error` | `type`, `title`, `message`, `context`, `suggestion`, `timestamp` |
+| `batch_complete` | `type`, `successful_count`, `total_files`, `total_size_reduction_percent`, `timestamp` |
 
-All events include a `timestamp` field. Schema is defined in `reporting/mod.rs` (`JsonReporter` impl).
+Progress throttling: emit on 1% bucket change OR 5 second minimum interval.
+
+Schema is defined in `internal/reporter/json.go` (`JSONReporter`).
 
 ## Entry Points
 
 | Task | Start Here |
 |------|------------|
-| Add/modify encoding parameters | `config/mod.rs` (presets), `external/ffmpeg_builder.rs` (command args) |
-| Change crop detection | `processing/crop_detection.rs` |
-| Add validation check | `processing/validation/` |
-| Modify JSON output | `reporting/mod.rs` (`JsonReporter`) |
-| Change terminal output | `reporting/mod.rs` (`TerminalReporter`) |
-| HDR detection | `external/mediainfo_executor.rs` |
+| Add/modify encoding parameters | `internal/config/config.go` (presets), `internal/ffmpeg/command.go` |
+| Change crop detection | `internal/processing/crop.go` |
+| Add validation check | `internal/validation/validate.go` |
+| Modify JSON output | `internal/reporter/json.go` |
+| Change terminal output | `internal/reporter/terminal.go` |
+| HDR detection | `internal/mediainfo/mediainfo.go`, `internal/ffprobe/ffprobe.go` |
+| Public API | `drapto.go` |
+| CLI flags | `cmd/drapto/main.go` |
+
+## Library Usage (Spindle Integration)
+
+```go
+import "github.com/five82/drapto"
+
+// Create encoder with options
+encoder, err := drapto.New(
+    drapto.WithPreset(drapto.PresetGrain),
+    drapto.WithQualityHD(27),
+)
+if err != nil {
+    log.Fatal(err)
+}
+
+// Encode with progress callback
+result, err := encoder.Encode(ctx, "input.mkv", "output/", func(event drapto.Event) error {
+    switch e := event.(type) {
+    case drapto.EncodingProgressEvent:
+        fmt.Printf("Progress: %.1f%%\n", e.Percent)
+    case drapto.EncodingCompleteEvent:
+        fmt.Printf("Done: %.1f%% reduction\n", e.SizeReductionPercent)
+    }
+    return nil
+})
+```
 
 ## Principles
 
@@ -150,3 +211,20 @@ All events include a `timestamp` field. Schema is defined in `reporting/mod.rs` 
 3. Prefer unit tests over running actual encodes (encoding is slow).
 4. When running drapto with a timeout, use at least 120 seconds so encoding steps can complete.
 5. Do not break the JSON event schema without updating Spindle.
+
+## Go vs Rust Reference
+
+The `reference/` directory contains the original Rust implementation. The Go rewrite has **full feature parity** with Rust. Do not report these as gaps:
+
+| Feature | Go Location | Status |
+|---------|-------------|--------|
+| Film grain CLI flags | `cmd/drapto/main.go:73-74,179-183` | Implemented |
+| Film grain public API | `drapto.go:131-143` (`WithFilmGrain`, `WithFilmGrainDenoise`) | Implemented |
+| Film grain config | `internal/config/config.go:161-162` | Implemented |
+| All presets (grain/clean/quick) | `internal/config/config.go` | Implemented |
+| Crop detection (141 samples) | `internal/processing/crop.go` | Implemented |
+| HDR detection | `internal/mediainfo/mediainfo.go` | Implemented |
+| Validation (7 checks) | `internal/validation/validate.go` | Implemented |
+| Spindle JSON contract | `internal/reporter/json.go` | Implemented |
+
+When comparing Go to Rust, verify features by reading the actual Go code before reporting gaps.
