@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"runtime"
 	"time"
 
 	"github.com/five82/drapto/internal/chunk"
@@ -90,20 +89,6 @@ func ProcessChunked(
 		cropH, cropV = parseCropFilter(cropResult.CropFilter, videoProps.Width, videoProps.Height)
 	}
 
-	// Calculate logical processors for responsive encoding
-	var logicalProcessors *uint32
-	if cfg.ResponsiveEncoding {
-		numCPU := uint32(runtime.NumCPU())
-		if numCPU > 4 {
-			// Reserve 2 threads for system responsiveness, divide rest among workers
-			reserved := (numCPU - 2) / uint32(cfg.Workers)
-			if reserved < 1 {
-				reserved = 1
-			}
-			logicalProcessors = &reserved
-		}
-	}
-
 	// Setup encode config
 	encCfg := &encode.EncodeConfig{
 		Workers:               cfg.Workers,
@@ -115,7 +100,7 @@ func ProcessChunked(
 		EnableVarianceBoost:   cfg.SVTAV1EnableVarianceBoost,
 		VarianceBoostStrength: cfg.SVTAV1VarianceBoostStrength,
 		VarianceOctile:        cfg.SVTAV1VarianceOctile,
-		LogicalProcessors:     logicalProcessors,
+		LowPriority:           cfg.ResponsiveEncoding,
 	}
 
 	// Run parallel encode

@@ -3,7 +3,6 @@ package processing
 import (
 	"context"
 	"fmt"
-	"runtime"
 	"time"
 
 	"github.com/five82/drapto/internal/config"
@@ -394,15 +393,6 @@ func setupEncodeParams(
 		params.MatrixCoefficients = "bt709"
 	}
 
-	// Responsive encoding: reserve some CPU threads
-	if cfg.ResponsiveEncoding {
-		numCPU := uint32(runtime.NumCPU())
-		if numCPU > 4 {
-			reserved := numCPU - 2
-			params.LogicalProcessors = &reserved
-		}
-	}
-
 	return params
 }
 
@@ -437,10 +427,6 @@ func collectPresetSettings(params *ffmpeg.EncodeParams) [][2]string {
 		}
 		settings = append(settings, [2]string{"Film grain synth",
 			fmt.Sprintf("film-grain %d, denoise %s", *params.FilmGrain, denoise)})
-	}
-
-	if params.LogicalProcessors != nil {
-		settings = append(settings, [2]string{"Logical processors", fmt.Sprintf("%d", *params.LogicalProcessors)})
 	}
 
 	return settings

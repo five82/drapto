@@ -29,7 +29,7 @@ type EncodeConfig struct {
 	EnableVarianceBoost   bool
 	VarianceBoostStrength uint8
 	VarianceOctile        uint8
-	LogicalProcessors     *uint32 // Optional limit on CPU threads per encoder
+	LowPriority           bool // Run encoder at low priority (nice -n 19)
 }
 
 // ProgressCallback is called to report encoding progress.
@@ -327,7 +327,7 @@ func encodeChunk(
 		EnableVarianceBoost:   cfg.EnableVarianceBoost,
 		VarianceBoostStrength: cfg.VarianceBoostStrength,
 		VarianceOctile:        cfg.VarianceOctile,
-		LogicalProcessors:     cfg.LogicalProcessors,
+		LowPriority:           cfg.LowPriority,
 	}
 
 	cmd := encoder.MakeSvtCmd(encCfg)
