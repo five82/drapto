@@ -10,7 +10,6 @@ FFmpeg wrapper for AV1 encoding with SVT-AV1 and Opus audio. Uses opinionated de
 - Multi-track audio transcoding to Opus
 - Post-encode validation (codec, dimensions, duration, HDR)
 - Preset profiles: `grain`, `clean`, `quick`
-- JSON progress output for automation
 - Library API for embedding
 
 ## Requirements
@@ -47,7 +46,6 @@ go build -o drapto ./cmd/drapto
 drapto encode -i input.mkv -o output/
 drapto encode -i /videos/ -o /encoded/
 drapto encode -i input.mkv -o output/ --drapto-preset grain
-drapto encode -i input.mkv -o output/ --progress-json
 ```
 
 ### Options
@@ -63,7 +61,6 @@ drapto encode -i input.mkv -o output/ --progress-json
     --preset         SVT-AV1 preset 0-13, default 6
     --disable-autocrop  Disable black bar detection
     --responsive     Reserve CPU threads for responsiveness
-    --progress-json  Output progress as NDJSON
     --no-log         Disable log file creation
 -v, --verbose        Verbose output
 ```

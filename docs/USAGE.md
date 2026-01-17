@@ -33,7 +33,6 @@ drapto encode -v -i input.mkv -o output/
 - `--quality-sd/hd/uhd <CRF>`: Override CRF defaults (SD=25, HD=27, UHD=29)
 - `--responsive`: Reserve a few CPU threads so other apps stay responsive
 - `--disable-autocrop`: Skip black-bar detection and cropping
-- `--progress-json`: Emit structured progress events (used by Spindle and other automation)
 
 CLI overrides such as `--quality-hd` still take precedence over the preset-provided values, so you can start from a profile and tweak selectively per encode.
 
@@ -77,7 +76,7 @@ Validation catches mismatches before you archive or publish results:
 
 ## Progress Reporting
 
-Foreground runs show real-time progress with ETA, fps, bitrate, and reduction stats; automation can use the JSON stream (`encoding_progress`, `validation_complete`, `encoding_complete`, `warning`, `error`, `batch_complete`).
+Foreground runs show real-time progress with ETA, fps, bitrate, and reduction stats. For automation, use the library API with a custom event handler (see `docs/spindle-integration.md`).
 
 ## Environment Variables
 

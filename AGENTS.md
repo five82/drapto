@@ -9,7 +9,6 @@ Do not modify this header.
 
 - Do not run `git commit` or `git push` unless explicitly instructed.
 - Run `./check-ci.sh` before handing work back.
-- Do not break the JSON event schema without updating Spindle.
 - Use Context7 MCP for library/API docs without being asked.
 
 ## Project Snapshot
@@ -29,8 +28,6 @@ Drapto is an **FFmpeg wrapper** for AV1 encoding with SVT-AV1 and Opus audio. It
 | flyer | `~/projects/flyer/` | Read-only TUI for Spindle (not a Drapto consumer) |
 
 GitHub: [drapto](https://github.com/five82/drapto) | [spindle](https://github.com/five82/spindle) | [flyer](https://github.com/five82/flyer)
-
-**Key contract**: Keep `--progress-json` stream backward-compatible with Spindle's consumer.
 
 ## Build, Test, Lint
 
@@ -54,7 +51,7 @@ internal/
 ├── mediainfo/           # HDR detection
 ├── processing/          # Orchestrator, crop detection, audio
 ├── validation/          # Post-encode validation checks
-├── reporter/            # Progress: JSON (Spindle), Terminal, Composite
+├── reporter/            # Progress: Terminal, Composite
 ├── discovery/           # Video file discovery
 └── util/                # Formatting, file utils
 ```
@@ -66,7 +63,6 @@ internal/
 | Encoding parameters | `internal/config/config.go`, `internal/ffmpeg/command.go` |
 | Crop detection | `internal/processing/crop.go` |
 | Validation checks | `internal/validation/validate.go` |
-| JSON output | `internal/reporter/json.go` |
 | Terminal output | `internal/reporter/terminal.go` |
 | HDR detection | `internal/mediainfo/mediainfo.go`, `internal/ffprobe/ffprobe.go` |
 | Public API | `drapto.go` |
@@ -81,14 +77,10 @@ internal/
 
 ## Spindle Integration
 
-See `docs/spindle-integration.md` for:
-- JSON event schema (`encoding_progress`, `encoding_complete`, etc.)
-- Library API usage
-- Backward compatibility requirements
+See `docs/spindle-integration.md` for library API usage and event types.
 
 ## Principles
 
 1. Keep it simple - small hobby project
 2. Prefer unit tests over actual encodes (encoding is slow)
 3. When running drapto with timeout, use at least 120 seconds
-4. Do not break JSON event schema without updating Spindle

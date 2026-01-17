@@ -74,7 +74,6 @@ type encodeArgs struct {
 	draptoPreset   string
 	disableAutocrop bool
 	responsive     bool
-	progressJSON   bool
 	noLog          bool
 }
 
@@ -106,7 +105,6 @@ Processing Options:
   --responsive           Reserve CPU threads for improved system responsiveness
 
 Output Options:
-  --progress-json        Output progress as structured JSON to stdout
   --no-log               Disable Drapto log file creation
 `, appName, config.DefaultQualitySD, config.DefaultQualityHD, config.DefaultQualityUHD, config.DefaultSVTAV1Preset)
 	}
@@ -137,7 +135,6 @@ Output Options:
 	fs.BoolVar(&ea.responsive, "responsive", false, "Reserve CPU threads for responsiveness")
 
 	// Output options
-	fs.BoolVar(&ea.progressJSON, "progress-json", false, "Output progress as JSON")
 	fs.BoolVar(&ea.noLog, "no-log", false, "Disable log file creation")
 
 	if err := fs.Parse(args); err != nil {
@@ -264,13 +261,8 @@ func executeEncode(ea encodeArgs) error {
 		}
 	}
 
-	// Select reporter
-	var rep reporter.Reporter
-	if ea.progressJSON {
-		rep = reporter.NewJSONReporter()
-	} else {
-		rep = reporter.NewTerminalReporter()
-	}
+	// Create reporter
+	rep := reporter.NewTerminalReporter()
 
 	// Setup context with signal handling
 	ctx, cancel := context.WithCancel(context.Background())
