@@ -11,16 +11,34 @@ FFmpeg wrapper for AV1 encoding with SVT-AV1 and Opus audio. Uses opinionated de
 - Post-encode validation (codec, dimensions, duration, HDR)
 - Preset profiles: `grain`, `clean`, `quick`
 - JSON progress output for automation
+- Library API for embedding
 
 ## Requirements
 
+- Go 1.23+
 - FFmpeg with `libsvtav1` and `libopus`
 - MediaInfo
+
+```bash
+# Ubuntu/Debian
+sudo apt-get install ffmpeg mediainfo
+
+# Verify FFmpeg has required encoders
+ffmpeg -encoders | grep -E "svtav1|opus"
+```
 
 ## Install
 
 ```bash
-cargo install --git https://github.com/five82/drapto
+go install github.com/five82/drapto/cmd/drapto@latest
+```
+
+Or build from source:
+
+```bash
+git clone https://github.com/five82/drapto
+cd drapto
+go build -o drapto ./cmd/drapto
 ```
 
 ## Usage
@@ -32,16 +50,73 @@ drapto encode -i input.mkv -o output/ --drapto-preset grain
 drapto encode -i input.mkv -o output/ --progress-json
 ```
 
-See [docs/USAGE.md](docs/USAGE.md) for all options and [docs/PRESETS.md](docs/PRESETS.md) for preset details.
+### Options
+
+```
+-i, --input          Input video file or directory (required)
+-o, --output         Output directory (required)
+-l, --log-dir        Log directory (defaults to OUTPUT/logs)
+    --drapto-preset  Apply preset: grain, clean, quick
+    --quality-sd     CRF for SD (<1920 width), default 25
+    --quality-hd     CRF for HD (>=1920 width), default 27
+    --quality-uhd    CRF for UHD (>=3840 width), default 29
+    --preset         SVT-AV1 preset 0-13, default 6
+    --disable-autocrop  Disable black bar detection
+    --responsive     Reserve CPU threads for responsiveness
+    --progress-json  Output progress as NDJSON
+    --no-log         Disable log file creation
+-v, --verbose        Verbose output
+```
+
+## Library Usage
+
+Drapto can be used as a Go library:
+
+```go
+import "github.com/five82/drapto"
+
+encoder, err := drapto.New(
+    drapto.WithPreset(drapto.PresetGrain),
+    drapto.WithQualityHD(27),
+)
+if err != nil {
+    log.Fatal(err)
+}
+
+result, err := encoder.Encode(ctx, "input.mkv", "output/", func(event drapto.Event) error {
+    switch e := event.(type) {
+    case drapto.EncodingProgressEvent:
+        fmt.Printf("Progress: %.1f%%\n", e.Percent)
+    case drapto.EncodingCompleteEvent:
+        fmt.Printf("Done: %.1f%% reduction\n", e.SizeReductionPercent)
+    }
+    return nil
+})
+```
 
 ## Project Structure
 
-- **drapto-cli** - CLI, progress display, JSON output
-- **drapto-core** - Video analysis, ffmpeg integration, validation
+```
+drapto/
+├── drapto.go           # Public API
+├── events.go           # Event types for progress callbacks
+├── cmd/drapto/         # CLI
+└── internal/
+    ├── config/         # Configuration and presets
+    ├── ffmpeg/         # FFmpeg command builder and executor
+    ├── ffprobe/        # Media analysis
+    ├── mediainfo/      # HDR detection
+    ├── processing/     # Encoding orchestration, crop detection
+    ├── validation/     # Post-encode validation
+    ├── reporter/       # Progress reporting (JSON, terminal)
+    ├── discovery/      # Video file discovery
+    └── util/           # Formatting utilities
+```
 
 ## Development
 
 ```bash
-cargo build --release
-RUST_LOG=debug cargo run -- encode -i input.mkv -o output/
+go build ./...
+go test ./...
+go vet ./...
 ```

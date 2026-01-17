@@ -1,10 +1,10 @@
 # Drapto Presets
 
-The `--drapto-preset` flag lets you apply a curated set of encoding values in one shot. Each preset is defined in `drapto-core/src/config/mod.rs` as a `DraptoPresetValues` constant, so editing the preset defaults is just a matter of changing literal numbers in that file.
+The `--drapto-preset` flag lets you apply a curated set of encoding values in one shot. Each preset is defined in `internal/config/config.go` as a `PresetValues` struct, so editing the preset defaults is just a matter of changing literal numbers in that file.
 
 ## Baseline Defaults (no preset)
 
-When you omit `--drapto-preset`, Drapto uses the global defaults embedded in `CoreConfig::default()`:
+When you omit `--drapto-preset`, Drapto uses the global defaults embedded in `NewConfig()`:
 
 | Setting | Value | Notes |
 |---------|-------|-------|
@@ -31,27 +31,25 @@ Pass `--drapto-preset grain`, `clean`, or `quick` to apply one of these bundles 
 
 ## Customizing Presets
 
-1. Open `drapto-core/src/config/mod.rs`.
-2. Locate the `DRAPTO_PRESET_GRAIN_VALUES` / `DRAPTO_PRESET_CLEAN_VALUES` / `DRAPTO_PRESET_QUICK_VALUES` constants.
+1. Open `internal/config/config.go`.
+2. Locate the `GetPresetValues()` function and find the `PresetGrain` / `PresetClean` / `PresetQuick` cases.
 3. Replace the literal values with the numbers you want. Example:
 
-```rust
-pub const DRAPTO_PRESET_GRAIN_VALUES: DraptoPresetValues = DraptoPresetValues {
-    quality_sd: 21,
-    quality_hd: 23,
-    quality_uhd: 25,
-    svt_av1_preset: 4,
-    svt_av1_tune: 2,
-    svt_av1_ac_bias: 0.45,
-    svt_av1_enable_variance_boost: true,
-    svt_av1_variance_boost_strength: 3,
-    svt_av1_variance_octile: 4,
-    video_denoise_filter: None,
-    svt_av1_film_grain: None,
-    svt_av1_film_grain_denoise: None,
-};
+```go
+case PresetGrain:
+    return PresetValues{
+        QualitySD:                   21,
+        QualityHD:                   23,
+        QualityUHD:                  25,
+        SVTAV1Preset:                4,
+        SVTAV1Tune:                  2,
+        SVTAV1ACBias:                0.45,
+        SVTAV1EnableVarianceBoost:   true,
+        SVTAV1VarianceBoostStrength: 3,
+        SVTAV1VarianceOctile:        4,
+    }
 ```
 
-4. Run `cargo test` (or `cargo build --release`) to ensure everything still compiles.
+4. Run `go test ./...` (or `go build ./...`) to ensure everything still compiles.
 
 Remember: explicit CLI flags always win. If you run `--drapto-preset grain --quality-hd 28`, the HD CRF will be forced to 28 regardless of what the preset specifies.

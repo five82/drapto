@@ -35,8 +35,17 @@ dmypy.json
 # AI
 .roomodes
 
-# Rust
-target/
+# Go
+drapto
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+go.work.sum
 
 # Output doc
 docs/drapto_output
