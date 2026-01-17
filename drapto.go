@@ -42,6 +42,12 @@ const (
 	PresetQuick = config.PresetQuick
 )
 
+// ParsePreset converts a preset string to a Preset value.
+// Valid values are "grain", "clean", and "quick" (case-insensitive).
+func ParsePreset(s string) (Preset, error) {
+	return config.ParsePreset(s)
+}
+
 // Encoder is the main entry point for video encoding.
 type Encoder struct {
 	config *config.Config
@@ -140,6 +146,45 @@ func WithFilmGrainDenoise(enable bool) Option {
 	return func(c *config.Config) {
 		c.SVTAV1FilmGrainDenoise = &enable
 	}
+}
+
+// EncodeWithReporter encodes a single video file using a custom Reporter.
+// This provides direct access to all encoding events, unlike Encode which
+// uses the EventHandler abstraction.
+func (e *Encoder) EncodeWithReporter(ctx context.Context, input, outputDir string, rep Reporter) (*Result, error) {
+	// Update config paths
+	cfg := *e.config
+	cfg.OutputDir = outputDir
+
+	// Ensure output directory exists
+	if err := util.EnsureDirectory(outputDir); err != nil {
+		return nil, fmt.Errorf("failed to create output directory: %w", err)
+	}
+
+	// Use provided reporter or null reporter
+	if rep == nil {
+		rep = reporter.NullReporter{}
+	}
+
+	// Process single file
+	results, err := processing.ProcessVideos(ctx, &cfg, []string{input}, "", rep)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(results) == 0 {
+		return nil, fmt.Errorf("no files were encoded")
+	}
+
+	r := results[0]
+	return &Result{
+		OutputFile:           util.ResolveOutputPath(input, outputDir, ""),
+		OriginalSize:         r.InputSize,
+		EncodedSize:          r.OutputSize,
+		SizeReductionPercent: util.CalculateSizeReduction(r.InputSize, r.OutputSize),
+		ValidationPassed:     r.ValidationPassed,
+		EncodingSpeed:        r.EncodingSpeed,
+	}, nil
 }
 
 // Encode encodes a single video file.
