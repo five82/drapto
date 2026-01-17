@@ -44,13 +44,15 @@ type EncodingConfigSummary struct {
 
 // ProgressSnapshot contains encoding progress information.
 type ProgressSnapshot struct {
-	CurrentFrame uint64
-	TotalFrames  uint64
-	Percent      float32
-	Speed        float32
-	FPS          float32
-	ETA          time.Duration
-	Bitrate      string
+	CurrentFrame   uint64
+	TotalFrames    uint64
+	Percent        float32
+	Speed          float32
+	FPS            float32
+	ETA            time.Duration
+	Bitrate        string
+	ChunksComplete int
+	ChunksTotal    int
 }
 
 // ValidationSummary contains validation results.

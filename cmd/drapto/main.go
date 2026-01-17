@@ -63,21 +63,26 @@ Run '%s encode --help' for encode command options.
 
 // encodeArgs holds the parsed arguments for the encode command.
 type encodeArgs struct {
-	inputPath      string
-	outputDir      string
-	logDir         string
-	verbose        bool
-	qualitySD      uint
-	qualityHD      uint
-	qualityUHD     uint
-	preset         uint
-	draptoPreset   string
+	inputPath       string
+	outputDir       string
+	logDir          string
+	verbose         bool
+	qualitySD       uint
+	qualityHD       uint
+	qualityUHD      uint
+	preset          uint
+	draptoPreset    string
 	disableAutocrop bool
-	responsive     bool
-	noLog          bool
+	responsive      bool
+	noLog           bool
+	workers         int
+	chunkBuffer     int
 }
 
 func runEncode(args []string) error {
+	// Get auto-detected defaults for parallel encoding
+	defaultWorkers, defaultBuffer := config.AutoParallelConfig()
+
 	fs := flag.NewFlagSet("encode", flag.ExitOnError)
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, `Encode video files to AV1 format.
@@ -103,10 +108,12 @@ Quality Settings:
 Processing Options:
   --disable-autocrop     Disable automatic black bar crop detection
   --responsive           Reserve CPU threads for improved system responsiveness
+  --workers <N>          Number of parallel encoder workers. Default: %d (auto)
+  --buffer <N>           Extra chunks to buffer in memory. Default: %d (auto)
 
 Output Options:
   --no-log               Disable Drapto log file creation
-`, appName, config.DefaultQualitySD, config.DefaultQualityHD, config.DefaultQualityUHD, config.DefaultSVTAV1Preset)
+`, appName, config.DefaultQualitySD, config.DefaultQualityHD, config.DefaultQualityUHD, config.DefaultSVTAV1Preset, defaultWorkers, defaultBuffer)
 	}
 
 	var ea encodeArgs
@@ -133,6 +140,8 @@ Output Options:
 	// Processing options
 	fs.BoolVar(&ea.disableAutocrop, "disable-autocrop", false, "Disable automatic crop detection")
 	fs.BoolVar(&ea.responsive, "responsive", false, "Reserve CPU threads for responsiveness")
+	fs.IntVar(&ea.workers, "workers", defaultWorkers, "Number of parallel encoder workers")
+	fs.IntVar(&ea.chunkBuffer, "buffer", defaultBuffer, "Extra chunks to buffer in memory")
 
 	// Output options
 	fs.BoolVar(&ea.noLog, "no-log", false, "Disable log file creation")
@@ -243,6 +252,8 @@ func executeEncode(ea encodeArgs) error {
 		cfg.CropMode = "none"
 	}
 	cfg.ResponsiveEncoding = ea.responsive
+	cfg.Workers = ea.workers
+	cfg.ChunkBuffer = ea.chunkBuffer
 
 	// Validate configuration
 	if err := cfg.Validate(); err != nil {
@@ -256,6 +267,7 @@ func executeEncode(ea encodeArgs) error {
 		logger.Info("SVT-AV1 preset: %d", cfg.SVTAV1Preset)
 		logger.Info("Crop mode: %s", cfg.CropMode)
 		logger.Info("Responsive encoding: %v", cfg.ResponsiveEncoding)
+		logger.Info("Parallel encoding: workers=%d, buffer=%d", cfg.Workers, cfg.ChunkBuffer)
 		if cfg.DraptoPreset != nil {
 			logger.Info("Drapto preset: %s", *cfg.DraptoPreset)
 		}

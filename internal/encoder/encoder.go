@@ -1,0 +1,128 @@
+// Package encoder provides SvtAv1EncApp command building for chunked encoding.
+package encoder
+
+import (
+	"fmt"
+	"os/exec"
+	"strings"
+
+	"github.com/five82/drapto/internal/ffms"
+)
+
+const svtEncBinary = "SvtAv1EncApp"
+
+// EncConfig contains configuration for encoding a chunk.
+type EncConfig struct {
+	Inf        *ffms.VidInf // Video properties
+	CRF        float32      // Quality (CRF value)
+	Preset     uint8        // SVT-AV1 preset (0-13)
+	Tune       uint8        // SVT-AV1 tune
+	Output     string       // Output IVF path
+	GrainTable *string      // Optional film grain table path
+	Width      uint32       // Frame width (after cropping)
+	Height     uint32       // Frame height (after cropping)
+	Frames     int          // Number of frames to encode
+
+	// Advanced SVT-AV1 parameters
+	ACBias                float32
+	EnableVarianceBoost   bool
+	VarianceBoostStrength uint8
+	VarianceOctile        uint8
+	LogicalProcessors     *uint32 // Optional limit on CPU threads per encoder
+}
+
+// MakeSvtCmd builds an SvtAv1EncApp command for encoding.
+// The command reads raw YUV data from stdin and outputs to an IVF file.
+func MakeSvtCmd(cfg *EncConfig) *exec.Cmd {
+	args := buildSvtArgs(cfg)
+	return exec.Command(svtEncBinary, args...)
+}
+
+// buildSvtArgs constructs the argument list for SvtAv1EncApp.
+func buildSvtArgs(cfg *EncConfig) []string {
+	args := []string{
+		"-i", "stdin",
+		"--input-depth", "10", // Always 10-bit input (8-bit sources are converted)
+		"--color-format", "1", // YUV420
+		"--profile", "0",      // Main profile
+		"--passes", "1",
+		"--tile-rows", "0",
+		"--tile-columns", "0",
+		"--width", fmt.Sprintf("%d", cfg.Width),
+		"--height", fmt.Sprintf("%d", cfg.Height),
+		"--fps-num", fmt.Sprintf("%d", cfg.Inf.FPSNum),
+		"--fps-denom", fmt.Sprintf("%d", cfg.Inf.FPSDen),
+		"--keyint", "0",   // No forced keyframes (scene detection already handles this)
+		"--rc", "0",       // CRF mode
+		"--scd", "0",      // Disable internal scene detection
+		"--progress", "2", // Progress to stderr
+		"--frames", fmt.Sprintf("%d", cfg.Frames),
+		"--crf", fmt.Sprintf("%.0f", cfg.CRF),
+		"--preset", fmt.Sprintf("%d", cfg.Preset),
+	}
+
+	// Add tune parameter
+	args = append(args, "--tune", fmt.Sprintf("%d", cfg.Tune))
+
+	// Add color metadata if available
+	if cfg.Inf.ColorPrimaries != nil {
+		args = append(args, "--color-primaries", fmt.Sprintf("%d", *cfg.Inf.ColorPrimaries))
+	}
+	if cfg.Inf.TransferCharacteristics != nil {
+		args = append(args, "--transfer-characteristics", fmt.Sprintf("%d", *cfg.Inf.TransferCharacteristics))
+	}
+	if cfg.Inf.MatrixCoefficients != nil {
+		args = append(args, "--matrix-coefficients", fmt.Sprintf("%d", *cfg.Inf.MatrixCoefficients))
+	}
+
+	// Add mastering display if available
+	if cfg.Inf.MasteringDisplay != nil {
+		args = append(args, "--mastering-display", *cfg.Inf.MasteringDisplay)
+	}
+	if cfg.Inf.ContentLight != nil {
+		args = append(args, "--content-light", *cfg.Inf.ContentLight)
+	}
+
+	// Add film grain table if provided
+	if cfg.GrainTable != nil {
+		args = append(args, "--fgs-table", *cfg.GrainTable)
+	}
+
+	// Add advanced parameters
+	if cfg.ACBias != 0 {
+		args = append(args, "--ac-bias", fmt.Sprintf("%.2f", cfg.ACBias))
+	}
+
+	if cfg.EnableVarianceBoost {
+		args = append(args, "--enable-variance-boost", "1")
+		args = append(args, "--variance-boost-strength", fmt.Sprintf("%d", cfg.VarianceBoostStrength))
+		args = append(args, "--variance-octile", fmt.Sprintf("%d", cfg.VarianceOctile))
+	}
+
+	// Limit logical processors if set (for responsive encoding)
+	if cfg.LogicalProcessors != nil {
+		args = append(args, "--lp", fmt.Sprintf("%d", *cfg.LogicalProcessors))
+	}
+
+	// Output file
+	args = append(args, "-b", cfg.Output)
+
+	return args
+}
+
+// SvtArgsString returns a human-readable string of the SVT-AV1 arguments.
+func SvtArgsString(cfg *EncConfig) string {
+	args := buildSvtArgs(cfg)
+	return strings.Join(args, " ")
+}
+
+// IsSvtAvailable checks if SvtAv1EncApp is available in PATH.
+func IsSvtAvailable() bool {
+	_, err := exec.LookPath(svtEncBinary)
+	return err == nil
+}
+
+// GetSvtPath returns the path to SvtAv1EncApp if available.
+func GetSvtPath() (string, error) {
+	return exec.LookPath(svtEncBinary)
+}

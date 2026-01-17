@@ -172,8 +172,17 @@ func (r *TerminalReporter) EncodingProgress(progress ProgressSnapshot) {
 		_ = r.progress.Set64(int64(clamped))
 	}
 
-	desc := fmt.Sprintf("speed %.1fx, fps %.1f, eta %s",
-		progress.Speed, progress.FPS, util.FormatDurationFromSecs(int64(progress.ETA.Seconds())))
+	var desc string
+	if progress.ChunksTotal > 0 {
+		// Chunked encoding: show chunk progress
+		desc = fmt.Sprintf("chunks %d/%d, speed %.1fx, eta %s",
+			progress.ChunksComplete, progress.ChunksTotal,
+			progress.Speed, util.FormatDurationFromSecs(int64(progress.ETA.Seconds())))
+	} else {
+		// Traditional encoding: show fps
+		desc = fmt.Sprintf("speed %.1fx, fps %.1f, eta %s",
+			progress.Speed, progress.FPS, util.FormatDurationFromSecs(int64(progress.ETA.Seconds())))
+	}
 	r.progress.Describe(desc)
 }
 

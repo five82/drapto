@@ -168,34 +168,16 @@ func ProcessVideos(
 			SVTAV1Params:         encodeParams.SVTAV1CLIParams(),
 		})
 
-		// Get total frames for progress
-		mediaInfo, _ := ffprobe.GetMediaInfo(inputPath)
-		totalFrames := uint64(0)
-		if mediaInfo != nil {
-			totalFrames = mediaInfo.TotalFrames
-		}
+		// Run chunked encoding with FFMS2 + SvtAv1EncApp
+		encodeError := ProcessChunked(ctx, cfg, inputPath, outputPath, videoProps, audioStreams, quality, rep)
+		encodeSuccess := encodeError == nil
 
-		rep.EncodingStarted(totalFrames)
-
-		// Run encode
-		result := ffmpeg.RunEncode(ctx, encodeParams, false, totalFrames, func(progress ffmpeg.Progress) {
-			rep.EncodingProgress(reporter.ProgressSnapshot{
-				CurrentFrame: progress.CurrentFrame,
-				TotalFrames:  progress.TotalFrames,
-				Percent:      progress.Percent,
-				Speed:        progress.Speed,
-				FPS:          progress.FPS,
-				ETA:          progress.ETA,
-				Bitrate:      progress.Bitrate,
-			})
-		})
-
-		if !result.Success {
+		if !encodeSuccess {
 			rep.Error(reporter.ReporterError{
 				Title:      "Encoding Error",
-				Message:    fmt.Sprintf("FFmpeg failed to encode %s: %v", inputFilename, result.Error),
+				Message:    fmt.Sprintf("Failed to encode %s: %v", inputFilename, encodeError),
 				Context:    fmt.Sprintf("File: %s", inputPath),
-				Suggestion: "Check FFmpeg logs for more details",
+				Suggestion: "Check logs for more details",
 			})
 			continue
 		}

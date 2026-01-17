@@ -3,6 +3,7 @@ package config
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 )
 
@@ -140,6 +141,27 @@ func GetPresetValues(p Preset) PresetValues {
 	}
 }
 
+// AutoParallelConfig returns optimal workers and buffer settings based on CPU cores.
+// Workers: 1 per 8 cores, min 1, max 4
+// Buffer: matches workers (ensures next chunk is always ready)
+func AutoParallelConfig() (workers, buffer int) {
+	numCPU := runtime.NumCPU()
+
+	// 1 worker per 8 cores, minimum 1, maximum 4
+	workers = numCPU / 8
+	if workers < 1 {
+		workers = 1
+	}
+	if workers > 4 {
+		workers = 4
+	}
+
+	// Buffer matches workers
+	buffer = workers
+
+	return workers, buffer
+}
+
 // Config holds all configuration for video processing.
 type Config struct {
 	// Input/output paths
@@ -171,12 +193,18 @@ type Config struct {
 	ResponsiveEncoding bool   // Reserve CPU threads for responsiveness
 	EncodeCooldownSecs uint64 // Cooldown between batch encodes
 
+	// Parallel encoding options
+	Workers     int // Number of parallel encoder workers
+	ChunkBuffer int // Extra chunks to buffer in memory
+
 	// Selected preset (optional)
 	DraptoPreset *Preset
 }
 
 // NewConfig creates a new Config with default values.
 func NewConfig(inputDir, outputDir, logDir string) *Config {
+	workers, buffer := AutoParallelConfig()
+
 	return &Config{
 		InputDir:                    inputDir,
 		OutputDir:                   outputDir,
@@ -193,6 +221,8 @@ func NewConfig(inputDir, outputDir, logDir string) *Config {
 		CropMode:                    DefaultCropMode,
 		ResponsiveEncoding:          false,
 		EncodeCooldownSecs:          DefaultEncodeCooldownSecs,
+		Workers:                     workers,
+		ChunkBuffer:                 buffer,
 	}
 }
 
@@ -234,6 +264,14 @@ func (c *Config) Validate() error {
 
 	if c.SVTAV1FilmGrain == nil && c.SVTAV1FilmGrainDenoise != nil {
 		return fmt.Errorf("svt_av1_film_grain_denoise set without svt_av1_film_grain")
+	}
+
+	if c.Workers < 1 {
+		return fmt.Errorf("workers must be at least 1, got %d", c.Workers)
+	}
+
+	if c.ChunkBuffer < 0 {
+		return fmt.Errorf("chunk_buffer must be non-negative, got %d", c.ChunkBuffer)
 	}
 
 	return nil
