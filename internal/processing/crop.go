@@ -14,6 +14,9 @@ import (
 	"github.com/five82/drapto/internal/ffprobe"
 )
 
+// cropDetectionConcurrency is the maximum number of concurrent crop detection samples.
+const cropDetectionConcurrency = 8
+
 // CropResult contains the result of crop detection.
 type CropResult struct {
 	CropFilter     string // The crop filter string (e.g., "crop=1920:800:0:140")
@@ -54,7 +57,7 @@ func DetectCrop(inputPath string, props *ffprobe.VideoProperties, disableCrop bo
 	var wg sync.WaitGroup
 
 	// Use a semaphore to limit concurrency
-	sem := make(chan struct{}, 8)
+	sem := make(chan struct{}, cropDetectionConcurrency)
 
 	for _, position := range samplePoints {
 		wg.Add(1)

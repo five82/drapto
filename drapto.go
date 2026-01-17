@@ -278,16 +278,12 @@ func (r *eventReporter) ValidationComplete(s reporter.ValidationSummary) {
 }
 
 func (r *eventReporter) EncodingComplete(s reporter.EncodingOutcome) {
-	reduction := float64(0)
-	if s.OriginalSize > 0 {
-		reduction = float64(s.OriginalSize-s.EncodedSize) / float64(s.OriginalSize) * 100
-	}
 	_ = r.handler(EncodingCompleteEvent{
 		BaseEvent:            BaseEvent{EventType: EventTypeEncodingComplete, Time: NewTimestamp()},
 		OutputFile:           s.OutputFile,
 		OriginalSize:         s.OriginalSize,
 		EncodedSize:          s.EncodedSize,
-		SizeReductionPercent: reduction,
+		SizeReductionPercent: util.CalculateSizeReduction(s.OriginalSize, s.EncodedSize),
 	})
 }
 
@@ -313,14 +309,10 @@ func (r *eventReporter) BatchStarted(reporter.BatchStartInfo)      {}
 func (r *eventReporter) FileProgress(reporter.FileProgressContext) {}
 
 func (r *eventReporter) BatchComplete(s reporter.BatchSummary) {
-	reduction := float64(0)
-	if s.TotalOriginalSize > 0 {
-		reduction = float64(s.TotalOriginalSize-s.TotalEncodedSize) / float64(s.TotalOriginalSize) * 100
-	}
 	_ = r.handler(BatchCompleteEvent{
 		BaseEvent:                 BaseEvent{EventType: EventTypeBatchComplete, Time: NewTimestamp()},
 		SuccessfulCount:           s.SuccessfulCount,
 		TotalFiles:                s.TotalFiles,
-		TotalSizeReductionPercent: reduction,
+		TotalSizeReductionPercent: util.CalculateSizeReduction(s.TotalOriginalSize, s.TotalEncodedSize),
 	})
 }

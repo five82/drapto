@@ -9,6 +9,13 @@ import (
 	"github.com/five82/drapto/internal/mediainfo"
 )
 
+const (
+	// durationToleranceSecs is the maximum allowed difference in duration between input and output.
+	durationToleranceSecs = 1.0
+	// maxSyncDriftMs is the maximum allowed audio/video sync drift in milliseconds.
+	maxSyncDriftMs = 100.0
+)
+
 // Options contains optional parameters for validation.
 type Options struct {
 	ExpectedDimensions    *[2]uint32
@@ -149,11 +156,9 @@ func validateBitDepth(outputPath string) (bool, *uint8, string) {
 		return false, nil, ""
 	}
 
-	// Check pixel format for bit depth hint
-	pixFmt := props.HDRInfo.ColourPrimaries // This is a simplification
 	if props.HDRInfo.BitDepth != nil {
 		is10Bit := *props.HDRInfo.BitDepth >= 10
-		return is10Bit, props.HDRInfo.BitDepth, pixFmt
+		return is10Bit, props.HDRInfo.BitDepth, ""
 	}
 
 	// Default to true for AV1 (typically 10-bit)
@@ -172,17 +177,14 @@ func validateDimensions(actualW, actualH, expectedW, expectedH uint32) (bool, st
 
 // validateDuration checks that duration is within acceptable tolerance.
 func validateDuration(actual, expected float64) (bool, string) {
-	// Allow 1 second tolerance
-	tolerance := 1.0
 	diff := math.Abs(actual - expected)
 
-	if diff <= tolerance {
+	if diff <= durationToleranceSecs {
 		return true, fmt.Sprintf("Duration matches input (%.1fs)", actual)
 	}
 	return false, fmt.Sprintf("Duration mismatch: got %.1fs, expected %.1fs (diff: %.1fs)",
 		actual, expected, diff)
 }
-
 
 // validateAudio checks audio codec and track count.
 func validateAudio(streams []ffprobe.AudioStreamInfo, expectedTracks *int) (bool, bool, []string, string) {
@@ -226,14 +228,11 @@ func validateAudio(streams []ffprobe.AudioStreamInfo, expectedTracks *int) (bool
 func validateSync(outputDuration, inputDuration float64) (bool, *float64, string) {
 	// Calculate drift in milliseconds
 	driftMs := math.Abs(outputDuration-inputDuration) * 1000
-
-	// Allow up to 100ms drift
-	maxDriftMs := 100.0
-	preserved := driftMs <= maxDriftMs
+	preserved := driftMs <= maxSyncDriftMs
 
 	message := fmt.Sprintf("Audio/video sync preserved (drift: %.1fms)", driftMs)
 	if !preserved {
-		message = fmt.Sprintf("Audio/video sync drift too large: %.1fms (max: %.1fms)", driftMs, maxDriftMs)
+		message = fmt.Sprintf("Audio/video sync drift too large: %.1fms (max: %.1fms)", driftMs, maxSyncDriftMs)
 	}
 
 	return preserved, &driftMs, message

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strconv"
+	"strings"
 )
 
 // MediaInfo contains basic media information.
@@ -255,58 +256,26 @@ func GetAudioStreamInfo(inputPath string) ([]AudioStreamInfo, error) {
 // detectHDR determines if content is HDR based on color metadata.
 func detectHDR(primaries, transfer, matrix string) bool {
 	// Check for HDR primaries (BT.2020)
-	if contains(primaries, "bt2020") || contains(primaries, "bt.2020") || contains(primaries, "bt2100") {
+	if containsCI(primaries, "bt2020") || containsCI(primaries, "bt.2020") || containsCI(primaries, "bt2100") {
 		return true
 	}
 
 	// Check for HDR transfer characteristics (PQ, HLG)
-	if contains(transfer, "pq") || contains(transfer, "smpte2084") || contains(transfer, "hlg") || contains(transfer, "arib-std-b67") {
+	if containsCI(transfer, "pq") || containsCI(transfer, "smpte2084") || containsCI(transfer, "hlg") || containsCI(transfer, "arib-std-b67") {
 		return true
 	}
 
 	// Check for HDR matrix coefficients
-	if contains(matrix, "bt2020") || contains(matrix, "bt.2020") {
+	if containsCI(matrix, "bt2020") || containsCI(matrix, "bt.2020") {
 		return true
 	}
 
 	return false
 }
 
-// contains performs a case-insensitive substring check.
-func contains(s, substr string) bool {
-	return len(s) > 0 && len(substr) > 0 &&
-		(s == substr ||
-			len(s) >= len(substr) &&
-				(s[:len(substr)] == substr ||
-					containsCI(s, substr)))
-}
-
+// containsCI performs a case-insensitive substring check.
 func containsCI(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if equalFoldASCII(s[i:i+len(substr)], substr) {
-			return true
-		}
-	}
-	return false
-}
-
-func equalFoldASCII(s, t string) bool {
-	if len(s) != len(t) {
-		return false
-	}
-	for i := 0; i < len(s); i++ {
-		c1, c2 := s[i], t[i]
-		if c1 >= 'A' && c1 <= 'Z' {
-			c1 += 'a' - 'A'
-		}
-		if c2 >= 'A' && c2 <= 'Z' {
-			c2 += 'a' - 'A'
-		}
-		if c1 != c2 {
-			return false
-		}
-	}
-	return true
+	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }
 
 // GetVideoCodecName returns the video codec name for a file.
