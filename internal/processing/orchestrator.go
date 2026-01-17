@@ -9,6 +9,7 @@ import (
 	"github.com/five82/drapto/internal/config"
 	"github.com/five82/drapto/internal/ffmpeg"
 	"github.com/five82/drapto/internal/ffprobe"
+	"github.com/five82/drapto/internal/mediainfo"
 	"github.com/five82/drapto/internal/reporter"
 	"github.com/five82/drapto/internal/util"
 	"github.com/five82/drapto/internal/validation"
@@ -103,9 +104,22 @@ func ProcessVideos(
 			continue
 		}
 
+		// Use mediainfo for HDR detection
+		mediaInfoData, err := mediainfo.GetMediaInfo(inputPath)
+		if err != nil {
+			rep.Error(reporter.ReporterError{
+				Title:      "Analysis Error",
+				Message:    fmt.Sprintf("Could not get mediainfo for %s: %v", inputFilename, err),
+				Context:    fmt.Sprintf("File: %s", inputPath),
+				Suggestion: "Check if mediainfo is installed",
+			})
+			continue
+		}
+		hdrInfo := mediainfo.DetectHDR(mediaInfoData)
+
 		// Determine quality settings
 		quality, category := determineQualitySettings(videoProps, cfg)
-		isHDR := videoProps.HDRInfo.IsHDR
+		isHDR := hdrInfo.IsHDR
 
 		// Get audio info
 		audioChannels := GetAudioChannels(inputPath)
@@ -134,7 +148,7 @@ func ProcessVideos(
 		})
 
 		// Setup encode parameters
-		encodeParams := setupEncodeParams(cfg, inputPath, outputPath, quality, videoProps, cropResult, audioChannels, audioStreams)
+		encodeParams := setupEncodeParams(cfg, inputPath, outputPath, quality, videoProps, cropResult, audioChannels, audioStreams, hdrInfo)
 
 		// Format audio description for config display
 		audioDescConfig := FormatAudioDescriptionConfig(audioChannels, audioStreams)
@@ -361,6 +375,7 @@ func setupEncodeParams(
 	crop CropResult,
 	audioChannels []uint32,
 	audioStreams []ffprobe.AudioStreamInfo,
+	hdrInfo mediainfo.HDRInfo,
 ) *ffmpeg.EncodeParams {
 	params := &ffmpeg.EncodeParams{
 		InputPath:             inputPath,
@@ -388,8 +403,8 @@ func setupEncodeParams(
 	}
 
 	// Set matrix coefficients based on HDR
-	if props.HDRInfo.IsHDR {
-		params.MatrixCoefficients = props.HDRInfo.MatrixCoefficients
+	if hdrInfo.IsHDR {
+		params.MatrixCoefficients = hdrInfo.MatrixCoefficients
 		if params.MatrixCoefficients == "" {
 			params.MatrixCoefficients = "bt2020nc"
 		}
