@@ -3,6 +3,7 @@ package worker
 
 import (
 	"github.com/five82/drapto/internal/chunk"
+	"github.com/five82/drapto/internal/tq"
 )
 
 // WorkPkg represents a work package containing decoded frames ready for encoding.
@@ -13,6 +14,7 @@ type WorkPkg struct {
 	Width      uint32      // Frame width (after cropping)
 	Height     uint32      // Frame height (after cropping)
 	Is10Bit    bool        // Whether frames are 10-bit
+	TQState    *tq.State   // Target quality search state (nil when TQ disabled)
 }
 
 // FrameSize returns the size of a single frame in bytes.

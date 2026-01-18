@@ -15,6 +15,7 @@ import (
 	"github.com/five82/drapto/internal/ffprobe"
 	"github.com/five82/drapto/internal/reporter"
 	"github.com/five82/drapto/internal/scd"
+	"github.com/five82/drapto/internal/tq"
 	"github.com/five82/drapto/internal/worker"
 )
 
@@ -113,49 +114,90 @@ func ProcessChunked(
 	fps := float64(vidInf.FPSNum) / float64(vidInf.FPSDen)
 	startTime := time.Now()
 
-	err = encode.EncodeAll(
-		ctx,
-		chunks,
-		vidInf,
-		encCfg,
-		idx,
-		workDir,
-		cropH,
-		cropV,
-		func(progress worker.Progress) {
-			// Calculate speed and ETA
-			elapsed := time.Since(startTime)
-			var speed float32
-			var eta time.Duration
+	progressCallback := func(progress worker.Progress) {
+		// Calculate speed and ETA
+		elapsed := time.Since(startTime)
+		var speed float32
+		var eta time.Duration
 
-			if elapsed.Seconds() > 0 && progress.FramesComplete > 0 {
-				// Video seconds encoded
-				videoSeconds := float64(progress.FramesComplete) / fps
-				// Speed = video seconds per real second
-				speed = float32(videoSeconds / elapsed.Seconds())
+		if elapsed.Seconds() > 0 && progress.FramesComplete > 0 {
+			// Video seconds encoded
+			videoSeconds := float64(progress.FramesComplete) / fps
+			// Speed = video seconds per real second
+			speed = float32(videoSeconds / elapsed.Seconds())
 
-				// ETA based on remaining frames
-				if speed > 0 {
-					remainingFrames := progress.FramesTotal - progress.FramesComplete
-					remainingVideoSeconds := float64(remainingFrames) / fps
-					eta = time.Duration(remainingVideoSeconds/float64(speed)) * time.Second
-				}
+			// ETA based on remaining frames
+			if speed > 0 {
+				remainingFrames := progress.FramesTotal - progress.FramesComplete
+				remainingVideoSeconds := float64(remainingFrames) / fps
+				eta = time.Duration(remainingVideoSeconds/float64(speed)) * time.Second
 			}
+		}
 
-			rep.EncodingProgress(reporter.ProgressSnapshot{
-				CurrentFrame:   uint64(progress.FramesComplete),
-				TotalFrames:    uint64(progress.FramesTotal),
-				Percent:        float32(progress.Percent()),
-				Speed:          speed,
-				ETA:            eta,
-				ChunksComplete: progress.ChunksComplete,
-				ChunksTotal:    progress.ChunksTotal,
-			})
-		},
-	)
+		rep.EncodingProgress(reporter.ProgressSnapshot{
+			CurrentFrame:   uint64(progress.FramesComplete),
+			TotalFrames:    uint64(progress.FramesTotal),
+			Percent:        float32(progress.Percent()),
+			Speed:          speed,
+			ETA:            eta,
+			ChunksComplete: progress.ChunksComplete,
+			ChunksTotal:    progress.ChunksTotal,
+		})
+	}
 
-	if err != nil {
-		return fmt.Errorf("chunked encoding failed: %w", err)
+	// Use target quality pipeline if configured
+	var encodeErr error
+	if cfg.TargetQuality != "" {
+		tqCfg, parseErr := tq.ParseTargetRange(cfg.TargetQuality)
+		if parseErr != nil {
+			return fmt.Errorf("invalid target quality: %w", parseErr)
+		}
+
+		// Parse QP range if specified
+		if cfg.QPRange != "" {
+			qpMin, qpMax, qpErr := tq.ParseQPRange(cfg.QPRange)
+			if qpErr != nil {
+				return fmt.Errorf("invalid QP range: %w", qpErr)
+			}
+			tqCfg.QPMin = qpMin
+			tqCfg.QPMax = qpMax
+		}
+
+		tqCfg.MetricMode = cfg.MetricMode
+
+		tqEncCfg := &encode.TQEncodeConfig{
+			EncodeConfig:  *encCfg,
+			TQConfig:      tqCfg,
+			MetricWorkers: cfg.MetricWorkers,
+		}
+
+		encodeErr = encode.EncodeAllTQ(
+			ctx,
+			chunks,
+			vidInf,
+			tqEncCfg,
+			idx,
+			workDir,
+			cropH,
+			cropV,
+			progressCallback,
+		)
+	} else {
+		encodeErr = encode.EncodeAll(
+			ctx,
+			chunks,
+			vidInf,
+			encCfg,
+			idx,
+			workDir,
+			cropH,
+			cropV,
+			progressCallback,
+		)
+	}
+
+	if encodeErr != nil {
+		return fmt.Errorf("chunked encoding failed: %w", encodeErr)
 	}
 
 	// Merge IVF files

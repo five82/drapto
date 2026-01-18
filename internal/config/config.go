@@ -197,6 +197,12 @@ type Config struct {
 	Workers     int // Number of parallel encoder workers
 	ChunkBuffer int // Extra chunks to buffer in memory
 
+	// Target quality options
+	TargetQuality string // Target quality range (e.g., "70-75" for SSIMULACRA2 score)
+	QPRange       string // CRF search range (default "8-48")
+	MetricWorkers int    // Number of GPU metric workers (default 1)
+	MetricMode    string // Metric aggregation mode ("mean" or "pN")
+
 	// Selected preset (optional)
 	DraptoPreset *Preset
 }
@@ -223,6 +229,10 @@ func NewConfig(inputDir, outputDir, logDir string) *Config {
 		EncodeCooldownSecs:          DefaultEncodeCooldownSecs,
 		Workers:                     workers,
 		ChunkBuffer:                 buffer,
+		// Target quality defaults
+		QPRange:       "8-48",
+		MetricWorkers: 1,
+		MetricMode:    "mean",
 	}
 }
 

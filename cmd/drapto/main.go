@@ -77,6 +77,11 @@ type encodeArgs struct {
 	noLog           bool
 	workers         int
 	chunkBuffer     int
+	// Target quality options
+	targetQuality string
+	qpRange       string
+	metricWorkers int
+	metricMode    string
 }
 
 func runEncode(args []string) error {
@@ -104,6 +109,12 @@ Quality Settings:
   --quality-uhd <CRF>    CRF quality for UHD videos (≥3840 width). Default: %d
   --preset <0-13>        SVT-AV1 encoder preset. Lower=slower/better. Default: %d
   --drapto-preset <NAME> Apply grouped Drapto defaults (grain, clean, quick)
+
+Target Quality Options (per-chunk SSIMULACRA2 targeting):
+  -t, --target <RANGE>   Target SSIMULACRA2 quality range (e.g., "70-75")
+  --qp <RANGE>           CRF search range. Default: 8-48
+  --metric-workers <N>   Number of GPU metric workers. Default: 1
+  --metric-mode <MODE>   Metric aggregation mode ("mean" or "pN"). Default: mean
 
 Processing Options:
   --disable-autocrop     Disable automatic black bar crop detection
@@ -136,6 +147,13 @@ Output Options:
 	fs.UintVar(&ea.qualityUHD, "quality-uhd", 0, "CRF quality for UHD videos")
 	fs.UintVar(&ea.preset, "preset", 0, "SVT-AV1 encoder preset (0-13)")
 	fs.StringVar(&ea.draptoPreset, "drapto-preset", "", "Drapto preset (grain, clean, quick)")
+
+	// Target quality options
+	fs.StringVar(&ea.targetQuality, "t", "", "Target SSIMULACRA2 quality range")
+	fs.StringVar(&ea.targetQuality, "target", "", "Target SSIMULACRA2 quality range")
+	fs.StringVar(&ea.qpRange, "qp", "8-48", "CRF search range")
+	fs.IntVar(&ea.metricWorkers, "metric-workers", 1, "Number of GPU metric workers")
+	fs.StringVar(&ea.metricMode, "metric-mode", "mean", "Metric aggregation mode")
 
 	// Processing options
 	fs.BoolVar(&ea.disableAutocrop, "disable-autocrop", false, "Disable automatic crop detection")
@@ -254,6 +272,12 @@ func executeEncode(ea encodeArgs) error {
 	cfg.ResponsiveEncoding = ea.responsive
 	cfg.Workers = ea.workers
 	cfg.ChunkBuffer = ea.chunkBuffer
+
+	// Target quality options
+	cfg.TargetQuality = ea.targetQuality
+	cfg.QPRange = ea.qpRange
+	cfg.MetricWorkers = ea.metricWorkers
+	cfg.MetricMode = ea.metricMode
 
 	// Validate configuration
 	if err := cfg.Validate(); err != nil {

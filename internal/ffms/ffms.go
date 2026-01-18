@@ -472,3 +472,38 @@ func CalcFrameSize(inf *VidInf, cropCalc *CropCalc) int {
 	// Always use 10-bit size - 8-bit sources are converted to 10-bit
 	return CalcPackedSize(w, h)
 }
+
+// Frame represents a decoded video frame with plane pointers.
+type Frame struct {
+	Data     [3]unsafe.Pointer // Y, U, V plane pointers
+	Linesize [3]int            // Stride for each plane
+}
+
+// GetFrame retrieves a single frame from the video source.
+// Returns a Frame struct with plane pointers and strides.
+func GetFrame(src *VidSrc, frameIdx int) (*Frame, error) {
+	if src == nil || src.ptr == nil {
+		return nil, fmt.Errorf("nil video source")
+	}
+
+	errInfo := C.create_error_info()
+	defer C.free_error_info(errInfo)
+
+	frame := C.FFMS_GetFrame(src.ptr, C.int(frameIdx), errInfo)
+	if frame == nil {
+		return nil, fmt.Errorf("failed to get frame %d: %s", frameIdx, C.GoString(C.get_error_message(errInfo)))
+	}
+
+	return &Frame{
+		Data: [3]unsafe.Pointer{
+			unsafe.Pointer(frame.Data[0]),
+			unsafe.Pointer(frame.Data[1]),
+			unsafe.Pointer(frame.Data[2]),
+		},
+		Linesize: [3]int{
+			int(frame.Linesize[0]),
+			int(frame.Linesize[1]),
+			int(frame.Linesize[2]),
+		},
+	}, nil
+}
