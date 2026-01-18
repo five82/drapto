@@ -43,7 +43,8 @@ func Converged(score, target, tolerance float64) bool {
 // For SSIMULACRA2:
 // - If score is too low (quality too low), decrease CRF (search lower)
 // - If score is too high (quality too high), increase CRF (search higher)
-// Returns true if bounds have crossed (no valid CRF in remaining range).
+// If bounds cross and score is outside tolerance, expands bounds by ±5.
+// Returns true if bounds have crossed and cannot be expanded further.
 func UpdateBounds(state *State, score, target, tolerance float64) bool {
 	if score < target-tolerance {
 		// Score too low, need lower CRF for higher quality
@@ -53,8 +54,32 @@ func UpdateBounds(state *State, score, target, tolerance float64) bool {
 		state.SearchMin = state.LastCRF + 1.0
 	}
 
-	// Return true if bounds have crossed
-	return state.SearchMin > state.SearchMax
+	// Check if bounds have crossed
+	if state.SearchMin > state.SearchMax {
+		// Try to expand bounds if we haven't hit the hard limits
+		if score < target-tolerance && state.LastCRF-1 >= state.QPMin {
+			// Need lower CRF - expand downward from last CRF
+			state.SearchMin = max(state.QPMin, state.LastCRF-5)
+			state.SearchMax = state.LastCRF - 1
+			// If still crossed after expansion, we're at the limit
+			if state.SearchMin > state.SearchMax {
+				return true
+			}
+			return false
+		} else if score > target+tolerance && state.LastCRF+1 <= state.QPMax {
+			// Need higher CRF - expand upward from last CRF
+			state.SearchMin = state.LastCRF + 1
+			state.SearchMax = min(state.QPMax, state.LastCRF+5)
+			// If still crossed after expansion, we're at the limit
+			if state.SearchMin > state.SearchMax {
+				return true
+			}
+			return false
+		}
+		return true
+	}
+
+	return false
 }
 
 // ShouldComplete determines if the TQ search should complete.

@@ -19,6 +19,15 @@ import (
 	"github.com/five82/drapto/internal/worker"
 )
 
+// debugTQ enables verbose CRF prediction logging when DRAPTO_DEBUG_TQ=1
+var debugTQ = os.Getenv("DRAPTO_DEBUG_TQ") == "1"
+
+func debugf(format string, args ...any) {
+	if debugTQ {
+		fmt.Printf("[TQ-DEBUG] "+format+"\n", args...)
+	}
+}
+
 // TQEncodeConfig contains configuration for target quality encoding.
 type TQEncodeConfig struct {
 	EncodeConfig         // Embed standard encode config
@@ -102,6 +111,20 @@ func EncodeAllTQ(
 	}
 	sem := worker.NewSemaphore(permits)
 
+	// Create dispatcher and tracker for adaptive CRF prediction
+	dispatcher := chunk.NewDispatcher(remainingChunks)
+	tracker := tq.NewTracker()
+
+	// Gradual ramp-up: start with limited parallelism and increase as chunks complete.
+	// This ensures early chunks provide CRF prediction data for later chunks.
+	// - Start with 2 in-flight chunks
+	// - Add 2 more permits per completion until reaching full capacity
+	const rampStart = 2      // Initial number of chunks to dispatch
+	const rampIncrement = 2  // How many permits to add per completion during ramp-up
+	var rampLimit atomic.Int32
+	rampLimit.Store(int32(rampStart))
+	rampChan := make(chan struct{}, permits) // Signals when ramp limit increases
+
 	// Channels for the TQ pipeline
 	encodeChan := make(chan *worker.WorkPkg, permits)
 	metricsChan := make(chan *worker.WorkPkg, cfg.MetricWorkers*2)
@@ -155,14 +178,18 @@ func EncodeAllTQ(
 	coordWg.Add(1)
 	go func() {
 		defer coordWg.Done()
-		tqCoordinator(ctx, reworkChan, encodeChan, doneChan, sem, workDir, &progressMu, &progress, progressCb, len(remainingChunks), getError)
+		tqCoordinator(ctx, reworkChan, encodeChan, doneChan, sem, workDir, &progressMu, &progress, progressCb, len(remainingChunks), getError, dispatcher, tracker, permits, rampIncrement, &rampLimit, rampChan)
 	}()
+
+	// Default CRF for first chunk (midpoint of range)
+	defaultCRF := (cfg.TQConfig.QPMin + cfg.TQConfig.QPMax) / 2
 
 	// Decoder goroutine
 	// NOTE: Decoder does NOT close encodeChan - the coordinator owns that
 	// because the coordinator may need to re-queue work after decoder finishes
 	go func() {
-		for _, ch := range remainingChunks {
+		dispatched := 0
+		for {
 			// Check for cancellation
 			select {
 			case <-ctx.Done():
@@ -175,12 +202,30 @@ func EncodeAllTQ(
 				return
 			}
 
+			// Gradual ramp-up: wait if we've hit the current ramp limit
+			for dispatched >= int(rampLimit.Load()) && dispatched < permits {
+				select {
+				case <-rampChan:
+					// Ramp limit increased, check again
+				case <-ctx.Done():
+					return
+				}
+			}
+
+			// Get next chunk from dispatcher (picks chunk nearest to completed ones)
+			ch, ok := dispatcher.Next()
+			if !ok {
+				return // No more chunks
+			}
+
 			// Acquire semaphore
 			select {
 			case <-sem.Chan():
 			case <-ctx.Done():
 				return
 			}
+
+			dispatched++
 
 			// Decode chunk frames
 			pkg, err := decodeChunk(src, ch, inf, strat, cropCalc, width, height)
@@ -190,8 +235,16 @@ func EncodeAllTQ(
 				return
 			}
 
-			// Initialize TQ state for this chunk
-			pkg.TQState = tq.NewState(cfg.TQConfig.Target, cfg.TQConfig.QPMin, cfg.TQConfig.QPMax)
+			// Get CRF prediction from nearby completed chunks
+			predictedCRF := tracker.Predict(ch.Idx, defaultCRF)
+
+			debugf("Chunk %d: predicted CRF=%.1f (from %d completed chunks), search bounds [%.0f, %.0f]",
+				ch.Idx, predictedCRF, tracker.Count(),
+				max(cfg.TQConfig.QPMin, predictedCRF-5),
+				min(cfg.TQConfig.QPMax, predictedCRF+5))
+
+			// Initialize TQ state with predicted CRF (narrows search bounds)
+			pkg.TQState = tq.NewState(cfg.TQConfig.Target, cfg.TQConfig.QPMin, cfg.TQConfig.QPMax, predictedCRF)
 
 			// Send to encode channel
 			select {
@@ -390,6 +443,12 @@ func tqCoordinator(
 	progressCb ProgressCallback,
 	totalRemaining int,
 	getError func() error,
+	dispatcher *chunk.Dispatcher,
+	tracker *tq.CRFTracker,
+	maxPermits int,
+	rampIncrement int,
+	rampLimit *atomic.Int32,
+	rampChan chan<- struct{},
 ) {
 	// Coordinator owns closing encodeChan - it knows when all work is complete
 	// (including rework cycles). Decoder cannot close it because rework may
@@ -426,6 +485,26 @@ func tqCoordinator(
 
 			if result.Error != nil {
 				continue
+			}
+
+			// Record completion for adaptive CRF prediction
+			dispatcher.MarkComplete(result.ChunkIdx)
+			tracker.Record(result.ChunkIdx, result.FinalCRF)
+
+			debugf("Chunk %d complete: CRF=%.0f, score=%.1f, %d iterations",
+				result.ChunkIdx, result.FinalCRF, result.FinalScore, result.Round)
+
+			// Gradual ramp-up: increase dispatch limit as chunks complete
+			currentLimit := int(rampLimit.Load())
+			if currentLimit < maxPermits {
+				newLimit := min(currentLimit+rampIncrement, maxPermits)
+				rampLimit.Store(int32(newLimit))
+				debugf("Ramp-up: increased dispatch limit to %d", newLimit)
+				// Signal decoder that limit increased (non-blocking)
+				select {
+				case rampChan <- struct{}{}:
+				default:
+				}
 			}
 
 			// Copy best probe to final output
@@ -543,10 +622,10 @@ func computeMetrics(
 	defer probeSrc.Close()
 
 	// Calculate frame dimensions
-	pixelSize := 1
-	if inf.Is10Bit {
-		pixelSize = 2
-	}
+	// Note: pkg.YUV always contains 10-bit data (2 bytes per sample) because
+	// FFMS2 converts 8-bit sources to 10-bit. The inf.Is10Bit flag reflects
+	// the original source bit depth, not the pkg.YUV format.
+	const pixelSize = 2 // Always 10-bit (16-bit per sample)
 	ySize := int(width) * int(height) * pixelSize
 	uvSize := ySize / 4
 	frameSize := ySize + 2*uvSize

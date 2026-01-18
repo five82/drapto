@@ -24,6 +24,10 @@ type State struct {
 	SearchMin float64
 	SearchMax float64
 
+	// QPMin and QPMax are the original (hard) CRF bounds that cannot be exceeded.
+	QPMin float64
+	QPMax float64
+
 	// Round is the current iteration number (1-indexed).
 	Round int
 
@@ -35,11 +39,24 @@ type State struct {
 }
 
 // NewState creates a new TQ state for a chunk.
-func NewState(target, qpMin, qpMax float64) *State {
+// If predictedCRF > 0, the search bounds are narrowed to [predicted-5, predicted+5]
+// clamped to [qpMin, qpMax]. Otherwise, the full range is used.
+func NewState(target, qpMin, qpMax, predictedCRF float64) *State {
+	searchMin := qpMin
+	searchMax := qpMax
+
+	if predictedCRF > 0 {
+		// Narrow bounds around predicted CRF
+		searchMin = max(qpMin, predictedCRF-5)
+		searchMax = min(qpMax, predictedCRF+5)
+	}
+
 	return &State{
 		Probes:    make([]Probe, 0, 8),
-		SearchMin: qpMin,
-		SearchMax: qpMax,
+		SearchMin: searchMin,
+		SearchMax: searchMax,
+		QPMin:     qpMin,
+		QPMax:     qpMax,
 		Round:     0,
 		Target:    target,
 	}
