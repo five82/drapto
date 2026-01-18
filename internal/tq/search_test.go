@@ -12,8 +12,8 @@ func TestBinarySearch(t *testing.T) {
 	}{
 		{8, 48, 28},
 		{20, 30, 25},
-		{20, 25, 22.5},
-		{20, 22.5, 21.25},
+		{20, 25, 23},  // (20+25)/2 = 22.5 → 23
+		{20, 23, 22},  // (20+23)/2 = 21.5 → 22
 	}
 
 	for _, tt := range tests {
@@ -70,7 +70,7 @@ func TestUpdateBounds(t *testing.T) {
 			target:        72.5,
 			tolerance:     2.5,
 			expectedMin:   8,
-			expectedMax:   27.75,
+			expectedMax:   27, // 28 - 1.0
 			expectedCross: false,
 		},
 		{
@@ -81,7 +81,7 @@ func TestUpdateBounds(t *testing.T) {
 			score:         80,
 			target:        72.5,
 			tolerance:     2.5,
-			expectedMin:   28.25,
+			expectedMin:   29, // 28 + 1.0
 			expectedMax:   48,
 			expectedCross: false,
 		},
@@ -100,25 +100,25 @@ func TestUpdateBounds(t *testing.T) {
 		{
 			name:          "bounds crossed",
 			initialMin:    28,
-			initialMax:    28.25,
-			lastCRF:       28.25,
+			initialMax:    29,
+			lastCRF:       29,
 			score:         65,
 			target:        72.5,
 			tolerance:     2.5,
 			expectedMin:   28,
-			expectedMax:   28, // 28.25 - 0.25 = 28, so min (28) is not > max (28), still valid
+			expectedMax:   28, // 29 - 1.0 = 28, so min (28) is not > max (28), still valid
 			expectedCross: false,
 		},
 		{
 			name:          "bounds truly crossed",
-			initialMin:    28.25,
-			initialMax:    28.25,
-			lastCRF:       28.25,
+			initialMin:    29,
+			initialMax:    29,
+			lastCRF:       29,
 			score:         65,
 			target:        72.5,
 			tolerance:     2.5,
-			expectedMin:   28.25,
-			expectedMax:   28, // 28.25 - 0.25 = 28, so min (28.25) > max (28)
+			expectedMin:   29,
+			expectedMax:   28, // 29 - 1.0 = 28, so min (29) > max (28)
 			expectedCross: true,
 		},
 	}

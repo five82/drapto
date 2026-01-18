@@ -225,7 +225,7 @@ func FritschCarlson(x, y []float64, xi float64) *float64 {
 // - Round 4: Fritsch-Carlson (requires 3 probes)
 // - Round 5: PCHIP (requires 4 probes)
 // - Round 6+: Akima (requires 5+ probes)
-// The result is rounded to 0.25 increments.
+// The result is rounded to the nearest integer.
 func InterpolateCRF(probes []Probe, target float64, round int) *float64 {
 	if round <= 2 {
 		return nil
@@ -277,7 +277,7 @@ func InterpolateCRF(probes []Probe, target float64, round int) *float64 {
 	return &rounded
 }
 
-// roundCRF rounds a CRF value to the nearest 0.25 increment.
+// roundCRF rounds a CRF value to the nearest integer.
 func roundCRF(crf float64) float64 {
-	return math.Round(crf*4) / 4
+	return math.Round(crf)
 }

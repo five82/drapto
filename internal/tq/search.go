@@ -2,7 +2,7 @@ package tq
 
 import "math"
 
-// BinarySearch returns the midpoint between min and max, rounded to 0.25 increments.
+// BinarySearch returns the midpoint between min and max, rounded to the nearest integer.
 func BinarySearch(min, max float64) float64 {
 	mid := (min + max) / 2
 	return roundCRF(mid)
@@ -47,10 +47,10 @@ func Converged(score, target, tolerance float64) bool {
 func UpdateBounds(state *State, score, target, tolerance float64) bool {
 	if score < target-tolerance {
 		// Score too low, need lower CRF for higher quality
-		state.SearchMax = state.LastCRF - 0.25
+		state.SearchMax = state.LastCRF - 1.0
 	} else if score > target+tolerance {
 		// Score too high, need higher CRF for lower quality
-		state.SearchMin = state.LastCRF + 0.25
+		state.SearchMin = state.LastCRF + 1.0
 	}
 
 	// Return true if bounds have crossed
