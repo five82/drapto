@@ -13,8 +13,8 @@ import (
 	"github.com/five82/drapto/internal/encode"
 	"github.com/five82/drapto/internal/ffms"
 	"github.com/five82/drapto/internal/ffprobe"
+	"github.com/five82/drapto/internal/keyframe"
 	"github.com/five82/drapto/internal/reporter"
-	"github.com/five82/drapto/internal/scd"
 	"github.com/five82/drapto/internal/tq"
 	"github.com/five82/drapto/internal/worker"
 )
@@ -57,15 +57,15 @@ func ProcessChunked(
 		return fmt.Errorf("failed to get video info: %w", err)
 	}
 
-	// Run scene detection if needed
+	// Detect scene changes
 	rep.StageProgress(reporter.StageProgress{Stage: "Scene Detection", Message: "Detecting scene changes"})
-	sceneFile, err := scd.DetectScenesIfNeeded(
+	sceneFile, err := keyframe.ExtractKeyframesIfNeeded(
 		inputPath,
 		workDir,
 		vidInf.FPSNum,
 		vidInf.FPSDen,
 		vidInf.Frames,
-		true,
+		cfg.SceneThreshold,
 	)
 	if err != nil {
 		return fmt.Errorf("scene detection failed: %w", err)
@@ -251,13 +251,14 @@ func parseCropFilter(filter string, srcWidth, srcHeight uint32) (cropH, cropV ui
 
 // CheckChunkedDependencies verifies that required tools are available.
 func CheckChunkedDependencies() error {
-	if !scd.IsSCDBinaryAvailable() {
-		return fmt.Errorf("drapto-scd not found in PATH (required for scene detection)")
-	}
-
 	// Check for SvtAv1EncApp in PATH
 	if _, err := exec.LookPath("SvtAv1EncApp"); err != nil {
 		return fmt.Errorf("SvtAv1EncApp not found in PATH (required for encoding)")
+	}
+
+	// Check for ffmpeg in PATH (used for scene detection)
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		return fmt.Errorf("ffmpeg not found in PATH (required for scene detection)")
 	}
 
 	return nil

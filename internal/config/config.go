@@ -50,6 +50,10 @@ const (
 
 	// ProgressLogIntervalPercent is the progress logging interval.
 	ProgressLogIntervalPercent uint8 = 5
+
+	// DefaultSceneThreshold is the threshold for scene change detection.
+	// Higher values = fewer scene changes detected. Range is 0.0 to 1.0.
+	DefaultSceneThreshold float64 = 0.4
 )
 
 // Preset represents a Drapto preset grouping.
@@ -203,6 +207,9 @@ type Config struct {
 	MetricWorkers int    // Number of GPU metric workers (default 1)
 	MetricMode    string // Metric aggregation mode ("mean" or "pN")
 
+	// Scene detection options
+	SceneThreshold float64 // Scene change detection threshold (0.0-1.0, higher = fewer scenes)
+
 	// Selected preset (optional)
 	DraptoPreset *Preset
 }
@@ -233,6 +240,8 @@ func NewConfig(inputDir, outputDir, logDir string) *Config {
 		QPRange:       "8-48",
 		MetricWorkers: 1,
 		MetricMode:    "mean",
+		// Scene detection defaults
+		SceneThreshold: DefaultSceneThreshold,
 	}
 }
 
@@ -282,6 +291,10 @@ func (c *Config) Validate() error {
 
 	if c.ChunkBuffer < 0 {
 		return fmt.Errorf("chunk_buffer must be non-negative, got %d", c.ChunkBuffer)
+	}
+
+	if c.SceneThreshold < 0 || c.SceneThreshold > 1 {
+		return fmt.Errorf("scene_threshold must be between 0.0 and 1.0, got %g", c.SceneThreshold)
 	}
 
 	return nil

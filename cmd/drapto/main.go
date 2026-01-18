@@ -82,6 +82,8 @@ type encodeArgs struct {
 	qpRange       string
 	metricWorkers int
 	metricMode    string
+	// Scene detection options
+	sceneThreshold float64
 }
 
 func runEncode(args []string) error {
@@ -121,10 +123,11 @@ Processing Options:
   --responsive           Reserve CPU threads for improved system responsiveness
   --workers <N>          Number of parallel encoder workers. Default: %d (auto)
   --buffer <N>           Extra chunks to buffer in memory. Default: %d (auto)
+  --scene-threshold <N>  Scene detection threshold (0.0-1.0, higher = fewer scenes). Default: %.1f
 
 Output Options:
   --no-log               Disable Drapto log file creation
-`, appName, config.DefaultQualitySD, config.DefaultQualityHD, config.DefaultQualityUHD, config.DefaultSVTAV1Preset, defaultWorkers, defaultBuffer)
+`, appName, config.DefaultQualitySD, config.DefaultQualityHD, config.DefaultQualityUHD, config.DefaultSVTAV1Preset, defaultWorkers, defaultBuffer, config.DefaultSceneThreshold)
 	}
 
 	var ea encodeArgs
@@ -160,6 +163,7 @@ Output Options:
 	fs.BoolVar(&ea.responsive, "responsive", false, "Reserve CPU threads for responsiveness")
 	fs.IntVar(&ea.workers, "workers", defaultWorkers, "Number of parallel encoder workers")
 	fs.IntVar(&ea.chunkBuffer, "buffer", defaultBuffer, "Extra chunks to buffer in memory")
+	fs.Float64Var(&ea.sceneThreshold, "scene-threshold", config.DefaultSceneThreshold, "Scene detection threshold")
 
 	// Output options
 	fs.BoolVar(&ea.noLog, "no-log", false, "Disable log file creation")
@@ -278,6 +282,9 @@ func executeEncode(ea encodeArgs) error {
 	cfg.QPRange = ea.qpRange
 	cfg.MetricWorkers = ea.metricWorkers
 	cfg.MetricMode = ea.metricMode
+
+	// Scene detection options
+	cfg.SceneThreshold = ea.sceneThreshold
 
 	// Validate configuration
 	if err := cfg.Validate(); err != nil {
