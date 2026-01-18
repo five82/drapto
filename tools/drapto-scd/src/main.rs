@@ -1,6 +1,7 @@
 //! Scene change detection helper for drapto.
 //!
 //! Uses av-scenechange with FFmpeg backend to detect scene boundaries.
+//! Long scenes are split at regular intervals.
 
 use anyhow::{Context, Result};
 use av_scenechange::{
@@ -10,6 +11,7 @@ use av_scenechange::{
     DetectionOptions, SceneDetectionSpeed,
 };
 use clap::Parser;
+use std::cmp::min;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::PathBuf;
@@ -46,10 +48,16 @@ struct Args {
 fn main() -> Result<()> {
     let args = Args::parse();
 
+    // Calculate effective FPS for max scene length calculation
+    let fps = args.fps_num as f64 / args.fps_den as f64;
+
+    // Max scene length: 30 seconds or 1000 frames, whichever is smaller
+    let max_scene_frames = min((fps * 30.0).ceil() as usize, 1000);
+
     if args.progress {
         eprintln!(
-            "Detecting scene changes in {:?}",
-            args.input
+            "Detecting scene changes in {:?} (max {} frames/scene)",
+            args.input, max_scene_frames
         );
     }
 
@@ -111,12 +119,22 @@ fn main() -> Result<()> {
         scene_starts.insert(0, 0);
     }
 
+    // Use total_frames from args (more reliable than frame_count for some formats)
+    let total_frames = if args.total_frames > 0 {
+        args.total_frames
+    } else {
+        results.frame_count
+    };
+
+    // Split long scenes at regular intervals
+    let final_scenes = split_long_scenes(&scene_starts, total_frames, max_scene_frames);
+
     // Write output file
     let file = File::create(&args.output)
         .with_context(|| format!("Failed to create output file {:?}", args.output))?;
     let mut writer = BufWriter::new(file);
 
-    for frame in &scene_starts {
+    for frame in &final_scenes {
         writeln!(writer, "{}", frame)?;
     }
 
@@ -125,10 +143,55 @@ fn main() -> Result<()> {
     if args.progress {
         eprintln!(
             "Wrote {} scene boundaries to {:?}",
-            scene_starts.len(),
+            final_scenes.len(),
             args.output
         );
     }
 
     Ok(())
+}
+
+/// Split long scenes into smaller chunks at regular intervals.
+///
+/// When a scene is longer than max_frames, we split it evenly to create
+/// chunks that are as close to equal length as possible while staying
+/// under the max_frames limit.
+fn split_long_scenes(
+    scene_starts: &[usize],
+    total_frames: usize,
+    max_frames: usize,
+) -> Vec<usize> {
+    let mut result = Vec::new();
+
+    // Build scene ranges
+    for i in 0..scene_starts.len() {
+        let start = scene_starts[i];
+        let end = if i + 1 < scene_starts.len() {
+            scene_starts[i + 1]
+        } else {
+            total_frames
+        };
+
+        result.push(start);
+
+        let scene_len = end.saturating_sub(start);
+        if scene_len > max_frames {
+            // Calculate how many chunks we need
+            let num_chunks = (scene_len + max_frames - 1) / max_frames;
+            let chunk_size = scene_len / num_chunks;
+
+            // Add intermediate split points
+            for j in 1..num_chunks {
+                let split = start + j * chunk_size;
+                if split < end {
+                    result.push(split);
+                }
+            }
+        }
+    }
+
+    // Sort and deduplicate
+    result.sort();
+    result.dedup();
+    result
 }

@@ -97,7 +97,7 @@ func LoadScenes(path string, totalFrames int) ([]Scene, error) {
 	return scenes, nil
 }
 
-// ValidateScenes checks that scenes are valid.
+// ValidateScenes checks that scenes are valid and not too long.
 func ValidateScenes(scenes []Scene, fpsNum, fpsDen uint32) error {
 	if len(scenes) == 0 {
 		return fmt.Errorf("no scenes provided")
@@ -108,8 +108,15 @@ func ValidateScenes(scenes []Scene, fpsNum, fpsDen uint32) error {
 		return fmt.Errorf("invalid FPS denominator: 0")
 	}
 
+	// Calculate max scene length (30 seconds or 1000 frames, whichever is smaller)
+	fps := float64(fpsNum) / float64(fpsDen)
+	maxFrames := min(int(fps*30), 1000)
+
 	for i, scene := range scenes {
 		length := scene.EndFrame - scene.StartFrame
+		if length > maxFrames {
+			return fmt.Errorf("scene %d is too long: %d frames (max %d)", i, length, maxFrames)
+		}
 		if length <= 0 {
 			return fmt.Errorf("scene %d has invalid length: %d", i, length)
 		}
