@@ -105,7 +105,9 @@ func EncodeAllTQ(
 	defer src.Close()
 
 	// Setup semaphore for memory management
-	permits := cfg.Workers + cfg.ChunkBuffer
+	// For TQ mode, limit in-flight to worker count so more chunks complete
+	// before new ones dispatch, providing better CRF prediction data
+	permits := cfg.Workers
 	if permits < 1 {
 		permits = 1
 	}
