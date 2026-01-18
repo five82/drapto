@@ -15,6 +15,7 @@ import (
 	"github.com/five82/drapto/internal/encoder"
 	"github.com/five82/drapto/internal/ffms"
 	"github.com/five82/drapto/internal/tq"
+	"github.com/five82/drapto/internal/util"
 	"github.com/five82/drapto/internal/vship"
 	"github.com/five82/drapto/internal/worker"
 )
@@ -111,6 +112,32 @@ func EncodeAllTQ(
 	if permits < 1 {
 		permits = 1
 	}
+
+	// Memory-based permit cap: prevent OOM by limiting in-flight YUV chunks
+	// based on available system memory, independent of worker count.
+	// Calculate estimated memory per in-flight chunk:
+	// - YUV buffer: frames * frameSize
+	// - SVT-AV1 encoder process: ~1 GB per instance
+	avgFramesPerChunk := totalFrames / len(chunks)
+	if avgFramesPerChunk < 1 {
+		avgFramesPerChunk = 1
+	}
+	// Frame size for 10-bit YUV420: width * height * 1.5 * 2 bytes
+	frameSize := uint64(width) * uint64(height) * 3 // 10-bit YUV420
+	yuvMemBytes := frameSize * uint64(avgFramesPerChunk)
+	encoderOverhead := uint64(1024 * 1024 * 1024) // ~1 GB per SVT-AV1 process
+	chunkMemBytes := yuvMemBytes + encoderOverhead
+
+	// Cap permits to use at most 50% of available memory. This is conservative
+	// to leave headroom for OS file caches (probe files), memory fragmentation,
+	// and other system processes. Empirical testing showed 70% was too aggressive.
+	memPermits := util.MaxPermitsForMemory(chunkMemBytes, 0.5)
+	if memPermits < permits {
+		debugf("Memory cap: limiting permits from %d to %d (chunk: %d MB, available: %d MB)",
+			permits, memPermits, chunkMemBytes/(1024*1024), util.AvailableMemoryBytes()/(1024*1024))
+		permits = memPermits
+	}
+
 	sem := worker.NewSemaphore(permits)
 
 	// Create dispatcher and tracker for adaptive CRF prediction
@@ -128,9 +155,13 @@ func EncodeAllTQ(
 	rampChan := make(chan struct{}, permits) // Signals when ramp limit increases
 
 	// Channels for the TQ pipeline
-	encodeChan := make(chan *worker.WorkPkg, permits)
-	metricsChan := make(chan *worker.WorkPkg, cfg.MetricWorkers*2)
-	reworkChan := make(chan *worker.WorkPkg, permits)
+	// Use small fixed buffer sizes (like xav) to limit memory - prevents decoder
+	// from filling channels with decoded YUV data faster than encoders consume it.
+	// Even with many workers, only a few items can queue at each stage.
+	const chanBuffer = 2
+	encodeChan := make(chan *worker.WorkPkg, chanBuffer)
+	metricsChan := make(chan *worker.WorkPkg, chanBuffer)
+	reworkChan := make(chan *worker.WorkPkg, chanBuffer)
 	doneChan := make(chan tqResult, len(remainingChunks))
 
 	// Progress tracking
