@@ -84,6 +84,10 @@ type encodeArgs struct {
 	metricMode    string
 	// Scene detection options
 	sceneThreshold float64
+	// Sample-based TQ probing options
+	sampleDuration    float64
+	sampleMinChunk    float64
+	disableTQSampling bool
 }
 
 func runEncode(args []string) error {
@@ -124,10 +128,13 @@ Processing Options:
   --workers <N>          Number of parallel encoder workers. Default: %d (auto)
   --buffer <N>           Extra chunks to buffer in memory. Default: %d (auto)
   --scene-threshold <N>  Scene detection threshold (0.0-1.0, higher = fewer scenes). Default: %.1f
+  --sample-duration <N>  Seconds to sample for TQ probing. Default: %.1f
+  --sample-min-chunk <N> Minimum chunk duration (seconds) to use sampling. Default: %.1f
+  --no-tq-sampling       Disable sample-based TQ probing (use full chunks)
 
 Output Options:
   --no-log               Disable Drapto log file creation
-`, appName, config.DefaultQualitySD, config.DefaultQualityHD, config.DefaultQualityUHD, config.DefaultSVTAV1Preset, defaultWorkers, defaultBuffer, config.DefaultSceneThreshold)
+`, appName, config.DefaultQualitySD, config.DefaultQualityHD, config.DefaultQualityUHD, config.DefaultSVTAV1Preset, defaultWorkers, defaultBuffer, config.DefaultSceneThreshold, config.DefaultSampleDuration, config.DefaultSampleMinChunk)
 	}
 
 	var ea encodeArgs
@@ -164,6 +171,9 @@ Output Options:
 	fs.IntVar(&ea.workers, "workers", defaultWorkers, "Number of parallel encoder workers")
 	fs.IntVar(&ea.chunkBuffer, "buffer", defaultBuffer, "Extra chunks to buffer in memory")
 	fs.Float64Var(&ea.sceneThreshold, "scene-threshold", config.DefaultSceneThreshold, "Scene detection threshold")
+	fs.Float64Var(&ea.sampleDuration, "sample-duration", config.DefaultSampleDuration, "Seconds to sample for TQ probing")
+	fs.Float64Var(&ea.sampleMinChunk, "sample-min-chunk", config.DefaultSampleMinChunk, "Minimum chunk duration for sampling")
+	fs.BoolVar(&ea.disableTQSampling, "no-tq-sampling", false, "Disable sample-based TQ probing")
 
 	// Output options
 	fs.BoolVar(&ea.noLog, "no-log", false, "Disable log file creation")
@@ -285,6 +295,11 @@ func executeEncode(ea encodeArgs) error {
 
 	// Scene detection options
 	cfg.SceneThreshold = ea.sceneThreshold
+
+	// Sample-based TQ probing options
+	cfg.SampleDuration = ea.sampleDuration
+	cfg.SampleMinChunk = ea.sampleMinChunk
+	cfg.DisableTQSampling = ea.disableTQSampling
 
 	// Validate configuration
 	if err := cfg.Validate(); err != nil {

@@ -53,7 +53,14 @@ const (
 
 	// DefaultSceneThreshold is the threshold for scene change detection.
 	// Higher values = fewer scene changes detected. Range is 0.0 to 1.0.
-	DefaultSceneThreshold float64 = 0.4
+	DefaultSceneThreshold float64 = 0.5
+
+	// DefaultSampleDuration is the duration in seconds to sample for TQ probing.
+	DefaultSampleDuration float64 = 3.0
+
+	// DefaultSampleMinChunk is the minimum chunk duration in seconds to use sampling.
+	// Chunks shorter than this use full-chunk probing.
+	DefaultSampleMinChunk float64 = 6.0
 )
 
 // Preset represents a Drapto preset grouping.
@@ -210,6 +217,11 @@ type Config struct {
 	// Scene detection options
 	SceneThreshold float64 // Scene change detection threshold (0.0-1.0, higher = fewer scenes)
 
+	// Sample-based TQ probing options
+	SampleDuration    float64 // TQ probe sample duration in seconds
+	SampleMinChunk    float64 // Minimum chunk duration in seconds to use sampling
+	DisableTQSampling bool    // Disable sample-based probing (use full chunks)
+
 	// Selected preset (optional)
 	DraptoPreset *Preset
 }
@@ -242,6 +254,9 @@ func NewConfig(inputDir, outputDir, logDir string) *Config {
 		MetricMode:    "mean",
 		// Scene detection defaults
 		SceneThreshold: DefaultSceneThreshold,
+		// Sample-based TQ probing defaults
+		SampleDuration: DefaultSampleDuration,
+		SampleMinChunk: DefaultSampleMinChunk,
 	}
 }
 
@@ -295,6 +310,14 @@ func (c *Config) Validate() error {
 
 	if c.SceneThreshold < 0 || c.SceneThreshold > 1 {
 		return fmt.Errorf("scene_threshold must be between 0.0 and 1.0, got %g", c.SceneThreshold)
+	}
+
+	if c.SampleDuration <= 0 {
+		return fmt.Errorf("sample_duration must be positive, got %g", c.SampleDuration)
+	}
+
+	if c.SampleMinChunk <= 0 {
+		return fmt.Errorf("sample_min_chunk must be positive, got %g", c.SampleMinChunk)
 	}
 
 	return nil

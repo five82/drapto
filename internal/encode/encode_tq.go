@@ -31,9 +31,13 @@ func debugf(format string, args ...any) {
 
 // TQEncodeConfig contains configuration for target quality encoding.
 type TQEncodeConfig struct {
-	EncodeConfig         // Embed standard encode config
-	TQConfig     *tq.Config
+	EncodeConfig          // Embed standard encode config
+	TQConfig      *tq.Config
 	MetricWorkers int
+	// Sample-based probing configuration
+	SampleDuration    float64 // Duration in seconds to sample for TQ probing
+	SampleMinChunk    float64 // Minimum chunk duration to use sampling
+	DisableTQSampling bool    // Disable sample-based probing (use full chunks)
 }
 
 // EncodeAllTQ runs the parallel encoding pipeline with target quality search.
@@ -268,6 +272,52 @@ func EncodeAllTQ(
 				return
 			}
 
+			// Calculate sample parameters for TQ probing
+			fps := float64(inf.FPSNum) / float64(inf.FPSDen)
+			var offset, encodeFrames, warmupFrames, measureFrames int
+			var useSampling bool
+			if cfg.DisableTQSampling {
+				// Sampling disabled - use full chunk for probing
+				useSampling = false
+				encodeFrames = pkg.FrameCount
+				measureFrames = pkg.FrameCount
+			} else {
+				offset, encodeFrames, warmupFrames, measureFrames, useSampling = worker.CalculateSample(
+					pkg.FrameCount, fps, cfg.SampleDuration, cfg.SampleMinChunk,
+				)
+			}
+
+			pkg.UseSampling = useSampling
+			pkg.SampleOffset = offset
+			pkg.SampleFrameCount = encodeFrames
+			pkg.WarmupFrames = warmupFrames
+			pkg.MeasureFrameCount = measureFrames
+
+			if useSampling {
+				// Extract sample YUV from full chunk
+				// Note: YUV is always 10-bit after FFMS2 decoding (2 bytes per sample)
+				const pixelSize = 2
+				ySize := int(width) * int(height) * pixelSize
+				uvSize := ySize / 4
+				frameSize := ySize + 2*uvSize
+
+				sampleStart := offset * frameSize
+				sampleEnd := (offset + encodeFrames) * frameSize
+				pkg.SampleYUV = pkg.YUV[sampleStart:sampleEnd]
+
+				debugf("Chunk %d: using %d-frame sample (%.1fs) from offset %d, warmup=%d, measure=%d",
+					ch.Idx, encodeFrames, float64(encodeFrames)/fps, offset, warmupFrames, measureFrames)
+			} else {
+				chunkDur := float64(pkg.FrameCount) / fps
+				if chunkDur < cfg.SampleMinChunk {
+					debugf("Chunk %d: using full %d-frame chunk (%.1fs < min %.1fs)",
+						ch.Idx, pkg.FrameCount, chunkDur, cfg.SampleMinChunk)
+				} else {
+					debugf("Chunk %d: using full %d-frame chunk (sample would exceed half of %d frames)",
+						ch.Idx, pkg.FrameCount, pkg.FrameCount)
+				}
+			}
+
 			// Get CRF prediction from nearby completed chunks
 			predictedCRF := tracker.Predict(ch.Idx, defaultCRF)
 
@@ -307,14 +357,15 @@ func EncodeAllTQ(
 
 // tqResult contains the result of a completed TQ chunk.
 type tqResult struct {
-	ChunkIdx   int
-	Frames     int
-	Size       uint64
-	FinalCRF   float64
-	FinalScore float64
-	Round      int
-	Probes     []tq.ProbeEntry
-	Error      error
+	ChunkIdx     int
+	Frames       int
+	Size         uint64
+	FinalCRF     float64
+	FinalScore   float64
+	Round        int
+	Probes       []tq.ProbeEntry
+	Error        error
+	UsedSampling bool // Whether sample-based probing was used (final encode already done)
 }
 
 // tqEncodeWorker encodes chunks at the CRF determined by TQ search.
@@ -415,7 +466,7 @@ func tqMetricsWorker(
 		crf := pkg.TQState.LastCRF
 		probePath := filepath.Join(splitDir, fmt.Sprintf("%04d_%.2f.ivf", pkg.Chunk.Idx, crf))
 
-		score, frameScores, size, err := computeMetrics(pkg, probePath, proc, inf, width, height)
+		score, frameScores, size, err := computeMetrics(pkg, probePath, proc, width, height)
 		if err != nil {
 			doneChan <- tqResult{
 				ChunkIdx: pkg.Chunk.Idx,
@@ -440,18 +491,51 @@ func tqMetricsWorker(
 				probeEntries[i] = tq.ProbeEntry{CRF: p.CRF, Score: p.Score, Size: p.Size}
 			}
 
+			finalCRF := best.CRF
+			finalSize := best.Size
+
+			// When sampling was used, encode the full chunk at the determined CRF
+			if pkg.UseSampling {
+				// Derive workDir from splitDir (splitDir = workDir/split)
+				workDir := filepath.Dir(splitDir)
+				finalPath := chunk.IVFPath(workDir, pkg.Chunk.Idx)
+
+				debugf("Chunk %d: sample probing complete at CRF=%.0f, encoding full chunk", pkg.Chunk.Idx, finalCRF)
+
+				if err := encodeFinal(pkg, finalCRF, cfg, inf, finalPath, width, height); err != nil {
+					doneChan <- tqResult{
+						ChunkIdx: pkg.Chunk.Idx,
+						Error:    fmt.Errorf("failed to encode final chunk: %w", err),
+					}
+					continue
+				}
+
+				// Get actual file size from final encode
+				stat, err := os.Stat(finalPath)
+				if err != nil {
+					doneChan <- tqResult{
+						ChunkIdx: pkg.Chunk.Idx,
+						Error:    fmt.Errorf("failed to stat final chunk: %w", err),
+					}
+					continue
+				}
+				finalSize = uint64(stat.Size())
+			}
+
 			doneChan <- tqResult{
-				ChunkIdx:   pkg.Chunk.Idx,
-				Frames:     pkg.FrameCount,
-				Size:       best.Size,
-				FinalCRF:   best.CRF,
-				FinalScore: best.Score,
-				Round:      pkg.TQState.Round,
-				Probes:     probeEntries,
+				ChunkIdx:    pkg.Chunk.Idx,
+				Frames:      pkg.FrameCount,
+				Size:        finalSize,
+				FinalCRF:    finalCRF,
+				FinalScore:  best.Score,
+				Round:       pkg.TQState.Round,
+				Probes:      probeEntries,
+				UsedSampling: pkg.UseSampling,
 			}
 
 			// Clear YUV data to free memory
 			pkg.YUV = nil
+			pkg.SampleYUV = nil
 		} else {
 			// Need more iterations
 			select {
@@ -540,12 +624,14 @@ func tqCoordinator(
 				}
 			}
 
-			// Copy best probe to final output
-			bestPath := filepath.Join(workDir, "split", fmt.Sprintf("%04d_%.2f.ivf", result.ChunkIdx, result.FinalCRF))
-			finalPath := chunk.IVFPath(workDir, result.ChunkIdx)
-			if err := copyFile(bestPath, finalPath); err != nil {
-				// Log error but continue
-				continue
+			// Copy best probe to final output (skip if sampling already encoded to final path)
+			if !result.UsedSampling {
+				bestPath := filepath.Join(workDir, "split", fmt.Sprintf("%04d_%.2f.ivf", result.ChunkIdx, result.FinalCRF))
+				finalPath := chunk.IVFPath(workDir, result.ChunkIdx)
+				if err := copyFile(bestPath, finalPath); err != nil {
+					// Log error but continue
+					continue
+				}
 			}
 
 			// Update resume info
@@ -574,7 +660,72 @@ func tqCoordinator(
 }
 
 // encodeProbe encodes a chunk at a specific CRF value.
+// When sampling is enabled, only the sample portion is encoded for probing.
 func encodeProbe(
+	pkg *worker.WorkPkg,
+	crf float64,
+	cfg *TQEncodeConfig,
+	inf *ffms.VidInf,
+	outputPath string,
+	width, height uint32,
+) error {
+	// Use sample data for probing if sampling is enabled
+	var yuvData []byte
+	var frameCount int
+	if pkg.UseSampling && pkg.SampleYUV != nil {
+		yuvData = pkg.SampleYUV
+		frameCount = pkg.SampleFrameCount
+	} else {
+		yuvData = pkg.YUV
+		frameCount = pkg.FrameCount
+	}
+
+	encCfg := &encoder.EncConfig{
+		Inf:                   inf,
+		CRF:                   float32(crf),
+		Preset:                cfg.Preset,
+		Tune:                  cfg.Tune,
+		Output:                outputPath,
+		GrainTable:            cfg.GrainTable,
+		Width:                 width,
+		Height:                height,
+		Frames:                frameCount,
+		ACBias:                cfg.ACBias,
+		EnableVarianceBoost:   cfg.EnableVarianceBoost,
+		VarianceBoostStrength: cfg.VarianceBoostStrength,
+		VarianceOctile:        cfg.VarianceOctile,
+		LowPriority:           cfg.LowPriority,
+	}
+
+	cmd := encoder.MakeSvtCmd(encCfg)
+
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return fmt.Errorf("failed to create stdin pipe: %w", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start encoder: %w", err)
+	}
+
+	_, err = io.Copy(stdin, &yuvReader{data: yuvData})
+	_ = stdin.Close()
+
+	if err != nil {
+		_ = cmd.Wait()
+		return fmt.Errorf("failed to write YUV data: %w", err)
+	}
+
+	if err := cmd.Wait(); err != nil {
+		return fmt.Errorf("encoder failed: %w", err)
+	}
+
+	return nil
+}
+
+// encodeFinal encodes the full chunk at the determined CRF value.
+// This is called after probing determines the optimal CRF.
+func encodeFinal(
 	pkg *worker.WorkPkg,
 	crf float64,
 	cfg *TQEncodeConfig,
@@ -626,11 +777,11 @@ func encodeProbe(
 }
 
 // computeMetrics computes SSIMULACRA2 scores by comparing source YUV to encoded output.
+// When sampling is enabled, only the measured frames (after warmup) are compared.
 func computeMetrics(
 	pkg *worker.WorkPkg,
 	probePath string,
 	proc *vship.Processor,
-	inf *ffms.VidInf,
 	width, height uint32,
 ) (score float64, frameScores []float64, size uint64, err error) {
 	// Get file size
@@ -663,12 +814,28 @@ func computeMetrics(
 	uvSize := ySize / 4
 	frameSize := ySize + 2*uvSize
 
-	frameScores = make([]float64, pkg.FrameCount)
+	// Determine frames to measure
+	var measureCount int
+	var srcFrameOffset int // Offset in source YUV (full chunk)
+	var encFrameOffset int // Offset in encoded probe
+	if pkg.UseSampling && pkg.SampleYUV != nil {
+		// Skip warmup frames when measuring
+		measureCount = pkg.MeasureFrameCount
+		srcFrameOffset = pkg.SampleOffset + pkg.WarmupFrames
+		encFrameOffset = pkg.WarmupFrames
+	} else {
+		measureCount = pkg.FrameCount
+		srcFrameOffset = 0
+		encFrameOffset = 0
+	}
+
+	frameScores = make([]float64, measureCount)
 	var total float64
 
-	for i := 0; i < pkg.FrameCount; i++ {
-		// Get source frame from package
-		srcOffset := i * frameSize
+	for i := 0; i < measureCount; i++ {
+		// Get source frame from full chunk YUV
+		srcIdx := srcFrameOffset + i
+		srcOffset := srcIdx * frameSize
 		srcY := unsafe.Pointer(&pkg.YUV[srcOffset])
 		srcU := unsafe.Pointer(&pkg.YUV[srcOffset+ySize])
 		srcV := unsafe.Pointer(&pkg.YUV[srcOffset+ySize+uvSize])
@@ -680,10 +847,11 @@ func computeMetrics(
 			int64(width) / 2 * int64(pixelSize),
 		}
 
-		// Get encoded frame
-		frame, err := ffms.GetFrame(probeSrc, i)
+		// Get encoded frame (skip warmup frames if sampling)
+		encIdx := encFrameOffset + i
+		frame, err := ffms.GetFrame(probeSrc, encIdx)
 		if err != nil {
-			return 0, nil, 0, fmt.Errorf("failed to get frame %d: %w", i, err)
+			return 0, nil, 0, fmt.Errorf("failed to get frame %d: %w", encIdx, err)
 		}
 
 		disPlanes := [3]unsafe.Pointer{frame.Data[0], frame.Data[1], frame.Data[2]}
@@ -692,14 +860,14 @@ func computeMetrics(
 		// Compute SSIMULACRA2
 		s, err := proc.ComputeSSIMULACRA2(srcPlanes, disPlanes, srcStrides, disStrides)
 		if err != nil {
-			return 0, nil, 0, fmt.Errorf("failed to compute SSIMULACRA2 for frame %d: %w", i, err)
+			return 0, nil, 0, fmt.Errorf("failed to compute SSIMULACRA2 for frame %d: %w", encIdx, err)
 		}
 
 		frameScores[i] = s
 		total += s
 	}
 
-	score = total / float64(pkg.FrameCount)
+	score = total / float64(measureCount)
 	return score, frameScores, size, nil
 }
 

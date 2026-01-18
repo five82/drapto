@@ -166,9 +166,12 @@ func ProcessChunked(
 		tqCfg.MetricMode = cfg.MetricMode
 
 		tqEncCfg := &encode.TQEncodeConfig{
-			EncodeConfig:  *encCfg,
-			TQConfig:      tqCfg,
-			MetricWorkers: cfg.MetricWorkers,
+			EncodeConfig:      *encCfg,
+			TQConfig:          tqCfg,
+			MetricWorkers:     cfg.MetricWorkers,
+			SampleDuration:    cfg.SampleDuration,
+			SampleMinChunk:    cfg.SampleMinChunk,
+			DisableTQSampling: cfg.DisableTQSampling,
 		}
 
 		encodeErr = encode.EncodeAllTQ(

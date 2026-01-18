@@ -16,7 +16,7 @@ import (
 
 // DefaultSceneThreshold is the default threshold for scene change detection.
 // Higher values = fewer scene changes detected. Range is 0.0 to 1.0.
-const DefaultSceneThreshold = 0.4
+const DefaultSceneThreshold = 0.5
 
 // DetectScenes runs ffmpeg's scene detection filter on a video file.
 // Returns a sorted slice of frame numbers where scene changes occur.
