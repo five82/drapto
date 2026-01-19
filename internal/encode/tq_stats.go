@@ -16,17 +16,17 @@ type TQStats struct {
 	MinRounds int
 	MaxRounds int
 
-	// Score distribution
-	ScoreBuckets map[string]int
-
 	// Prediction accuracy
 	AvgPredictionDelta float64
 	MaxPredictionDelta float64
 	PredictedChunks    int
 
 	// Chunk lengths
-	ChunkFrames    []int
-	ChunkDurations []float64
+	MinFrames int
+	MaxFrames int
+	MinDur    float64
+	MaxDur    float64
+	NumChunks int
 
 	// CRF distribution
 	CRFMin    float64
@@ -64,57 +64,50 @@ func ComputeTQStats(results []tqResult, fps float64, maxRounds int) *TQStats {
 	}
 
 	stats := &TQStats{
-		ScoreBuckets:    make(map[string]int),
 		RoundsBreakdown: make(map[int]int),
-		ChunkFrames:     make([]int, 0, len(results)),
-		ChunkDurations:  make([]float64, 0, len(results)),
+		MinRounds:       math.MaxInt,
+		MinFrames:       math.MaxInt,
+		MinDur:          math.MaxFloat64,
 	}
 
 	var totalRounds int
-	stats.MinRounds = math.MaxInt
-	stats.MaxRounds = 0
-
+	var crfSum, totalPredDelta, totalSamplingDelta float64
 	var crfValues []float64
-	var totalPredDelta float64
-	var totalSamplingDelta float64
+	var validCount int
 
 	for _, r := range results {
 		if r.Error != nil {
 			continue
 		}
+		validCount++
 
 		// Iterations
 		totalRounds += r.Round
-		if r.Round < stats.MinRounds {
-			stats.MinRounds = r.Round
-		}
-		if r.Round > stats.MaxRounds {
-			stats.MaxRounds = r.Round
-		}
+		stats.MinRounds = min(stats.MinRounds, r.Round)
+		stats.MaxRounds = max(stats.MaxRounds, r.Round)
 
-		// Rounds breakdown
-		roundKey := r.Round
-		if roundKey >= 4 {
-			roundKey = 4 // Group 4+ together
-		}
+		// Rounds breakdown (group 4+ together)
+		roundKey := min(r.Round, 4)
 		stats.RoundsBreakdown[roundKey]++
 
-		// CRF values for distribution
+		// CRF values
 		crfValues = append(crfValues, r.FinalCRF)
+		crfSum += r.FinalCRF
 
 		// Chunk lengths
-		stats.ChunkFrames = append(stats.ChunkFrames, r.Frames)
+		stats.MinFrames = min(stats.MinFrames, r.Frames)
+		stats.MaxFrames = max(stats.MaxFrames, r.Frames)
 		if fps > 0 {
-			stats.ChunkDurations = append(stats.ChunkDurations, float64(r.Frames)/fps)
+			dur := float64(r.Frames) / fps
+			stats.MinDur = min(stats.MinDur, dur)
+			stats.MaxDur = max(stats.MaxDur, dur)
 		}
 
 		// Prediction accuracy (only for chunks with predictions)
 		if r.PredictedCRF > 0 {
 			delta := math.Abs(r.PredictedCRF - r.FinalCRF)
 			totalPredDelta += delta
-			if delta > stats.MaxPredictionDelta {
-				stats.MaxPredictionDelta = delta
-			}
+			stats.MaxPredictionDelta = max(stats.MaxPredictionDelta, delta)
 			stats.PredictedChunks++
 		}
 
@@ -122,9 +115,7 @@ func ComputeTQStats(results []tqResult, fps float64, maxRounds int) *TQStats {
 		if r.UsedSampling && r.FullChunkScore > 0 {
 			delta := math.Abs(r.FinalScore - r.FullChunkScore)
 			totalSamplingDelta += delta
-			if delta > stats.MaxSamplingDelta {
-				stats.MaxSamplingDelta = delta
-			}
+			stats.MaxSamplingDelta = max(stats.MaxSamplingDelta, delta)
 			stats.SampledChunks++
 		}
 
@@ -144,14 +135,9 @@ func ComputeTQStats(results []tqResult, fps float64, maxRounds int) *TQStats {
 		}
 	}
 
-	// Calculate averages
-	validCount := len(results)
-	for _, r := range results {
-		if r.Error != nil {
-			validCount--
-		}
-	}
+	stats.NumChunks = validCount
 
+	// Calculate averages
 	if validCount > 0 {
 		stats.AvgRounds = float64(totalRounds) / float64(validCount)
 	}
@@ -166,17 +152,11 @@ func ComputeTQStats(results []tqResult, fps float64, maxRounds int) *TQStats {
 	if len(crfValues) > 0 {
 		stats.CRFMin = crfValues[0]
 		stats.CRFMax = crfValues[0]
-		var sum float64
 		for _, crf := range crfValues {
-			if crf < stats.CRFMin {
-				stats.CRFMin = crf
-			}
-			if crf > stats.CRFMax {
-				stats.CRFMax = crf
-			}
-			sum += crf
+			stats.CRFMin = min(stats.CRFMin, crf)
+			stats.CRFMax = max(stats.CRFMax, crf)
 		}
-		stats.CRFMean = sum / float64(len(crfValues))
+		stats.CRFMean = crfSum / float64(len(crfValues))
 
 		// Standard deviation
 		var variance float64
@@ -187,9 +167,15 @@ func ComputeTQStats(results []tqResult, fps float64, maxRounds int) *TQStats {
 		stats.CRFStdDev = math.Sqrt(variance / float64(len(crfValues)))
 	}
 
-	// Handle edge case where no valid rounds were found
+	// Handle edge case where no valid results were found
 	if stats.MinRounds == math.MaxInt {
 		stats.MinRounds = 0
+	}
+	if stats.MinFrames == math.MaxInt {
+		stats.MinFrames = 0
+	}
+	if stats.MinDur == math.MaxFloat64 {
+		stats.MinDur = 0
 	}
 
 	return stats
@@ -230,7 +216,7 @@ func ComputeScoreDistribution(results []tqResult, targetMin, targetMax float64) 
 }
 
 // OutputTQStats outputs the TQ statistics to the reporter.
-func OutputTQStats(stats *TQStats, rep reporter.Reporter, targetMin, targetMax float64, results []tqResult) {
+func OutputTQStats(stats *TQStats, rep reporter.Reporter, targetMin, targetMax float64, results []tqResult, fps float64) {
 	if stats == nil {
 		return
 	}
@@ -243,29 +229,7 @@ func OutputTQStats(stats *TQStats, rep reporter.Reporter, targetMin, targetMax f
 		stats.AvgRounds, stats.MinRounds, stats.MaxRounds))
 
 	// Score distribution
-	scoreBuckets := ComputeScoreDistribution(results, targetMin, targetMax)
-	rep.Verbose(fmt.Sprintf("Score distribution (target %.0f-%.0f):", targetMin, targetMax))
-
-	// Sort bucket keys for consistent output
-	var bucketKeys []string
-	for k := range scoreBuckets {
-		if k != "below" && k != "above" {
-			bucketKeys = append(bucketKeys, k)
-		}
-	}
-	sort.Strings(bucketKeys)
-
-	if scoreBuckets["below"] > 0 {
-		rep.Verbose(fmt.Sprintf("  <%.0f: %d chunks", targetMin, scoreBuckets["below"]))
-	}
-	for _, k := range bucketKeys {
-		if scoreBuckets[k] > 0 {
-			rep.Verbose(fmt.Sprintf("  %s: %d chunks", k, scoreBuckets[k]))
-		}
-	}
-	if scoreBuckets["above"] > 0 {
-		rep.Verbose(fmt.Sprintf("  >%.0f: %d chunks", targetMax, scoreBuckets["above"]))
-	}
+	outputScoreDistribution(rep, results, targetMin, targetMax)
 
 	// Prediction accuracy
 	if stats.PredictedChunks > 0 {
@@ -274,37 +238,16 @@ func OutputTQStats(stats *TQStats, rep reporter.Reporter, targetMin, targetMax f
 	}
 
 	// Chunk lengths
-	if len(stats.ChunkFrames) > 0 {
-		minFrames, maxFrames := stats.ChunkFrames[0], stats.ChunkFrames[0]
-		minDur, maxDur := stats.ChunkDurations[0], stats.ChunkDurations[0]
-		for i, f := range stats.ChunkFrames {
-			if f < minFrames {
-				minFrames = f
-			}
-			if f > maxFrames {
-				maxFrames = f
-			}
-			if i < len(stats.ChunkDurations) {
-				if stats.ChunkDurations[i] < minDur {
-					minDur = stats.ChunkDurations[i]
-				}
-				if stats.ChunkDurations[i] > maxDur {
-					maxDur = stats.ChunkDurations[i]
-				}
-			}
-		}
+	if stats.NumChunks > 0 {
 		rep.Verbose(fmt.Sprintf("Chunk lengths: %d chunks, frames %d-%d, duration %.1fs-%.1fs",
-			len(stats.ChunkFrames), minFrames, maxFrames, minDur, maxDur))
+			stats.NumChunks, stats.MinFrames, stats.MaxFrames, stats.MinDur, stats.MaxDur))
 
 		// Per-chunk details
-		for i, r := range results {
+		for _, r := range results {
 			if r.Error != nil {
 				continue
 			}
-			var dur float64
-			if i < len(stats.ChunkDurations) {
-				dur = stats.ChunkDurations[i]
-			}
+			dur := float64(r.Frames) / fps
 			rep.Verbose(fmt.Sprintf("  Chunk %d: %d frames (%.1fs)", r.ChunkIdx, r.Frames, dur))
 		}
 	}
@@ -314,17 +257,7 @@ func OutputTQStats(stats *TQStats, rep reporter.Reporter, targetMin, targetMax f
 		stats.CRFMin, stats.CRFMax, stats.CRFMean, stats.CRFStdDev))
 
 	// Rounds breakdown
-	rep.Verbose("Rounds breakdown:")
-	for round := 1; round <= 4; round++ {
-		count := stats.RoundsBreakdown[round]
-		if count > 0 {
-			if round == 4 {
-				rep.Verbose(fmt.Sprintf("  4+ rounds: %d chunks", count))
-			} else {
-				rep.Verbose(fmt.Sprintf("  %d round%s: %d chunks", round, pluralS(round), count))
-			}
-		}
-	}
+	outputRoundsBreakdown(rep, stats.RoundsBreakdown)
 
 	// Sampling accuracy
 	if stats.SampledChunks > 0 {
@@ -338,20 +271,69 @@ func OutputTQStats(stats *TQStats, rep reporter.Reporter, targetMin, targetMax f
 	}
 
 	// Failed convergence
-	if len(stats.FailedChunks) > 0 {
-		rep.Verbose(fmt.Sprintf("Failed convergence: %d chunks hit max rounds", len(stats.FailedChunks)))
-		for _, fc := range stats.FailedChunks {
-			rep.Verbose(fmt.Sprintf("  Chunk %d: final CRF=%.0f, score=%.1f",
-				fc.ChunkIdx, fc.FinalCRF, fc.FinalScore))
-			rep.Verbose("    Probe history:")
-			for _, p := range fc.Probes {
-				rep.Verbose(fmt.Sprintf("      CRF %.0f -> %.1f", p.CRF, p.Score))
-			}
-		}
-	}
+	outputFailedChunks(rep, stats.FailedChunks)
 
 	rep.Verbose("=== End TQ Debug Statistics ===")
 	rep.Verbose("")
+}
+
+// outputScoreDistribution outputs score distribution buckets.
+func outputScoreDistribution(rep reporter.Reporter, results []tqResult, targetMin, targetMax float64) {
+	buckets := ComputeScoreDistribution(results, targetMin, targetMax)
+	rep.Verbose(fmt.Sprintf("Score distribution (target %.0f-%.0f):", targetMin, targetMax))
+
+	// Sort bucket keys for consistent output
+	var bucketKeys []string
+	for k := range buckets {
+		if k != "below" && k != "above" {
+			bucketKeys = append(bucketKeys, k)
+		}
+	}
+	sort.Strings(bucketKeys)
+
+	if buckets["below"] > 0 {
+		rep.Verbose(fmt.Sprintf("  <%.0f: %d chunks", targetMin, buckets["below"]))
+	}
+	for _, k := range bucketKeys {
+		if buckets[k] > 0 {
+			rep.Verbose(fmt.Sprintf("  %s: %d chunks", k, buckets[k]))
+		}
+	}
+	if buckets["above"] > 0 {
+		rep.Verbose(fmt.Sprintf("  >%.0f: %d chunks", targetMax, buckets["above"]))
+	}
+}
+
+// outputRoundsBreakdown outputs the rounds breakdown.
+func outputRoundsBreakdown(rep reporter.Reporter, breakdown map[int]int) {
+	rep.Verbose("Rounds breakdown:")
+	for round := 1; round <= 4; round++ {
+		count := breakdown[round]
+		if count == 0 {
+			continue
+		}
+		if round == 4 {
+			rep.Verbose(fmt.Sprintf("  4+ rounds: %d chunks", count))
+		} else {
+			rep.Verbose(fmt.Sprintf("  %d round%s: %d chunks", round, pluralS(round), count))
+		}
+	}
+}
+
+// outputFailedChunks outputs details for chunks that failed to converge.
+func outputFailedChunks(rep reporter.Reporter, failed []FailedChunkInfo) {
+	if len(failed) == 0 {
+		return
+	}
+	rep.Verbose(fmt.Sprintf("Failed convergence: %d chunks hit max rounds", len(failed)))
+	for _, fc := range failed {
+		rep.Verbose(fmt.Sprintf("  Chunk %d: final CRF=%.0f, score=%.1f",
+			fc.ChunkIdx, fc.FinalCRF, fc.FinalScore))
+		rep.Verbose("    Probe history:")
+		for _, p := range fc.Probes {
+			rep.Verbose(fmt.Sprintf("      CRF %.0f -> %.1f", p.CRF, p.Score))
+		}
+	}
 }
 
 func pluralS(n int) string {

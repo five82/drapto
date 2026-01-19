@@ -693,7 +693,7 @@ func tqCoordinator(
 	if cfg.Verbose && len(allResults) > 0 {
 		fps := float64(inf.FPSNum) / float64(inf.FPSDen)
 		stats := ComputeTQStats(allResults, fps, cfg.TQConfig.MaxRounds)
-		OutputTQStats(stats, rep, cfg.TQConfig.TargetMin, cfg.TQConfig.TargetMax, allResults)
+		OutputTQStats(stats, rep, cfg.TQConfig.TargetMin, cfg.TQConfig.TargetMax, allResults, fps)
 	}
 }
 
