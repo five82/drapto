@@ -117,6 +117,9 @@ type Config struct {
 	SampleDuration    float64 // TQ probe sample duration in seconds
 	SampleMinChunk    float64 // Minimum chunk duration in seconds to use sampling
 	DisableTQSampling bool    // Disable sample-based probing (use full chunks)
+
+	// Debug options
+	Verbose bool // Enable verbose output and TQ debug statistics
 }
 
 // NewConfig creates a new Config with default values.

@@ -277,6 +277,9 @@ func executeEncode(ea encodeArgs) error {
 	cfg.SampleMinChunk = ea.sampleMinChunk
 	cfg.DisableTQSampling = ea.disableTQSampling
 
+	// Debug options
+	cfg.Verbose = ea.verbose
+
 	// Validate configuration
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("invalid configuration: %w", err)

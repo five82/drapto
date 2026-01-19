@@ -38,6 +38,9 @@ type State struct {
 
 	// LastCRF is the CRF value used in the most recent probe.
 	LastCRF float64
+
+	// BoundsExpanded is set when the search bounds are expanded during convergence.
+	BoundsExpanded bool
 }
 
 // NewState creates a new TQ state for a chunk.

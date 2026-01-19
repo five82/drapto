@@ -23,6 +23,9 @@ type WorkPkg struct {
 	WarmupFrames      int    // Frames to skip when measuring (0.5s worth)
 	MeasureFrameCount int    // Frames to actually measure (excludes warmup)
 	UseSampling       bool   // Whether sampling is enabled for this chunk
+
+	// Stats tracking fields
+	PredictedCRF float64 // Predicted CRF for stats computation
 }
 
 // WarmupDuration is the fixed warmup period in seconds.

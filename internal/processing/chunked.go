@@ -186,6 +186,7 @@ func ProcessChunked(
 			SampleDuration:    cfg.SampleDuration,
 			SampleMinChunk:    cfg.SampleMinChunk,
 			DisableTQSampling: cfg.DisableTQSampling,
+			Verbose:           cfg.Verbose,
 		}
 
 		encodeErr = encode.EncodeAllTQ(

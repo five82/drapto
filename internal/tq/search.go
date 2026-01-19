@@ -61,6 +61,7 @@ func UpdateBounds(state *State, score, target, tolerance float64) bool {
 			// Need lower CRF - expand downward from last CRF
 			state.SearchMin = max(state.QPMin, state.LastCRF-5)
 			state.SearchMax = state.LastCRF - 1
+			state.BoundsExpanded = true
 			// If still crossed after expansion, we're at the limit
 			if state.SearchMin > state.SearchMax {
 				return true
@@ -70,6 +71,7 @@ func UpdateBounds(state *State, score, target, tolerance float64) bool {
 			// Need higher CRF - expand upward from last CRF
 			state.SearchMin = state.LastCRF + 1
 			state.SearchMax = min(state.QPMax, state.LastCRF+5)
+			state.BoundsExpanded = true
 			// If still crossed after expansion, we're at the limit
 			if state.SearchMin > state.SearchMax {
 				return true
