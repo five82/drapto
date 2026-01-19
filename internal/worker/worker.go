@@ -25,21 +25,6 @@ type WorkPkg struct {
 	UseSampling       bool   // Whether sampling is enabled for this chunk
 }
 
-// FrameSize returns the size of a single frame in bytes.
-func (w *WorkPkg) FrameSize() int {
-	if w.Is10Bit {
-		// YUV420P10LE: Y = w*h*2, U = w*h/2, V = w*h/2
-		return int(w.Width) * int(w.Height) * 3
-	}
-	// YUV420P: Y = w*h, U = w*h/4, V = w*h/4
-	return int(w.Width) * int(w.Height) * 3 / 2
-}
-
-// TotalSize returns the total size of all frames in bytes.
-func (w *WorkPkg) TotalSize() int {
-	return w.FrameSize() * w.FrameCount
-}
-
 // WarmupDuration is the fixed warmup period in seconds.
 // This time is encoded but not measured to avoid encoder warmup artifacts.
 const WarmupDuration = 0.5
@@ -104,22 +89,6 @@ func NewSemaphore(count int) *Semaphore {
 	return s
 }
 
-// Acquire blocks until a permit is available, then takes it.
-func (s *Semaphore) Acquire() {
-	<-s.permits
-}
-
-// TryAcquire attempts to acquire a permit without blocking.
-// Returns true if successful, false if no permits available.
-func (s *Semaphore) TryAcquire() bool {
-	select {
-	case <-s.permits:
-		return true
-	default:
-		return false
-	}
-}
-
 // Release returns a permit to the semaphore.
 func (s *Semaphore) Release() {
 	select {
@@ -127,11 +96,6 @@ func (s *Semaphore) Release() {
 	default:
 		// Semaphore is full, this shouldn't happen in normal use
 	}
-}
-
-// Available returns the number of available permits.
-func (s *Semaphore) Available() int {
-	return len(s.permits)
 }
 
 // Chan returns the underlying permit channel for use with select.

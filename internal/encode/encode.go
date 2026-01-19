@@ -2,9 +2,9 @@
 package encode
 
 import (
+	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -133,10 +133,10 @@ func EncodeAll(
 	var encoderWg sync.WaitGroup
 	for i := 0; i < cfg.Workers; i++ {
 		encoderWg.Add(1)
-		go func(workerID int) {
+		go func() {
 			defer encoderWg.Done()
 			encodeWorker(ctx, workChan, resultChan, sem, cfg, inf, workDir, width, height)
-		}(i)
+		}()
 	}
 
 	// Start result collector
@@ -350,7 +350,7 @@ func encodeChunk(
 	}
 
 	// Write YUV data to encoder
-	_, err = io.Copy(stdin, &yuvReader{data: pkg.YUV})
+	_, err = bytes.NewReader(pkg.YUV).WriteTo(stdin)
 	_ = stdin.Close()
 
 	if err != nil {
@@ -383,19 +383,4 @@ func encodeChunk(
 		Frames:   pkg.FrameCount,
 		Size:     uint64(stat.Size()),
 	}
-}
-
-// yuvReader wraps a byte slice to implement io.Reader.
-type yuvReader struct {
-	data []byte
-	pos  int
-}
-
-func (r *yuvReader) Read(p []byte) (n int, err error) {
-	if r.pos >= len(r.data) {
-		return 0, io.EOF
-	}
-	n = copy(p, r.data[r.pos:])
-	r.pos += n
-	return n, nil
 }

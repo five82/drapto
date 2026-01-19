@@ -194,26 +194,6 @@ func GetResume(workDir string) (*ResumeInf, error) {
 	return &ResumeInf{ChunksDone: chunks}, nil
 }
 
-// SaveResume saves resume information to the work directory.
-func SaveResume(data *ResumeInf, workDir string) error {
-	donePath := filepath.Join(workDir, "done.txt")
-
-	file, err := os.Create(donePath)
-	if err != nil {
-		return fmt.Errorf("failed to create resume file: %w", err)
-	}
-	defer func() { _ = file.Close() }()
-
-	for _, chunk := range data.ChunksDone {
-		_, err := fmt.Fprintf(file, "%d %d %d\n", chunk.Idx, chunk.Frames, chunk.Size)
-		if err != nil {
-			return fmt.Errorf("failed to write resume data: %w", err)
-		}
-	}
-
-	return nil
-}
-
 // AppendDone appends a completed chunk to the resume file.
 func AppendDone(chunk ChunkComp, workDir string) error {
 	donePath := filepath.Join(workDir, "done.txt")

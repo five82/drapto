@@ -2,6 +2,7 @@
 package encode
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -709,7 +710,7 @@ func encodeTQChunk(
 		return fmt.Errorf("failed to start encoder: %w", err)
 	}
 
-	_, err = io.Copy(stdin, &yuvReader{data: yuvData})
+	_, err = bytes.NewReader(yuvData).WriteTo(stdin)
 	_ = stdin.Close()
 
 	if err != nil {
