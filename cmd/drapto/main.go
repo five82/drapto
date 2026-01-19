@@ -218,7 +218,7 @@ func executeEncode(ea encodeArgs) error {
 	}
 
 	// Setup file logging
-	logger, err := logging.Setup(logDir, ea.verbose, ea.noLog)
+	logger, err := logging.Setup(logDir, ea.verbose, ea.noLog, os.Args)
 	if err != nil {
 		return fmt.Errorf("failed to setup logging: %w", err)
 	}

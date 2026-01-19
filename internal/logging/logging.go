@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -42,7 +43,8 @@ type Logger struct {
 
 // Setup creates a new logger that writes to a timestamped log file.
 // Returns nil if logging is disabled (noLog=true).
-func Setup(logDir string, verbose, noLog bool) (*Logger, error) {
+// cmdArgs should be os.Args to log the command that was run.
+func Setup(logDir string, verbose, noLog bool, cmdArgs []string) (*Logger, error) {
 	if noLog {
 		return nil, nil
 	}
@@ -78,6 +80,7 @@ func Setup(logDir string, verbose, noLog bool) (*Logger, error) {
 	}
 
 	// Log startup
+	l.Info("Command: %s", strings.Join(cmdArgs, " "))
 	l.Info("Drapto encoder starting")
 	if verbose {
 		l.Info("Debug level logging enabled")
