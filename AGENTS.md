@@ -13,17 +13,17 @@ Do not modify this header.
 
 ## Project Snapshot
 
-Drapto is an **FFmpeg wrapper** for AV1 encoding with SVT-AV1 and Opus audio. It provides opinionated defaults, automatic crop detection, HDR preservation, and post-encode validation.
+Drapto is an **AV1 encoding tool** using FFMS2 + SvtAv1EncApp for parallel chunked encoding with scene-based splitting. It provides opinionated defaults, automatic crop detection, HDR preservation, Target Quality mode with GPU-accelerated SSIMULACRA2, and post-encode validation.
 
 - **Scope**: Single-developer hobby project - avoid over-engineering
-- **Environment**: Go 1.25+, FFmpeg (libsvtav1, libopus), MediaInfo
+- **Environment**: Go 1.25+, FFmpeg (libopus), SvtAv1EncApp, FFMS2, MediaInfo
 - **Design**: Library-first for Spindle embedding, with CLI wrapper
 
 ## Related Repos
 
 | Repo | Path | Role |
 |------|------|------|
-| drapto | `~/projects/drapto/` | FFmpeg encoding wrapper (this repo) |
+| drapto | `~/projects/drapto/` | AV1 encoding tool (this repo) |
 | spindle | `~/projects/spindle/` | Orchestrator that shells out to Drapto during ENCODING |
 | flyer | `~/projects/flyer/` | Read-only TUI for Spindle (not a Drapto consumer) |
 
@@ -43,16 +43,25 @@ golangci-lint run                     # Lint
 
 ```
 drapto.go, events.go     # Public API: Encoder, Options, EventHandler
-cmd/drapto/main.go       # CLI wrapper (Cobra)
+cmd/drapto/main.go       # CLI wrapper (flag-based)
 internal/
-├── config/              # Configuration and presets
-├── ffmpeg/              # FFmpeg command builder + executor
+├── config/              # Configuration and defaults
+├── discovery/           # Video file discovery
+├── encoding/            # Encoder instantiation and setup
+├── encode/              # Parallel chunk encoding pipeline (standard + TQ mode)
+├── chunk/               # Chunk management and scene splitting
+├── keyframe/            # Scene detection and keyframe extraction
+├── worker/              # Worker pool for parallel encoding
+├── tq/                  # Target Quality configuration and search
+├── vship/               # GPU metric computation (SSIMULACRA2)
+├── ffms/                # FFMS2 bindings for frame-accurate indexing
+├── ffmpeg/              # FFmpeg parameter building (audio, filters)
 ├── ffprobe/             # Media analysis
 ├── mediainfo/           # HDR detection
 ├── processing/          # Orchestrator, crop detection, audio
 ├── validation/          # Post-encode validation checks
 ├── reporter/            # Progress: Terminal, Composite
-├── discovery/           # Video file discovery
+├── logging/             # File logging setup
 └── util/                # Formatting, file utils
 ```
 
@@ -60,7 +69,11 @@ internal/
 
 | Task | Start Here |
 |------|------------|
-| Encoding parameters | `internal/config/config.go`, `internal/ffmpeg/command.go` |
+| Encoding parameters | `internal/config/config.go`, `internal/encoding/` |
+| Parallel encoding | `internal/encode/encode.go`, `internal/encode/encode_tq.go` |
+| Scene detection | `internal/keyframe/keyframe.go` |
+| Chunk management | `internal/chunk/chunk.go` |
+| Target Quality | `internal/tq/tq.go`, `internal/vship/vship.go` |
 | Crop detection | `internal/processing/crop.go` |
 | Validation checks | `internal/validation/validate.go` |
 | Terminal output | `internal/reporter/terminal.go` |

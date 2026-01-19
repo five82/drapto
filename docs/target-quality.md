@@ -106,10 +106,15 @@ drapto encode -i uhd_hdr.mkv -o output/ -t 74-78
 
 ```
 Target Quality Options:
-  -t, --target <RANGE>   Target SSIMULACRA2 quality range (e.g., "70-75")
-  --qp <RANGE>           CRF search range. Default: 8-48
-  --metric-workers <N>   Number of GPU metric workers. Default: 1
-  --metric-mode <MODE>   Metric aggregation mode. Default: mean
+  -t, --target <RANGE>       Target SSIMULACRA2 quality range (e.g., "70-75")
+  --qp <RANGE>               CRF search range. Default: 8-48
+  --metric-workers <N>       Number of GPU metric workers. Default: 1
+  --metric-mode <MODE>       Metric aggregation mode. Default: mean
+
+Sample-Based Probing Options:
+  --sample-duration <N>      Seconds to sample for TQ probing. Default: 3.0
+  --sample-min-chunk <N>     Minimum chunk duration to use sampling. Default: 6.0
+  --no-tq-sampling           Disable sample-based probing (use full chunks)
 ```
 
 ### --target (required for TQ mode)
@@ -151,6 +156,33 @@ How to aggregate per-frame scores into a chunk score. Default: `mean`
 ```
 
 Using `p5` or `p10` ensures even the worst frames meet quality standards, useful for content with highly variable complexity.
+
+### --sample-duration
+Duration in seconds to sample from each chunk for TQ probing. Default: `3.0`
+
+```bash
+--sample-duration 5.0   # Sample 5 seconds per chunk
+```
+
+Sample-based probing encodes only a portion of each chunk during quality search, then encodes the full chunk at the discovered CRF. This significantly speeds up the quality search process.
+
+### --sample-min-chunk
+Minimum chunk duration in seconds required to use sampling. Default: `6.0`
+
+```bash
+--sample-min-chunk 10.0   # Only sample chunks longer than 10 seconds
+```
+
+For chunks shorter than this threshold, full-chunk probing is used regardless of `--sample-duration`. This ensures representative quality measurements on short scenes.
+
+### --no-tq-sampling
+Disable sample-based probing entirely. When set, full chunks are used for all TQ probing iterations.
+
+```bash
+--no-tq-sampling   # Always probe full chunks (slower but more accurate)
+```
+
+Use this if you notice quality inconsistencies with sample-based probing, particularly for content with high temporal variation within scenes.
 
 ## Performance Considerations
 
