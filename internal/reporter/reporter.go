@@ -17,6 +17,7 @@ type Reporter interface {
 	BatchStarted(info BatchStartInfo)
 	FileProgress(context FileProgressContext)
 	BatchComplete(summary BatchSummary)
+	Verbose(message string)
 }
 
 // NullReporter is a no-op reporter that discards all updates.
@@ -37,3 +38,4 @@ func (NullReporter) OperationComplete(string)             {}
 func (NullReporter) BatchStarted(BatchStartInfo)          {}
 func (NullReporter) FileProgress(FileProgressContext)     {}
 func (NullReporter) BatchComplete(BatchSummary)           {}
+func (NullReporter) Verbose(string)                       {}

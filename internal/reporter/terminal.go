@@ -17,23 +17,32 @@ type TerminalReporter struct {
 	progress   *progressbar.ProgressBar
 	maxPercent float32
 	lastStage  string
+	verbose    bool
 	cyan       *color.Color
 	green      *color.Color
 	yellow     *color.Color
 	red        *color.Color
 	magenta    *color.Color
 	bold       *color.Color
+	dim        *color.Color
 }
 
-// NewTerminalReporter creates a new terminal reporter.
+// NewTerminalReporter creates a new terminal reporter with verbose mode disabled.
 func NewTerminalReporter() *TerminalReporter {
+	return NewTerminalReporterVerbose(false)
+}
+
+// NewTerminalReporterVerbose creates a new terminal reporter with configurable verbose mode.
+func NewTerminalReporterVerbose(verbose bool) *TerminalReporter {
 	return &TerminalReporter{
+		verbose: verbose,
 		cyan:    color.New(color.FgCyan, color.Bold),
 		green:   color.New(color.FgGreen),
 		yellow:  color.New(color.FgYellow, color.Bold),
 		red:     color.New(color.FgRed, color.Bold),
 		magenta: color.New(color.FgMagenta),
 		bold:    color.New(color.Bold),
+		dim:     color.New(color.Faint),
 	}
 }
 
@@ -273,4 +282,11 @@ func (r *TerminalReporter) BatchComplete(summary BatchSummary) {
 	for _, result := range summary.FileResults {
 		fmt.Printf("  - %s (%.1f%% reduction)\n", result.Filename, result.Reduction)
 	}
+}
+
+func (r *TerminalReporter) Verbose(message string) {
+	if !r.verbose {
+		return
+	}
+	fmt.Printf("  %s %s\n", r.dim.Sprint("›"), r.dim.Sprint(message))
 }

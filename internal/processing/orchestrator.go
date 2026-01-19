@@ -135,6 +135,12 @@ func ProcessVideos(
 			AudioDescription: audioDescription,
 		})
 
+		// Verbose video analysis details
+		rep.Verbose(fmt.Sprintf("Video duration: %.2f seconds", videoProps.DurationSecs))
+		if isHDR {
+			rep.Verbose(fmt.Sprintf("Color primaries: %s, transfer: %s", hdrInfo.ColourPrimaries, hdrInfo.TransferCharacteristics))
+		}
+
 		// Perform crop detection
 		cropResult := DetectCrop(inputPath, videoProps, cfg.CropMode == "none")
 

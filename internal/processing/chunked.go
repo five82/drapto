@@ -59,6 +59,7 @@ func ProcessChunked(
 
 	// Detect scene changes
 	rep.StageProgress(reporter.StageProgress{Stage: "Scene Detection", Message: "Detecting scene changes"})
+	rep.Verbose(fmt.Sprintf("Scene threshold: %.2f", cfg.SceneThreshold))
 	sceneFile, err := keyframe.ExtractKeyframesIfNeeded(
 		inputPath,
 		workDir,
@@ -76,10 +77,21 @@ func ProcessChunked(
 	if err != nil {
 		return fmt.Errorf("failed to load scenes: %w", err)
 	}
+	rep.Verbose(fmt.Sprintf("Detected %d scenes", len(scenes)))
 
 	// Convert scenes to chunks
 	chunks := chunk.Chunkify(scenes)
 	rep.StageProgress(reporter.StageProgress{Stage: "Chunking", Message: fmt.Sprintf("Split video into %d chunks", len(chunks))})
+
+	// Calculate average chunk duration for verbose output
+	fps := float64(vidInf.FPSNum) / float64(vidInf.FPSDen)
+	totalFrames := 0
+	for _, c := range chunks {
+		totalFrames += int(c.End - c.Start)
+	}
+	avgChunkFrames := float64(totalFrames) / float64(len(chunks))
+	avgChunkDuration := avgChunkFrames / fps
+	rep.Verbose(fmt.Sprintf("Average chunk duration: %.1fs (%d frames)", avgChunkDuration, int(avgChunkFrames)))
 
 	// Perform crop detection using existing drapto logic
 	cropResult := DetectCrop(inputPath, videoProps, cfg.CropMode == "none")
@@ -88,6 +100,7 @@ func ProcessChunked(
 	var cropH, cropV uint32
 	if cropResult.Required && cropResult.CropFilter != "" {
 		cropH, cropV = parseCropFilter(cropResult.CropFilter, videoProps.Width, videoProps.Height)
+		rep.Verbose(fmt.Sprintf("Crop offsets: horizontal=%d, vertical=%d", cropH, cropV))
 	}
 
 	// Setup encode config
@@ -107,11 +120,8 @@ func ProcessChunked(
 	// Run parallel encode
 	rep.StageProgress(reporter.StageProgress{Stage: "Encoding", Message: fmt.Sprintf("Starting chunked encoding with %d workers", cfg.Workers)})
 
-	totalFrames := uint64(vidInf.Frames)
-	rep.EncodingStarted(totalFrames)
+	rep.EncodingStarted(uint64(vidInf.Frames))
 
-	// Calculate video FPS for speed/ETA calculations
-	fps := float64(vidInf.FPSNum) / float64(vidInf.FPSDen)
 	startTime := time.Now()
 
 	progressCallback := func(progress worker.Progress) {
@@ -165,6 +175,10 @@ func ProcessChunked(
 
 		tqCfg.MetricMode = cfg.MetricMode
 
+		rep.Verbose(fmt.Sprintf("Target quality: SSIMULACRA2 %.0f-%.0f", tqCfg.TargetMin, tqCfg.TargetMax))
+		rep.Verbose(fmt.Sprintf("CRF search range: %.0f-%.0f", tqCfg.QPMin, tqCfg.QPMax))
+		rep.Verbose(fmt.Sprintf("Metric mode: %s, workers: %d", cfg.MetricMode, cfg.MetricWorkers))
+
 		tqEncCfg := &encode.TQEncodeConfig{
 			EncodeConfig:      *encCfg,
 			TQConfig:          tqCfg,
@@ -184,6 +198,7 @@ func ProcessChunked(
 			cropH,
 			cropV,
 			progressCallback,
+			rep,
 		)
 	} else {
 		encodeErr = encode.EncodeAll(

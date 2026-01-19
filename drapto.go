@@ -341,3 +341,5 @@ func (r *eventReporter) BatchComplete(s reporter.BatchSummary) {
 		TotalSizeReductionPercent: util.CalculateSizeReduction(s.TotalOriginalSize, s.TotalEncodedSize),
 	})
 }
+
+func (r *eventReporter) Verbose(string) {}

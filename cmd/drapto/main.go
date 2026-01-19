@@ -293,7 +293,7 @@ func executeEncode(ea encodeArgs) error {
 	}
 
 	// Create reporter
-	rep := reporter.NewTerminalReporter()
+	rep := reporter.NewTerminalReporterVerbose(ea.verbose)
 
 	// Setup context with signal handling
 	ctx, cancel := context.WithCancel(context.Background())

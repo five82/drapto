@@ -182,3 +182,7 @@ func (r *LogReporter) BatchComplete(summary BatchSummary) {
 		r.log("INFO", "  - %s (%.1f%% reduction)", result.Filename, result.Reduction)
 	}
 }
+
+func (r *LogReporter) Verbose(message string) {
+	r.log("DEBUG", "%s", message)
+}

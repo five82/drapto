@@ -1,12 +1,8 @@
 package tq
 
 import (
-	"fmt"
-	"os"
 	"sync"
 )
-
-var debugTQ = os.Getenv("DRAPTO_DEBUG_TQ") == "1"
 
 // CRFTracker maintains completed chunk CRF values and provides predictions
 // for new chunks based on nearby completed chunks.
@@ -71,29 +67,18 @@ func (t *CRFTracker) Predict(chunkIdx int, defaultCRF float64) float64 {
 	for _, n := range neighbors {
 		if n.dist == 0 {
 			// Exact match - return the CRF directly
-			if debugTQ {
-				fmt.Printf("[TQ-DEBUG]   -> exact match at chunk %d, CRF=%.1f\n", n.idx, n.crf)
-			}
 			return n.crf
 		}
 		weight := 1.0 / float64(n.dist)
 		weightedSum += n.crf * weight
 		weightSum += weight
-		if debugTQ {
-			fmt.Printf("[TQ-DEBUG]   -> neighbor chunk %d: CRF=%.1f, dist=%d, weight=%.3f\n",
-				n.idx, n.crf, n.dist, weight)
-		}
 	}
 
 	if weightSum == 0 {
 		return defaultCRF
 	}
 
-	result := weightedSum / weightSum
-	if debugTQ {
-		fmt.Printf("[TQ-DEBUG]   -> weighted avg=%.1f\n", result)
-	}
-	return result
+	return weightedSum / weightSum
 }
 
 // Count returns the number of recorded results.

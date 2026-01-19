@@ -99,3 +99,9 @@ func (c *CompositeReporter) BatchComplete(summary BatchSummary) {
 		r.BatchComplete(summary)
 	}
 }
+
+func (c *CompositeReporter) Verbose(message string) {
+	for _, r := range c.reporters {
+		r.Verbose(message)
+	}
+}

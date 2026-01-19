@@ -14,20 +14,12 @@ import (
 	"github.com/five82/drapto/internal/chunk"
 	"github.com/five82/drapto/internal/encoder"
 	"github.com/five82/drapto/internal/ffms"
+	"github.com/five82/drapto/internal/reporter"
 	"github.com/five82/drapto/internal/tq"
 	"github.com/five82/drapto/internal/util"
 	"github.com/five82/drapto/internal/vship"
 	"github.com/five82/drapto/internal/worker"
 )
-
-// debugTQ enables verbose CRF prediction logging when DRAPTO_DEBUG_TQ=1
-var debugTQ = os.Getenv("DRAPTO_DEBUG_TQ") == "1"
-
-func debugf(format string, args ...any) {
-	if debugTQ {
-		fmt.Printf("[TQ-DEBUG] "+format+"\n", args...)
-	}
-}
 
 // TQEncodeConfig contains configuration for target quality encoding.
 type TQEncodeConfig struct {
@@ -50,6 +42,7 @@ func EncodeAllTQ(
 	workDir string,
 	cropH, cropV uint32,
 	progressCb ProgressCallback,
+	rep reporter.Reporter,
 ) error {
 	// Ensure encode directory exists
 	if err := chunk.EnsureEncodeDir(workDir); err != nil {
@@ -137,8 +130,8 @@ func EncodeAllTQ(
 	// and other system processes. Empirical testing showed 70% was too aggressive.
 	memPermits := util.MaxPermitsForMemory(chunkMemBytes, 0.5)
 	if memPermits < permits {
-		debugf("Memory cap: limiting permits from %d to %d (chunk: %d MB, available: %d MB)",
-			permits, memPermits, chunkMemBytes/(1024*1024), util.AvailableMemoryBytes()/(1024*1024))
+		rep.Verbose(fmt.Sprintf("Memory cap: limiting permits from %d to %d (chunk: %d MB, available: %d MB)",
+			permits, memPermits, chunkMemBytes/(1024*1024), util.AvailableMemoryBytes()/(1024*1024)))
 		permits = memPermits
 	}
 
@@ -206,7 +199,7 @@ func EncodeAllTQ(
 		metricsWg.Add(1)
 		go func() {
 			defer metricsWg.Done()
-			tqMetricsWorker(ctx, metricsChan, reworkChan, doneChan, cfg, inf, splitDir, width, height, getError)
+			tqMetricsWorker(ctx, metricsChan, reworkChan, doneChan, cfg, inf, splitDir, width, height, getError, rep)
 		}()
 	}
 
@@ -215,7 +208,7 @@ func EncodeAllTQ(
 	coordWg.Add(1)
 	go func() {
 		defer coordWg.Done()
-		tqCoordinator(ctx, reworkChan, encodeChan, doneChan, sem, workDir, &progressMu, &progress, progressCb, len(remainingChunks), getError, dispatcher, tracker, permits, rampIncrement, &rampLimit, rampChan)
+		tqCoordinator(ctx, reworkChan, encodeChan, doneChan, sem, workDir, &progressMu, &progress, progressCb, len(remainingChunks), getError, dispatcher, tracker, permits, rampIncrement, &rampLimit, rampChan, rep)
 	}()
 
 	// Default CRF for first chunk (midpoint of range)
@@ -305,26 +298,26 @@ func EncodeAllTQ(
 				sampleEnd := (offset + encodeFrames) * frameSize
 				pkg.SampleYUV = pkg.YUV[sampleStart:sampleEnd]
 
-				debugf("Chunk %d: using %d-frame sample (%.1fs) from offset %d, warmup=%d, measure=%d",
-					ch.Idx, encodeFrames, float64(encodeFrames)/fps, offset, warmupFrames, measureFrames)
+				rep.Verbose(fmt.Sprintf("Chunk %d: using %d-frame sample (%.1fs) from offset %d, warmup=%d, measure=%d",
+					ch.Idx, encodeFrames, float64(encodeFrames)/fps, offset, warmupFrames, measureFrames))
 			} else {
 				chunkDur := float64(pkg.FrameCount) / fps
 				if chunkDur < cfg.SampleMinChunk {
-					debugf("Chunk %d: using full %d-frame chunk (%.1fs < min %.1fs)",
-						ch.Idx, pkg.FrameCount, chunkDur, cfg.SampleMinChunk)
+					rep.Verbose(fmt.Sprintf("Chunk %d: using full %d-frame chunk (%.1fs < min %.1fs)",
+						ch.Idx, pkg.FrameCount, chunkDur, cfg.SampleMinChunk))
 				} else {
-					debugf("Chunk %d: using full %d-frame chunk (sample would exceed half of %d frames)",
-						ch.Idx, pkg.FrameCount, pkg.FrameCount)
+					rep.Verbose(fmt.Sprintf("Chunk %d: using full %d-frame chunk (sample would exceed half of %d frames)",
+						ch.Idx, pkg.FrameCount, pkg.FrameCount))
 				}
 			}
 
 			// Get CRF prediction from nearby completed chunks
 			predictedCRF := tracker.Predict(ch.Idx, defaultCRF)
 
-			debugf("Chunk %d: predicted CRF=%.1f (from %d completed chunks), search bounds [%.0f, %.0f]",
+			rep.Verbose(fmt.Sprintf("Chunk %d: predicted CRF=%.1f (from %d completed chunks), search bounds [%.0f, %.0f]",
 				ch.Idx, predictedCRF, tracker.Count(),
 				max(cfg.TQConfig.QPMin, predictedCRF-5),
-				min(cfg.TQConfig.QPMax, predictedCRF+5))
+				min(cfg.TQConfig.QPMax, predictedCRF+5)))
 
 			// Initialize TQ state with predicted CRF (narrows search bounds)
 			pkg.TQState = tq.NewState(cfg.TQConfig.Target, cfg.TQConfig.QPMin, cfg.TQConfig.QPMax, predictedCRF)
@@ -421,6 +414,7 @@ func tqMetricsWorker(
 	splitDir string,
 	width, height uint32,
 	getError func() error,
+	rep reporter.Reporter,
 ) {
 	// Initialize VSHIP processor for this worker
 	var proc *vship.Processor
@@ -500,7 +494,7 @@ func tqMetricsWorker(
 				workDir := filepath.Dir(splitDir)
 				finalPath := chunk.IVFPath(workDir, pkg.Chunk.Idx)
 
-				debugf("Chunk %d: sample probing complete at CRF=%.0f, encoding full chunk", pkg.Chunk.Idx, finalCRF)
+				rep.Verbose(fmt.Sprintf("Chunk %d: sample probing complete at CRF=%.0f, encoding full chunk", pkg.Chunk.Idx, finalCRF))
 
 				if err := encodeFinal(pkg, finalCRF, cfg, inf, finalPath, width, height); err != nil {
 					doneChan <- tqResult{
@@ -566,6 +560,7 @@ func tqCoordinator(
 	rampIncrement int,
 	rampLimit *atomic.Int32,
 	rampChan chan<- struct{},
+	rep reporter.Reporter,
 ) {
 	// Coordinator owns closing encodeChan - it knows when all work is complete
 	// (including rework cycles). Decoder cannot close it because rework may
@@ -608,15 +603,15 @@ func tqCoordinator(
 			dispatcher.MarkComplete(result.ChunkIdx)
 			tracker.Record(result.ChunkIdx, result.FinalCRF)
 
-			debugf("Chunk %d complete: CRF=%.0f, score=%.1f, %d iterations",
-				result.ChunkIdx, result.FinalCRF, result.FinalScore, result.Round)
+			rep.Verbose(fmt.Sprintf("Chunk %d complete: CRF=%.0f, score=%.1f, %d iterations",
+				result.ChunkIdx, result.FinalCRF, result.FinalScore, result.Round))
 
 			// Gradual ramp-up: increase dispatch limit as chunks complete
 			currentLimit := int(rampLimit.Load())
 			if currentLimit < maxPermits {
 				newLimit := min(currentLimit+rampIncrement, maxPermits)
 				rampLimit.Store(int32(newLimit))
-				debugf("Ramp-up: increased dispatch limit to %d", newLimit)
+				rep.Verbose(fmt.Sprintf("Ramp-up: increased dispatch limit to %d", newLimit))
 				// Signal decoder that limit increased (non-blocking)
 				select {
 				case rampChan <- struct{}{}:
