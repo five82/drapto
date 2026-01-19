@@ -5,11 +5,11 @@ Target Quality (TQ) encoding uses GPU-accelerated SSIMULACRA2 to iteratively fin
 ## Quick Start
 
 ```bash
-# Basic usage - target SSIMULACRA2 score of 70-75
-drapto encode -i input.mkv -o output/ -t 70-75
+# Basic usage - target SSIMULACRA2 score of 75-80
+drapto encode -i input.mkv -o output/ -t 75-80
 
 # With multiple encoder workers
-drapto encode -i input.mkv -o output/ -t 70-75 --workers 8
+drapto encode -i input.mkv -o output/ -t 75-80 --workers 8
 ```
 
 ## Requirements
@@ -40,11 +40,11 @@ SSIMULACRA2 is currently the most accurate perceptual quality metric, correlatin
 
 | Score | Quality Level | Description |
 |-------|---------------|-------------|
-| 90+ | Visually lossless | Impossible to distinguish from original at normal viewing distance |
+| 90+ | Visually lossless | Not noticeable in flicker test at 1:1 from normal viewing distance |
 | 85 | Excellent | Virtually impossible to distinguish in flip test |
-| 80 | Very high | Not noticeable by average observer in side-by-side comparison |
-| 70 | High | Trouble noticing artifacts without comparing to original |
-| 50 | Medium | Slightly annoying artifacts visible |
+| 80 | Very high | Not noticeable by average observer in side-by-side at 1:1 |
+| 70 | High | Artifacts perceptible but not annoying |
+| 50 | Medium | Slightly annoying artifacts |
 | 30 | Low | Obvious and annoying artifacts |
 
 **Key insight for video**: The "visually lossless" threshold for video is approximately **80** rather than 90, because individual frame artifacts are harder to notice during playback than in still images.
@@ -64,37 +64,37 @@ drapto encode -i dvd_rip.mkv -o output/ -t 68-72
 
 #### Blu-ray Content (1080p)
 ```bash
-drapto encode -i bluray_rip.mkv -o output/ -t 70-75
+drapto encode -i bluray_rip.mkv -o output/ -t 75-80
 ```
-- **Target**: 70-75
-- **Rationale**: Good balance between quality and file size. At typical viewing distances, scores above 70 are difficult to distinguish from the original.
+- **Target**: 75-80
+- **Rationale**: Near-transparent quality at typical viewing distances. For storage-constrained libraries, 70-75 is acceptable but artifacts may be perceptible on close inspection or smaller screens.
 
-#### 4K UHD Blu-ray Content (2160p)
+#### 4K UHD Blu-ray Content (2160p SDR)
 ```bash
-drapto encode -i uhd_rip.mkv -o output/ -t 72-77
+drapto encode -i uhd_rip.mkv -o output/ -t 75-80
 ```
-- **Target**: 72-77
-- **Rationale**: Higher resolution benefits from slightly higher targets. The increased pixel density at 4K makes subtle artifacts more visible on large displays.
+- **Target**: 75-80
+- **Rationale**: Higher resolution benefits from higher targets. The increased pixel density at 4K makes subtle artifacts more visible on large displays.
 
 #### 4K HDR Content
 ```bash
-drapto encode -i uhd_hdr.mkv -o output/ -t 74-78
+drapto encode -i uhd_hdr.mkv -o output/ -t 78-82 --metric-mode p5
 ```
-- **Target**: 74-78
-- **Rationale**: HDR's expanded dynamic range and color gamut can reveal compression artifacts more readily, particularly in dark scenes and color gradients.
+- **Target**: 78-82
+- **Rationale**: HDR's expanded dynamic range reveals compression artifacts more readily, particularly banding in dark scenes and color gradients. Using `--metric-mode p5` ensures the worst frames (often dark HDR scenes) meet quality standards rather than being averaged away.
 
 ### Quality Tiers
 
 | Use Case | Target Range | Notes |
 |----------|--------------|-------|
-| Storage-optimized | 65-70 | Noticeable on close inspection, fine for casual viewing |
-| Balanced (recommended) | 70-75 | Excellent quality/size ratio for most content |
-| High quality | 75-80 | Near-transparent, suitable for favorite content |
-| Archival | 80-85 | Visually lossless, larger files |
+| Storage-optimized | 68-72 | Artifacts perceptible on inspection, acceptable for casual viewing |
+| Balanced (recommended) | 75-80 | Near-transparent at normal viewing distances |
+| High quality | 80-85 | Visually indistinguishable from source for video |
+| Reference | 85-90 | Maximum fidelity, diminishing returns on file size |
 
 ### Content-Specific Adjustments
 
-**Animated content**: Can often use lower targets (65-70) as animation compresses efficiently and has less fine detail than live action.
+**Animated content**: Western 3D animation (Pixar, DreamWorks) can use lower targets (68-72) as it compresses efficiently. **Anime and cel-style animation** should use standard or higher targets (75-80) because flat gradients and sky backgrounds are prone to banding artifacts.
 
 **Film grain / noisy content**: Consider using slightly higher targets (add 2-3 points) as grain is difficult to preserve without sufficient bitrate. Alternatively, rely on AV1's film grain synthesis (enabled by default in drapto).
 
@@ -121,8 +121,8 @@ Sample-Based Probing Options:
 The SSIMULACRA2 score range to target. Format: `min-max`
 
 ```bash
--t 70-75    # Target scores between 70 and 75
--t 72-73    # Narrow range for precise targeting
+-t 75-80    # Target scores between 75 and 80
+-t 77-78    # Narrow range for precise targeting
 ```
 
 Narrower ranges require more iterations to converge but provide more consistent quality. A range of 3-5 points is recommended.
@@ -204,10 +204,10 @@ VSHIP uses the GPU for SSIMULACRA2 computation. During metric calculation:
 ### Optimal Worker Configuration
 ```bash
 # Balanced configuration for most systems
-drapto encode -i input.mkv -o output/ -t 70-75 --workers 8 --metric-workers 1
+drapto encode -i input.mkv -o output/ -t 75-80 --workers 8 --metric-workers 1
 
 # High-end GPU with abundant VRAM
-drapto encode -i input.mkv -o output/ -t 70-75 --workers 12 --metric-workers 2
+drapto encode -i input.mkv -o output/ -t 75-80 --workers 12 --metric-workers 2
 ```
 
 ## Comparison with Other Tools
@@ -229,7 +229,7 @@ Drapto's implementation is derived from xav's approach, using VSHIP for GPU-acce
 - Ensure libvship.so is the CUDA build, not HIP/AMD
 
 ### Slow convergence
-- Widen the target range (e.g., 70-76 instead of 72-74)
+- Widen the target range (e.g., 75-81 instead of 77-79)
 - Narrow the QP search range if you know typical CRF values
 - Use `--metric-mode mean` instead of percentile modes
 
