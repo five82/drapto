@@ -1,0 +1,508 @@
+# Chunked Encoding in Drapto
+
+This document explains drapto's parallel chunked encoding system, covering the complete pipeline from scene detection through final muxing.
+
+## Overview
+
+Drapto uses a **scene-based chunked encoding** approach where:
+
+1. The source video is analyzed for scene changes
+2. The video is split into chunks at scene boundaries
+3. Multiple chunks are encoded in parallel using SVT-AV1
+4. Encoded chunks are concatenated back into a single video
+5. Audio is re-encoded and muxed with the final video
+
+This approach enables efficient parallelization while maintaining quality at scene transitions.
+
+## Pipeline Stages
+
+```
+Input Video
+    │
+    ▼
+┌─────────────────┐
+│  FFMS2 Index    │ ─── Frame-accurate access, HDR metadata extraction
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ Scene Detection │ ─── FFmpeg scene filter identifies cut points
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ Chunk Creation  │ ─── Split long scenes, create chunk list
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ Crop Detection  │ ─── Automatic black bar removal (optional)
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────┐
+│           Parallel Encoding                  │
+│  ┌─────────┐  ┌─────────┐  ┌─────────┐     │
+│  │Worker 1 │  │Worker 2 │  │Worker N │     │
+│  │SVT-AV1  │  │SVT-AV1  │  │SVT-AV1  │     │
+│  └─────────┘  └─────────┘  └─────────┘     │
+└────────┬────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────┐
+│  IVF Concat     │ ─── Merge encoded chunks
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ Audio Encoding  │ ─── Extract and re-encode to Opus
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  Final Mux      │ ─── Combine video, audio, subtitles, chapters
+└────────┬────────┘
+         │
+         ▼
+    Output MKV
+```
+
+## Stage 1: Video Indexing (FFMS2)
+
+Before any processing begins, drapto creates an FFMS2 index of the source video. This enables:
+
+- **Frame-accurate seeking**: Extract any frame by number without decode overhead
+- **Metadata extraction**: Resolution, frame rate, HDR parameters
+- **Parallel access**: Multiple workers can decode frames simultaneously
+
+The index is cached as a `.ffindex` file alongside the source, allowing resume without re-indexing.
+
+**Extracted metadata includes:**
+- Resolution (width × height)
+- Frame rate (numerator/denominator)
+- Total frame count
+- Bit depth (8-bit or 10-bit)
+- Color primaries (BT.709, BT.2020, etc.)
+- Transfer characteristics (SDR, PQ/HDR10, HLG)
+- Matrix coefficients
+- HDR mastering display metadata
+- Content light level information
+
+## Stage 2: Scene Detection
+
+Scene detection identifies natural cut points in the video where quality loss from chunk boundaries would be invisible.
+
+### How It Works
+
+FFmpeg's `select` filter analyzes frame-to-frame differences:
+
+```
+ffmpeg -i input -vf "select='gt(scene,threshold)',showinfo" -an -f null -
+```
+
+The filter outputs timestamps where the scene change score exceeds the threshold. These timestamps are converted to frame numbers using the video's frame rate.
+
+### Settings
+
+| Setting | Default | Range | Description |
+|---------|---------|-------|-------------|
+| `SceneThreshold` | 0.5 | 0.0-1.0 | Higher values = fewer, larger scenes |
+
+A threshold of 0.5 works well for most content. Lower values (0.3) may be needed for fast-paced action; higher values (0.7) for static content.
+
+### Output
+
+Scene boundaries are written to `scenes.txt` in the work directory:
+
+```
+0
+847
+1623
+2891
+...
+```
+
+Each line is a frame number marking a scene start (and the end of the previous scene).
+
+## Stage 3: Chunk Creation
+
+Scene boundaries are converted into encoding chunks with validation and splitting of overly long scenes.
+
+### Maximum Chunk Size
+
+To prevent memory issues and ensure reasonable encoding times, scenes are limited to:
+
+```
+max_frames = min(fps × 30, 1000)
+```
+
+For 24fps content, this is 720 frames (~30 seconds). For 60fps, it's 1000 frames (~17 seconds).
+
+### Long Scene Splitting
+
+Scenes exceeding the maximum are split into equal parts:
+
+```
+Original scene: frames 0-2000 (2000 frames)
+Max frames: 1000
+
+Result:
+  Chunk 0: frames 0-1000
+  Chunk 1: frames 1000-2000
+```
+
+### Chunk Data Structure
+
+Each chunk contains:
+- **Index**: Sequential number (0-based)
+- **Start frame**: Inclusive
+- **End frame**: Exclusive
+
+## Stage 4: Crop Detection
+
+Automatic black bar detection identifies letterboxing/pillarboxing for removal.
+
+### Detection Process
+
+1. Sample frames throughout the video
+2. Analyze edge pixels for consistent black bars
+3. Calculate crop dimensions that remove black bars
+4. Ensure dimensions are valid for AV1 encoding (mod-2)
+
+### Settings
+
+| Setting | Options | Description |
+|---------|---------|-------------|
+| `CropMode` | `auto`, `none` | Enable/disable automatic cropping |
+
+When disabled (`--no-crop`), the full frame is encoded.
+
+## Stage 5: Parallel Encoding
+
+The core of drapto's performance comes from parallel chunk encoding.
+
+### Architecture
+
+```
+┌──────────────────┐
+│ Decoder Goroutine│
+│  ├─ FFMS2 decode │
+│  └─ YUV buffer   │
+└────────┬─────────┘
+         │ WorkPkg
+         ▼
+┌──────────────────┐
+│   Work Channel   │
+└────────┬─────────┘
+         │
+    ┌────┼────┬────┐
+    ▼    ▼    ▼    ▼
+┌──────┐┌──────┐┌──────┐
+│Worker││Worker││Worker│
+│  1   ││  2   ││  N   │
+└──┬───┘└──┬───┘└──┬───┘
+   │       │       │
+   ▼       ▼       ▼
+  .ivf    .ivf    .ivf
+```
+
+### Work Package
+
+Each chunk is passed to workers as a `WorkPkg` containing:
+
+- Chunk metadata (index, frame range)
+- Decoded YUV frames (raw pixel data)
+- Video dimensions (after crop)
+- Bit depth flag
+- TQ state (if in Target Quality mode)
+
+### Memory Management
+
+Parallel encoding requires careful memory management:
+
+1. **Semaphore**: Limits in-flight chunks to `workers + buffer`
+2. **Buffer**: Pre-decoded chunks ready for encoding (default = worker count)
+3. **Immediate release**: YUV data freed as soon as encoding completes
+
+### Settings
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `Workers` | `numCPU/8` (1-4) | Parallel encoder instances |
+| `ChunkBuffer` | `Workers` | Extra chunks to buffer |
+
+Auto-detection allocates 1 worker per 8 CPU cores, minimum 1, maximum 4.
+
+### SVT-AV1 Invocation
+
+Each worker runs SVT-AV1 with YUV piped to stdin:
+
+```
+SvtAv1EncApp \
+  -i stdin \
+  --input-depth 10 \
+  --color-format 1 \
+  --profile 0 \
+  --passes 1 \
+  --width {width} \
+  --height {height} \
+  --fps-num {num} \
+  --fps-denom {denom} \
+  --frames {count} \
+  --keyint 0 \
+  --rc 0 \
+  --scd 0 \
+  --crf {value} \
+  --preset {preset} \
+  --tune {tune} \
+  [HDR parameters] \
+  -b output.ivf
+```
+
+Key parameters:
+- `--keyint 0`: No forced keyframes (scenes already split at cuts)
+- `--scd 0`: Disable internal scene detection (already done)
+- `--passes 1`: Single-pass encoding
+- `--rc 0`: CRF (constant quality) mode
+
+### Resume Support
+
+Encoding progress is tracked in `done.txt`:
+
+```
+0 847 1234567
+1 776 1123456
+2 1268 2345678
+...
+```
+
+Format: `{chunk_index} {frame_count} {file_size}`
+
+On resume, completed chunks are skipped and encoding continues from where it stopped.
+
+## Stage 6: Target Quality Mode
+
+Target Quality (TQ) mode replaces fixed-CRF encoding with per-chunk quality targeting. Instead of encoding all chunks at CRF 27, TQ mode finds the CRF that achieves a target SSIMULACRA2 score for each chunk independently.
+
+This results in consistent perceptual quality: simple scenes get higher CRF (smaller files) while complex scenes get lower CRF (more bits).
+
+### How It Works
+
+1. Encode a probe at an initial CRF (predicted from nearby chunks or binary search)
+2. Measure quality via GPU-accelerated SSIMULACRA2
+3. Adjust CRF based on the score using spline interpolation
+4. Repeat until the score falls within the target range
+5. Encode the final chunk at the determined CRF
+
+Sample-based probing encodes only a 3-second sample during the search phase, then encodes the full chunk at the final CRF. This significantly reduces iteration time.
+
+### Integration with Chunked Pipeline
+
+TQ mode uses the same scene detection and chunk creation as standard mode. The parallel encoding stage adds:
+
+- **Metrics workers**: GPU processes computing SSIMULACRA2 scores
+- **CRF prediction**: Completed chunks inform starting points for nearby chunks
+- **Gradual ramp-up**: Parallelism increases as predictions become available
+
+For detailed information on TQ mode including recommended quality targets, SSIMULACRA2 score interpretation, and content-specific tuning, see [Target Quality Encoding](target-quality.md).
+
+## Stage 7: Chunk Concatenation
+
+Encoded IVF files are merged into a single video stream.
+
+### Process
+
+1. List all `.ivf` files in the encode directory
+2. Generate `concat.txt` for FFmpeg:
+   ```
+   file '/path/to/0000.ivf'
+   file '/path/to/0001.ivf'
+   ...
+   ```
+3. Run FFmpeg concat:
+   ```
+   ffmpeg -f concat -safe 0 -i concat.txt \
+     -c copy \
+     -r {fps} \
+     -fflags +genpts+igndts+discardcorrupt+bitexact \
+     -avoid_negative_ts make_zero \
+     -reset_timestamps 1 \
+     video.mkv
+   ```
+
+### Large File Handling
+
+For videos with more than 500 chunks, a batched approach is used:
+
+1. Merge chunks in groups of 500 to intermediate files
+2. Merge intermediate files to final video
+
+This avoids FFmpeg limitations with very large file lists.
+
+## Stage 8: Audio Encoding
+
+Audio is extracted from the source and re-encoded to Opus.
+
+### Bitrate Calculation
+
+Bitrate scales with channel count:
+
+| Channels | Layout | Bitrate |
+|----------|--------|---------|
+| 1 | Mono | 64 kbps |
+| 2 | Stereo | 128 kbps |
+| 6 | 5.1 | 256 kbps |
+| 8 | 7.1 | 384 kbps |
+| Other | - | 48 kbps/channel |
+
+### Command
+
+```
+ffmpeg -i source \
+  -vn \
+  -c:a libopus \
+  -b:a {bitrate} \
+  -ac {channels} \
+  audio.mka
+```
+
+## Stage 9: Final Muxing
+
+The final step combines all components into the output MKV.
+
+### Inputs
+
+1. **video.mkv**: Encoded AV1 video
+2. **audio.mka**: Re-encoded Opus audio (if source has audio)
+3. **source**: Original file for subtitles and chapters
+
+### Command
+
+```
+ffmpeg \
+  -i video.mkv \
+  -i audio.mka \
+  -i source \
+  -map 0:v:0 \
+  -map 1:a? \
+  -map 2:s? \
+  -c copy \
+  -map_metadata 0 \
+  -map_chapters 2 \
+  -movflags +faststart \
+  output.mkv
+```
+
+### Preserved Elements
+
+- Video stream (newly encoded AV1)
+- Audio stream (newly encoded Opus)
+- Subtitle streams (copied from source)
+- Chapter markers (copied from source)
+- Container metadata
+
+## Encoding Settings Reference
+
+### Quality Settings
+
+| Setting | CLI Flag | Default | Range | Description |
+|---------|----------|---------|-------|-------------|
+| CRF | `--crf` | 27 | 0-63 | Quality level (lower = better) |
+| Preset | `--preset` | 6 | 0-13 | Speed/quality tradeoff (lower = slower) |
+| Tune | `--tune` | 0 | 0+ | Encoder tuning mode |
+
+### Advanced SVT-AV1 Settings
+
+| Setting | CLI Flag | Default | Description |
+|---------|----------|---------|-------------|
+| AC Bias | `--ac-bias` | 0.1 | Coefficient bias |
+| Variance Boost | `--variance-boost` | false | Enable quality boost |
+| Variance Strength | `--variance-boost-strength` | 0 | Boost strength (0-255) |
+| Variance Octile | `--variance-octile` | 0 | Octile selection |
+
+### Processing Settings
+
+| Setting | CLI Flag | Default | Description |
+|---------|----------|---------|-------------|
+| Crop Mode | `--no-crop` | auto | Disable auto-cropping |
+| Scene Threshold | `--scene-threshold` | 0.5 | Scene detection sensitivity |
+| Responsive | `--responsive` | false | Reduce encoder priority |
+
+### Parallel Encoding Settings
+
+| Setting | CLI Flag | Default | Description |
+|---------|----------|---------|-------------|
+| Workers | `--workers` | auto | Parallel encoders |
+| Buffer | `--buffer` | workers | Chunk buffer size |
+
+### Target Quality Settings
+
+See [Target Quality Encoding](target-quality.md) for TQ-specific settings and recommended quality targets.
+
+## Work Directory Structure
+
+```
+work_dir/
+├── encode/
+│   ├── 0000.ivf      # Encoded chunk 0
+│   ├── 0001.ivf      # Encoded chunk 1
+│   └── ...
+├── scenes.txt        # Scene boundaries
+├── done.txt          # Completed chunks (for resume)
+├── video.mkv         # Concatenated video
+├── audio.mka         # Encoded audio
+└── concat.txt        # FFmpeg concat file (temporary)
+```
+
+## Performance Considerations
+
+### Worker Count
+
+More workers increase parallelism but also memory usage:
+- Each worker holds a full YUV buffer (~frame_size × frame_count)
+- SVT-AV1 uses ~1GB additional per instance
+- Auto-detection balances cores and memory
+
+### Buffer Size
+
+Larger buffers reduce decoder stalls but increase memory:
+- Default: Equal to worker count
+- Increase if decoder is faster than encoders
+- Decrease if running out of memory
+
+### TQ Mode
+
+Target Quality mode adds overhead from iterative probing and GPU metric computation. Sample-based probing (enabled by default) significantly reduces this overhead. See [Target Quality Encoding](target-quality.md) for performance tuning.
+
+### Scene Detection
+
+Lower scene thresholds create more (smaller) chunks:
+- More parallelism opportunities
+- More overhead from chunk boundaries
+- Generally, default (0.5) works well
+
+## Troubleshooting
+
+### Out of Memory
+
+Reduce parallel encoding load:
+```bash
+drapto --workers 1 --buffer 1 input.mkv
+```
+
+### Encoder Stalls
+
+Increase buffer to prevent decoder blocking:
+```bash
+drapto --buffer 4 input.mkv
+```
+
+### Resume After Crash
+
+Simply re-run the same command. Completed chunks in `done.txt` will be skipped.
+
+### Quality Issues at Chunk Boundaries
+
+This shouldn't happen with scene-based splitting. If visible:
+1. Lower scene threshold for more cuts at natural boundaries
+2. Check that keyframes align with scene changes
