@@ -223,6 +223,35 @@ func GetVidInf(idx *VidIdx) (*VidInf, error) {
 		inf.MatrixCoefficients = &mc
 	}
 
+	// Extract mastering display metadata (SMPTE 2086) if available
+	if props.HasMasteringDisplayPrimaries != 0 && props.HasMasteringDisplayLuminance != 0 {
+		// Format: G(x,y)B(x,y)R(x,y)WP(x,y)L(max,min)
+		// Array indices: 0=Red, 1=Green, 2=Blue (matching SVT-AV1 expected order)
+		md := fmt.Sprintf(
+			"G(%.4f,%.4f)B(%.4f,%.4f)R(%.4f,%.4f)WP(%.4f,%.4f)L(%.4f,%.4f)",
+			float64(props.MasteringDisplayPrimariesX[1]),
+			float64(props.MasteringDisplayPrimariesY[1]),
+			float64(props.MasteringDisplayPrimariesX[2]),
+			float64(props.MasteringDisplayPrimariesY[2]),
+			float64(props.MasteringDisplayPrimariesX[0]),
+			float64(props.MasteringDisplayPrimariesY[0]),
+			float64(props.MasteringDisplayWhitePointX),
+			float64(props.MasteringDisplayWhitePointY),
+			float64(props.MasteringDisplayMaxLuminance),
+			float64(props.MasteringDisplayMinLuminance),
+		)
+		inf.MasteringDisplay = &md
+	}
+
+	// Extract content light level (MaxCLL, MaxFALL) if available
+	if props.HasContentLightLevel != 0 {
+		cl := fmt.Sprintf("%d,%d",
+			props.ContentLightLevelMax,
+			props.ContentLightLevelAverage,
+		)
+		inf.ContentLight = &cl
+	}
+
 	return inf, nil
 }
 
