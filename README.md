@@ -81,7 +81,7 @@ Processing Options:
   --no-tq-sampling         Use full chunks for TQ probing
 
 Output Options:
-  -l, --log-dir            Log directory (defaults to OUTPUT/logs)
+  -l, --log-dir            Log directory (defaults to ~/.local/state/drapto/logs)
   -v, --verbose            Verbose output
   --no-log                 Disable log file creation
 ```

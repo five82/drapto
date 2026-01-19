@@ -50,7 +50,7 @@ drapto encode -v -i input.mkv -o output/
 - `--no-tq-sampling`: Disable sample-based probing (use full chunks)
 
 **Output**
-- `-l, --log-dir <DIR>`: Override the log directory (defaults to `<output>/logs`)
+- `-l, --log-dir <DIR>`: Override the log directory (defaults to `~/.local/state/drapto/logs`)
 - `-v, --verbose`: Verbose output with detailed status
 - `--no-log`: Disable log file creation
 
@@ -126,6 +126,6 @@ Foreground runs show real-time progress with ETA, fps, and reduction stats. For 
 # Verbose logging
 drapto encode -v -i input.mkv -o output/
 
-# Check log files in output directory
-ls output/logs/
+# Check log files
+ls ~/.local/state/drapto/logs/
 ```

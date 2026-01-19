@@ -10,6 +10,20 @@ import (
 	"time"
 )
 
+// DefaultLogDir returns the default log directory following XDG Base Directory Spec.
+// Uses $XDG_STATE_HOME/drapto/logs, defaulting to ~/.local/state/drapto/logs.
+func DefaultLogDir() string {
+	if dir := os.Getenv("XDG_STATE_HOME"); dir != "" {
+		return filepath.Join(dir, "drapto", "logs")
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		// Fallback to current directory if home can't be determined
+		return filepath.Join(".", "drapto", "logs")
+	}
+	return filepath.Join(home, ".local", "state", "drapto", "logs")
+}
+
 // Level represents the logging level.
 type Level int
 

@@ -103,7 +103,7 @@ Required:
   -o, --output <PATH>    Output directory (or filename if input is a single file)
 
 Options:
-  -l, --log-dir <PATH>   Log directory (defaults to OUTPUT/logs)
+  -l, --log-dir <PATH>   Log directory (defaults to ~/.local/state/drapto/logs)
   -v, --verbose          Enable verbose output for troubleshooting
 
 Quality Settings:
@@ -211,7 +211,7 @@ func executeEncode(ea encodeArgs) error {
 	// Resolve log directory
 	logDir := ea.logDir
 	if logDir == "" {
-		logDir = filepath.Join(outputDir, "logs")
+		logDir = logging.DefaultLogDir()
 	}
 
 	// Setup file logging
