@@ -31,6 +31,8 @@ type TQEncodeConfig struct {
 	SampleDuration    float64 // Duration in seconds to sample for TQ probing
 	SampleMinChunk    float64 // Minimum chunk duration to use sampling
 	DisableTQSampling bool    // Disable sample-based probing (use full chunks)
+	// CRF prediction configuration
+	DisableTQPrediction bool // Disable cross-chunk CRF prediction
 	// Debug options
 	Verbose bool // Enable debug stats computation and output
 }
@@ -318,18 +320,24 @@ func EncodeAllTQ(
 				}
 			}
 
-			// Get CRF prediction from nearby completed chunks
-			predictedCRF := tracker.Predict(ch.Idx, defaultCRF)
-
-			rep.Verbose(fmt.Sprintf("Chunk %d: predicted CRF %.1f (from %d completed), bounds [%.0f, %.0f]",
-				ch.Idx, predictedCRF, tracker.Count(),
-				max(cfg.TQConfig.QPMin, predictedCRF-5),
-				min(cfg.TQConfig.QPMax, predictedCRF+5)))
+			// Get CRF prediction from nearby completed chunks (unless disabled)
+			var predictedCRF float64
+			if cfg.DisableTQPrediction {
+				rep.Verbose(fmt.Sprintf("Chunk %d: CRF prediction disabled, using full range [%.0f, %.0f]",
+					ch.Idx, cfg.TQConfig.QPMin, cfg.TQConfig.QPMax))
+			} else {
+				predictedCRF = tracker.Predict(ch.Idx, defaultCRF)
+				rep.Verbose(fmt.Sprintf("Chunk %d: predicted CRF %.1f (from %d completed), bounds [%.0f, %.0f]",
+					ch.Idx, predictedCRF, tracker.Count(),
+					max(cfg.TQConfig.QPMin, predictedCRF-5),
+					min(cfg.TQConfig.QPMax, predictedCRF+5)))
+			}
 
 			// Store predicted CRF for stats tracking
 			pkg.PredictedCRF = predictedCRF
 
 			// Initialize TQ state with predicted CRF (narrows search bounds)
+			// When predictedCRF is 0 (prediction disabled), NewState uses full range
 			pkg.TQState = tq.NewState(cfg.TQConfig.Target, cfg.TQConfig.QPMin, cfg.TQConfig.QPMax, predictedCRF)
 
 			// Send to encode channel

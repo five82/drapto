@@ -82,9 +82,10 @@ type encodeArgs struct {
 	// Scene detection options
 	sceneThreshold float64
 	// Sample-based TQ probing options
-	sampleDuration    float64
-	sampleMinChunk    float64
-	disableTQSampling bool
+	sampleDuration       float64
+	sampleMinChunk       float64
+	disableTQSampling    bool
+	disableTQPrediction  bool
 }
 
 func runEncode(args []string) error {
@@ -125,6 +126,7 @@ Processing Options:
   --sample-duration <N>  Seconds to sample for TQ probing. Default: %.1f
   --sample-min-chunk <N> Minimum chunk duration (seconds) to use sampling. Default: %.1f
   --no-tq-sampling       Disable sample-based TQ probing (use full chunks)
+  --no-tq-prediction     Disable cross-chunk CRF prediction
 
 Output Options:
   --no-log               Disable Drapto log file creation
@@ -165,6 +167,7 @@ Output Options:
 	fs.Float64Var(&ea.sampleDuration, "sample-duration", config.DefaultSampleDuration, "Seconds to sample for TQ probing")
 	fs.Float64Var(&ea.sampleMinChunk, "sample-min-chunk", config.DefaultSampleMinChunk, "Minimum chunk duration for sampling")
 	fs.BoolVar(&ea.disableTQSampling, "no-tq-sampling", false, "Disable sample-based TQ probing")
+	fs.BoolVar(&ea.disableTQPrediction, "no-tq-prediction", false, "Disable cross-chunk CRF prediction")
 
 	// Output options
 	fs.BoolVar(&ea.noLog, "no-log", false, "Disable log file creation")
@@ -276,6 +279,7 @@ func executeEncode(ea encodeArgs) error {
 	cfg.SampleDuration = ea.sampleDuration
 	cfg.SampleMinChunk = ea.sampleMinChunk
 	cfg.DisableTQSampling = ea.disableTQSampling
+	cfg.DisableTQPrediction = ea.disableTQPrediction
 
 	// Debug options
 	cfg.Verbose = ea.verbose

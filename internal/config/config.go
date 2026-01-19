@@ -114,9 +114,10 @@ type Config struct {
 	SceneThreshold float64 // Scene change detection threshold (0.0-1.0, higher = fewer scenes)
 
 	// Sample-based TQ probing options
-	SampleDuration    float64 // TQ probe sample duration in seconds
-	SampleMinChunk    float64 // Minimum chunk duration in seconds to use sampling
-	DisableTQSampling bool    // Disable sample-based probing (use full chunks)
+	SampleDuration      float64 // TQ probe sample duration in seconds
+	SampleMinChunk      float64 // Minimum chunk duration in seconds to use sampling
+	DisableTQSampling   bool    // Disable sample-based probing (use full chunks)
+	DisableTQPrediction bool    // Disable cross-chunk CRF prediction
 
 	// Debug options
 	Verbose bool // Enable verbose output and TQ debug statistics

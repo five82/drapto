@@ -115,6 +115,9 @@ Sample-Based Probing Options:
   --sample-duration <N>      Seconds to sample for TQ probing. Default: 3.0
   --sample-min-chunk <N>     Minimum chunk duration to use sampling. Default: 6.0
   --no-tq-sampling           Disable sample-based probing (use full chunks)
+
+CRF Prediction Options:
+  --no-tq-prediction         Disable cross-chunk CRF prediction
 ```
 
 ### --target (required for TQ mode)
@@ -183,6 +186,20 @@ Disable sample-based probing entirely. When set, full chunks are used for all TQ
 ```
 
 Use this if you notice quality inconsistencies with sample-based probing, particularly for content with high temporal variation within scenes.
+
+### --no-tq-prediction
+Disable cross-chunk CRF prediction. By default, drapto uses completed chunks to predict starting CRF bounds for pending chunks, narrowing the search space and reducing iterations.
+
+```bash
+--no-tq-prediction   # Use full CRF range for each chunk
+```
+
+Use this for:
+- Troubleshooting convergence issues to isolate whether prediction is causing problems
+- Content with highly variable scene complexity where neighbors aren't representative
+- Benchmarking to measure prediction effectiveness
+
+When disabled, each chunk starts with the full CRF search range (default 8-48) instead of a narrowed range based on nearby completed chunks.
 
 ## Performance Considerations
 

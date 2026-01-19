@@ -180,13 +180,14 @@ func ProcessChunked(
 		rep.Verbose(fmt.Sprintf("Metric mode: %s, workers %d", cfg.MetricMode, cfg.MetricWorkers))
 
 		tqEncCfg := &encode.TQEncodeConfig{
-			EncodeConfig:      *encCfg,
-			TQConfig:          tqCfg,
-			MetricWorkers:     cfg.MetricWorkers,
-			SampleDuration:    cfg.SampleDuration,
-			SampleMinChunk:    cfg.SampleMinChunk,
-			DisableTQSampling: cfg.DisableTQSampling,
-			Verbose:           cfg.Verbose,
+			EncodeConfig:        *encCfg,
+			TQConfig:            tqCfg,
+			MetricWorkers:       cfg.MetricWorkers,
+			SampleDuration:      cfg.SampleDuration,
+			SampleMinChunk:      cfg.SampleMinChunk,
+			DisableTQSampling:   cfg.DisableTQSampling,
+			DisableTQPrediction: cfg.DisableTQPrediction,
+			Verbose:             cfg.Verbose,
 		}
 
 		encodeErr = encode.EncodeAllTQ(
