@@ -1,5 +1,7 @@
 package tq
 
+import "math"
+
 // Probe represents a single encoding attempt at a specific CRF value.
 type Probe struct {
 	// CRF is the quality parameter used for this probe.
@@ -79,10 +81,10 @@ func (s *State) BestProbe() *Probe {
 	}
 
 	best := &s.Probes[0]
-	bestDiff := abs(best.Score - s.Target)
+	bestDiff := math.Abs(best.Score - s.Target)
 
 	for i := 1; i < len(s.Probes); i++ {
-		diff := abs(s.Probes[i].Score - s.Target)
+		diff := math.Abs(s.Probes[i].Score - s.Target)
 		if diff < bestDiff {
 			best = &s.Probes[i]
 			bestDiff = diff
@@ -92,40 +94,9 @@ func (s *State) BestProbe() *Probe {
 	return best
 }
 
-// ProbeLog contains the final logging information for a chunk.
-type ProbeLog struct {
-	// ChunkIdx is the chunk index.
-	ChunkIdx int
-
-	// Probes contains (CRF, Score, Size) tuples for each attempt.
-	Probes []ProbeEntry
-
-	// FinalCRF is the chosen CRF value.
-	FinalCRF float64
-
-	// FinalScore is the SSIMULACRA2 score at the final CRF.
-	FinalScore float64
-
-	// FinalSize is the output file size at the final CRF.
-	FinalSize uint64
-
-	// Round is the total number of iterations.
-	Round int
-
-	// Frames is the number of frames in this chunk.
-	Frames int
-}
-
 // ProbeEntry represents a single probe result for logging.
 type ProbeEntry struct {
 	CRF   float64
 	Score float64
 	Size  uint64
-}
-
-func abs(x float64) float64 {
-	if x < 0 {
-		return -x
-	}
-	return x
 }

@@ -189,7 +189,7 @@ func EncodeAllTQ(
 		encoderWg.Add(1)
 		go func() {
 			defer encoderWg.Done()
-			tqEncodeWorker(ctx, encodeChan, metricsChan, cfg, inf, workDir, splitDir, width, height, getError)
+			tqEncodeWorker(ctx, encodeChan, metricsChan, doneChan, cfg, inf, splitDir, width, height, getError)
 		}()
 	}
 
@@ -366,9 +366,10 @@ func tqEncodeWorker(
 	ctx context.Context,
 	workChan <-chan *worker.WorkPkg,
 	metricsChan chan<- *worker.WorkPkg,
+	doneChan chan<- tqResult,
 	cfg *TQEncodeConfig,
 	inf *ffms.VidInf,
-	workDir, splitDir string,
+	splitDir string,
 	width, height uint32,
 	getError func() error,
 ) {
@@ -389,8 +390,11 @@ func tqEncodeWorker(
 
 		// Encode probe at this CRF
 		probePath := filepath.Join(splitDir, fmt.Sprintf("%04d_%.2f.ivf", pkg.Chunk.Idx, crf))
-		if err := encodeProbe(pkg, crf, cfg, inf, probePath, width, height); err != nil {
-			// TODO: handle error properly
+		if err := encodeTQChunk(pkg, crf, cfg, inf, probePath, width, height, false); err != nil {
+			doneChan <- tqResult{
+				ChunkIdx: pkg.Chunk.Idx,
+				Error:    fmt.Errorf("failed to encode probe at CRF %.0f: %w", crf, err),
+			}
 			continue
 		}
 
@@ -440,7 +444,7 @@ func tqMetricsWorker(
 		if proc == nil {
 			var err error
 			proc, err = vship.NewProcessor(
-				width, height, inf.Is10Bit,
+				width, height,
 				int32PtrToIntPtr(inf.MatrixCoefficients),
 				int32PtrToIntPtr(inf.TransferCharacteristics),
 				int32PtrToIntPtr(inf.ColorPrimaries),
@@ -473,7 +477,7 @@ func tqMetricsWorker(
 		pkg.TQState.AddProbe(crf, score, frameScores, size)
 
 		// Check if we should complete
-		if tq.ShouldComplete(pkg.TQState, score, cfg.TQConfig) {
+		if tq.CheckComplete(pkg.TQState, score, cfg.TQConfig) {
 			best := pkg.TQState.BestProbe()
 			if best == nil {
 				best = &pkg.TQState.Probes[len(pkg.TQState.Probes)-1]
@@ -496,7 +500,7 @@ func tqMetricsWorker(
 
 				rep.Verbose(fmt.Sprintf("Chunk %d: sample probing complete at CRF %.0f, encoding full chunk", pkg.Chunk.Idx, finalCRF))
 
-				if err := encodeFinal(pkg, finalCRF, cfg, inf, finalPath, width, height); err != nil {
+				if err := encodeTQChunk(pkg, finalCRF, cfg, inf, finalPath, width, height, true); err != nil {
 					doneChan <- tqResult{
 						ChunkIdx: pkg.Chunk.Idx,
 						Error:    fmt.Errorf("failed to encode final chunk: %w", err),
@@ -654,25 +658,27 @@ func tqCoordinator(
 	}
 }
 
-// encodeProbe encodes a chunk at a specific CRF value.
-// When sampling is enabled, only the sample portion is encoded for probing.
-func encodeProbe(
+// encodeTQChunk encodes a chunk at a specific CRF value for TQ mode.
+// When useFullChunk is false and sampling is enabled, only the sample portion is encoded.
+// When useFullChunk is true, the full chunk is always encoded (used for final encode after probing).
+func encodeTQChunk(
 	pkg *worker.WorkPkg,
 	crf float64,
 	cfg *TQEncodeConfig,
 	inf *ffms.VidInf,
 	outputPath string,
 	width, height uint32,
+	useFullChunk bool,
 ) error {
-	// Use sample data for probing if sampling is enabled
+	// Determine which YUV data and frame count to use
 	var yuvData []byte
 	var frameCount int
-	if pkg.UseSampling && pkg.SampleYUV != nil {
-		yuvData = pkg.SampleYUV
-		frameCount = pkg.SampleFrameCount
-	} else {
+	if useFullChunk || !pkg.UseSampling || pkg.SampleYUV == nil {
 		yuvData = pkg.YUV
 		frameCount = pkg.FrameCount
+	} else {
+		yuvData = pkg.SampleYUV
+		frameCount = pkg.SampleFrameCount
 	}
 
 	encCfg := &encoder.EncConfig{
@@ -704,59 +710,6 @@ func encodeProbe(
 	}
 
 	_, err = io.Copy(stdin, &yuvReader{data: yuvData})
-	_ = stdin.Close()
-
-	if err != nil {
-		_ = cmd.Wait()
-		return fmt.Errorf("failed to write YUV data: %w", err)
-	}
-
-	if err := cmd.Wait(); err != nil {
-		return fmt.Errorf("encoder failed: %w", err)
-	}
-
-	return nil
-}
-
-// encodeFinal encodes the full chunk at the determined CRF value.
-// This is called after probing determines the optimal CRF.
-func encodeFinal(
-	pkg *worker.WorkPkg,
-	crf float64,
-	cfg *TQEncodeConfig,
-	inf *ffms.VidInf,
-	outputPath string,
-	width, height uint32,
-) error {
-	encCfg := &encoder.EncConfig{
-		Inf:                   inf,
-		CRF:                   float32(crf),
-		Preset:                cfg.Preset,
-		Tune:                  cfg.Tune,
-		Output:                outputPath,
-		GrainTable:            cfg.GrainTable,
-		Width:                 width,
-		Height:                height,
-		Frames:                pkg.FrameCount,
-		ACBias:                cfg.ACBias,
-		EnableVarianceBoost:   cfg.EnableVarianceBoost,
-		VarianceBoostStrength: cfg.VarianceBoostStrength,
-		VarianceOctile:        cfg.VarianceOctile,
-		LowPriority:           cfg.LowPriority,
-	}
-
-	cmd := encoder.MakeSvtCmd(encCfg)
-
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		return fmt.Errorf("failed to create stdin pipe: %w", err)
-	}
-
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("failed to start encoder: %w", err)
-	}
-
-	_, err = io.Copy(stdin, &yuvReader{data: pkg.YUV})
 	_ = stdin.Close()
 
 	if err != nil {

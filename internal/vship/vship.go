@@ -86,19 +86,13 @@ func InitDevice() error {
 }
 
 // NewProcessor creates a new SSIMULACRA2 processor for the given video dimensions.
-// Note: is10Bit reflects the original source bit depth, but pkg.YUV always contains
-// 10-bit data (8-bit sources are converted to 10-bit by the FFMS2 layer).
+// Note: FFMS2 always decodes to 10-bit YUV, so the processor is always configured for 10-bit.
 func NewProcessor(
 	width, height uint32,
-	is10Bit bool,
 	matrix, transfer, primaries *int,
 	colorRange, chromaSamplePos *int,
 ) (*Processor, error) {
-	// Both source and distorted frames are always 10-bit:
-	// - Source: pkg.YUV always contains 10-bit data (8-bit sources are converted by FFMS2)
-	// - Distorted: FFMS2 decodes encoded probes as 10-bit
-	// The is10Bit parameter is kept for API compatibility but not used for sample type.
-	_ = is10Bit // unused - always 10-bit
+	// Always 10-bit: FFMS2 converts 8-bit sources to 10-bit, and decodes probes as 10-bit
 	srcCS := createColorspace(width, height, true, matrix, transfer, primaries, colorRange, chromaSamplePos)
 	disCS := createColorspace(width, height, true, matrix, transfer, primaries, colorRange, chromaSamplePos)
 

@@ -82,9 +82,10 @@ func UpdateBounds(state *State, score, target, tolerance float64) bool {
 	return false
 }
 
-// ShouldComplete determines if the TQ search should complete.
+// CheckComplete determines if the TQ search should complete.
 // Returns true if any termination condition is met.
-func ShouldComplete(state *State, score float64, cfg *Config) bool {
+// Note: This function has a side-effect - it calls UpdateBounds to adjust search bounds.
+func CheckComplete(state *State, score float64, cfg *Config) bool {
 	// Check convergence
 	if Converged(score, cfg.Target, cfg.Tolerance) {
 		return true

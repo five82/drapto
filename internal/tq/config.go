@@ -40,30 +40,39 @@ func DefaultConfig() *Config {
 	}
 }
 
+// parseRange parses a "min-max" range string and returns the values.
+func parseRange(s, name, example string) (min, max float64, err error) {
+	parts := strings.Split(s, "-")
+	if len(parts) != 2 {
+		return 0, 0, fmt.Errorf("invalid %s format %q, expected 'min-max' (e.g., '%s')", name, s, example)
+	}
+
+	min, err = strconv.ParseFloat(strings.TrimSpace(parts[0]), 64)
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid %s min %q: %w", name, parts[0], err)
+	}
+
+	max, err = strconv.ParseFloat(strings.TrimSpace(parts[1]), 64)
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid %s max %q: %w", name, parts[1], err)
+	}
+
+	if min >= max {
+		return 0, 0, fmt.Errorf("%s min (%v) must be less than max (%v)", name, min, max)
+	}
+
+	return min, max, nil
+}
+
 // ParseTargetRange parses a target quality range string (e.g., "70-75").
 // Returns a Config with TargetMin, TargetMax, Target, and Tolerance set.
 func ParseTargetRange(s string) (*Config, error) {
+	minVal, maxVal, err := parseRange(s, "target quality", "70-75")
+	if err != nil {
+		return nil, err
+	}
+
 	cfg := DefaultConfig()
-
-	parts := strings.Split(s, "-")
-	if len(parts) != 2 {
-		return nil, fmt.Errorf("invalid target quality format %q, expected 'min-max' (e.g., '70-75')", s)
-	}
-
-	minVal, err := strconv.ParseFloat(strings.TrimSpace(parts[0]), 64)
-	if err != nil {
-		return nil, fmt.Errorf("invalid target quality min %q: %w", parts[0], err)
-	}
-
-	maxVal, err := strconv.ParseFloat(strings.TrimSpace(parts[1]), 64)
-	if err != nil {
-		return nil, fmt.Errorf("invalid target quality max %q: %w", parts[1], err)
-	}
-
-	if minVal >= maxVal {
-		return nil, fmt.Errorf("target quality min (%v) must be less than max (%v)", minVal, maxVal)
-	}
-
 	cfg.TargetMin = minVal
 	cfg.TargetMax = maxVal
 	cfg.Target = (minVal + maxVal) / 2.0
@@ -74,24 +83,5 @@ func ParseTargetRange(s string) (*Config, error) {
 
 // ParseQPRange parses a CRF search range string (e.g., "8-48").
 func ParseQPRange(s string) (min, max float64, err error) {
-	parts := strings.Split(s, "-")
-	if len(parts) != 2 {
-		return 0, 0, fmt.Errorf("invalid QP range format %q, expected 'min-max' (e.g., '8-48')", s)
-	}
-
-	min, err = strconv.ParseFloat(strings.TrimSpace(parts[0]), 64)
-	if err != nil {
-		return 0, 0, fmt.Errorf("invalid QP range min %q: %w", parts[0], err)
-	}
-
-	max, err = strconv.ParseFloat(strings.TrimSpace(parts[1]), 64)
-	if err != nil {
-		return 0, 0, fmt.Errorf("invalid QP range max %q: %w", parts[1], err)
-	}
-
-	if min >= max {
-		return 0, 0, fmt.Errorf("QP range min (%v) must be less than max (%v)", min, max)
-	}
-
-	return min, max, nil
+	return parseRange(s, "QP range", "8-48")
 }

@@ -8,6 +8,22 @@ import (
 // maxTau2 is the maximum allowed tau squared for monotonicity preservation in PCHIP.
 const maxTau2 = 9.0
 
+// hermiteInterp evaluates a cubic Hermite spline at xi given interval [xk, xk1],
+// function values [yk, yk1], and derivatives [dk, dk1].
+func hermiteInterp(xk, xk1, yk, yk1, dk, dk1, xi float64) float64 {
+	h := xk1 - xk
+	t := (xi - xk) / h
+	t2 := t * t
+	t3 := t2 * t
+
+	h00 := 2*t3 - 3*t2 + 1
+	h10 := t3 - 2*t2 + t
+	h01 := -2*t3 + 3*t2
+	h11 := t3 - t2
+
+	return h00*yk + h10*h*dk + h01*yk1 + h11*h*dk1
+}
+
 // Lerp performs linear interpolation between two points.
 // x[0], y[0] is the first point, x[1], y[1] is the second point.
 // Returns nil if interpolation is not possible.
@@ -87,18 +103,7 @@ func PCHIP(x, y [4]float64, xi float64) *float64 {
 		}
 	}
 
-	// Hermite basis functions
-	h := x[k+1] - x[k]
-	t := (xi - x[k]) / h
-	t2 := t * t
-	t3 := t2 * t
-
-	h00 := 2*t3 - 3*t2 + 1
-	h10 := t3 - 2*t2 + t
-	h01 := -2*t3 + 3*t2
-	h11 := t3 - t2
-
-	result := h00*y[k] + h10*h*d[k] + h01*y[k+1] + h11*h*d[k+1]
+	result := hermiteInterp(x[k], x[k+1], y[k], y[k+1], d[k], d[k+1], xi)
 	return &result
 }
 
@@ -142,31 +147,20 @@ func Akima(x, y []float64, xi float64) *float64 {
 	m[n] = 2*m[n-1] - m[n-2]
 
 	// Compute tangents
-	t := make([]float64, n)
+	tan := make([]float64, n)
 	for i := 0; i < n-1; i++ {
 		w1 := math.Abs(m[i+2] - m[i+1])
 		w2 := math.Abs(m[i] - m[i+1])
 
 		if w1+w2 < 1e-10 {
-			t[i] = 0.5 * (m[i] + m[i+1])
+			tan[i] = 0.5 * (m[i] + m[i+1])
 		} else {
-			t[i] = (w1*m[i] + w2*m[i+1]) / (w1 + w2)
+			tan[i] = (w1*m[i] + w2*m[i+1]) / (w1 + w2)
 		}
 	}
-	t[n-1] = m[n-1]
+	tan[n-1] = m[n-1]
 
-	// Hermite basis functions
-	h := x[k+1] - x[k]
-	s := (xi - x[k]) / h
-	s2 := s * s
-	s3 := s2 * s
-
-	h00 := 2*s3 - 3*s2 + 1
-	h10 := s3 - 2*s2 + s
-	h01 := -2*s3 + 3*s2
-	h11 := s3 - s2
-
-	result := h00*y[k] + h10*h*t[k] + h01*y[k+1] + h11*h*t[k+1]
+	result := hermiteInterp(x[k], x[k+1], y[k], y[k+1], tan[k], tan[k+1], xi)
 	return &result
 }
 
@@ -204,18 +198,7 @@ func FritschCarlson(x, y []float64, xi float64) *float64 {
 		m[1] = (w1 + w2) / (w1/d0 + w2/d1)
 	}
 
-	// Hermite basis functions
-	h := x[k+1] - x[k]
-	t := (xi - x[k]) / h
-	t2 := t * t
-	t3 := t2 * t
-
-	h00 := 2*t3 - 3*t2 + 1
-	h10 := t3 - 2*t2 + t
-	h01 := -2*t3 + 3*t2
-	h11 := t3 - t2
-
-	result := h00*y[k] + h10*h*m[k] + h01*y[k+1] + h11*h*m[k+1]
+	result := hermiteInterp(x[k], x[k+1], y[k], y[k+1], m[k], m[k+1], xi)
 	return &result
 }
 
@@ -272,7 +255,7 @@ func InterpolateCRF(probes []Probe, target float64, round int) *float64 {
 		return nil
 	}
 
-	// Round to 0.25 increments
+	// Round to nearest integer
 	rounded := roundCRF(*result)
 	return &rounded
 }

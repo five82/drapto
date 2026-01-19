@@ -308,7 +308,7 @@ func TestNextCRF(t *testing.T) {
 	}
 }
 
-func TestShouldComplete(t *testing.T) {
+func TestCheckComplete(t *testing.T) {
 	cfg := &Config{
 		Target:    72.5,
 		Tolerance: 2.5,
@@ -347,9 +347,9 @@ func TestShouldComplete(t *testing.T) {
 			state.Round = tt.round
 			state.LastCRF = 28
 
-			result := ShouldComplete(state, tt.score, cfg)
+			result := CheckComplete(state, tt.score, cfg)
 			if result != tt.expected {
-				t.Errorf("ShouldComplete() = %v, want %v", result, tt.expected)
+				t.Errorf("CheckComplete() = %v, want %v", result, tt.expected)
 			}
 		})
 	}
