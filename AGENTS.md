@@ -97,3 +97,7 @@ See `docs/spindle-integration.md` for library API usage and event types.
 1. Keep it simple - small hobby project
 2. Prefer unit tests over actual encodes (encoding is slow)
 3. When running drapto with timeout, use at least 120 seconds
+
+## Log Files
+
+Drapto logs are stored in `~/.local/state/drapto/logs/`
