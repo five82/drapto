@@ -7,7 +7,7 @@
 // Basic usage:
 //
 //	encoder, err := drapto.New(
-//	    drapto.WithPreset(drapto.PresetGrain),
+//	    drapto.WithQualityHD(27),
 //	)
 //	if err != nil {
 //	    log.Fatal(err)
@@ -32,21 +32,6 @@ import (
 	"github.com/five82/drapto/internal/reporter"
 	"github.com/five82/drapto/internal/util"
 )
-
-// Re-export preset types
-type Preset = config.Preset
-
-const (
-	PresetGrain = config.PresetGrain
-	PresetClean = config.PresetClean
-	PresetQuick = config.PresetQuick
-)
-
-// ParsePreset converts a preset string to a Preset value.
-// Valid values are "grain", "clean", and "quick" (case-insensitive).
-func ParsePreset(s string) (Preset, error) {
-	return config.ParsePreset(s)
-}
 
 // Encoder is the main entry point for video encoding.
 type Encoder struct {
@@ -88,13 +73,6 @@ func New(opts ...Option) (*Encoder, error) {
 	}
 
 	return &Encoder{config: cfg}, nil
-}
-
-// WithPreset applies a Drapto preset.
-func WithPreset(p Preset) Option {
-	return func(c *config.Config) {
-		c.ApplyPreset(p)
-	}
 }
 
 // WithQualitySD sets the CRF quality for SD videos (<1920 width).

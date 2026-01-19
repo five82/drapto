@@ -110,15 +110,6 @@ func (r *TerminalReporter) EncodingConfig(summary EncodingConfigSummary) {
 	r.printLabel("Matrix:", summary.MatrixCoefficients)
 	r.printLabel("Audio codec:", summary.AudioCodec)
 	r.printLabel("Audio:", summary.AudioDescription)
-	r.printLabel("Drapto preset:", summary.DraptoPreset)
-
-	if len(summary.DraptoPresetSettings) > 0 {
-		var parts []string
-		for _, kv := range summary.DraptoPresetSettings {
-			parts = append(parts, fmt.Sprintf("%s=%s", kv[0], kv[1]))
-		}
-		r.printLabel("Preset values:", strings.Join(parts, ", "))
-	}
 
 	if summary.SVTAV1Params != "" {
 		r.printLabel("SVT params:", summary.SVTAV1Params)

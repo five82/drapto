@@ -71,7 +71,6 @@ type encodeArgs struct {
 	qualityHD       uint
 	qualityUHD      uint
 	preset          uint
-	draptoPreset    string
 	disableAutocrop bool
 	responsive      bool
 	noLog           bool
@@ -114,7 +113,6 @@ Quality Settings:
   --quality-hd <CRF>     CRF quality for HD videos (≥1920 width). Default: %d
   --quality-uhd <CRF>    CRF quality for UHD videos (≥3840 width). Default: %d
   --preset <0-13>        SVT-AV1 encoder preset. Lower=slower/better. Default: %d
-  --drapto-preset <NAME> Apply grouped Drapto defaults (grain, clean, quick)
 
 Target Quality Options (per-chunk SSIMULACRA2 targeting):
   -t, --target <RANGE>   Target SSIMULACRA2 quality range (e.g., "70-75")
@@ -156,7 +154,6 @@ Output Options:
 	fs.UintVar(&ea.qualityHD, "quality-hd", 0, "CRF quality for HD videos")
 	fs.UintVar(&ea.qualityUHD, "quality-uhd", 0, "CRF quality for UHD videos")
 	fs.UintVar(&ea.preset, "preset", 0, "SVT-AV1 encoder preset (0-13)")
-	fs.StringVar(&ea.draptoPreset, "drapto-preset", "", "Drapto preset (grain, clean, quick)")
 
 	// Target quality options
 	fs.StringVar(&ea.targetQuality, "t", "", "Target SSIMULACRA2 quality range")
@@ -258,15 +255,6 @@ func executeEncode(ea encodeArgs) error {
 	// Build configuration
 	cfg := config.NewConfig(inputPath, outputDir, logDir)
 
-	// Apply drapto preset first (if specified)
-	if ea.draptoPreset != "" {
-		preset, err := config.ParsePreset(ea.draptoPreset)
-		if err != nil {
-			return err
-		}
-		cfg.ApplyPreset(preset)
-	}
-
 	// Override with explicit CLI arguments
 	if ea.qualitySD != 0 {
 		cfg.QualitySD = uint8(ea.qualitySD)
@@ -314,9 +302,6 @@ func executeEncode(ea encodeArgs) error {
 		logger.Info("Crop mode: %s", cfg.CropMode)
 		logger.Info("Responsive encoding: %v", cfg.ResponsiveEncoding)
 		logger.Info("Parallel encoding: workers=%d, buffer=%d", cfg.Workers, cfg.ChunkBuffer)
-		if cfg.DraptoPreset != nil {
-			logger.Info("Drapto preset: %s", *cfg.DraptoPreset)
-		}
 	}
 
 	// Create reporter

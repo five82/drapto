@@ -72,15 +72,6 @@ func (r *LogReporter) EncodingConfig(summary EncodingConfigSummary) {
 	r.log("INFO", "Matrix: %s", summary.MatrixCoefficients)
 	r.log("INFO", "Audio codec: %s", summary.AudioCodec)
 	r.log("INFO", "Audio: %s", summary.AudioDescription)
-	r.log("INFO", "Drapto preset: %s", summary.DraptoPreset)
-
-	if len(summary.DraptoPresetSettings) > 0 {
-		var parts []string
-		for _, kv := range summary.DraptoPresetSettings {
-			parts = append(parts, fmt.Sprintf("%s=%s", kv[0], kv[1]))
-		}
-		r.log("INFO", "Preset values: %s", strings.Join(parts, ", "))
-	}
 
 	if summary.SVTAV1Params != "" {
 		r.log("INFO", "SVT params: %s", summary.SVTAV1Params)

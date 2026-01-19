@@ -4,7 +4,6 @@ package config
 import (
 	"fmt"
 	"runtime"
-	"strings"
 )
 
 // Default constants
@@ -62,95 +61,6 @@ const (
 	// Chunks shorter than this use full-chunk probing.
 	DefaultSampleMinChunk float64 = 6.0
 )
-
-// Preset represents a Drapto preset grouping.
-type Preset string
-
-const (
-	PresetGrain Preset = "grain"
-	PresetClean Preset = "clean"
-	PresetQuick Preset = "quick"
-)
-
-// ParsePreset parses a string into a Preset.
-func ParsePreset(s string) (Preset, error) {
-	switch strings.ToLower(s) {
-	case "grain":
-		return PresetGrain, nil
-	case "clean":
-		return PresetClean, nil
-	case "quick":
-		return PresetQuick, nil
-	default:
-		return "", fmt.Errorf("unknown preset '%s', valid options: grain, clean, quick", s)
-	}
-}
-
-// String returns the string representation of the preset.
-func (p Preset) String() string {
-	return string(p)
-}
-
-// PresetValues contains bundled parameter values for a preset.
-type PresetValues struct {
-	QualitySD                   uint8
-	QualityHD                   uint8
-	QualityUHD                  uint8
-	SVTAV1Preset                uint8
-	SVTAV1Tune                  uint8
-	SVTAV1ACBias                float32
-	SVTAV1EnableVarianceBoost   bool
-	SVTAV1VarianceBoostStrength uint8
-	SVTAV1VarianceOctile        uint8
-	VideoDenoiseFilter          string // Empty means none
-	SVTAV1FilmGrain             *uint8 // nil means none
-	SVTAV1FilmGrainDenoise      *bool  // nil means none
-}
-
-// GetPresetValues returns the values for a given preset.
-func GetPresetValues(p Preset) PresetValues {
-	switch p {
-	case PresetGrain:
-		return PresetValues{
-			QualitySD:                   DefaultQualitySD,
-			QualityHD:                   DefaultQualityHD,
-			QualityUHD:                  DefaultQualityUHD,
-			SVTAV1Preset:                DefaultSVTAV1Preset,
-			SVTAV1Tune:                  DefaultSVTAV1Tune,
-			SVTAV1ACBias:                DefaultSVTAV1ACBias,
-			SVTAV1EnableVarianceBoost:   DefaultSVTAV1EnableVarianceBoost,
-			SVTAV1VarianceBoostStrength: DefaultSVTAV1VarianceBoostStrength,
-			SVTAV1VarianceOctile:        DefaultSVTAV1VarianceOctile,
-		}
-	case PresetClean:
-		return PresetValues{
-			QualitySD:                   27,
-			QualityHD:                   29,
-			QualityUHD:                  31,
-			SVTAV1Preset:                DefaultSVTAV1Preset,
-			SVTAV1Tune:                  DefaultSVTAV1Tune,
-			SVTAV1ACBias:                0.05,
-			SVTAV1EnableVarianceBoost:   false,
-			SVTAV1VarianceBoostStrength: 0,
-			SVTAV1VarianceOctile:        0,
-		}
-	case PresetQuick:
-		return PresetValues{
-			QualitySD:                   32,
-			QualityHD:                   35,
-			QualityUHD:                  36,
-			SVTAV1Preset:                8,
-			SVTAV1Tune:                  DefaultSVTAV1Tune,
-			SVTAV1ACBias:                0.0,
-			SVTAV1EnableVarianceBoost:   false,
-			SVTAV1VarianceBoostStrength: 0,
-			SVTAV1VarianceOctile:        0,
-		}
-	default:
-		// Return grain preset as default
-		return GetPresetValues(PresetGrain)
-	}
-}
 
 // AutoParallelConfig returns optimal workers and buffer settings based on CPU cores.
 // Workers: 1 per 8 cores, min 1, max 4
@@ -221,9 +131,6 @@ type Config struct {
 	SampleDuration    float64 // TQ probe sample duration in seconds
 	SampleMinChunk    float64 // Minimum chunk duration in seconds to use sampling
 	DisableTQSampling bool    // Disable sample-based probing (use full chunks)
-
-	// Selected preset (optional)
-	DraptoPreset *Preset
 }
 
 // NewConfig creates a new Config with default values.
@@ -258,24 +165,6 @@ func NewConfig(inputDir, outputDir, logDir string) *Config {
 		SampleDuration: DefaultSampleDuration,
 		SampleMinChunk: DefaultSampleMinChunk,
 	}
-}
-
-// ApplyPreset applies the given preset to the config.
-func (c *Config) ApplyPreset(p Preset) {
-	values := GetPresetValues(p)
-	c.DraptoPreset = &p
-	c.QualitySD = values.QualitySD
-	c.QualityHD = values.QualityHD
-	c.QualityUHD = values.QualityUHD
-	c.SVTAV1Preset = values.SVTAV1Preset
-	c.SVTAV1Tune = values.SVTAV1Tune
-	c.SVTAV1ACBias = values.SVTAV1ACBias
-	c.SVTAV1EnableVarianceBoost = values.SVTAV1EnableVarianceBoost
-	c.SVTAV1VarianceBoostStrength = values.SVTAV1VarianceBoostStrength
-	c.SVTAV1VarianceOctile = values.SVTAV1VarianceOctile
-	c.VideoDenoiseFilter = values.VideoDenoiseFilter
-	c.SVTAV1FilmGrain = values.SVTAV1FilmGrain
-	c.SVTAV1FilmGrainDenoise = values.SVTAV1FilmGrainDenoise
 }
 
 // Validate checks the configuration for errors.

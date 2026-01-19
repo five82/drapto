@@ -29,17 +29,15 @@ type CropSummary struct {
 
 // EncodingConfigSummary contains encoding configuration.
 type EncodingConfigSummary struct {
-	Encoder              string
-	Preset               string
-	Tune                 string
-	Quality              string
-	PixelFormat          string
-	MatrixCoefficients   string
-	AudioCodec           string
-	AudioDescription     string
-	DraptoPreset         string
-	DraptoPresetSettings [][2]string
-	SVTAV1Params         string
+	Encoder            string
+	Preset             string
+	Tune               string
+	Quality            string
+	PixelFormat        string
+	MatrixCoefficients string
+	AudioCodec         string
+	AudioDescription   string
+	SVTAV1Params       string
 }
 
 // ProgressSnapshot contains encoding progress information.

@@ -160,11 +160,9 @@ func ProcessVideos(
 			Quality:              fmt.Sprintf("CRF %d", encodeParams.Quality),
 			PixelFormat:          encodeParams.PixelFormat,
 			MatrixCoefficients:   encodeParams.MatrixCoefficients,
-			AudioCodec:           "Opus",
-			AudioDescription:     audioDescConfig,
-			DraptoPreset:         formatPreset(cfg.DraptoPreset),
-			DraptoPresetSettings: collectPresetSettings(encodeParams),
-			SVTAV1Params:         encodeParams.SVTAV1CLIParams(),
+			AudioCodec:       "Opus",
+			AudioDescription: audioDescConfig,
+			SVTAV1Params:     encodeParams.SVTAV1CLIParams(),
 		})
 
 		// Run chunked encoding with FFMS2 + SvtAv1EncApp
@@ -332,22 +330,6 @@ func formatDynamicRange(isHDR bool) string {
 	return "SDR"
 }
 
-func formatPreset(p *config.Preset) string {
-	if p == nil {
-		return "Default"
-	}
-	switch *p {
-	case config.PresetGrain:
-		return "Grain"
-	case config.PresetClean:
-		return "Clean"
-	case config.PresetQuick:
-		return "Quick"
-	default:
-		return "Default"
-	}
-}
-
 func setupEncodeParams(
 	cfg *config.Config,
 	inputPath, outputPath string,
@@ -394,40 +376,4 @@ func setupEncodeParams(
 	}
 
 	return params
-}
-
-func collectPresetSettings(params *ffmpeg.EncodeParams) [][2]string {
-	settings := [][2]string{
-		{"CRF", fmt.Sprintf("%d", params.Quality)},
-		{"SVT preset", fmt.Sprintf("%d", params.Preset)},
-		{"Tune", fmt.Sprintf("%d", params.Tune)},
-		{"AC bias", fmt.Sprintf("%.2f", params.ACBias)},
-	}
-
-	if params.EnableVarianceBoost {
-		settings = append(settings, [2]string{"Variance boost",
-			fmt.Sprintf("enabled (strength %d, octile %d)",
-				params.VarianceBoostStrength, params.VarianceOctile)})
-	} else {
-		settings = append(settings, [2]string{"Variance boost", "disabled"})
-	}
-
-	if params.VideoDenoiseFilter != "" {
-		settings = append(settings, [2]string{"Denoise", params.VideoDenoiseFilter})
-	}
-
-	if params.FilmGrain != nil {
-		denoise := "-"
-		if params.FilmGrainDenoise != nil {
-			if *params.FilmGrainDenoise {
-				denoise = "1"
-			} else {
-				denoise = "0"
-			}
-		}
-		settings = append(settings, [2]string{"Film grain synth",
-			fmt.Sprintf("film-grain %d, denoise %s", *params.FilmGrain, denoise)})
-	}
-
-	return settings
 }

@@ -9,7 +9,6 @@ FFmpeg wrapper for AV1 encoding with SVT-AV1 and Opus audio. Uses opinionated de
 - Resolution-based CRF defaults (SD/HD/UHD)
 - Multi-track audio transcoding to Opus
 - Post-encode validation (codec, dimensions, duration, HDR)
-- Preset profiles: `grain`, `clean`, `quick`
 - Library API for embedding
 
 ## Requirements
@@ -45,7 +44,6 @@ go build -o drapto ./cmd/drapto
 ```bash
 drapto encode -i input.mkv -o output/
 drapto encode -i /videos/ -o /encoded/
-drapto encode -i input.mkv -o output/ --drapto-preset grain
 ```
 
 ### Options
@@ -54,7 +52,6 @@ drapto encode -i input.mkv -o output/ --drapto-preset grain
 -i, --input          Input video file or directory (required)
 -o, --output         Output directory (required)
 -l, --log-dir        Log directory (defaults to OUTPUT/logs)
-    --drapto-preset  Apply preset: grain, clean, quick
     --quality-sd     CRF for SD (<1920 width), default 25
     --quality-hd     CRF for HD (>=1920 width), default 27
     --quality-uhd    CRF for UHD (>=3840 width), default 29
@@ -73,7 +70,6 @@ Drapto can be used as a Go library:
 import "github.com/five82/drapto"
 
 encoder, err := drapto.New(
-    drapto.WithPreset(drapto.PresetGrain),
     drapto.WithQualityHD(27),
 )
 if err != nil {
@@ -99,7 +95,7 @@ drapto/
 ├── events.go           # Event types for progress callbacks
 ├── cmd/drapto/         # CLI
 └── internal/
-    ├── config/         # Configuration and presets
+    ├── config/         # Configuration
     ├── ffmpeg/         # FFmpeg command builder and executor
     ├── ffprobe/        # Media analysis
     ├── mediainfo/      # HDR detection
