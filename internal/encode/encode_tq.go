@@ -303,6 +303,10 @@ func EncodeAllTQ(
 
 				rep.Verbose(fmt.Sprintf("Chunk %d: using %d-frame sample (%.1fs) from offset %d, warmup %d, measure %d",
 					ch.Idx, encodeFrames, float64(encodeFrames)/fps, offset, warmupFrames, measureFrames))
+			} else if cfg.DisableTQSampling {
+				chunkDur := float64(pkg.FrameCount) / fps
+				rep.Verbose(fmt.Sprintf("Chunk %d: using full %d-frame chunk (%.1fs) - sampling disabled via flag",
+					ch.Idx, pkg.FrameCount, chunkDur))
 			} else {
 				chunkDur := float64(pkg.FrameCount) / fps
 				if chunkDur < cfg.SampleMinChunk {
