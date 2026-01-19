@@ -162,7 +162,7 @@ func ProcessVideos(
 			Encoder:              "SVT-AV1",
 			Preset:               fmt.Sprintf("%d", encodeParams.Preset),
 			Tune:                 fmt.Sprintf("%d", encodeParams.Tune),
-			Quality:              fmt.Sprintf("CRF %d", encodeParams.Quality),
+			Quality:              formatQualityDescription(cfg, encodeParams.Quality),
 			PixelFormat:          encodeParams.PixelFormat,
 			MatrixCoefficients:   encodeParams.MatrixCoefficients,
 			AudioCodec:       "Opus",
@@ -327,6 +327,13 @@ func formatDynamicRange(isHDR bool) string {
 		return "HDR"
 	}
 	return "SDR"
+}
+
+func formatQualityDescription(cfg *config.Config, crf uint32) string {
+	if cfg.TargetQuality != "" {
+		return fmt.Sprintf("TQ %s (SSIMULACRA2)", cfg.TargetQuality)
+	}
+	return fmt.Sprintf("CRF %d", crf)
 }
 
 func setupEncodeParams(
