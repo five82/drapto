@@ -117,7 +117,7 @@ func ProcessVideos(
 		hdrInfo := mediainfo.DetectHDR(mediaInfoData)
 
 		// Determine quality settings
-		quality, category := determineQualitySettings(videoProps, cfg)
+		quality, _ := determineQualitySettings(videoProps, cfg)
 		isHDR := hdrInfo.IsHDR
 
 		// Get audio info
@@ -131,7 +131,6 @@ func ProcessVideos(
 			OutputFile:       util.GetFilename(outputPath),
 			Duration:         util.FormatDuration(videoProps.DurationSecs),
 			Resolution:       fmt.Sprintf("%dx%d", videoProps.Width, videoProps.Height),
-			Category:         category,
 			DynamicRange:     formatDynamicRange(isHDR),
 			AudioDescription: audioDescription,
 		})
@@ -312,15 +311,9 @@ func ProcessVideos(
 	return results, nil
 }
 
-// determineQualitySettings selects quality based on resolution.
-func determineQualitySettings(props *ffprobe.VideoProperties, cfg *config.Config) (uint32, string) {
-	if props.Width >= config.UHDWidthThreshold {
-		return uint32(cfg.QualityUHD), "UHD"
-	}
-	if props.Width >= config.HDWidthThreshold {
-		return uint32(cfg.QualityHD), "HD"
-	}
-	return uint32(cfg.QualitySD), "SD"
+// determineQualitySettings returns the CRF quality setting.
+func determineQualitySettings(_ *ffprobe.VideoProperties, cfg *config.Config) (uint32, string) {
+	return uint32(cfg.CRF), ""
 }
 
 func formatDynamicRange(isHDR bool) string {

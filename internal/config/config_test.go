@@ -21,8 +21,8 @@ func TestNewConfig(t *testing.T) {
 	if cfg.SVTAV1Preset != DefaultSVTAV1Preset {
 		t.Errorf("expected SVTAV1Preset=%d, got %d", DefaultSVTAV1Preset, cfg.SVTAV1Preset)
 	}
-	if cfg.QualitySD != DefaultQualitySD {
-		t.Errorf("expected QualitySD=%d, got %d", DefaultQualitySD, cfg.QualitySD)
+	if cfg.CRF != DefaultCRF {
+		t.Errorf("expected CRF=%d, got %d", DefaultCRF, cfg.CRF)
 	}
 }
 
@@ -48,18 +48,8 @@ func TestConfigValidate(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "quality_sd 64 is invalid",
-			modify:  func(c *Config) { c.QualitySD = 64 },
-			wantErr: true,
-		},
-		{
-			name:    "quality_hd 64 is invalid",
-			modify:  func(c *Config) { c.QualityHD = 64 },
-			wantErr: true,
-		},
-		{
-			name:    "quality_uhd 64 is invalid",
-			modify:  func(c *Config) { c.QualityUHD = 64 },
+			name:    "crf 64 is invalid",
+			modify:  func(c *Config) { c.CRF = 64 },
 			wantErr: true,
 		},
 		{

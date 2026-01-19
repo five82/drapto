@@ -14,7 +14,6 @@ type InitializationSummary struct {
 	OutputFile       string
 	Duration         string
 	Resolution       string
-	Category         string
 	DynamicRange     string
 	AudioDescription string
 }

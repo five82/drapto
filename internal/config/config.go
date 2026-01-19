@@ -8,14 +8,8 @@ import (
 
 // Default constants
 const (
-	// DefaultQualitySD is the CRF for Standard Definition videos (<1920 width).
-	DefaultQualitySD uint8 = 25
-
-	// DefaultQualityHD is the CRF for High Definition videos (>=1920 width, <3840 width).
-	DefaultQualityHD uint8 = 27
-
-	// DefaultQualityUHD is the CRF for Ultra High Definition videos (>=3840 width).
-	DefaultQualityUHD uint8 = 29
+	// DefaultCRF is the default CRF quality setting.
+	DefaultCRF uint8 = 27
 
 	// DefaultSVTAV1Preset is the SVT-AV1 preset (0-13, lower is slower/better).
 	DefaultSVTAV1Preset uint8 = 6
@@ -37,12 +31,6 @@ const (
 
 	// DefaultCropMode is the crop mode for the main encode.
 	DefaultCropMode string = "auto"
-
-	// UHDWidthThreshold is the width threshold for Ultra High Definition (4K).
-	UHDWidthThreshold uint32 = 3840
-
-	// HDWidthThreshold is the width threshold for High Definition.
-	HDWidthThreshold uint32 = 1920
 
 	// DefaultEncodeCooldownSecs is the cooldown period between encodes.
 	DefaultEncodeCooldownSecs uint64 = 3
@@ -104,10 +92,8 @@ type Config struct {
 	SVTAV1FilmGrain        *uint8 // Optional film grain synthesis strength
 	SVTAV1FilmGrainDenoise *bool  // Optional film grain denoise toggle
 
-	// Quality settings (CRF values 0-63)
-	QualitySD  uint8
-	QualityHD  uint8
-	QualityUHD uint8
+	// Quality setting (CRF value 0-63)
+	CRF uint8
 
 	// Processing options
 	CropMode           string // "auto" or "none"
@@ -147,9 +133,7 @@ func NewConfig(inputDir, outputDir, logDir string) *Config {
 		SVTAV1EnableVarianceBoost:   DefaultSVTAV1EnableVarianceBoost,
 		SVTAV1VarianceBoostStrength: DefaultSVTAV1VarianceBoostStrength,
 		SVTAV1VarianceOctile:        DefaultSVTAV1VarianceOctile,
-		QualitySD:                   DefaultQualitySD,
-		QualityHD:                   DefaultQualityHD,
-		QualityUHD:                  DefaultQualityUHD,
+		CRF: DefaultCRF,
 		CropMode:                    DefaultCropMode,
 		ResponsiveEncoding:          false,
 		EncodeCooldownSecs:          DefaultEncodeCooldownSecs,
@@ -173,16 +157,8 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("svt_av1_preset must be 0-13, got %d", c.SVTAV1Preset)
 	}
 
-	if c.QualitySD > 63 {
-		return fmt.Errorf("quality_sd must be 0-63, got %d", c.QualitySD)
-	}
-
-	if c.QualityHD > 63 {
-		return fmt.Errorf("quality_hd must be 0-63, got %d", c.QualityHD)
-	}
-
-	if c.QualityUHD > 63 {
-		return fmt.Errorf("quality_uhd must be 0-63, got %d", c.QualityUHD)
+	if c.CRF > 63 {
+		return fmt.Errorf("crf must be 0-63, got %d", c.CRF)
 	}
 
 	if c.SVTAV1FilmGrain == nil && c.SVTAV1FilmGrainDenoise != nil {

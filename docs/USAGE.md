@@ -12,7 +12,7 @@ drapto encode -i input.mkv -o output/
 drapto encode -i /videos/ -o /encoded/
 
 # Override defaults
-drapto encode -i input.mkv -o output/ --quality-hd 24 --preset 6
+drapto encode -i input.mkv -o output/ --crf 24 --preset 6
 
 # Verbose output
 drapto encode -v -i input.mkv -o output/
@@ -29,7 +29,7 @@ drapto encode -v -i input.mkv -o output/
 - `--no-color`: Disable colored output
 - `-l, --log-dir <DIR>`: Override the log directory (defaults to `<output>/logs`)
 - `--preset <0-13>`: SVT-AV1 encoder speed/quality (default `6`, lower is slower but higher quality)
-- `--quality-sd/hd/uhd <CRF>`: Override CRF defaults (SD=25, HD=27, UHD=29)
+- `--crf <0-63>`: CRF quality level (default `27`, lower is better quality)
 - `--responsive`: Reserve a few CPU threads so other apps stay responsive
 - `--disable-autocrop`: Skip black-bar detection and cropping
 

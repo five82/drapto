@@ -43,7 +43,7 @@ func (r *LogReporter) Initialization(summary InitializationSummary) {
 	r.log("INFO", "Input: %s", summary.InputFile)
 	r.log("INFO", "Output: %s", summary.OutputFile)
 	r.log("INFO", "Duration: %s", summary.Duration)
-	r.log("INFO", "Resolution: %s (%s)", summary.Resolution, summary.Category)
+	r.log("INFO", "Resolution: %s", summary.Resolution)
 	r.log("INFO", "Dynamic range: %s", summary.DynamicRange)
 	r.log("INFO", "Audio: %s", summary.AudioDescription)
 }

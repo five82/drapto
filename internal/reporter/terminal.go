@@ -69,7 +69,7 @@ func (r *TerminalReporter) Initialization(summary InitializationSummary) {
 	r.printLabel("File:", summary.InputFile)
 	r.printLabel("Output:", summary.OutputFile)
 	r.printLabel("Duration:", summary.Duration)
-	r.printLabel("Resolution:", fmt.Sprintf("%s (%s)", summary.Resolution, summary.Category))
+	r.printLabel("Resolution:", summary.Resolution)
 	r.printLabel("Dynamic:", summary.DynamicRange)
 	r.printLabel("Audio:", summary.AudioDescription)
 }

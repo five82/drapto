@@ -7,7 +7,7 @@
 // Basic usage:
 //
 //	encoder, err := drapto.New(
-//	    drapto.WithQualityHD(27),
+//	    drapto.WithCRF(27),
 //	)
 //	if err != nil {
 //	    log.Fatal(err)
@@ -75,24 +75,10 @@ func New(opts ...Option) (*Encoder, error) {
 	return &Encoder{config: cfg}, nil
 }
 
-// WithQualitySD sets the CRF quality for SD videos (<1920 width).
-func WithQualitySD(crf uint8) Option {
+// WithCRF sets the CRF quality level (0-63, lower is better quality).
+func WithCRF(crf uint8) Option {
 	return func(c *config.Config) {
-		c.QualitySD = crf
-	}
-}
-
-// WithQualityHD sets the CRF quality for HD videos (>=1920 width).
-func WithQualityHD(crf uint8) Option {
-	return func(c *config.Config) {
-		c.QualityHD = crf
-	}
-}
-
-// WithQualityUHD sets the CRF quality for UHD videos (>=3840 width).
-func WithQualityUHD(crf uint8) Option {
-	return func(c *config.Config) {
-		c.QualityUHD = crf
+		c.CRF = crf
 	}
 }
 

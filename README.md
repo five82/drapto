@@ -70,7 +70,7 @@ Drapto can be used as a Go library:
 import "github.com/five82/drapto"
 
 encoder, err := drapto.New(
-    drapto.WithQualityHD(27),
+    drapto.WithCRF(27),
 )
 if err != nil {
     log.Fatal(err)

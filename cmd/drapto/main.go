@@ -67,9 +67,7 @@ type encodeArgs struct {
 	outputDir       string
 	logDir          string
 	verbose         bool
-	qualitySD       uint
-	qualityHD       uint
-	qualityUHD      uint
+	crf             uint
 	preset          uint
 	disableAutocrop bool
 	responsive      bool
@@ -109,9 +107,7 @@ Options:
   -v, --verbose          Enable verbose output for troubleshooting
 
 Quality Settings:
-  --quality-sd <CRF>     CRF quality for SD videos (<1920 width). Default: %d
-  --quality-hd <CRF>     CRF quality for HD videos (≥1920 width). Default: %d
-  --quality-uhd <CRF>    CRF quality for UHD videos (≥3840 width). Default: %d
+  --crf <0-63>           CRF quality level. Lower=better quality. Default: %d
   --preset <0-13>        SVT-AV1 encoder preset. Lower=slower/better. Default: %d
 
 Target Quality Options (per-chunk SSIMULACRA2 targeting):
@@ -132,7 +128,7 @@ Processing Options:
 
 Output Options:
   --no-log               Disable Drapto log file creation
-`, appName, config.DefaultQualitySD, config.DefaultQualityHD, config.DefaultQualityUHD, config.DefaultSVTAV1Preset, defaultWorkers, defaultBuffer, config.DefaultSceneThreshold, config.DefaultSampleDuration, config.DefaultSampleMinChunk)
+`, appName, config.DefaultCRF, config.DefaultSVTAV1Preset, defaultWorkers, defaultBuffer, config.DefaultSceneThreshold, config.DefaultSampleDuration, config.DefaultSampleMinChunk)
 	}
 
 	var ea encodeArgs
@@ -150,9 +146,7 @@ Output Options:
 	fs.BoolVar(&ea.verbose, "verbose", false, "Enable verbose output")
 
 	// Quality settings
-	fs.UintVar(&ea.qualitySD, "quality-sd", 0, "CRF quality for SD videos")
-	fs.UintVar(&ea.qualityHD, "quality-hd", 0, "CRF quality for HD videos")
-	fs.UintVar(&ea.qualityUHD, "quality-uhd", 0, "CRF quality for UHD videos")
+	fs.UintVar(&ea.crf, "crf", 0, "CRF quality level (0-63)")
 	fs.UintVar(&ea.preset, "preset", 0, "SVT-AV1 encoder preset (0-13)")
 
 	// Target quality options
@@ -256,14 +250,8 @@ func executeEncode(ea encodeArgs) error {
 	cfg := config.NewConfig(inputPath, outputDir, logDir)
 
 	// Override with explicit CLI arguments
-	if ea.qualitySD != 0 {
-		cfg.QualitySD = uint8(ea.qualitySD)
-	}
-	if ea.qualityHD != 0 {
-		cfg.QualityHD = uint8(ea.qualityHD)
-	}
-	if ea.qualityUHD != 0 {
-		cfg.QualityUHD = uint8(ea.qualityUHD)
+	if ea.crf != 0 {
+		cfg.CRF = uint8(ea.crf)
 	}
 	if ea.preset != 0 {
 		cfg.SVTAV1Preset = uint8(ea.preset)
@@ -297,7 +285,7 @@ func executeEncode(ea encodeArgs) error {
 	// Log configuration
 	if logger != nil {
 		logger.Info("Output directory: %s", outputDir)
-		logger.Info("Quality settings: SD=%d, HD=%d, UHD=%d", cfg.QualitySD, cfg.QualityHD, cfg.QualityUHD)
+		logger.Info("CRF quality: %d", cfg.CRF)
 		logger.Info("SVT-AV1 preset: %d", cfg.SVTAV1Preset)
 		logger.Info("Crop mode: %s", cfg.CropMode)
 		logger.Info("Responsive encoding: %v", cfg.ResponsiveEncoding)
