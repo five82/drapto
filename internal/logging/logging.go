@@ -24,19 +24,17 @@ func DefaultLogDir() string {
 	return filepath.Join(home, ".local", "state", "drapto", "logs")
 }
 
-// Level represents the logging level.
-type Level int
+// level represents the logging level.
+type level int
 
 const (
-	// LevelInfo is the default logging level.
-	LevelInfo Level = iota
-	// LevelDebug enables verbose debug logging.
-	LevelDebug
+	levelInfo level = iota
+	levelDebug
 )
 
 // Logger wraps the standard logger with level filtering and file output.
 type Logger struct {
-	level    Level
+	level    level
 	logger   *log.Logger
 	file     *os.File
 	filePath string
@@ -65,12 +63,12 @@ func Setup(logDir string, verbose, noLog bool) (*Logger, error) {
 		return nil, fmt.Errorf("failed to create log file %s: %w", filePath, err)
 	}
 
-	level := LevelInfo
+	level := levelInfo
 	if verbose {
-		level = LevelDebug
+		level = levelDebug
 	}
 
-	logger := log.New(file, "", log.LstdFlags)
+	logger := log.New(file, "", 0) // No flags - we add timestamps manually for consistent format
 
 	l := &Logger{
 		level:    level,
@@ -97,44 +95,22 @@ func (l *Logger) Close() error {
 	return l.file.Close()
 }
 
-// FilePath returns the path to the log file.
-func (l *Logger) FilePath() string {
-	if l == nil {
-		return ""
-	}
-	return l.filePath
-}
-
 // Info logs an info-level message.
 func (l *Logger) Info(format string, args ...any) {
 	if l == nil {
 		return
 	}
-	l.logger.Printf("[INFO] "+format, args...)
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
+	l.logger.Printf("%s [INFO] "+format, append([]any{timestamp}, args...)...)
 }
 
 // Debug logs a debug-level message (only if verbose mode is enabled).
 func (l *Logger) Debug(format string, args ...any) {
-	if l == nil || l.level < LevelDebug {
+	if l == nil || l.level < levelDebug {
 		return
 	}
-	l.logger.Printf("[DEBUG] "+format, args...)
-}
-
-// Warn logs a warning message.
-func (l *Logger) Warn(format string, args ...any) {
-	if l == nil {
-		return
-	}
-	l.logger.Printf("[WARN] "+format, args...)
-}
-
-// Error logs an error message.
-func (l *Logger) Error(format string, args ...any) {
-	if l == nil {
-		return
-	}
-	l.logger.Printf("[ERROR] "+format, args...)
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
+	l.logger.Printf("%s [DEBUG] "+format, append([]any{timestamp}, args...)...)
 }
 
 // Writer returns an io.Writer that writes to the log file.
