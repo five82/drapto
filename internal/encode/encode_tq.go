@@ -298,7 +298,7 @@ func EncodeAllTQ(
 				sampleEnd := (offset + encodeFrames) * frameSize
 				pkg.SampleYUV = pkg.YUV[sampleStart:sampleEnd]
 
-				rep.Verbose(fmt.Sprintf("Chunk %d: using %d-frame sample (%.1fs) from offset %d, warmup=%d, measure=%d",
+				rep.Verbose(fmt.Sprintf("Chunk %d: using %d-frame sample (%.1fs) from offset %d, warmup %d, measure %d",
 					ch.Idx, encodeFrames, float64(encodeFrames)/fps, offset, warmupFrames, measureFrames))
 			} else {
 				chunkDur := float64(pkg.FrameCount) / fps
@@ -314,7 +314,7 @@ func EncodeAllTQ(
 			// Get CRF prediction from nearby completed chunks
 			predictedCRF := tracker.Predict(ch.Idx, defaultCRF)
 
-			rep.Verbose(fmt.Sprintf("Chunk %d: predicted CRF=%.1f (from %d completed chunks), search bounds [%.0f, %.0f]",
+			rep.Verbose(fmt.Sprintf("Chunk %d: predicted CRF %.1f (from %d completed), bounds [%.0f, %.0f]",
 				ch.Idx, predictedCRF, tracker.Count(),
 				max(cfg.TQConfig.QPMin, predictedCRF-5),
 				min(cfg.TQConfig.QPMax, predictedCRF+5)))
@@ -494,7 +494,7 @@ func tqMetricsWorker(
 				workDir := filepath.Dir(splitDir)
 				finalPath := chunk.IVFPath(workDir, pkg.Chunk.Idx)
 
-				rep.Verbose(fmt.Sprintf("Chunk %d: sample probing complete at CRF=%.0f, encoding full chunk", pkg.Chunk.Idx, finalCRF))
+				rep.Verbose(fmt.Sprintf("Chunk %d: sample probing complete at CRF %.0f, encoding full chunk", pkg.Chunk.Idx, finalCRF))
 
 				if err := encodeFinal(pkg, finalCRF, cfg, inf, finalPath, width, height); err != nil {
 					doneChan <- tqResult{
@@ -603,7 +603,7 @@ func tqCoordinator(
 			dispatcher.MarkComplete(result.ChunkIdx)
 			tracker.Record(result.ChunkIdx, result.FinalCRF)
 
-			rep.Verbose(fmt.Sprintf("Chunk %d complete: CRF=%.0f, score=%.1f, %d iterations",
+			rep.Verbose(fmt.Sprintf("Chunk %d complete: CRF %.0f, score %.1f, %d iterations",
 				result.ChunkIdx, result.FinalCRF, result.FinalScore, result.Round))
 
 			// Gradual ramp-up: increase dispatch limit as chunks complete

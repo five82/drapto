@@ -100,7 +100,7 @@ func ProcessChunked(
 	var cropH, cropV uint32
 	if cropResult.Required && cropResult.CropFilter != "" {
 		cropH, cropV = parseCropFilter(cropResult.CropFilter, videoProps.Width, videoProps.Height)
-		rep.Verbose(fmt.Sprintf("Crop offsets: horizontal=%d, vertical=%d", cropH, cropV))
+		rep.Verbose(fmt.Sprintf("Crop offsets: horizontal %d, vertical %d", cropH, cropV))
 	}
 
 	// Setup encode config
@@ -177,7 +177,7 @@ func ProcessChunked(
 
 		rep.Verbose(fmt.Sprintf("Target quality: SSIMULACRA2 %.0f-%.0f", tqCfg.TargetMin, tqCfg.TargetMax))
 		rep.Verbose(fmt.Sprintf("CRF search range: %.0f-%.0f", tqCfg.QPMin, tqCfg.QPMax))
-		rep.Verbose(fmt.Sprintf("Metric mode: %s, workers: %d", cfg.MetricMode, cfg.MetricWorkers))
+		rep.Verbose(fmt.Sprintf("Metric mode: %s, workers %d", cfg.MetricMode, cfg.MetricWorkers))
 
 		tqEncCfg := &encode.TQEncodeConfig{
 			EncodeConfig:      *encCfg,

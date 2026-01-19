@@ -292,8 +292,14 @@ func executeEncode(ea encodeArgs) error {
 		logger.Info("Parallel encoding: workers=%d, buffer=%d", cfg.Workers, cfg.ChunkBuffer)
 	}
 
-	// Create reporter
-	rep := reporter.NewTerminalReporterVerbose(ea.verbose)
+	// Create reporters
+	termRep := reporter.NewTerminalReporterVerbose(ea.verbose)
+	var rep reporter.Reporter = termRep
+	if logger != nil {
+		// Combine terminal and log reporter so all events go to both
+		logRep := reporter.NewLogReporter(logger.Writer())
+		rep = reporter.NewCompositeReporter(termRep, logRep)
+	}
 
 	// Setup context with signal handling
 	ctx, cancel := context.WithCancel(context.Background())
