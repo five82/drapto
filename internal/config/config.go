@@ -48,6 +48,10 @@ const (
 	// DefaultSampleMinChunk is the minimum chunk duration in seconds to use sampling.
 	// Chunks shorter than this use full-chunk probing.
 	DefaultSampleMinChunk float64 = 6.0
+
+	// DefaultMinChunkDuration is the minimum chunk duration in seconds.
+	// Chunks shorter than this are merged with adjacent chunks during scene detection.
+	DefaultMinChunkDuration float64 = 4.0
 )
 
 // AutoParallelConfig returns optimal workers and buffer settings based on CPU cores.
@@ -111,7 +115,8 @@ type Config struct {
 	MetricMode    string // Metric aggregation mode ("mean" or "pN")
 
 	// Scene detection options
-	SceneThreshold float64 // Scene change detection threshold (0.0-1.0, higher = fewer scenes)
+	SceneThreshold   float64 // Scene change detection threshold (0.0-1.0, higher = fewer scenes)
+	MinChunkDuration float64 // Minimum chunk duration in seconds (shorter chunks are merged)
 
 	// Sample-based TQ probing options
 	SampleDuration      float64 // TQ probe sample duration in seconds
@@ -148,7 +153,8 @@ func NewConfig(inputDir, outputDir, logDir string) *Config {
 		MetricWorkers: 1,
 		MetricMode:    "mean",
 		// Scene detection defaults
-		SceneThreshold: DefaultSceneThreshold,
+		SceneThreshold:   DefaultSceneThreshold,
+		MinChunkDuration: DefaultMinChunkDuration,
 		// Sample-based TQ probing defaults
 		SampleDuration: DefaultSampleDuration,
 		SampleMinChunk: DefaultSampleMinChunk,
@@ -179,6 +185,10 @@ func (c *Config) Validate() error {
 
 	if c.SceneThreshold < 0 || c.SceneThreshold > 1 {
 		return fmt.Errorf("scene_threshold must be between 0.0 and 1.0, got %g", c.SceneThreshold)
+	}
+
+	if c.MinChunkDuration < 0 {
+		return fmt.Errorf("min_chunk_duration must be non-negative, got %g", c.MinChunkDuration)
 	}
 
 	if c.SampleDuration <= 0 {

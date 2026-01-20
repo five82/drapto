@@ -88,7 +88,8 @@ func DetectScenes(videoPath string, fpsNum, fpsDen uint32, threshold float64) ([
 
 // ExtractKeyframesIfNeeded detects scenes and writes them to scenes.txt if not already present.
 // Returns the path to the scenes.txt file.
-func ExtractKeyframesIfNeeded(videoPath, workDir string, fpsNum, fpsDen uint32, totalFrames int, threshold float64) (string, error) {
+// minDuration specifies the minimum chunk duration in seconds (0 to disable merging).
+func ExtractKeyframesIfNeeded(videoPath, workDir string, fpsNum, fpsDen uint32, totalFrames int, threshold, minDuration float64) (string, error) {
 	sceneFile := filepath.Join(workDir, "scenes.txt")
 
 	// Check if scene file already exists
@@ -107,6 +108,12 @@ func ExtractKeyframesIfNeeded(videoPath, workDir string, fpsNum, fpsDen uint32, 
 
 	// Split long scenes
 	finalFrames := SplitLongScenes(scenes, totalFrames, maxFrames)
+
+	// Merge short scenes if minDuration is set
+	if minDuration > 0 {
+		minFrames := CalculateMinFrames(fpsNum, fpsDen, minDuration)
+		finalFrames = MergeShortScenes(finalFrames, totalFrames, minFrames)
+	}
 
 	// Write to scenes.txt
 	if err := writeSceneFile(sceneFile, finalFrames); err != nil {
@@ -130,6 +137,16 @@ func CalculateMaxFrames(fpsNum, fpsDen uint32) int {
 		return maxFromFPS
 	}
 	return 1000
+}
+
+// CalculateMinFrames calculates the minimum scene length in frames from duration.
+func CalculateMinFrames(fpsNum, fpsDen uint32, minDurationSecs float64) int {
+	if fpsDen == 0 || minDurationSecs <= 0 {
+		return 0
+	}
+
+	fps := float64(fpsNum) / float64(fpsDen)
+	return int(fps * minDurationSecs)
 }
 
 // SplitLongScenes splits scenes that exceed maxFrames into smaller chunks.
@@ -170,6 +187,83 @@ func SplitLongScenes(keyframes []int, totalFrames, maxFrames int) []int {
 	// Sort and deduplicate
 	sort.Ints(result)
 	result = dedupe(result)
+
+	return result
+}
+
+// MergeShortScenes merges scenes shorter than minFrames with adjacent scenes.
+// Short scenes are merged with whichever neighbor results in a smaller combined chunk,
+// keeping chunk sizes more balanced.
+func MergeShortScenes(keyframes []int, totalFrames, minFrames int) []int {
+	if len(keyframes) <= 1 || minFrames <= 0 {
+		return keyframes
+	}
+
+	// Work with a copy to allow iterative merging
+	result := make([]int, len(keyframes))
+	copy(result, keyframes)
+
+	// Keep merging until no short scenes remain
+	for {
+		merged := false
+
+		for i := 0; i < len(result); i++ {
+			start := result[i]
+			end := totalFrames
+			if i+1 < len(result) {
+				end = result[i+1]
+			}
+
+			sceneLen := end - start
+			if sceneLen >= minFrames {
+				continue
+			}
+
+			// Scene is too short, need to merge
+			// First scene (i=0): can only merge with next by removing keyframe at index 1
+			if i == 0 {
+				if len(result) > 1 {
+					result = append(result[:1], result[2:]...)
+					merged = true
+					break
+				}
+				continue
+			}
+
+			// Calculate neighbor sizes
+			prevStart := 0
+			if i > 1 {
+				prevStart = result[i-1]
+			}
+			prevLen := start - prevStart
+
+			nextEnd := totalFrames
+			if i+2 < len(result) {
+				nextEnd = result[i+2]
+			}
+			nextLen := nextEnd - end
+
+			// Decide which neighbor to merge with
+			// Merge with smaller neighbor to keep chunks balanced
+			// If this is the last scene, must merge with previous
+			if i+1 >= len(result) || prevLen <= nextLen {
+				// Merge with previous: remove this keyframe
+				result = append(result[:i], result[i+1:]...)
+			} else {
+				// Merge with next: remove next keyframe
+				if i+1 < len(result) {
+					result = append(result[:i+1], result[i+2:]...)
+				}
+			}
+
+			merged = true
+			break // Restart scanning after a merge
+		}
+
+		if !merged {
+			break
+		}
+	}
 
 	return result
 }

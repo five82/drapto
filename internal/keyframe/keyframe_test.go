@@ -181,6 +181,146 @@ func TestDedupe(t *testing.T) {
 	}
 }
 
+func TestCalculateMinFrames(t *testing.T) {
+	tests := []struct {
+		name            string
+		fpsNum          uint32
+		fpsDen          uint32
+		minDurationSecs float64
+		expected        int
+	}{
+		{
+			name:            "24fps 4 seconds",
+			fpsNum:          24,
+			fpsDen:          1,
+			minDurationSecs: 4.0,
+			expected:        96, // 24 * 4 = 96
+		},
+		{
+			name:            "23.976fps 4 seconds",
+			fpsNum:          24000,
+			fpsDen:          1001,
+			minDurationSecs: 4.0,
+			expected:        95, // ~23.976 * 4 = ~95
+		},
+		{
+			name:            "zero denominator",
+			fpsNum:          24,
+			fpsDen:          0,
+			minDurationSecs: 4.0,
+			expected:        0,
+		},
+		{
+			name:            "zero duration",
+			fpsNum:          24,
+			fpsDen:          1,
+			minDurationSecs: 0,
+			expected:        0,
+		},
+		{
+			name:            "negative duration",
+			fpsNum:          24,
+			fpsDen:          1,
+			minDurationSecs: -1.0,
+			expected:        0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := CalculateMinFrames(tt.fpsNum, tt.fpsDen, tt.minDurationSecs)
+			if result != tt.expected {
+				t.Errorf("CalculateMinFrames(%d, %d, %f) = %d, want %d",
+					tt.fpsNum, tt.fpsDen, tt.minDurationSecs, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestMergeShortScenes(t *testing.T) {
+	tests := []struct {
+		name        string
+		keyframes   []int
+		totalFrames int
+		minFrames   int
+		expected    []int
+	}{
+		{
+			name:        "no merge needed",
+			keyframes:   []int{0, 100, 200},
+			totalFrames: 300,
+			minFrames:   50,
+			expected:    []int{0, 100, 200},
+		},
+		{
+			name:        "merge short middle scene with smaller neighbor",
+			keyframes:   []int{0, 100, 120, 300},
+			totalFrames: 400,
+			minFrames:   50,
+			expected:    []int{0, 120, 300}, // 20-frame scene merged with prev (100 frames < 180 next)
+		},
+		{
+			name:        "merge short scene with next when next is smaller",
+			keyframes:   []int{0, 200, 220, 250},
+			totalFrames: 300,
+			minFrames:   50,
+			expected:    []int{0, 200, 250}, // 20-frame scene merges with next (30 frames), result 50 frames is at threshold
+		},
+		{
+			name:        "cascade merge multiple short scenes",
+			keyframes:   []int{0, 10, 20, 30, 200},
+			totalFrames: 300,
+			minFrames:   50,
+			expected:    []int{0, 200}, // All tiny scenes get merged
+		},
+		{
+			name:        "empty keyframes",
+			keyframes:   []int{},
+			totalFrames: 1000,
+			minFrames:   50,
+			expected:    []int{},
+		},
+		{
+			name:        "single keyframe",
+			keyframes:   []int{0},
+			totalFrames: 100,
+			minFrames:   50,
+			expected:    []int{0},
+		},
+		{
+			name:        "minFrames zero disables merging",
+			keyframes:   []int{0, 10, 20},
+			totalFrames: 100,
+			minFrames:   0,
+			expected:    []int{0, 10, 20},
+		},
+		{
+			name:        "first scene too short stays (can't merge frame 0)",
+			keyframes:   []int{0, 10, 200},
+			totalFrames: 300,
+			minFrames:   50,
+			expected:    []int{0, 200}, // 10-frame scene at start can't remove frame 0, so it merges with next by removing keyframe at 10
+		},
+		{
+			name:        "last scene too short merges with previous",
+			keyframes:   []int{0, 100, 180},
+			totalFrames: 200,
+			minFrames:   50,
+			expected:    []int{0, 100}, // 20-frame last scene merges with prev
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := MergeShortScenes(tt.keyframes, tt.totalFrames, tt.minFrames)
+			if !intSliceEqual(result, tt.expected) {
+				t.Errorf("MergeShortScenes(%v, %d, %d) = %v, want %v",
+					tt.keyframes, tt.totalFrames, tt.minFrames, result, tt.expected)
+			}
+		})
+	}
+}
+
 func intSliceEqual(a, b []int) bool {
 	if len(a) != len(b) {
 		return false

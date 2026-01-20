@@ -67,6 +67,7 @@ func ProcessChunked(
 		vidInf.FPSDen,
 		vidInf.Frames,
 		cfg.SceneThreshold,
+		cfg.MinChunkDuration,
 	)
 	if err != nil {
 		return fmt.Errorf("scene detection failed: %w", err)
