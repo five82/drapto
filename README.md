@@ -53,7 +53,7 @@ drapto encode -i input.mkv -o output/ --drapto-preset grain
 ```
 -i, --input          Input video file or directory (required)
 -o, --output         Output directory (required)
--l, --log-dir        Log directory (defaults to OUTPUT/logs)
+-l, --log-dir        Log directory (defaults to ~/.local/state/drapto/logs)
     --drapto-preset  Apply preset: grain, clean, quick
     --quality-sd     CRF for SD (<1920 width), default 25
     --quality-hd     CRF for HD (>=1920 width), default 27

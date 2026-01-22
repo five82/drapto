@@ -27,7 +27,7 @@ drapto encode -v -i input.mkv -o output/
 **Common**
 - `-v, --verbose`: Verbose output with detailed status
 - `--no-color`: Disable colored output
-- `-l, --log-dir <DIR>`: Override the log directory (defaults to `<output>/logs`)
+- `-l, --log-dir <DIR>`: Override the log directory (defaults to `~/.local/state/drapto/logs`)
 - `--preset <0-13>`: SVT-AV1 encoder speed/quality (default `6`, lower is slower but higher quality)
 - `--drapto-preset <grain|clean|quick>`: Project-defined bundles that set CRF, SVT preset/tune, and AC bias/variance boost
 - `--quality-sd/hd/uhd <CRF>`: Override CRF defaults (SD=25, HD=27, UHD=29)
