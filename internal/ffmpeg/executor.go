@@ -39,10 +39,18 @@ type Result struct {
 var timeRegex = regexp.MustCompile(`time=(\d{2}:\d{2}:\d{2}\.?\d*)`)
 
 // RunEncode executes an FFmpeg encode operation with progress reporting.
+// If LowPriority is set, the command is wrapped with nice -n 19.
 func RunEncode(ctx context.Context, params *EncodeParams, disableAudio bool, totalFrames uint64, callback ProgressCallback) Result {
 	args := BuildCommand(params, disableAudio)
 
-	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
+	var cmd *exec.Cmd
+	if params.LowPriority {
+		// Wrap with nice for low priority execution
+		niceArgs := append([]string{"-n", "19", "ffmpeg"}, args...)
+		cmd = exec.CommandContext(ctx, "nice", niceArgs...)
+	} else {
+		cmd = exec.CommandContext(ctx, "ffmpeg", args...)
+	}
 
 	// Get stderr for progress parsing
 	stderr, err := cmd.StderrPipe()

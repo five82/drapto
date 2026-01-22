@@ -18,11 +18,11 @@ type EncodeParams struct {
 	EnableVarianceBoost   bool
 	VarianceBoostStrength uint8
 	VarianceOctile        uint8
-	VideoDenoiseFilter    string  // Optional denoise filter
-	FilmGrain             *uint8  // Optional film grain synthesis strength
-	FilmGrainDenoise      *bool   // Optional film grain denoise toggle
-	LogicalProcessors     *uint32 // Optional SVT-AV1 logical processor limit
-	CropFilter            string  // Optional crop filter
+	VideoDenoiseFilter string // Optional denoise filter
+	FilmGrain          *uint8 // Optional film grain synthesis strength
+	FilmGrainDenoise   *bool  // Optional film grain denoise toggle
+	LowPriority        bool   // Run encoder at low priority (nice -n 19)
+	CropFilter         string // Optional crop filter
 	AudioChannels         []uint32
 	AudioStreams          []ffprobe.AudioStreamInfo
 	Duration              float64
@@ -58,10 +58,6 @@ func (p *EncodeParams) SVTAV1CLIParams() string {
 			}
 			builder = builder.AddParam("film-grain-denoise", val)
 		}
-	}
-
-	if p.LogicalProcessors != nil {
-		builder = builder.AddParam("lp", fmt.Sprintf("%d", *p.LogicalProcessors))
 	}
 
 	return builder.Build()
