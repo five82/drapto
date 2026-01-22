@@ -110,36 +110,14 @@ func EncodeAllTQ(
 	// Setup semaphore for memory management
 	// For TQ mode, limit in-flight to worker count so more chunks complete
 	// before new ones dispatch, providing better CRF prediction data
-	permits := cfg.Workers
-	if permits < 1 {
-		permits = 1
-	}
-
-	// Memory-based permit cap: prevent OOM by limiting in-flight YUV chunks
-	// based on available system memory, independent of worker count.
-	// Calculate estimated memory per in-flight chunk:
-	// - YUV buffer: frames * frameSize
-	// - SVT-AV1 encoder process: ~1 GB per instance
-	avgFramesPerChunk := totalFrames / len(chunks)
-	if avgFramesPerChunk < 1 {
-		avgFramesPerChunk = 1
-	}
-	// Frame size for 10-bit YUV420: width * height * 1.5 * 2 bytes
-	frameSize := uint64(width) * uint64(height) * 3 // 10-bit YUV420
-	yuvMemBytes := frameSize * uint64(avgFramesPerChunk)
-	encoderOverhead := uint64(1024 * 1024 * 1024) // ~1 GB per SVT-AV1 process
-	chunkMemBytes := yuvMemBytes + encoderOverhead
-
-	// Cap permits to use at most 50% of available memory. This is conservative
-	// to leave headroom for OS file caches (probe files), memory fragmentation,
-	// and other system processes. Empirical testing showed 70% was too aggressive.
-	memPermits := util.MaxPermitsForMemory(chunkMemBytes, 0.5)
-	if memPermits < permits {
+	avgFramesPerChunk := max(totalFrames/len(chunks), 1)
+	basePermits := max(cfg.Workers, 1)
+	permits := CalculatePermits(basePermits, width, height, avgFramesPerChunk, 0.5)
+	if permits < basePermits {
+		chunkMem := ChunkMemoryBytes(width, height, avgFramesPerChunk)
 		rep.Verbose(fmt.Sprintf("Memory cap: limiting permits from %d to %d (chunk: %d MB, available: %d MB)",
-			permits, memPermits, chunkMemBytes/(1024*1024), util.AvailableMemoryBytes()/(1024*1024)))
-		permits = memPermits
+			basePermits, permits, chunkMem/(1024*1024), util.AvailableMemoryBytes()/(1024*1024)))
 	}
-
 	sem := worker.NewSemaphore(permits)
 
 	// Create dispatcher and tracker for adaptive CRF prediction

@@ -94,11 +94,9 @@ func EncodeAll(
 	defer src.Close()
 
 	// Setup semaphore for memory management
-	// Permits = workers + buffer
-	permits := cfg.Workers + cfg.ChunkBuffer
-	if permits < 1 {
-		permits = 1
-	}
+	// Memory-based permit cap prevents OOM by limiting in-flight YUV chunks
+	avgFramesPerChunk := max(totalFrames/len(chunks), 1)
+	permits := CalculatePermits(cfg.Workers+cfg.ChunkBuffer, width, height, avgFramesPerChunk, 0.5)
 	sem := worker.NewSemaphore(permits)
 
 	// Work channel
