@@ -8,6 +8,8 @@ import (
 	"os/exec"
 	"time"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/five82/drapto/internal/chunk"
 	"github.com/five82/drapto/internal/config"
 	"github.com/five82/drapto/internal/encode"
@@ -42,15 +44,42 @@ func ProcessChunked(
 		}
 	}()
 
-	// Initialize FFMS2 and create index
-	rep.StageProgress(reporter.StageProgress{Stage: "Indexing", Message: "Creating video index"})
-	idx, err := ffms.NewVidIdx(inputPath, true)
-	if err != nil {
-		return fmt.Errorf("failed to create video index: %w", err)
+	// ========================================================================
+	// PHASE 1: Run FFMS2 indexing and crop detection in parallel
+	// ========================================================================
+	rep.StageProgress(reporter.StageProgress{Stage: "Preparing", Message: "Indexing video and detecting crop"})
+
+	var idx *ffms.VidIdx
+	var cropResult CropResult
+
+	phase1, _ := errgroup.WithContext(ctx)
+
+	// FFMS2 indexing goroutine
+	phase1.Go(func() error {
+		var err error
+		idx, err = ffms.NewVidIdx(inputPath, true)
+		if err != nil {
+			return fmt.Errorf("failed to create video index: %w", err)
+		}
+		return nil
+	})
+
+	// Crop detection goroutine
+	phase1.Go(func() error {
+		cropResult = DetectCrop(inputPath, videoProps, cfg.CropMode == "none")
+		return nil
+	})
+
+	// Wait for phase 1 to complete
+	if err := phase1.Wait(); err != nil {
+		if idx != nil {
+			idx.Close()
+		}
+		return err
 	}
 	defer idx.Close()
 
-	// Get video info
+	// Get video info (needs index)
 	vidInf, err := ffms.GetVidInf(idx)
 	if err != nil {
 		return fmt.Errorf("failed to get video info: %w", err)
@@ -93,9 +122,6 @@ func ProcessChunked(
 	avgChunkDuration := avgChunkFrames / fps
 	rep.Verbose(fmt.Sprintf("Average chunk duration: %.1fs (%d frames)", avgChunkDuration, int(avgChunkFrames)))
 
-	// Perform crop detection using existing drapto logic
-	cropResult := DetectCrop(inputPath, videoProps, cfg.CropMode == "none")
-
 	// Convert crop filter to cropH/cropV
 	var cropH, cropV uint32
 	if cropResult.Required && cropResult.CropFilter != "" {
@@ -105,12 +131,12 @@ func ProcessChunked(
 
 	// Setup encode config
 	encCfg := &encode.EncodeConfig{
-		Workers:           cfg.Workers,
-		ChunkBuffer:       cfg.ChunkBuffer,
-		CRF:               float32(quality),
-		Preset:            cfg.SVTAV1Preset,
-		Tune:              cfg.SVTAV1Tune,
-		ACBias:            cfg.SVTAV1ACBias,
+		Workers:               cfg.Workers,
+		ChunkBuffer:           cfg.ChunkBuffer,
+		CRF:                   float32(quality),
+		Preset:                cfg.SVTAV1Preset,
+		Tune:                  cfg.SVTAV1Tune,
+		ACBias:                cfg.SVTAV1ACBias,
 		EnableVarianceBoost:   cfg.SVTAV1EnableVarianceBoost,
 		VarianceBoostStrength: cfg.SVTAV1VarianceBoostStrength,
 		VarianceOctile:        cfg.SVTAV1VarianceOctile,
@@ -165,7 +191,23 @@ func ProcessChunked(
 		})
 	}
 
-	// Run parallel encode
+	// ========================================================================
+	// PHASE 2: Run video encoding and audio extraction in parallel
+	// ========================================================================
+	var audioErr error
+	audioDone := make(chan struct{})
+
+	// Start audio extraction in background (only reads source file)
+	if len(audioStreams) > 0 {
+		go func() {
+			defer close(audioDone)
+			audioErr = chunk.ExtractAudio(inputPath, workDir, audioStreams)
+		}()
+	} else {
+		close(audioDone)
+	}
+
+	// Run parallel video encode
 	_, encodeErr := encode.EncodeAll(
 		ctx,
 		chunks,
@@ -179,6 +221,8 @@ func ProcessChunked(
 	)
 
 	if encodeErr != nil {
+		// Wait for audio to finish before returning
+		<-audioDone
 		return fmt.Errorf("chunked encoding failed: %w", encodeErr)
 	}
 
@@ -187,20 +231,20 @@ func ProcessChunked(
 	if len(chunks) > 500 {
 		// Use batched merge for large number of chunks
 		if err := chunk.MergeBatched(workDir, len(chunks)); err != nil {
+			<-audioDone
 			return fmt.Errorf("batched merge failed: %w", err)
 		}
 	}
 
 	if err := chunk.MergeOutput(workDir, outputPath, vidInf, inputPath); err != nil {
+		<-audioDone
 		return fmt.Errorf("video merge failed: %w", err)
 	}
 
-	// Extract and encode audio
-	if len(audioStreams) > 0 {
-		rep.StageProgress(reporter.StageProgress{Stage: "Audio", Message: "Extracting audio"})
-		if err := chunk.ExtractAudio(inputPath, workDir, audioStreams); err != nil {
-			return fmt.Errorf("audio extraction failed: %w", err)
-		}
+	// Wait for audio extraction to complete
+	<-audioDone
+	if audioErr != nil {
+		return fmt.Errorf("audio extraction failed: %w", audioErr)
 	}
 
 	// Final mux
