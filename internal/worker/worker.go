@@ -1,20 +1,6 @@
 // Package worker provides types and utilities for parallel chunk encoding.
 package worker
 
-import (
-	"github.com/five82/drapto/internal/chunk"
-)
-
-// WorkPkg represents a work package containing decoded frames ready for encoding.
-type WorkPkg struct {
-	Chunk      chunk.Chunk // The chunk being encoded
-	YUV        []byte      // Raw YUV frame data for all frames in the chunk
-	FrameCount int         // Number of frames in this package
-	Width      uint32      // Frame width (after cropping)
-	Height     uint32      // Frame height (after cropping)
-	Is10Bit    bool        // Whether frames are 10-bit
-}
-
 // Semaphore provides a counting semaphore for controlling concurrency.
 // It is used to limit the number of chunks in flight to prevent memory exhaustion.
 type Semaphore struct {

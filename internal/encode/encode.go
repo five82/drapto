@@ -2,7 +2,6 @@
 package encode
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -36,6 +35,8 @@ type EncodeConfig struct {
 type ProgressCallback func(progress worker.Progress)
 
 // EncodeAll runs the parallel encoding pipeline.
+// Uses streaming frame pipeline: each worker decodes and encodes one frame at a time,
+// avoiding the need to hold all frames in memory at once.
 func EncodeAll(
 	ctx context.Context,
 	chunks []chunk.Chunk,
@@ -86,21 +87,12 @@ func EncodeAll(
 		height = cropCalc.NewH
 	}
 
-	// Create video source
-	src, err := ffms.ThrVidSrc(idx, cfg.Workers)
-	if err != nil {
-		return fmt.Errorf("failed to create video source: %w", err)
-	}
-	defer src.Close()
-
-	// Setup semaphore for memory management
-	// Memory-based permit cap prevents OOM by limiting in-flight YUV chunks
-	avgFramesPerChunk := max(totalFrames/len(chunks), 1)
-	permits := CalculatePermits(cfg.Workers+cfg.ChunkBuffer, width, height, avgFramesPerChunk, 0.5)
+	// Calculate permits based on memory (streaming uses ~6MB per worker + encoder overhead)
+	permits := CalculatePermits(cfg.Workers+cfg.ChunkBuffer, width, height, 0.5)
 	sem := worker.NewSemaphore(permits)
 
-	// Work channel
-	workChan := make(chan *worker.WorkPkg, permits)
+	// Chunk channel - workers receive chunk metadata (not decoded frames)
+	chunkChan := make(chan chunk.Chunk, permits)
 
 	// Results channel
 	resultChan := make(chan worker.EncodeResult, len(remainingChunks))
@@ -127,13 +119,13 @@ func EncodeAll(
 		return nil
 	}
 
-	// Start encoder workers
-	var encoderWg sync.WaitGroup
+	// Start streaming workers - each creates its own VidSrc for thread safety
+	var workerWg sync.WaitGroup
 	for i := 0; i < cfg.Workers; i++ {
-		encoderWg.Add(1)
+		workerWg.Add(1)
 		go func() {
-			defer encoderWg.Done()
-			encodeWorker(ctx, workChan, resultChan, sem, cfg, inf, workDir, width, height)
+			defer workerWg.Done()
+			streamingWorker(ctx, idx, chunkChan, resultChan, sem, cfg, inf, strat, cropCalc, workDir, width, height, setError, getError)
 		}()
 	}
 
@@ -172,9 +164,9 @@ func EncodeAll(
 		}
 	}()
 
-	// Decoder goroutine
+	// Chunk dispatcher goroutine
 	go func() {
-		defer close(workChan)
+		defer close(chunkChan)
 
 		for _, ch := range remainingChunks {
 			// Check for cancellation
@@ -197,17 +189,9 @@ func EncodeAll(
 				return
 			}
 
-			// Decode chunk frames
-			pkg, err := decodeChunk(src, ch, inf, strat, cropCalc, width, height)
-			if err != nil {
-				setError(fmt.Errorf("failed to decode chunk %d: %w", ch.Idx, err))
-				sem.Release()
-				return
-			}
-
-			// Send to work channel with cancellation check to prevent blocking forever
+			// Send chunk metadata to worker
 			select {
-			case workChan <- pkg:
+			case chunkChan <- ch:
 				// Successfully sent
 			case <-ctx.Done():
 				// Context cancelled while waiting to send
@@ -217,8 +201,8 @@ func EncodeAll(
 		}
 	}()
 
-	// Wait for encoders to finish
-	encoderWg.Wait()
+	// Wait for workers to finish
+	workerWg.Wait()
 	close(resultChan)
 
 	// Wait for result collector
@@ -227,71 +211,56 @@ func EncodeAll(
 	return getError()
 }
 
-// decodeChunk extracts all frames for a chunk.
-func decodeChunk(
-	src *ffms.VidSrc,
-	ch chunk.Chunk,
-	inf *ffms.VidInf,
-	strat ffms.DecodeStrat,
-	cropCalc *ffms.CropCalc,
-	width, height uint32,
-) (*worker.WorkPkg, error) {
-	frameCount := ch.Frames()
-	frameSize := ffms.CalcFrameSize(inf, cropCalc)
-	totalSize := frameSize * frameCount
-
-	// Allocate buffer for all frames
-	yuv := make([]byte, totalSize)
-
-	// Extract each frame
-	for i := 0; i < frameCount; i++ {
-		frameIdx := ch.Start + i
-		offset := i * frameSize
-
-		if err := ffms.ExtractFrame(src, frameIdx, yuv[offset:offset+frameSize], inf, strat, cropCalc); err != nil {
-			return nil, fmt.Errorf("failed to extract frame %d: %w", frameIdx, err)
-		}
-	}
-
-	return &worker.WorkPkg{
-		Chunk:      ch,
-		YUV:        yuv,
-		FrameCount: frameCount,
-		Width:      width,
-		Height:     height,
-		Is10Bit:    inf.Is10Bit,
-	}, nil
-}
-
-// encodeWorker runs in a goroutine and encodes work packages.
-func encodeWorker(
+// streamingWorker runs in a goroutine and processes chunks using streaming decode/encode.
+// Each worker creates its own VidSrc for thread safety, then streams frames one at a time.
+func streamingWorker(
 	ctx context.Context,
-	workChan <-chan *worker.WorkPkg,
+	idx *ffms.VidIdx,
+	chunkChan <-chan chunk.Chunk,
 	resultChan chan<- worker.EncodeResult,
 	sem *worker.Semaphore,
 	cfg *EncodeConfig,
 	inf *ffms.VidInf,
+	strat ffms.DecodeStrat,
+	cropCalc *ffms.CropCalc,
 	workDir string,
 	width, height uint32,
+	setError func(error),
+	getError func() error,
 ) {
-	for pkg := range workChan {
+	// Create per-worker video source (single-threaded, thread-safe)
+	src, err := ffms.ThrVidSrc(idx, 1)
+	if err != nil {
+		setError(fmt.Errorf("failed to create video source for worker: %w", err))
+		// Drain chunks and release permits
+		for range chunkChan {
+			sem.Release()
+		}
+		return
+	}
+	defer src.Close()
+
+	for ch := range chunkChan {
 		// Check for cancellation
 		select {
 		case <-ctx.Done():
 			sem.Release()
 			resultChan <- worker.EncodeResult{
-				ChunkIdx: pkg.Chunk.Idx,
+				ChunkIdx: ch.Idx,
 				Error:    ctx.Err(),
 			}
 			continue
 		default:
 		}
 
-		// Encode the chunk
-		result := encodeChunk(pkg, cfg, inf, workDir, width, height)
+		// Check for error from other workers
+		if getError() != nil {
+			sem.Release()
+			continue
+		}
 
-		// Free memory IMMEDIATELY after encoding
-		pkg.YUV = nil
+		// Encode the chunk using streaming (decode one frame, encode, repeat)
+		result := encodeChunkStreaming(ctx, src, ch, inf, strat, cropCalc, cfg, workDir, width, height)
 
 		// Release semaphore
 		sem.Release()
@@ -301,15 +270,27 @@ func encodeWorker(
 	}
 }
 
-// encodeChunk encodes a single work package.
-func encodeChunk(
-	pkg *worker.WorkPkg,
-	cfg *EncodeConfig,
+// encodeChunkStreaming decodes and encodes frames one at a time, reusing a single frame buffer.
+// This dramatically reduces memory usage compared to decoding all frames upfront.
+// Memory per worker: ~6 MB (single frame) instead of ~5 GB (all frames in chunk).
+func encodeChunkStreaming(
+	ctx context.Context,
+	src *ffms.VidSrc,
+	ch chunk.Chunk,
 	inf *ffms.VidInf,
+	strat ffms.DecodeStrat,
+	cropCalc *ffms.CropCalc,
+	cfg *EncodeConfig,
 	workDir string,
 	width, height uint32,
 ) worker.EncodeResult {
-	outputPath := chunk.IVFPath(workDir, pkg.Chunk.Idx)
+	frameCount := ch.Frames()
+	frameSize := ffms.CalcFrameSize(inf, cropCalc)
+
+	// Single frame buffer, reused for each frame (~6 MB for 1080p 10-bit)
+	frameBuf := make([]byte, frameSize)
+
+	outputPath := chunk.IVFPath(workDir, ch.Idx)
 
 	encCfg := &encoder.EncConfig{
 		Inf:                   inf,
@@ -320,7 +301,7 @@ func encodeChunk(
 		GrainTable:            cfg.GrainTable,
 		Width:                 width,
 		Height:                height,
-		Frames:                pkg.FrameCount,
+		Frames:                frameCount,
 		ACBias:                cfg.ACBias,
 		EnableVarianceBoost:   cfg.EnableVarianceBoost,
 		VarianceBoostStrength: cfg.VarianceBoostStrength,
@@ -334,7 +315,7 @@ func encodeChunk(
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return worker.EncodeResult{
-			ChunkIdx: pkg.Chunk.Idx,
+			ChunkIdx: ch.Idx,
 			Error:    fmt.Errorf("failed to create stdin pipe: %w", err),
 		}
 	}
@@ -342,27 +323,56 @@ func encodeChunk(
 	// Start encoder
 	if err := cmd.Start(); err != nil {
 		return worker.EncodeResult{
-			ChunkIdx: pkg.Chunk.Idx,
+			ChunkIdx: ch.Idx,
 			Error:    fmt.Errorf("failed to start encoder: %w", err),
 		}
 	}
 
-	// Write YUV data to encoder
-	_, err = bytes.NewReader(pkg.YUV).WriteTo(stdin)
+	// Stream frames one at a time: decode -> write to encoder -> repeat
+	var writeErr error
+	for i := 0; i < frameCount; i++ {
+		// Check for cancellation
+		if ctx.Err() != nil {
+			_ = stdin.Close()
+			_ = cmd.Wait()
+			return worker.EncodeResult{
+				ChunkIdx: ch.Idx,
+				Error:    ctx.Err(),
+			}
+		}
+
+		// Decode frame into reusable buffer
+		frameIdx := ch.Start + i
+		if err := ffms.ExtractFrame(src, frameIdx, frameBuf, inf, strat, cropCalc); err != nil {
+			_ = stdin.Close()
+			_ = cmd.Wait()
+			return worker.EncodeResult{
+				ChunkIdx: ch.Idx,
+				Error:    fmt.Errorf("failed to extract frame %d: %w", frameIdx, err),
+			}
+		}
+
+		// Write frame to encoder stdin
+		_, writeErr = stdin.Write(frameBuf)
+		if writeErr != nil {
+			break
+		}
+	}
+
 	_ = stdin.Close()
 
-	if err != nil {
+	if writeErr != nil {
 		_ = cmd.Wait()
 		return worker.EncodeResult{
-			ChunkIdx: pkg.Chunk.Idx,
-			Error:    fmt.Errorf("failed to write YUV data: %w", err),
+			ChunkIdx: ch.Idx,
+			Error:    fmt.Errorf("failed to write frame data: %w", writeErr),
 		}
 	}
 
 	// Wait for encoder to finish
 	if err := cmd.Wait(); err != nil {
 		return worker.EncodeResult{
-			ChunkIdx: pkg.Chunk.Idx,
+			ChunkIdx: ch.Idx,
 			Error:    fmt.Errorf("encoder failed: %w", err),
 		}
 	}
@@ -371,14 +381,14 @@ func encodeChunk(
 	stat, err := os.Stat(outputPath)
 	if err != nil {
 		return worker.EncodeResult{
-			ChunkIdx: pkg.Chunk.Idx,
+			ChunkIdx: ch.Idx,
 			Error:    fmt.Errorf("failed to stat output: %w", err),
 		}
 	}
 
 	return worker.EncodeResult{
-		ChunkIdx: pkg.Chunk.Idx,
-		Frames:   pkg.FrameCount,
+		ChunkIdx: ch.Idx,
+		Frames:   frameCount,
 		Size:     uint64(stat.Size()),
 	}
 }

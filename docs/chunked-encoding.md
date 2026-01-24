@@ -183,46 +183,58 @@ The core of drapto's performance comes from parallel chunk encoding.
 
 ### Architecture
 
+Drapto uses a **streaming frame pipeline** where each worker decodes and encodes frames one at a time, dramatically reducing memory usage:
+
 ```
 ┌──────────────────┐
-│ Decoder Goroutine│
-│  ├─ FFMS2 decode │
-│  └─ YUV buffer   │
+│ Chunk Dispatcher │ ─── Sends chunk metadata (not decoded frames)
 └────────┬─────────┘
-         │ WorkPkg
+         │ Chunk
          ▼
 ┌──────────────────┐
-│   Work Channel   │
+│   Chunk Channel  │
 └────────┬─────────┘
          │
     ┌────┼────┬────┐
     ▼    ▼    ▼    ▼
 ┌──────┐┌──────┐┌──────┐
-│Worker││Worker││Worker│
+│Worker││Worker││Worker│  ◄─── Each worker has own VidSrc
 │  1   ││  2   ││  N   │
+│decode││decode││decode│  ◄─── Decode 1 frame at a time
+│encode││encode││encode│  ◄─── Stream to SVT-AV1 stdin
 └──┬───┘└──┬───┘└──┬───┘
    │       │       │
    ▼       ▼       ▼
   .ivf    .ivf    .ivf
 ```
 
-### Work Package
+### Streaming Frame Pipeline
 
-Each chunk is passed to workers as a `WorkPkg` containing:
+Each worker processes chunks using a streaming approach:
 
-- Chunk metadata (index, frame range)
-- Decoded YUV frames (raw pixel data)
-- Video dimensions (after crop)
-- Bit depth flag
-- TQ state (if in Target Quality mode)
+1. Receive chunk metadata (index, frame range)
+2. Allocate single-frame buffer (~6 MB for 1080p 10-bit)
+3. Start SVT-AV1 encoder process
+4. Loop through frames:
+   - Decode frame into buffer using FFMS2
+   - Write frame to encoder stdin
+   - Reuse same buffer for next frame
+5. Close stdin and wait for encoder to finish
+
+This approach uses **~99% less memory** than buffering all frames:
+- Old: ~5 GB per chunk (900 frames × 6 MB)
+- New: ~6 MB per worker (single frame buffer)
 
 ### Memory Management
 
-Parallel encoding requires careful memory management:
+With the streaming pipeline, memory usage is dramatically reduced:
 
-1. **Semaphore**: Limits in-flight chunks to `workers + buffer`
-2. **Buffer**: Pre-decoded chunks ready for encoding (default = worker count)
-3. **Immediate release**: YUV data freed as soon as encoding completes
+1. **Per-worker frame buffer**: Each worker allocates a single-frame buffer (~6 MB for 1080p 10-bit)
+2. **Semaphore**: Limits in-flight chunks to `workers + buffer` for orderly processing
+3. **Per-worker VidSrc**: Each worker creates its own FFMS2 video source for thread safety
+4. **SVT-AV1 overhead**: Each encoder process uses ~1 GB of memory
+
+**Total memory per worker**: ~1 GB (encoder) + ~6 MB (frame buffer) ≈ 1 GB
 
 ### Settings
 
@@ -458,17 +470,17 @@ work_dir/
 
 ### Worker Count
 
-More workers increase parallelism but also memory usage:
-- Each worker holds a full YUV buffer (~frame_size × frame_count)
-- SVT-AV1 uses ~1GB additional per instance
-- Auto-detection balances cores and memory
+More workers increase parallelism with modest memory impact:
+- Each worker uses ~1 GB (SVT-AV1 process + single frame buffer)
+- Streaming design eliminates per-chunk YUV buffer overhead
+- Auto-detection allocates 1 worker per 8 CPU cores (min 1, max 4)
 
 ### Buffer Size
 
-Larger buffers reduce decoder stalls but increase memory:
+The buffer setting controls how many chunks can be dispatched ahead:
 - Default: Equal to worker count
-- Increase if decoder is faster than encoders
-- Decrease if running out of memory
+- Increase for smoother worker utilization
+- Has minimal memory impact (only chunk metadata is buffered, not frames)
 
 ### TQ Mode
 
@@ -485,16 +497,16 @@ Lower scene thresholds create more (smaller) chunks:
 
 ### Out of Memory
 
-Reduce parallel encoding load:
+The streaming pipeline uses ~1 GB per worker (mostly SVT-AV1). If still running out of memory:
 ```bash
-drapto --workers 1 --buffer 1 input.mkv
+drapto --workers 1 input.mkv
 ```
 
-### Encoder Stalls
+### Slow Encoding
 
-Increase buffer to prevent decoder blocking:
+If encoding seems slower than expected, you may be CPU-bound. Each worker runs an SVT-AV1 process:
 ```bash
-drapto --buffer 4 input.mkv
+drapto --workers 2 input.mkv  # Try fewer workers on slower systems
 ```
 
 ### Resume After Crash
