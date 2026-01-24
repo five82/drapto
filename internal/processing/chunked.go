@@ -56,20 +56,20 @@ func ProcessChunked(
 		return fmt.Errorf("failed to get video info: %w", err)
 	}
 
-	// Detect scene changes
-	rep.StageProgress(reporter.StageProgress{Stage: "Scene Detection", Message: "Detecting scene changes"})
-	rep.Verbose(fmt.Sprintf("Scene threshold: %.2f", cfg.SceneThreshold))
+	// Generate fixed-length chunks based on resolution
+	chunkDuration := keyframe.ChunkDurationForResolution(vidInf.Width, vidInf.Height)
+	rep.StageProgress(reporter.StageProgress{Stage: "Chunking", Message: fmt.Sprintf("Creating %.0fs chunks", chunkDuration)})
 	sceneFile, err := keyframe.ExtractKeyframesIfNeeded(
 		inputPath,
 		workDir,
 		vidInf.FPSNum,
 		vidInf.FPSDen,
 		vidInf.Frames,
-		cfg.SceneThreshold,
-		cfg.MinChunkDuration,
+		vidInf.Width,
+		vidInf.Height,
 	)
 	if err != nil {
-		return fmt.Errorf("scene detection failed: %w", err)
+		return fmt.Errorf("chunk generation failed: %w", err)
 	}
 
 	// Load scenes
@@ -77,7 +77,7 @@ func ProcessChunked(
 	if err != nil {
 		return fmt.Errorf("failed to load scenes: %w", err)
 	}
-	rep.Verbose(fmt.Sprintf("Detected %d scenes", len(scenes)))
+	rep.Verbose(fmt.Sprintf("Created %d chunks", len(scenes)))
 
 	// Convert scenes to chunks
 	chunks := chunk.Chunkify(scenes)
@@ -237,9 +237,9 @@ func CheckChunkedDependencies() error {
 		return fmt.Errorf("SvtAv1EncApp not found in PATH (required for encoding)")
 	}
 
-	// Check for ffmpeg in PATH (used for scene detection)
+	// Check for ffmpeg in PATH (used for audio extraction)
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
-		return fmt.Errorf("ffmpeg not found in PATH (required for scene detection)")
+		return fmt.Errorf("ffmpeg not found in PATH (required for audio extraction)")
 	}
 
 	return nil

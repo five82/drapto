@@ -38,13 +38,11 @@ const (
 	// ProgressLogIntervalPercent is the progress logging interval.
 	ProgressLogIntervalPercent uint8 = 5
 
-	// DefaultSceneThreshold is the threshold for scene change detection.
-	// Higher values = fewer scene changes detected. Range is 0.0 to 1.0.
-	DefaultSceneThreshold float64 = 0.5
+	// DefaultChunkDuration is the default chunk duration in seconds for non-4K content.
+	DefaultChunkDuration float64 = 10.0
 
-	// DefaultMinChunkDuration is the minimum chunk duration in seconds.
-	// Chunks shorter than this are merged with adjacent chunks during scene detection.
-	DefaultMinChunkDuration float64 = 4.0
+	// DefaultChunkDuration4K is the default chunk duration in seconds for 4K content.
+	DefaultChunkDuration4K float64 = 20.0
 )
 
 // AutoParallelConfig returns optimal workers and buffer settings based on CPU cores.
@@ -101,9 +99,8 @@ type Config struct {
 	Workers     int // Number of parallel encoder workers
 	ChunkBuffer int // Extra chunks to buffer in memory
 
-	// Scene detection options
-	SceneThreshold   float64 // Scene change detection threshold (0.0-1.0, higher = fewer scenes)
-	MinChunkDuration float64 // Minimum chunk duration in seconds (shorter chunks are merged)
+	// Chunk duration (set automatically based on resolution)
+	ChunkDuration float64 // Chunk duration in seconds
 
 	// Debug options
 	Verbose bool // Enable verbose output
@@ -127,11 +124,9 @@ func NewConfig(inputDir, outputDir, logDir string) *Config {
 		CropMode:                    DefaultCropMode,
 		ResponsiveEncoding:          false,
 		EncodeCooldownSecs:          DefaultEncodeCooldownSecs,
-		Workers:     workers,
-		ChunkBuffer: buffer,
-		// Scene detection defaults
-		SceneThreshold:   DefaultSceneThreshold,
-		MinChunkDuration: DefaultMinChunkDuration,
+		Workers:       workers,
+		ChunkBuffer:   buffer,
+		ChunkDuration: DefaultChunkDuration,
 	}
 }
 
@@ -157,12 +152,8 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("chunk_buffer must be non-negative, got %d", c.ChunkBuffer)
 	}
 
-	if c.SceneThreshold < 0 || c.SceneThreshold > 1 {
-		return fmt.Errorf("scene_threshold must be between 0.0 and 1.0, got %g", c.SceneThreshold)
-	}
-
-	if c.MinChunkDuration < 0 {
-		return fmt.Errorf("min_chunk_duration must be non-negative, got %g", c.MinChunkDuration)
+	if c.ChunkDuration < 1 || c.ChunkDuration > 120 {
+		return fmt.Errorf("chunk_duration must be between 1 and 120 seconds, got %g", c.ChunkDuration)
 	}
 
 	return nil

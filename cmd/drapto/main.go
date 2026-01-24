@@ -63,19 +63,17 @@ Run '%s encode --help' for encode command options.
 
 // encodeArgs holds the parsed arguments for the encode command.
 type encodeArgs struct {
-	inputPath        string
-	outputDir        string
-	logDir           string
-	verbose          bool
-	crf              uint
-	preset           uint
-	disableAutocrop  bool
-	responsive       bool
-	noLog            bool
-	workers          int
-	chunkBuffer      int
-	sceneThreshold   float64
-	minChunkDuration float64
+	inputPath       string
+	outputDir       string
+	logDir          string
+	verbose         bool
+	crf             uint
+	preset          uint
+	disableAutocrop bool
+	responsive      bool
+	noLog           bool
+	workers         int
+	chunkBuffer     int
 }
 
 func runEncode(args []string) error {
@@ -106,12 +104,10 @@ Processing Options:
   --responsive           Reserve CPU threads for improved system responsiveness
   --workers <N>          Number of parallel encoder workers. Default: %d (auto)
   --buffer <N>           Extra chunks to buffer in memory. Default: %d (auto)
-  --scene-threshold <N>  Scene detection threshold (0.0-1.0, higher = fewer scenes). Default: %.1f
-  --min-chunk <N>        Minimum chunk duration in seconds (shorter chunks merged). Default: %.1f
 
 Output Options:
   --no-log               Disable Drapto log file creation
-`, appName, config.DefaultCRF, config.DefaultSVTAV1Preset, defaultWorkers, defaultBuffer, config.DefaultSceneThreshold, config.DefaultMinChunkDuration)
+`, appName, config.DefaultCRF, config.DefaultSVTAV1Preset, defaultWorkers, defaultBuffer)
 	}
 
 	var ea encodeArgs
@@ -137,8 +133,6 @@ Output Options:
 	fs.BoolVar(&ea.responsive, "responsive", false, "Reserve CPU threads for responsiveness")
 	fs.IntVar(&ea.workers, "workers", defaultWorkers, "Number of parallel encoder workers")
 	fs.IntVar(&ea.chunkBuffer, "buffer", defaultBuffer, "Extra chunks to buffer in memory")
-	fs.Float64Var(&ea.sceneThreshold, "scene-threshold", config.DefaultSceneThreshold, "Scene detection threshold")
-	fs.Float64Var(&ea.minChunkDuration, "min-chunk", config.DefaultMinChunkDuration, "Minimum chunk duration in seconds")
 
 	// Output options
 	fs.BoolVar(&ea.noLog, "no-log", false, "Disable log file creation")
@@ -236,10 +230,6 @@ func executeEncode(ea encodeArgs) error {
 	cfg.ResponsiveEncoding = ea.responsive
 	cfg.Workers = ea.workers
 	cfg.ChunkBuffer = ea.chunkBuffer
-
-	// Scene detection options
-	cfg.SceneThreshold = ea.sceneThreshold
-	cfg.MinChunkDuration = ea.minChunkDuration
 
 	// Debug options
 	cfg.Verbose = ea.verbose
