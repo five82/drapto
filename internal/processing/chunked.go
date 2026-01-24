@@ -139,7 +139,6 @@ func ProcessChunked(
 		EnableVarianceBoost:   cfg.SVTAV1EnableVarianceBoost,
 		VarianceBoostStrength: cfg.SVTAV1VarianceBoostStrength,
 		VarianceOctile:        cfg.SVTAV1VarianceOctile,
-		LowPriority:           cfg.ResponsiveEncoding,
 		LogicalProcessors:     cfg.ThreadsPerWorker,
 	}
 

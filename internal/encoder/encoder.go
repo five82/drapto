@@ -28,21 +28,16 @@ type EncConfig struct {
 	EnableVarianceBoost   bool
 	VarianceBoostStrength uint8
 	VarianceOctile        uint8
-	LowPriority           bool // Run encoder at low priority (nice -n 19)
-	LogicalProcessors     int  // Threads per worker (--lp flag), 0 = SVT-AV1 default
+	LogicalProcessors     int // Threads per worker (--lp flag), 0 = SVT-AV1 default
 }
 
 // MakeSvtCmd builds an SvtAv1EncApp command for encoding.
 // The command reads raw YUV data from stdin and outputs to an IVF file.
-// If LowPriority is set, the command is wrapped with nice -n 19.
+// The command is wrapped with nice -n 19 to keep the system responsive.
 func MakeSvtCmd(cfg *EncConfig) *exec.Cmd {
 	args := buildSvtArgs(cfg)
-	if cfg.LowPriority {
-		// Wrap with nice for low priority execution
-		niceArgs := append([]string{"-n", "19", svtEncBinary}, args...)
-		return exec.Command("nice", niceArgs...)
-	}
-	return exec.Command(svtEncBinary, args...)
+	niceArgs := append([]string{"-n", "19", svtEncBinary}, args...)
+	return exec.Command("nice", niceArgs...)
 }
 
 // buildSvtArgs constructs the argument list for SvtAv1EncApp.

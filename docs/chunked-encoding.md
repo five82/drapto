@@ -438,7 +438,6 @@ ffmpeg \
 |---------|----------|---------|-------------|
 | Crop Mode | `--no-crop` | auto | Disable auto-cropping |
 | Scene Threshold | `--scene-threshold` | 0.5 | Scene detection sensitivity |
-| Responsive | `--responsive` | false | Reduce encoder priority |
 
 ### Parallel Encoding Settings
 

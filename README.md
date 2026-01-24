@@ -61,7 +61,6 @@ Quality Settings:
 
 Processing Options:
   --disable-autocrop       Disable black bar detection
-  --responsive             Reserve CPU threads for responsiveness
   --workers <N>            Parallel encoder workers (default: auto)
   --buffer <N>             Chunks to buffer in memory (default: auto)
   --scene-threshold <N>    Scene detection threshold 0.0-1.0 (default 0.5)

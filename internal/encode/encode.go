@@ -30,7 +30,6 @@ type EncodeConfig struct {
 	EnableVarianceBoost   bool
 	VarianceBoostStrength uint8
 	VarianceOctile        uint8
-	LowPriority           bool // Run encoder at low priority (nice -n 19)
 }
 
 // ProgressCallback is called to report encoding progress.
@@ -319,7 +318,6 @@ func encodeChunkStreaming(
 		EnableVarianceBoost:   cfg.EnableVarianceBoost,
 		VarianceBoostStrength: cfg.VarianceBoostStrength,
 		VarianceOctile:        cfg.VarianceOctile,
-		LowPriority:           cfg.LowPriority,
 		LogicalProcessors:     cfg.LogicalProcessors,
 	}
 

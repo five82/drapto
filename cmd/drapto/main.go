@@ -72,7 +72,6 @@ type encodeArgs struct {
 	crf             string // Single value or comma-separated triple (SD,HD,UHD)
 	preset          uint
 	disableAutocrop bool
-	responsive      bool
 	noLog           bool
 	workers         int
 	chunkBuffer     int
@@ -107,7 +106,6 @@ Quality Settings:
 
 Processing Options:
   --disable-autocrop     Disable automatic black bar crop detection
-  --responsive           Reserve CPU threads for improved system responsiveness
   --workers <N>          Number of parallel encoder workers. Default: %d (auto)
   --buffer <N>           Extra chunks to buffer in memory. Default: %d (auto)
   --threads <N>          Threads per worker (SVT-AV1 --lp flag). Default: auto
@@ -139,7 +137,6 @@ Output Options:
 
 	// Processing options
 	fs.BoolVar(&ea.disableAutocrop, "disable-autocrop", false, "Disable automatic crop detection")
-	fs.BoolVar(&ea.responsive, "responsive", false, "Reserve CPU threads for responsiveness")
 	fs.IntVar(&ea.workers, "workers", defaultWorkers, "Number of parallel encoder workers")
 	fs.IntVar(&ea.chunkBuffer, "buffer", defaultBuffer, "Extra chunks to buffer in memory")
 	fs.IntVar(&ea.threads, "threads", config.DefaultThreadsPerWorker, "Threads per worker")
@@ -239,7 +236,6 @@ func executeEncode(ea encodeArgs) error {
 	if ea.disableAutocrop {
 		cfg.CropMode = "none"
 	}
-	cfg.ResponsiveEncoding = ea.responsive
 	cfg.Workers = ea.workers
 	cfg.ChunkBuffer = ea.chunkBuffer
 	cfg.ThreadsPerWorker = ea.threads
@@ -258,7 +254,6 @@ func executeEncode(ea encodeArgs) error {
 		logger.Info("CRF quality: SD=%d, HD=%d, UHD=%d", cfg.CRFSD, cfg.CRFHD, cfg.CRFUHD)
 		logger.Info("SVT-AV1 preset: %d", cfg.SVTAV1Preset)
 		logger.Info("Crop mode: %s", cfg.CropMode)
-		logger.Info("Responsive encoding: %v", cfg.ResponsiveEncoding)
 		logger.Info("Parallel encoding: workers=%d, buffer=%d, threads/worker=%d", cfg.Workers, cfg.ChunkBuffer, cfg.ThreadsPerWorker)
 	}
 

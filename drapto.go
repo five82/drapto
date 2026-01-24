@@ -101,13 +101,6 @@ func WithDisableAutocrop() Option {
 	}
 }
 
-// WithResponsive enables responsive encoding (reserves CPU threads).
-func WithResponsive() Option {
-	return func(c *config.Config) {
-		c.ResponsiveEncoding = true
-	}
-}
-
 // WithWorkers sets the number of parallel encoder workers.
 // Default is 1. Higher values enable parallel chunk encoding.
 func WithWorkers(workers int) Option {

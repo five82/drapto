@@ -93,7 +93,6 @@ type Config struct {
 
 	// Processing options
 	CropMode           string // "auto" or "none"
-	ResponsiveEncoding bool   // Reserve CPU threads for responsiveness
 	EncodeCooldownSecs uint64 // Cooldown between batch encodes
 
 	// Parallel encoding options
@@ -124,12 +123,11 @@ func NewConfig(inputDir, outputDir, logDir string) *Config {
 		SVTAV1EnableVarianceBoost:   DefaultSVTAV1EnableVarianceBoost,
 		SVTAV1VarianceBoostStrength: DefaultSVTAV1VarianceBoostStrength,
 		SVTAV1VarianceOctile:        DefaultSVTAV1VarianceOctile,
-		CRFSD:                       DefaultCRFSD,
-		CRFHD:                       DefaultCRFHD,
-		CRFUHD:                      DefaultCRFUHD,
-		CropMode:                    DefaultCropMode,
-		ResponsiveEncoding:          false,
-		EncodeCooldownSecs:          DefaultEncodeCooldownSecs,
+		CRFSD:              DefaultCRFSD,
+		CRFHD:              DefaultCRFHD,
+		CRFUHD:             DefaultCRFUHD,
+		CropMode:           DefaultCropMode,
+		EncodeCooldownSecs: DefaultEncodeCooldownSecs,
 		Workers:          workers,
 		ChunkBuffer:      buffer,
 		ThreadsPerWorker: DefaultThreadsPerWorker,

@@ -37,7 +37,6 @@ drapto.WithCRF(crf uint8)                    // CRF quality level (0-63, lower =
 
 // Processing options
 drapto.WithDisableAutocrop()                 // Skip automatic crop detection
-drapto.WithResponsive()                      // Reserve CPU threads for responsiveness
 drapto.WithWorkers(n int)                    // Number of parallel encoder workers
 drapto.WithChunkBuffer(n int)                // Extra chunks to buffer in memory
 

@@ -42,7 +42,6 @@ drapto encode -v -i input.mkv -o output/
 - `--buffer <N>`: Extra chunks to buffer in memory (auto-matched to workers)
 - `--scene-threshold <N>`: Scene detection threshold 0.0-1.0 (default `0.5`, higher = fewer scenes)
 - `--disable-autocrop`: Skip black-bar detection and cropping
-- `--responsive`: Reserve CPU threads so other apps stay responsive
 
 **TQ Sampling** (for faster probing in Target Quality mode)
 - `--sample-duration <N>`: Seconds to sample for TQ probing (default `3.0`)
