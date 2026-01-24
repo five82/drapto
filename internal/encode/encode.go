@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"runtime"
 	"sync"
 	"sync/atomic"
 
@@ -16,12 +17,13 @@ import (
 
 // EncodeConfig contains configuration for the parallel encode pipeline.
 type EncodeConfig struct {
-	Workers     int     // Number of parallel encoder workers
-	ChunkBuffer int     // Extra chunks to buffer in memory
-	CRF         float32 // Quality (CRF value)
-	Preset      uint8   // SVT-AV1 preset
-	Tune        uint8   // SVT-AV1 tune
-	GrainTable  *string // Optional film grain table path
+	Workers           int     // Number of parallel encoder workers
+	ChunkBuffer       int     // Extra chunks to buffer in memory
+	CRF               float32 // Quality (CRF value)
+	Preset            uint8   // SVT-AV1 preset
+	Tune              uint8   // SVT-AV1 tune
+	GrainTable        *string // Optional film grain table path
+	LogicalProcessors int     // Threads per worker (--lp flag), calculated if 0
 
 	// Advanced SVT-AV1 parameters
 	ACBias                float32
@@ -92,6 +94,11 @@ func EncodeAll(
 
 	// Cap workers based on resolution and available memory
 	actualWorkers, _ := CapWorkers(cfg.Workers, width, height)
+
+	// Calculate optimal threads per worker if not explicitly set
+	if cfg.LogicalProcessors == 0 {
+		cfg.LogicalProcessors = calculateThreadsPerWorker(actualWorkers)
+	}
 
 	// Calculate permits for actual worker count
 	permits := CalculatePermits(actualWorkers, cfg.ChunkBuffer)
@@ -313,6 +320,7 @@ func encodeChunkStreaming(
 		VarianceBoostStrength: cfg.VarianceBoostStrength,
 		VarianceOctile:        cfg.VarianceOctile,
 		LowPriority:           cfg.LowPriority,
+		LogicalProcessors:     cfg.LogicalProcessors,
 	}
 
 	cmd := encoder.MakeSvtCmd(encCfg)
@@ -397,4 +405,25 @@ func encodeChunkStreaming(
 		Frames:   frameCount,
 		Size:     uint64(stat.Size()),
 	}
+}
+
+// calculateThreadsPerWorker determines optimal threads per worker based on CPU count.
+// Goal: workers × threadsPerWorker ≈ total CPU threads
+// Caps at 8 threads per worker (diminishing returns beyond that).
+func calculateThreadsPerWorker(workers int) int {
+	if workers <= 0 {
+		return 1
+	}
+
+	numCPU := runtime.NumCPU()
+	threadsPerWorker := numCPU / workers
+
+	if threadsPerWorker < 1 {
+		threadsPerWorker = 1
+	}
+	if threadsPerWorker > 8 {
+		threadsPerWorker = 8 // Cap to avoid diminishing returns
+	}
+
+	return threadsPerWorker
 }

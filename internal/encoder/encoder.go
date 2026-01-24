@@ -29,6 +29,7 @@ type EncConfig struct {
 	VarianceBoostStrength uint8
 	VarianceOctile        uint8
 	LowPriority           bool // Run encoder at low priority (nice -n 19)
+	LogicalProcessors     int  // Threads per worker (--lp flag), 0 = SVT-AV1 default
 }
 
 // MakeSvtCmd builds an SvtAv1EncApp command for encoding.
@@ -69,6 +70,11 @@ func buildSvtArgs(cfg *EncConfig) []string {
 
 	// Add tune parameter
 	args = append(args, "--tune", fmt.Sprintf("%d", cfg.Tune))
+
+	// Add logical processors limit if specified (threads per worker)
+	if cfg.LogicalProcessors > 0 {
+		args = append(args, "--lp", fmt.Sprintf("%d", cfg.LogicalProcessors))
+	}
 
 	// Add color metadata if available
 	if cfg.Inf.ColorPrimaries != nil {

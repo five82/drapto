@@ -8,12 +8,18 @@ import (
 )
 
 // ChunkDurationForResolution returns the appropriate chunk duration based on resolution.
-// 4K content (>2560 width or >1440 height) uses 20 seconds, everything else uses 10 seconds.
+// Longer chunks provide better encoder efficiency and reduce concatenation overhead.
+// 4K: 45s (slower encode, needs longer warmup)
+// 1080p: 30s (balanced)
+// SD/720p: 20s (faster encode, can use shorter chunks)
 func ChunkDurationForResolution(width, height uint32) float64 {
 	if width > 2560 || height > 1440 {
-		return 20.0 // 4K
+		return 45.0 // 4K
 	}
-	return 10.0 // SD, 720p, 1080p
+	if width >= 1920 || height >= 1080 {
+		return 30.0 // 1080p
+	}
+	return 20.0 // SD, 720p
 }
 
 // GenerateFixedChunks creates chunk boundaries at fixed time intervals.
