@@ -117,8 +117,17 @@ func ProcessChunked(
 		LowPriority:           cfg.ResponsiveEncoding,
 	}
 
-	// Run parallel encode
-	rep.StageProgress(reporter.StageProgress{Stage: "Encoding", Message: fmt.Sprintf("Starting chunked encoding with %d workers", cfg.Workers)})
+	// Calculate actual workers (may be capped based on resolution and memory)
+	actualWorkers, wasCapped := encode.CapWorkers(cfg.Workers, vidInf.Width, vidInf.Height)
+
+	// Show both requested and actual worker counts
+	var workerMsg string
+	if wasCapped {
+		workerMsg = fmt.Sprintf("Starting chunked encoding with %d/%d workers (memory limited)", actualWorkers, cfg.Workers)
+	} else {
+		workerMsg = fmt.Sprintf("Starting chunked encoding with %d workers", actualWorkers)
+	}
+	rep.StageProgress(reporter.StageProgress{Stage: "Encoding", Message: workerMsg})
 
 	rep.EncodingStarted(uint64(vidInf.Frames))
 
@@ -156,7 +165,7 @@ func ProcessChunked(
 	}
 
 	// Run parallel encode
-	encodeErr := encode.EncodeAll(
+	_, encodeErr := encode.EncodeAll(
 		ctx,
 		chunks,
 		vidInf,

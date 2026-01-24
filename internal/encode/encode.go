@@ -37,6 +37,9 @@ type ProgressCallback func(progress worker.Progress)
 // EncodeAll runs the parallel encoding pipeline.
 // Uses streaming frame pipeline: each worker decodes and encodes one frame at a time,
 // avoiding the need to hold all frames in memory at once.
+//
+// Returns (actualWorkers, error) where actualWorkers is the number of workers used
+// (may be less than cfg.Workers if capped due to memory constraints).
 func EncodeAll(
 	ctx context.Context,
 	chunks []chunk.Chunk,
@@ -46,16 +49,16 @@ func EncodeAll(
 	workDir string,
 	cropH, cropV uint32,
 	progressCb ProgressCallback,
-) error {
+) (int, error) {
 	// Ensure encode directory exists
 	if err := chunk.EnsureEncodeDir(workDir); err != nil {
-		return fmt.Errorf("failed to create encode directory: %w", err)
+		return 0, fmt.Errorf("failed to create encode directory: %w", err)
 	}
 
 	// Load resume information
 	resume, err := chunk.GetResume(workDir)
 	if err != nil {
-		return fmt.Errorf("failed to load resume info: %w", err)
+		return 0, fmt.Errorf("failed to load resume info: %w", err)
 	}
 	doneSet := resume.DoneSet()
 
@@ -70,13 +73,13 @@ func EncodeAll(
 	}
 
 	if len(remainingChunks) == 0 {
-		return nil // All chunks already done
+		return cfg.Workers, nil // All chunks already done
 	}
 
 	// Determine decode strategy
 	strat, cropCalc, err := ffms.GetDecodeStrat(idx, inf, cropH, cropV)
 	if err != nil {
-		return fmt.Errorf("failed to determine decode strategy: %w", err)
+		return 0, fmt.Errorf("failed to determine decode strategy: %w", err)
 	}
 
 	// Calculate effective dimensions
@@ -87,8 +90,11 @@ func EncodeAll(
 		height = cropCalc.NewH
 	}
 
-	// Calculate permits based on memory (streaming uses ~6MB per worker + encoder overhead)
-	permits := CalculatePermits(cfg.Workers+cfg.ChunkBuffer, width, height, 0.5)
+	// Cap workers based on resolution and available memory
+	actualWorkers, _ := CapWorkers(cfg.Workers, width, height)
+
+	// Calculate permits for actual worker count
+	permits := CalculatePermits(actualWorkers, cfg.ChunkBuffer)
 	sem := worker.NewSemaphore(permits)
 
 	// Chunk channel - workers receive chunk metadata (not decoded frames)
@@ -121,7 +127,7 @@ func EncodeAll(
 
 	// Start streaming workers - each creates its own VidSrc for thread safety
 	var workerWg sync.WaitGroup
-	for i := 0; i < cfg.Workers; i++ {
+	for i := 0; i < actualWorkers; i++ {
 		workerWg.Add(1)
 		go func() {
 			defer workerWg.Done()
@@ -208,7 +214,7 @@ func EncodeAll(
 	// Wait for result collector
 	collectorWg.Wait()
 
-	return getError()
+	return actualWorkers, getError()
 }
 
 // streamingWorker runs in a goroutine and processes chunks using streaming decode/encode.

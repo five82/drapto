@@ -2,42 +2,67 @@ package encode
 
 import "github.com/five82/drapto/internal/util"
 
-// CalculatePermits determines the number of in-flight chunk permits based on
-// the requested base permits and available system memory.
-//
-// basePermits is the requested number (e.g., workers + buffer).
-//
-// The function caps permits to use at most memFraction (e.g., 0.5 for 50%) of
-// available system memory, accounting for per-worker memory usage.
-//
-// With streaming frame pipeline, memory per worker is dramatically reduced:
-// - Single frame buffer: ~6 MB for 1080p 10-bit (instead of ~5 GB for entire chunk)
-// - SVT-AV1 encoder process: ~1 GB per instance
-//
-// Returns at least 1.
-func CalculatePermits(basePermits int, width, height uint32, memFraction float64) int {
-	permits := max(basePermits, 1)
+// Resolution-based worker limits.
+// SVT-AV1 is internally parallel, so more workers beyond these limits
+// just adds memory pressure without improving speed.
+const (
+	MaxWorkers4K    = 8  // 4K: ~4-5 GB per worker, high CPU per worker
+	MaxWorkers1080p = 16 // 1080p: ~1-2 GB per worker
+	MaxWorkersSD    = 24 // SD: ~500 MB per worker, more workers can help
+)
 
-	// Calculate estimated memory per worker with streaming:
-	// - Single frame buffer: width * height * 3 bytes (10-bit YUV420)
-	// - SVT-AV1 encoder process: ~1 GB per instance
-	frameSize := uint64(width) * uint64(height) * 3
-	encoderOverhead := uint64(1 << 30) // ~1 GB per SVT-AV1 process
-	workerMemBytes := frameSize + encoderOverhead
+// Estimated memory per worker by resolution (bytes).
+// Conservative estimates based on real-world measurements.
+const (
+	MemPerWorker4K    = 5 << 30  // 5 GB
+	MemPerWorker1080p = 2 << 30  // 2 GB
+	MemPerWorkerSD    = 512 << 20 // 512 MB
+)
 
-	memPermits := util.MaxPermitsForMemory(workerMemBytes, memFraction)
-	if memPermits < permits {
-		permits = memPermits
+// MemoryFraction is the fraction of available memory to use for workers.
+const MemoryFraction = 0.6
+
+// CapWorkers returns the safe number of workers based on resolution AND available memory.
+// Returns (actualWorkers, wasCapped).
+//
+// Uses the minimum of:
+//   - Resolution-based cap (more workers don't help due to SVT-AV1's internal parallelism)
+//   - Memory-based cap (prevents OOM on systems with less RAM)
+func CapWorkers(requested int, width, height uint32) (int, bool) {
+	var maxByResolution int
+	var memPerWorker uint64
+
+	switch {
+	case width >= 3840 || height >= 2160:
+		maxByResolution = MaxWorkers4K
+		memPerWorker = MemPerWorker4K
+	case width >= 1920 || height >= 1080:
+		maxByResolution = MaxWorkers1080p
+		memPerWorker = MemPerWorker1080p
+	default:
+		maxByResolution = MaxWorkersSD
+		memPerWorker = MemPerWorkerSD
 	}
 
-	return permits
+	// Calculate memory-based limit
+	maxByMemory := maxByResolution // default if we can't determine memory
+	if available := util.AvailableMemoryBytes(); available > 0 {
+		usable := uint64(float64(available) * MemoryFraction)
+		maxByMemory = max(int(usable/memPerWorker), 1)
+	}
+
+	// Take the lower of resolution and memory limits
+	maxWorkers := min(maxByResolution, maxByMemory)
+
+	if requested > maxWorkers {
+		return maxWorkers, true
+	}
+	return requested, false
 }
 
-// WorkerMemoryBytes returns the estimated memory per worker in bytes.
-// With streaming, this is just one frame buffer plus encoder overhead.
-// Useful for verbose logging.
-func WorkerMemoryBytes(width, height uint32) uint64 {
-	frameSize := uint64(width) * uint64(height) * 3
-	encoderOverhead := uint64(1 << 30)
-	return frameSize + encoderOverhead
+// CalculatePermits returns the number of in-flight chunk permits.
+// Permits = workers + buffer to allow prefetching chunks.
+// Returns at least 1.
+func CalculatePermits(workers, buffer int) int {
+	return max(workers+buffer, 1)
 }
