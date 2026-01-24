@@ -47,7 +47,9 @@ func (p *EncodeParams) SVTAV1CLIParams() string {
 	builder = builder.WithTune(p.Tune).
 		AddParam("keyint", "10s").
 		AddParam("scd", "1").
-		AddParam("scm", "0")
+		AddParam("scm", "0").
+		AddParam("tile-rows", "0").
+		AddParam("tile-columns", "0")
 
 	if p.FilmGrain != nil {
 		builder = builder.AddParam("film-grain", fmt.Sprintf("%d", *p.FilmGrain))
