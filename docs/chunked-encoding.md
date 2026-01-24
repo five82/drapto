@@ -292,33 +292,7 @@ Format: `{chunk_index} {frame_count} {file_size}`
 
 On resume, completed chunks are skipped and encoding continues from where it stopped.
 
-## Stage 6: Target Quality Mode
-
-Target Quality (TQ) mode replaces fixed-CRF encoding with per-chunk quality targeting. Instead of encoding all chunks at CRF 27, TQ mode finds the CRF that achieves a target SSIMULACRA2 score for each chunk independently.
-
-This results in consistent perceptual quality: simple scenes get higher CRF (smaller files) while complex scenes get lower CRF (more bits).
-
-### How It Works
-
-1. Encode a probe at an initial CRF (predicted from nearby chunks or binary search)
-2. Measure quality via GPU-accelerated SSIMULACRA2
-3. Adjust CRF based on the score using spline interpolation
-4. Repeat until the score falls within the target range
-5. Encode the final chunk at the determined CRF
-
-Sample-based probing encodes only a 3-second sample during the search phase, then encodes the full chunk at the final CRF. This significantly reduces iteration time.
-
-### Integration with Chunked Pipeline
-
-TQ mode uses the same scene detection and chunk creation as standard mode. The parallel encoding stage adds:
-
-- **Metrics workers**: GPU processes computing SSIMULACRA2 scores
-- **CRF prediction**: Completed chunks inform starting points for nearby chunks
-- **Gradual ramp-up**: Parallelism increases as predictions become available
-
-For detailed information on TQ mode including recommended quality targets, SSIMULACRA2 score interpretation, and content-specific tuning, see [Target Quality Encoding](target-quality.md).
-
-## Stage 7: Chunk Concatenation
+## Stage 6: Chunk Concatenation
 
 Encoded IVF files are merged into a single video stream.
 
@@ -351,7 +325,7 @@ For videos with more than 500 chunks, a batched approach is used:
 
 This avoids FFmpeg limitations with very large file lists.
 
-## Stage 8: Audio Encoding
+## Stage 7: Audio Encoding
 
 Audio is extracted from the source and re-encoded to Opus.
 
@@ -378,7 +352,7 @@ ffmpeg -i source \
   audio.mka
 ```
 
-## Stage 9: Final Muxing
+## Stage 8: Final Muxing
 
 The final step combines all components into the output MKV.
 
@@ -446,10 +420,6 @@ ffmpeg \
 | Workers | `--workers` | auto | Parallel encoders |
 | Buffer | `--buffer` | workers | Chunk buffer size |
 
-### Target Quality Settings
-
-See [Target Quality Encoding](target-quality.md) for TQ-specific settings and recommended quality targets.
-
 ## Work Directory Structure
 
 ```
@@ -480,10 +450,6 @@ The buffer setting controls how many chunks can be dispatched ahead:
 - Default: Equal to worker count
 - Increase for smoother worker utilization
 - Has minimal memory impact (only chunk metadata is buffered, not frames)
-
-### TQ Mode
-
-Target Quality mode adds overhead from iterative probing and GPU metric computation. Sample-based probing (enabled by default) significantly reduces this overhead. See [Target Quality Encoding](target-quality.md) for performance tuning.
 
 ### Scene Detection
 

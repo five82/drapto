@@ -47,7 +47,7 @@ cmd/drapto/main.go       # CLI wrapper (flag-based)
 internal/
 ├── config/              # Configuration and defaults
 ├── discovery/           # Video file discovery
-├── encoding/            # Encoder instantiation and setup
+├── encoder/             # SVT-AV1 command building
 ├── encode/              # Parallel chunk encoding pipeline
 ├── chunk/               # Chunk management and scene splitting
 ├── keyframe/            # Scene detection and keyframe extraction
@@ -60,14 +60,14 @@ internal/
 ├── validation/          # Post-encode validation checks
 ├── reporter/            # Progress: Terminal, Composite
 ├── logging/             # File logging setup
-└── util/                # Formatting, file utils
+└── util/                # Formatting, file utils, system info
 ```
 
 ## Entry Points
 
 | Task | Start Here |
 |------|------------|
-| Encoding parameters | `internal/config/config.go`, `internal/encoding/` |
+| Encoding parameters | `internal/config/config.go`, `internal/encoder/encoder.go` |
 | Parallel encoding | `internal/encode/encode.go` |
 | Scene detection | `internal/keyframe/keyframe.go` |
 | Chunk management | `internal/chunk/chunk.go` |

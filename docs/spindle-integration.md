@@ -33,16 +33,13 @@ result, err := encoder.Encode(ctx, "input.mkv", "output/", func(event drapto.Eve
 
 ```go
 // Quality settings
-drapto.WithCRF(crf uint8)                    // CRF quality level (0-63, lower = better)
+drapto.WithCRF(crf uint8)                        // CRF quality level (0-63, lower = better)
+drapto.WithCRFByResolution(sd, hd, uhd uint8)    // Resolution-specific CRF values
 
 // Processing options
-drapto.WithDisableAutocrop()                 // Skip automatic crop detection
-drapto.WithWorkers(n int)                    // Number of parallel encoder workers
-drapto.WithChunkBuffer(n int)                // Extra chunks to buffer in memory
-
-// Film grain
-drapto.WithFilmGrain(strength uint8)         // Enable film grain synthesis (0-50)
-drapto.WithFilmGrainDenoise(enable bool)     // Denoise when using film grain
+drapto.WithDisableAutocrop()                     // Skip automatic crop detection
+drapto.WithWorkers(n int)                        // Number of parallel encoder workers
+drapto.WithChunkBuffer(n int)                    // Extra chunks to buffer in memory
 ```
 
 ## Encoding Methods
@@ -92,7 +89,7 @@ All events implement `drapto.Event` interface with `Type()` and `Timestamp()` me
 
 ```go
 type EncodingProgressEvent struct {
-    Percent    float64  // 0-100
+    Percent    float32  // 0-100
     Speed      float32  // Encoding speed multiplier
     FPS        float32  // Frames per second
     ETASeconds int64    // Estimated time remaining
@@ -157,6 +154,7 @@ type Reporter interface {
     BatchStarted(BatchStartInfo)
     FileProgress(FileProgressContext)
     BatchComplete(BatchSummary)
+    Verbose(string)
 }
 ```
 

@@ -56,20 +56,21 @@ Required:
   -o, --output         Output directory (required)
 
 Quality Settings:
-  --crf <0-63>         CRF quality level (default 27, lower = better quality)
+  --crf <VALUE>        CRF quality level (0-63, lower = better quality)
+                         Single value: --crf 27 (use for all resolutions)
+                         Triple: --crf 25,27,29 (SD,HD,UHD)
   --preset <0-13>      SVT-AV1 preset (default 6, lower = slower/better)
 
 Processing Options:
-  --disable-autocrop       Disable black bar detection
-  --workers <N>            Parallel encoder workers (default: auto)
-  --buffer <N>             Chunks to buffer in memory (default: auto)
-  --scene-threshold <N>    Scene detection threshold 0.0-1.0 (default 0.5)
-  --min-chunk <N>          Minimum chunk duration in seconds (default 4.0)
+  --disable-autocrop   Disable black bar detection
+  --workers <N>        Parallel encoder workers (default: auto)
+  --buffer <N>         Chunks to buffer in memory (default: auto)
+  --threads <N>        Threads per worker (SVT-AV1 --lp flag, default: auto)
 
 Output Options:
-  -l, --log-dir            Log directory (defaults to ~/.local/state/drapto/logs)
-  -v, --verbose            Verbose output
-  --no-log                 Disable log file creation
+  -l, --log-dir        Log directory (defaults to ~/.local/state/drapto/logs)
+  -v, --verbose        Verbose output
+  --no-log             Disable log file creation
 ```
 
 ## Library Usage
@@ -108,7 +109,7 @@ drapto/
 └── internal/
     ├── config/         # Configuration and defaults
     ├── discovery/      # Video file discovery
-    ├── encoding/       # Encoder setup
+    ├── encoder/        # SVT-AV1 command building
     ├── encode/         # Parallel chunk encoding pipeline
     ├── chunk/          # Chunk management
     ├── keyframe/       # Scene detection and keyframe extraction
@@ -121,7 +122,7 @@ drapto/
     ├── validation/     # Post-encode validation
     ├── reporter/       # Progress reporting (terminal, composite)
     ├── logging/        # File logging
-    └── util/           # Formatting utilities
+    └── util/           # Formatting, file utils, system info
 ```
 
 ## Development
