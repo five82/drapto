@@ -1,10 +1,7 @@
 // Package config provides configuration types and defaults for drapto.
 package config
 
-import (
-	"fmt"
-	"runtime"
-)
+import "fmt"
 
 // Default constants
 const (
@@ -57,24 +54,14 @@ const (
 	DefaultChunkDuration4K float64 = 20.0
 )
 
-// AutoParallelConfig returns optimal workers and buffer settings based on CPU cores.
-// Workers: 1 per 8 cores, min 1, max 4
-// Buffer: matches workers (ensures next chunk is always ready)
+// AutoParallelConfig returns optimal workers and buffer settings.
+// Workers default high; CapWorkers reduces based on resolution and memory.
+// Buffer: fixed prefetch amount to keep workers fed.
 func AutoParallelConfig() (workers, buffer int) {
-	numCPU := runtime.NumCPU()
-
-	// 1 worker per 8 cores, minimum 1, maximum 4
-	workers = numCPU / 8
-	if workers < 1 {
-		workers = 1
-	}
-	if workers > 4 {
-		workers = 4
-	}
-
-	// Buffer matches workers
-	buffer = workers
-
+	// Default to maximum possible; CapWorkers will reduce based on
+	// actual resolution and available memory at encode time
+	workers = 24 // Will be capped down for higher resolutions
+	buffer = 4   // Prefetch buffer to keep workers fed
 	return workers, buffer
 }
 
