@@ -42,13 +42,6 @@ const (
 	// Higher values = fewer scene changes detected. Range is 0.0 to 1.0.
 	DefaultSceneThreshold float64 = 0.5
 
-	// DefaultSampleDuration is the duration in seconds to sample for TQ probing.
-	DefaultSampleDuration float64 = 3.0
-
-	// DefaultSampleMinChunk is the minimum chunk duration in seconds to use sampling.
-	// Chunks shorter than this use full-chunk probing.
-	DefaultSampleMinChunk float64 = 6.0
-
 	// DefaultMinChunkDuration is the minimum chunk duration in seconds.
 	// Chunks shorter than this are merged with adjacent chunks during scene detection.
 	DefaultMinChunkDuration float64 = 4.0
@@ -108,24 +101,12 @@ type Config struct {
 	Workers     int // Number of parallel encoder workers
 	ChunkBuffer int // Extra chunks to buffer in memory
 
-	// Target quality options
-	TargetQuality string // Target quality range (e.g., "70-75" for SSIMULACRA2 score)
-	QPRange       string // CRF search range (default "8-48")
-	MetricWorkers int    // Number of GPU metric workers (default 1)
-	MetricMode    string // Metric aggregation mode ("mean" or "pN")
-
 	// Scene detection options
 	SceneThreshold   float64 // Scene change detection threshold (0.0-1.0, higher = fewer scenes)
 	MinChunkDuration float64 // Minimum chunk duration in seconds (shorter chunks are merged)
 
-	// Sample-based TQ probing options
-	SampleDuration      float64 // TQ probe sample duration in seconds
-	SampleMinChunk      float64 // Minimum chunk duration in seconds to use sampling
-	DisableTQSampling   bool    // Disable sample-based probing (use full chunks)
-	DisableTQPrediction bool    // Disable cross-chunk CRF prediction
-
 	// Debug options
-	Verbose bool // Enable verbose output and TQ debug statistics
+	Verbose bool // Enable verbose output
 }
 
 // NewConfig creates a new Config with default values.
@@ -146,18 +127,11 @@ func NewConfig(inputDir, outputDir, logDir string) *Config {
 		CropMode:                    DefaultCropMode,
 		ResponsiveEncoding:          false,
 		EncodeCooldownSecs:          DefaultEncodeCooldownSecs,
-		Workers:                     workers,
-		ChunkBuffer:                 buffer,
-		// Target quality defaults
-		QPRange:       "8-48",
-		MetricWorkers: 1,
-		MetricMode:    "mean",
+		Workers:     workers,
+		ChunkBuffer: buffer,
 		// Scene detection defaults
 		SceneThreshold:   DefaultSceneThreshold,
 		MinChunkDuration: DefaultMinChunkDuration,
-		// Sample-based TQ probing defaults
-		SampleDuration: DefaultSampleDuration,
-		SampleMinChunk: DefaultSampleMinChunk,
 	}
 }
 
@@ -189,14 +163,6 @@ func (c *Config) Validate() error {
 
 	if c.MinChunkDuration < 0 {
 		return fmt.Errorf("min_chunk_duration must be non-negative, got %g", c.MinChunkDuration)
-	}
-
-	if c.SampleDuration <= 0 {
-		return fmt.Errorf("sample_duration must be positive, got %g", c.SampleDuration)
-	}
-
-	if c.SampleMinChunk <= 0 {
-		return fmt.Errorf("sample_min_chunk must be positive, got %g", c.SampleMinChunk)
 	}
 
 	return nil

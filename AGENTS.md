@@ -13,7 +13,7 @@ Do not modify this header.
 
 ## Project Snapshot
 
-Drapto is an **AV1 encoding tool** using FFMS2 + SvtAv1EncApp for parallel chunked encoding with scene-based splitting. It provides opinionated defaults, automatic crop detection, HDR preservation, Target Quality mode with GPU-accelerated SSIMULACRA2, and post-encode validation.
+Drapto is an **AV1 encoding tool** using FFMS2 + SvtAv1EncApp for parallel chunked encoding with scene-based splitting. It provides opinionated defaults, automatic crop detection, HDR preservation, and post-encode validation.
 
 - **Scope**: Single-developer hobby project - avoid over-engineering
 - **Environment**: Go 1.25+, FFmpeg (libopus), SvtAv1EncApp, FFMS2, MediaInfo
@@ -48,12 +48,10 @@ internal/
 ├── config/              # Configuration and defaults
 ├── discovery/           # Video file discovery
 ├── encoding/            # Encoder instantiation and setup
-├── encode/              # Parallel chunk encoding pipeline (standard + TQ mode)
+├── encode/              # Parallel chunk encoding pipeline
 ├── chunk/               # Chunk management and scene splitting
 ├── keyframe/            # Scene detection and keyframe extraction
 ├── worker/              # Worker pool for parallel encoding
-├── tq/                  # Target Quality configuration and search
-├── vship/               # GPU metric computation (SSIMULACRA2)
 ├── ffms/                # FFMS2 bindings for frame-accurate indexing
 ├── ffmpeg/              # FFmpeg parameter building (audio, filters)
 ├── ffprobe/             # Media analysis
@@ -70,10 +68,9 @@ internal/
 | Task | Start Here |
 |------|------------|
 | Encoding parameters | `internal/config/config.go`, `internal/encoding/` |
-| Parallel encoding | `internal/encode/encode.go`, `internal/encode/encode_tq.go` |
+| Parallel encoding | `internal/encode/encode.go` |
 | Scene detection | `internal/keyframe/keyframe.go` |
 | Chunk management | `internal/chunk/chunk.go` |
-| Target Quality | `internal/tq/tq.go`, `internal/vship/vship.go` |
 | Crop detection | `internal/processing/crop.go` |
 | Validation checks | `internal/validation/validate.go` |
 | Terminal output | `internal/reporter/terminal.go` |

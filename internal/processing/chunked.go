@@ -15,7 +15,6 @@ import (
 	"github.com/five82/drapto/internal/ffprobe"
 	"github.com/five82/drapto/internal/keyframe"
 	"github.com/five82/drapto/internal/reporter"
-	"github.com/five82/drapto/internal/tq"
 	"github.com/five82/drapto/internal/worker"
 )
 
@@ -156,66 +155,18 @@ func ProcessChunked(
 		})
 	}
 
-	// Use target quality pipeline if configured
-	var encodeErr error
-	if cfg.TargetQuality != "" {
-		tqCfg, parseErr := tq.ParseTargetRange(cfg.TargetQuality)
-		if parseErr != nil {
-			return fmt.Errorf("invalid target quality: %w", parseErr)
-		}
-
-		// Parse QP range if specified
-		if cfg.QPRange != "" {
-			qpMin, qpMax, qpErr := tq.ParseQPRange(cfg.QPRange)
-			if qpErr != nil {
-				return fmt.Errorf("invalid QP range: %w", qpErr)
-			}
-			tqCfg.QPMin = qpMin
-			tqCfg.QPMax = qpMax
-		}
-
-		tqCfg.MetricMode = cfg.MetricMode
-
-		rep.Verbose(fmt.Sprintf("Target quality: SSIMULACRA2 %.0f-%.0f", tqCfg.TargetMin, tqCfg.TargetMax))
-		rep.Verbose(fmt.Sprintf("CRF search range: %.0f-%.0f", tqCfg.QPMin, tqCfg.QPMax))
-		rep.Verbose(fmt.Sprintf("Metric mode: %s, workers %d", cfg.MetricMode, cfg.MetricWorkers))
-
-		tqEncCfg := &encode.TQEncodeConfig{
-			EncodeConfig:        *encCfg,
-			TQConfig:            tqCfg,
-			MetricWorkers:       cfg.MetricWorkers,
-			SampleDuration:      cfg.SampleDuration,
-			SampleMinChunk:      cfg.SampleMinChunk,
-			DisableTQSampling:   cfg.DisableTQSampling,
-			DisableTQPrediction: cfg.DisableTQPrediction,
-			Verbose:             cfg.Verbose,
-		}
-
-		encodeErr = encode.EncodeAllTQ(
-			ctx,
-			chunks,
-			vidInf,
-			tqEncCfg,
-			idx,
-			workDir,
-			cropH,
-			cropV,
-			progressCallback,
-			rep,
-		)
-	} else {
-		encodeErr = encode.EncodeAll(
-			ctx,
-			chunks,
-			vidInf,
-			encCfg,
-			idx,
-			workDir,
-			cropH,
-			cropV,
-			progressCallback,
-		)
-	}
+	// Run parallel encode
+	encodeErr := encode.EncodeAll(
+		ctx,
+		chunks,
+		vidInf,
+		encCfg,
+		idx,
+		workDir,
+		cropH,
+		cropV,
+		progressCallback,
+	)
 
 	if encodeErr != nil {
 		return fmt.Errorf("chunked encoding failed: %w", encodeErr)

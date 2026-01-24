@@ -329,10 +329,7 @@ func formatDynamicRange(isHDR bool) string {
 	return "SDR"
 }
 
-func formatQualityDescription(cfg *config.Config, crf uint32) string {
-	if cfg.TargetQuality != "" {
-		return fmt.Sprintf("TQ %s (SSIMULACRA2)", cfg.TargetQuality)
-	}
+func formatQualityDescription(_ *config.Config, crf uint32) string {
 	return fmt.Sprintf("CRF %d", crf)
 }
 

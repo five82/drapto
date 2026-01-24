@@ -63,30 +63,19 @@ Run '%s encode --help' for encode command options.
 
 // encodeArgs holds the parsed arguments for the encode command.
 type encodeArgs struct {
-	inputPath       string
-	outputDir       string
-	logDir          string
-	verbose         bool
-	crf             uint
-	preset          uint
-	disableAutocrop bool
-	responsive      bool
-	noLog           bool
-	workers         int
-	chunkBuffer     int
-	// Target quality options
-	targetQuality string
-	qpRange       string
-	metricWorkers int
-	metricMode    string
-	// Scene detection options
+	inputPath        string
+	outputDir        string
+	logDir           string
+	verbose          bool
+	crf              uint
+	preset           uint
+	disableAutocrop  bool
+	responsive       bool
+	noLog            bool
+	workers          int
+	chunkBuffer      int
 	sceneThreshold   float64
 	minChunkDuration float64
-	// Sample-based TQ probing options
-	sampleDuration       float64
-	sampleMinChunk       float64
-	disableTQSampling    bool
-	disableTQPrediction  bool
 }
 
 func runEncode(args []string) error {
@@ -112,12 +101,6 @@ Quality Settings:
   --crf <0-63>           CRF quality level. Lower=better quality. Default: %d
   --preset <0-13>        SVT-AV1 encoder preset. Lower=slower/better. Default: %d
 
-Target Quality Options (per-chunk SSIMULACRA2 targeting):
-  -t, --target <RANGE>   Target SSIMULACRA2 quality range (e.g., "70-75")
-  --qp <RANGE>           CRF search range. Default: 8-48
-  --metric-workers <N>   Number of GPU metric workers. Default: 1
-  --metric-mode <MODE>   Metric aggregation mode ("mean" or "pN"). Default: mean
-
 Processing Options:
   --disable-autocrop     Disable automatic black bar crop detection
   --responsive           Reserve CPU threads for improved system responsiveness
@@ -125,14 +108,10 @@ Processing Options:
   --buffer <N>           Extra chunks to buffer in memory. Default: %d (auto)
   --scene-threshold <N>  Scene detection threshold (0.0-1.0, higher = fewer scenes). Default: %.1f
   --min-chunk <N>        Minimum chunk duration in seconds (shorter chunks merged). Default: %.1f
-  --sample-duration <N>  Seconds to sample for TQ probing. Default: %.1f
-  --sample-min-chunk <N> Minimum chunk duration (seconds) to use sampling. Default: %.1f
-  --no-tq-sampling       Disable sample-based TQ probing (use full chunks)
-  --no-tq-prediction     Disable cross-chunk CRF prediction
 
 Output Options:
   --no-log               Disable Drapto log file creation
-`, appName, config.DefaultCRF, config.DefaultSVTAV1Preset, defaultWorkers, defaultBuffer, config.DefaultSceneThreshold, config.DefaultMinChunkDuration, config.DefaultSampleDuration, config.DefaultSampleMinChunk)
+`, appName, config.DefaultCRF, config.DefaultSVTAV1Preset, defaultWorkers, defaultBuffer, config.DefaultSceneThreshold, config.DefaultMinChunkDuration)
 	}
 
 	var ea encodeArgs
@@ -153,13 +132,6 @@ Output Options:
 	fs.UintVar(&ea.crf, "crf", 0, "CRF quality level (0-63)")
 	fs.UintVar(&ea.preset, "preset", 0, "SVT-AV1 encoder preset (0-13)")
 
-	// Target quality options
-	fs.StringVar(&ea.targetQuality, "t", "", "Target SSIMULACRA2 quality range")
-	fs.StringVar(&ea.targetQuality, "target", "", "Target SSIMULACRA2 quality range")
-	fs.StringVar(&ea.qpRange, "qp", "8-48", "CRF search range")
-	fs.IntVar(&ea.metricWorkers, "metric-workers", 1, "Number of GPU metric workers")
-	fs.StringVar(&ea.metricMode, "metric-mode", "mean", "Metric aggregation mode")
-
 	// Processing options
 	fs.BoolVar(&ea.disableAutocrop, "disable-autocrop", false, "Disable automatic crop detection")
 	fs.BoolVar(&ea.responsive, "responsive", false, "Reserve CPU threads for responsiveness")
@@ -167,10 +139,6 @@ Output Options:
 	fs.IntVar(&ea.chunkBuffer, "buffer", defaultBuffer, "Extra chunks to buffer in memory")
 	fs.Float64Var(&ea.sceneThreshold, "scene-threshold", config.DefaultSceneThreshold, "Scene detection threshold")
 	fs.Float64Var(&ea.minChunkDuration, "min-chunk", config.DefaultMinChunkDuration, "Minimum chunk duration in seconds")
-	fs.Float64Var(&ea.sampleDuration, "sample-duration", config.DefaultSampleDuration, "Seconds to sample for TQ probing")
-	fs.Float64Var(&ea.sampleMinChunk, "sample-min-chunk", config.DefaultSampleMinChunk, "Minimum chunk duration for sampling")
-	fs.BoolVar(&ea.disableTQSampling, "no-tq-sampling", false, "Disable sample-based TQ probing")
-	fs.BoolVar(&ea.disableTQPrediction, "no-tq-prediction", false, "Disable cross-chunk CRF prediction")
 
 	// Output options
 	fs.BoolVar(&ea.noLog, "no-log", false, "Disable log file creation")
@@ -269,21 +237,9 @@ func executeEncode(ea encodeArgs) error {
 	cfg.Workers = ea.workers
 	cfg.ChunkBuffer = ea.chunkBuffer
 
-	// Target quality options
-	cfg.TargetQuality = ea.targetQuality
-	cfg.QPRange = ea.qpRange
-	cfg.MetricWorkers = ea.metricWorkers
-	cfg.MetricMode = ea.metricMode
-
 	// Scene detection options
 	cfg.SceneThreshold = ea.sceneThreshold
 	cfg.MinChunkDuration = ea.minChunkDuration
-
-	// Sample-based TQ probing options
-	cfg.SampleDuration = ea.sampleDuration
-	cfg.SampleMinChunk = ea.sampleMinChunk
-	cfg.DisableTQSampling = ea.disableTQSampling
-	cfg.DisableTQPrediction = ea.disableTQPrediction
 
 	// Debug options
 	cfg.Verbose = ea.verbose

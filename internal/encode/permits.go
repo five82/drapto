@@ -5,8 +5,7 @@ import "github.com/five82/drapto/internal/util"
 // CalculatePermits determines the number of in-flight chunk permits based on
 // the requested base permits and available system memory.
 //
-// basePermits is the requested number (e.g., workers + buffer for standard mode,
-// or just workers for TQ mode).
+// basePermits is the requested number (e.g., workers + buffer).
 //
 // The function caps permits to use at most memFraction (e.g., 0.5 for 50%) of
 // available system memory, accounting for YUV buffer size and encoder overhead.

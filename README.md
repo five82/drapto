@@ -5,7 +5,6 @@ FFmpeg wrapper for AV1 encoding with SVT-AV1 and Opus audio. Uses opinionated de
 ## Features
 
 - Parallel chunked encoding with scene-based splitting
-- Target Quality mode with GPU-accelerated SSIMULACRA2
 - Automatic black bar crop detection
 - HDR10/HLG metadata preservation
 - Multi-track audio transcoding to Opus
@@ -19,10 +18,6 @@ FFmpeg wrapper for AV1 encoding with SVT-AV1 and Opus audio. Uses opinionated de
 - SvtAv1EncApp (SVT-AV1 standalone encoder)
 - FFMS2 (for frame-accurate video indexing)
 - MediaInfo
-
-Optional for Target Quality mode:
-- NVIDIA GPU with CUDA support
-- libvship (GPU-accelerated SSIMULACRA2)
 
 ```bash
 # Ubuntu/Debian
@@ -64,21 +59,13 @@ Quality Settings:
   --crf <0-63>         CRF quality level (default 27, lower = better quality)
   --preset <0-13>      SVT-AV1 preset (default 6, lower = slower/better)
 
-Target Quality Options:
-  -t, --target <RANGE>     Target SSIMULACRA2 range (e.g., "70-75")
-  --qp <RANGE>             CRF search range (default "8-48")
-  --metric-workers <N>     GPU metric workers (default 1)
-  --metric-mode <MODE>     Metric aggregation: "mean" or "pN" (default "mean")
-
 Processing Options:
   --disable-autocrop       Disable black bar detection
   --responsive             Reserve CPU threads for responsiveness
   --workers <N>            Parallel encoder workers (default: auto)
   --buffer <N>             Chunks to buffer in memory (default: auto)
   --scene-threshold <N>    Scene detection threshold 0.0-1.0 (default 0.5)
-  --sample-duration <N>    Seconds to sample for TQ probing (default 3.0)
-  --sample-min-chunk <N>   Minimum chunk duration for sampling (default 6.0)
-  --no-tq-sampling         Use full chunks for TQ probing
+  --min-chunk <N>          Minimum chunk duration in seconds (default 4.0)
 
 Output Options:
   -l, --log-dir            Log directory (defaults to ~/.local/state/drapto/logs)
@@ -127,8 +114,6 @@ drapto/
     ├── chunk/          # Chunk management
     ├── keyframe/       # Scene detection and keyframe extraction
     ├── worker/         # Worker pool for parallel encoding
-    ├── tq/             # Target Quality configuration and search
-    ├── vship/          # GPU metric computation (SSIMULACRA2)
     ├── ffms/           # FFMS2 bindings for frame indexing
     ├── ffmpeg/         # FFmpeg parameter building
     ├── ffprobe/        # Media analysis
