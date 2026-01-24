@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"syscall"
 
 	"github.com/five82/drapto/internal/config"
@@ -67,7 +69,7 @@ type encodeArgs struct {
 	outputDir       string
 	logDir          string
 	verbose         bool
-	crf             uint
+	crf             string // Single value or comma-separated triple (SD,HD,UHD)
 	preset          uint
 	disableAutocrop bool
 	responsive      bool
@@ -96,7 +98,10 @@ Options:
   -v, --verbose          Enable verbose output for troubleshooting
 
 Quality Settings:
-  --crf <0-63>           CRF quality level. Lower=better quality. Default: %d
+  --crf <VALUE>          CRF quality level (0-63, lower=better). Accepts:
+                           Single value: --crf 27 (use for all resolutions)
+                           Triple: --crf 25,27,29 (SD,HD,UHD)
+                         Defaults: SD=%d, HD=%d, UHD=%d
   --preset <0-13>        SVT-AV1 encoder preset. Lower=slower/better. Default: %d
 
 Processing Options:
@@ -107,7 +112,7 @@ Processing Options:
 
 Output Options:
   --no-log               Disable Drapto log file creation
-`, appName, config.DefaultCRF, config.DefaultSVTAV1Preset, defaultWorkers, defaultBuffer)
+`, appName, config.DefaultCRFSD, config.DefaultCRFHD, config.DefaultCRFUHD, config.DefaultSVTAV1Preset, defaultWorkers, defaultBuffer)
 	}
 
 	var ea encodeArgs
@@ -125,7 +130,7 @@ Output Options:
 	fs.BoolVar(&ea.verbose, "verbose", false, "Enable verbose output")
 
 	// Quality settings
-	fs.UintVar(&ea.crf, "crf", 0, "CRF quality level (0-63)")
+	fs.StringVar(&ea.crf, "crf", "", "CRF quality level (single value or SD,HD,UHD)")
 	fs.UintVar(&ea.preset, "preset", 0, "SVT-AV1 encoder preset (0-13)")
 
 	// Processing options
@@ -218,8 +223,10 @@ func executeEncode(ea encodeArgs) error {
 	cfg := config.NewConfig(inputPath, outputDir, logDir)
 
 	// Override with explicit CLI arguments
-	if ea.crf != 0 {
-		cfg.CRF = uint8(ea.crf)
+	if ea.crf != "" {
+		if err := parseCRF(ea.crf, cfg); err != nil {
+			return err
+		}
 	}
 	if ea.preset != 0 {
 		cfg.SVTAV1Preset = uint8(ea.preset)
@@ -242,7 +249,7 @@ func executeEncode(ea encodeArgs) error {
 	// Log configuration
 	if logger != nil {
 		logger.Info("Output directory: %s", outputDir)
-		logger.Info("CRF quality: %d", cfg.CRF)
+		logger.Info("CRF quality: SD=%d, HD=%d, UHD=%d", cfg.CRFSD, cfg.CRFHD, cfg.CRFUHD)
 		logger.Info("SVT-AV1 preset: %d", cfg.SVTAV1Preset)
 		logger.Info("Crop mode: %s", cfg.CropMode)
 		logger.Info("Responsive encoding: %v", cfg.ResponsiveEncoding)
@@ -301,4 +308,39 @@ func resolveOutputPath(_, outputPath string, isInputDir bool) (outputDir, target
 
 	// Output is a directory
 	return outputPath, "", nil
+}
+
+// parseCRF parses the CRF string and applies it to the config.
+// Accepts either a single value (applied to all resolutions) or a comma-separated triple (SD,HD,UHD).
+func parseCRF(crfStr string, cfg *config.Config) error {
+	parts := strings.Split(crfStr, ",")
+
+	switch len(parts) {
+	case 1:
+		// Single value: apply to all resolutions
+		val, err := strconv.ParseUint(strings.TrimSpace(parts[0]), 10, 8)
+		if err != nil {
+			return fmt.Errorf("invalid CRF value %q: %w", crfStr, err)
+		}
+		cfg.CRFSD = uint8(val)
+		cfg.CRFHD = uint8(val)
+		cfg.CRFUHD = uint8(val)
+	case 3:
+		// Triple: SD,HD,UHD
+		vals := make([]uint8, 3)
+		for i, part := range parts {
+			val, err := strconv.ParseUint(strings.TrimSpace(part), 10, 8)
+			if err != nil {
+				return fmt.Errorf("invalid CRF value in position %d: %w", i+1, err)
+			}
+			vals[i] = uint8(val)
+		}
+		cfg.CRFSD = vals[0]
+		cfg.CRFHD = vals[1]
+		cfg.CRFUHD = vals[2]
+	default:
+		return fmt.Errorf("--crf accepts single value or comma-separated triple (SD,HD,UHD), got %d values", len(parts))
+	}
+
+	return nil
 }

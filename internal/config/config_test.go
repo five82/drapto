@@ -21,8 +21,14 @@ func TestNewConfig(t *testing.T) {
 	if cfg.SVTAV1Preset != DefaultSVTAV1Preset {
 		t.Errorf("expected SVTAV1Preset=%d, got %d", DefaultSVTAV1Preset, cfg.SVTAV1Preset)
 	}
-	if cfg.CRF != DefaultCRF {
-		t.Errorf("expected CRF=%d, got %d", DefaultCRF, cfg.CRF)
+	if cfg.CRFSD != DefaultCRFSD {
+		t.Errorf("expected CRFSD=%d, got %d", DefaultCRFSD, cfg.CRFSD)
+	}
+	if cfg.CRFHD != DefaultCRFHD {
+		t.Errorf("expected CRFHD=%d, got %d", DefaultCRFHD, cfg.CRFHD)
+	}
+	if cfg.CRFUHD != DefaultCRFUHD {
+		t.Errorf("expected CRFUHD=%d, got %d", DefaultCRFUHD, cfg.CRFUHD)
 	}
 }
 
@@ -48,8 +54,18 @@ func TestConfigValidate(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "crf 64 is invalid",
-			modify:  func(c *Config) { c.CRF = 64 },
+			name:    "crf-sd 64 is invalid",
+			modify:  func(c *Config) { c.CRFSD = 64 },
+			wantErr: true,
+		},
+		{
+			name:    "crf-hd 64 is invalid",
+			modify:  func(c *Config) { c.CRFHD = 64 },
+			wantErr: true,
+		},
+		{
+			name:    "crf-uhd 64 is invalid",
+			modify:  func(c *Config) { c.CRFUHD = 64 },
 			wantErr: true,
 		},
 		{
@@ -79,6 +95,36 @@ func TestConfigValidate(t *testing.T) {
 			err := cfg.Validate()
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestCRFForWidth(t *testing.T) {
+	cfg := NewConfig("/input", "/output", "/log")
+	cfg.CRFSD = 25
+	cfg.CRFHD = 27
+	cfg.CRFUHD = 29
+
+	tests := []struct {
+		width    uint32
+		expected uint8
+	}{
+		{width: 720, expected: 25},   // SD
+		{width: 1280, expected: 25},  // SD (720p)
+		{width: 1919, expected: 25},  // Just below HD threshold
+		{width: 1920, expected: 27},  // HD threshold
+		{width: 2560, expected: 27},  // 1440p
+		{width: 3839, expected: 27},  // Just below UHD threshold
+		{width: 3840, expected: 29},  // UHD threshold
+		{width: 7680, expected: 29},  // 8K
+	}
+
+	for _, tt := range tests {
+		t.Run("", func(t *testing.T) {
+			got := cfg.CRFForWidth(tt.width)
+			if got != tt.expected {
+				t.Errorf("CRFForWidth(%d) = %d, want %d", tt.width, got, tt.expected)
 			}
 		})
 	}

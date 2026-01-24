@@ -75,10 +75,22 @@ func New(opts ...Option) (*Encoder, error) {
 	return &Encoder{config: cfg}, nil
 }
 
-// WithCRF sets the CRF quality level (0-63, lower is better quality).
+// WithCRF sets a single CRF value for all resolutions (0-63, lower is better quality).
 func WithCRF(crf uint8) Option {
 	return func(c *config.Config) {
-		c.CRF = crf
+		c.CRFSD = crf
+		c.CRFHD = crf
+		c.CRFUHD = crf
+	}
+}
+
+// WithCRFByResolution sets resolution-specific CRF values (0-63, lower is better quality).
+// SD applies to videos <1920 width, HD to >=1920 and <3840, UHD to >=3840.
+func WithCRFByResolution(sd, hd, uhd uint8) Option {
+	return func(c *config.Config) {
+		c.CRFSD = sd
+		c.CRFHD = hd
+		c.CRFUHD = uhd
 	}
 }
 

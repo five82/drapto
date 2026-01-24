@@ -162,7 +162,7 @@ func ProcessVideos(
 			Encoder:              "SVT-AV1",
 			Preset:               fmt.Sprintf("%d", encodeParams.Preset),
 			Tune:                 fmt.Sprintf("%d", encodeParams.Tune),
-			Quality:              formatQualityDescription(cfg, encodeParams.Quality),
+			Quality:              formatQualityDescription(videoProps.Width, encodeParams.Quality),
 			PixelFormat:          encodeParams.PixelFormat,
 			MatrixCoefficients:   encodeParams.MatrixCoefficients,
 			AudioCodec:       "Opus",
@@ -317,9 +317,10 @@ func ProcessVideos(
 	return results, nil
 }
 
-// determineQualitySettings returns the CRF quality setting.
-func determineQualitySettings(_ *ffprobe.VideoProperties, cfg *config.Config) (uint32, string) {
-	return uint32(cfg.CRF), ""
+// determineQualitySettings returns the CRF quality setting based on video resolution.
+func determineQualitySettings(props *ffprobe.VideoProperties, cfg *config.Config) (uint32, string) {
+	crf := cfg.CRFForWidth(props.Width)
+	return uint32(crf), ""
 }
 
 func formatDynamicRange(isHDR bool) string {
@@ -329,8 +330,16 @@ func formatDynamicRange(isHDR bool) string {
 	return "SDR"
 }
 
-func formatQualityDescription(_ *config.Config, crf uint32) string {
-	return fmt.Sprintf("CRF %d", crf)
+func formatQualityDescription(width uint32, crf uint32) string {
+	var tier string
+	if width >= config.UHDWidthThreshold {
+		tier = "UHD"
+	} else if width >= config.HDWidthThreshold {
+		tier = "HD"
+	} else {
+		tier = "SD"
+	}
+	return fmt.Sprintf("CRF %d (%s)", crf, tier)
 }
 
 func setupEncodeParams(

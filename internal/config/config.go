@@ -8,8 +8,20 @@ import (
 
 // Default constants
 const (
-	// DefaultCRF is the default CRF quality setting.
-	DefaultCRF uint8 = 27
+	// DefaultCRFSD is the default CRF quality setting for SD content (<1920 width).
+	DefaultCRFSD uint8 = 25
+
+	// DefaultCRFHD is the default CRF quality setting for HD content (>=1920, <3840 width).
+	DefaultCRFHD uint8 = 27
+
+	// DefaultCRFUHD is the default CRF quality setting for UHD content (>=3840 width).
+	DefaultCRFUHD uint8 = 29
+
+	// HDWidthThreshold is the minimum width for HD resolution.
+	HDWidthThreshold uint32 = 1920
+
+	// UHDWidthThreshold is the minimum width for UHD resolution.
+	UHDWidthThreshold uint32 = 3840
 
 	// DefaultSVTAV1Preset is the SVT-AV1 preset (0-13, lower is slower/better).
 	DefaultSVTAV1Preset uint8 = 6
@@ -87,8 +99,10 @@ type Config struct {
 	SVTAV1FilmGrain        *uint8 // Optional film grain synthesis strength
 	SVTAV1FilmGrainDenoise *bool  // Optional film grain denoise toggle
 
-	// Quality setting (CRF value 0-63)
-	CRF uint8
+	// Quality settings (CRF value 0-63) by resolution
+	CRFSD  uint8 // CRF for SD content (<1920 width)
+	CRFHD  uint8 // CRF for HD content (>=1920, <3840 width)
+	CRFUHD uint8 // CRF for UHD content (>=3840 width)
 
 	// Processing options
 	CropMode           string // "auto" or "none"
@@ -120,7 +134,9 @@ func NewConfig(inputDir, outputDir, logDir string) *Config {
 		SVTAV1EnableVarianceBoost:   DefaultSVTAV1EnableVarianceBoost,
 		SVTAV1VarianceBoostStrength: DefaultSVTAV1VarianceBoostStrength,
 		SVTAV1VarianceOctile:        DefaultSVTAV1VarianceOctile,
-		CRF: DefaultCRF,
+		CRFSD:                       DefaultCRFSD,
+		CRFHD:                       DefaultCRFHD,
+		CRFUHD:                      DefaultCRFUHD,
 		CropMode:                    DefaultCropMode,
 		ResponsiveEncoding:          false,
 		EncodeCooldownSecs:          DefaultEncodeCooldownSecs,
@@ -136,8 +152,14 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("svt_av1_preset must be 0-13, got %d", c.SVTAV1Preset)
 	}
 
-	if c.CRF > 63 {
-		return fmt.Errorf("crf must be 0-63, got %d", c.CRF)
+	if c.CRFSD > 63 {
+		return fmt.Errorf("crf-sd must be 0-63, got %d", c.CRFSD)
+	}
+	if c.CRFHD > 63 {
+		return fmt.Errorf("crf-hd must be 0-63, got %d", c.CRFHD)
+	}
+	if c.CRFUHD > 63 {
+		return fmt.Errorf("crf-uhd must be 0-63, got %d", c.CRFUHD)
 	}
 
 	if c.SVTAV1FilmGrain == nil && c.SVTAV1FilmGrainDenoise != nil {
@@ -165,4 +187,15 @@ func (c *Config) GetTempDir() string {
 		return c.TempDir
 	}
 	return c.OutputDir
+}
+
+// CRFForWidth returns the appropriate CRF value based on video width.
+func (c *Config) CRFForWidth(width uint32) uint8 {
+	if width >= UHDWidthThreshold {
+		return c.CRFUHD
+	}
+	if width >= HDWidthThreshold {
+		return c.CRFHD
+	}
+	return c.CRFSD
 }
