@@ -53,10 +53,10 @@ const (
 	DefaultChunkDurationHD  float64 = 30.0 // 1080p: balanced
 	DefaultChunkDurationUHD float64 = 45.0 // 4K: slower encode, needs longer warmup
 
-	// DefaultThreadsPerWorker is the default number of threads per encoder worker.
-	// 2 threads provides good balance: 16 workers × 2 threads = 32 total on a typical CPU.
-	// Can be increased (4-8) for fewer, more powerful workers.
-	DefaultThreadsPerWorker int = 2
+	// DefaultThreadsPerWorker of 0 means auto-calculate based on CPU topology.
+	// Auto mode detects physical cores and SMT, then calculates optimal threads
+	// based on resolution. Override with --threads flag if needed.
+	DefaultThreadsPerWorker int = 0
 )
 
 // AutoParallelConfig returns optimal workers and buffer settings.

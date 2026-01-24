@@ -5,13 +5,13 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"runtime"
 	"sync"
 	"sync/atomic"
 
 	"github.com/five82/drapto/internal/chunk"
 	"github.com/five82/drapto/internal/encoder"
 	"github.com/five82/drapto/internal/ffms"
+	"github.com/five82/drapto/internal/util"
 	"github.com/five82/drapto/internal/worker"
 )
 
@@ -97,7 +97,7 @@ func EncodeAll(
 
 	// Calculate optimal threads per worker if not explicitly set
 	if cfg.LogicalProcessors == 0 {
-		cfg.LogicalProcessors = calculateThreadsPerWorker(actualWorkers)
+		cfg.LogicalProcessors = calculateThreadsPerWorker(actualWorkers, width)
 	}
 
 	// Calculate permits for actual worker count
@@ -407,23 +407,36 @@ func encodeChunkStreaming(
 	}
 }
 
-// calculateThreadsPerWorker determines optimal threads per worker based on CPU count.
-// Goal: workers × threadsPerWorker ≈ total CPU threads
-// Caps at 8 threads per worker (diminishing returns beyond that).
-func calculateThreadsPerWorker(workers int) int {
+// calculateThreadsPerWorker determines optimal threads per worker based on CPU topology and resolution.
+// Uses physical cores as the base and adds an SMT bonus when hyperthreading is available.
+// Resolution affects max threads: larger frames parallelize better in SVT-AV1.
+func calculateThreadsPerWorker(workers int, width uint32) int {
 	if workers <= 0 {
 		return 1
 	}
 
-	numCPU := runtime.NumCPU()
-	threadsPerWorker := numCPU / workers
+	physical := util.PhysicalCores()
+	logical := util.LogicalCores()
+	hasSMT := logical > physical
 
-	if threadsPerWorker < 1 {
-		threadsPerWorker = 1
-	}
-	if threadsPerWorker > 8 {
-		threadsPerWorker = 8 // Cap to avoid diminishing returns
+	// Resolution-based max threads (SVT-AV1 scaling limits)
+	var maxThreads int
+	switch {
+	case width >= 3840: // 4K - larger frames parallelize better
+		maxThreads = 16
+	case width >= 1920: // 1080p
+		maxThreads = 10
+	default: // SD/720p
+		maxThreads = 6
 	}
 
-	return threadsPerWorker
+	// Base calculation on physical cores
+	threadsPerWorker := physical / workers
+
+	// Add SMT bonus (hyperthreads provide ~20% additional throughput)
+	if hasSMT && threadsPerWorker < maxThreads {
+		threadsPerWorker++
+	}
+
+	return max(1, min(threadsPerWorker, maxThreads))
 }

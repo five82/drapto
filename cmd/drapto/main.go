@@ -110,13 +110,13 @@ Processing Options:
   --responsive           Reserve CPU threads for improved system responsiveness
   --workers <N>          Number of parallel encoder workers. Default: %d (auto)
   --buffer <N>           Extra chunks to buffer in memory. Default: %d (auto)
-  --threads <N>          Threads per worker (SVT-AV1 --lp flag). Default: %d
-                           Fewer workers × more threads may be faster on some CPUs.
-                           Example: --workers 4 --threads 8 (4K optimal on 32-thread CPU)
+  --threads <N>          Threads per worker (SVT-AV1 --lp flag). Default: auto
+                           Auto mode detects physical cores and SMT, then calculates
+                           optimal threads based on resolution. Override if needed.
 
 Output Options:
   --no-log               Disable Drapto log file creation
-`, appName, config.DefaultCRFSD, config.DefaultCRFHD, config.DefaultCRFUHD, config.DefaultSVTAV1Preset, defaultWorkers, defaultBuffer, config.DefaultThreadsPerWorker)
+`, appName, config.DefaultCRFSD, config.DefaultCRFHD, config.DefaultCRFUHD, config.DefaultSVTAV1Preset, defaultWorkers, defaultBuffer)
 	}
 
 	var ea encodeArgs
