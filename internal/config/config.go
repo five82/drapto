@@ -52,6 +52,11 @@ const (
 
 	// DefaultChunkDuration4K is the default chunk duration in seconds for 4K content.
 	DefaultChunkDuration4K float64 = 20.0
+
+	// DefaultThreadsPerWorker is the default number of threads per encoder worker.
+	// 2 threads provides good balance: 16 workers × 2 threads = 32 total on a typical CPU.
+	// Can be increased (4-8) for fewer, more powerful workers.
+	DefaultThreadsPerWorker int = 2
 )
 
 // AutoParallelConfig returns optimal workers and buffer settings.
@@ -97,8 +102,9 @@ type Config struct {
 	EncodeCooldownSecs uint64 // Cooldown between batch encodes
 
 	// Parallel encoding options
-	Workers     int // Number of parallel encoder workers
-	ChunkBuffer int // Extra chunks to buffer in memory
+	Workers           int // Number of parallel encoder workers
+	ChunkBuffer       int // Extra chunks to buffer in memory
+	ThreadsPerWorker  int // Threads per encoder worker (SVT-AV1 --lp flag)
 
 	// Chunk duration (set automatically based on resolution)
 	ChunkDuration float64 // Chunk duration in seconds
@@ -127,9 +133,10 @@ func NewConfig(inputDir, outputDir, logDir string) *Config {
 		CropMode:                    DefaultCropMode,
 		ResponsiveEncoding:          false,
 		EncodeCooldownSecs:          DefaultEncodeCooldownSecs,
-		Workers:       workers,
-		ChunkBuffer:   buffer,
-		ChunkDuration: DefaultChunkDuration,
+		Workers:          workers,
+		ChunkBuffer:      buffer,
+		ThreadsPerWorker: DefaultThreadsPerWorker,
+		ChunkDuration:    DefaultChunkDuration,
 	}
 }
 

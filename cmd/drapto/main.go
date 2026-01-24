@@ -76,6 +76,7 @@ type encodeArgs struct {
 	noLog           bool
 	workers         int
 	chunkBuffer     int
+	threads         int
 }
 
 func runEncode(args []string) error {
@@ -109,10 +110,13 @@ Processing Options:
   --responsive           Reserve CPU threads for improved system responsiveness
   --workers <N>          Number of parallel encoder workers. Default: %d (auto)
   --buffer <N>           Extra chunks to buffer in memory. Default: %d (auto)
+  --threads <N>          Threads per worker (SVT-AV1 --lp flag). Default: %d
+                           Fewer workers × more threads may be faster on some CPUs.
+                           Example: --workers 4 --threads 8 (4K optimal on 32-thread CPU)
 
 Output Options:
   --no-log               Disable Drapto log file creation
-`, appName, config.DefaultCRFSD, config.DefaultCRFHD, config.DefaultCRFUHD, config.DefaultSVTAV1Preset, defaultWorkers, defaultBuffer)
+`, appName, config.DefaultCRFSD, config.DefaultCRFHD, config.DefaultCRFUHD, config.DefaultSVTAV1Preset, defaultWorkers, defaultBuffer, config.DefaultThreadsPerWorker)
 	}
 
 	var ea encodeArgs
@@ -138,6 +142,7 @@ Output Options:
 	fs.BoolVar(&ea.responsive, "responsive", false, "Reserve CPU threads for responsiveness")
 	fs.IntVar(&ea.workers, "workers", defaultWorkers, "Number of parallel encoder workers")
 	fs.IntVar(&ea.chunkBuffer, "buffer", defaultBuffer, "Extra chunks to buffer in memory")
+	fs.IntVar(&ea.threads, "threads", config.DefaultThreadsPerWorker, "Threads per worker")
 
 	// Output options
 	fs.BoolVar(&ea.noLog, "no-log", false, "Disable log file creation")
@@ -237,6 +242,7 @@ func executeEncode(ea encodeArgs) error {
 	cfg.ResponsiveEncoding = ea.responsive
 	cfg.Workers = ea.workers
 	cfg.ChunkBuffer = ea.chunkBuffer
+	cfg.ThreadsPerWorker = ea.threads
 
 	// Debug options
 	cfg.Verbose = ea.verbose
@@ -253,7 +259,7 @@ func executeEncode(ea encodeArgs) error {
 		logger.Info("SVT-AV1 preset: %d", cfg.SVTAV1Preset)
 		logger.Info("Crop mode: %s", cfg.CropMode)
 		logger.Info("Responsive encoding: %v", cfg.ResponsiveEncoding)
-		logger.Info("Parallel encoding: workers=%d, buffer=%d", cfg.Workers, cfg.ChunkBuffer)
+		logger.Info("Parallel encoding: workers=%d, buffer=%d, threads/worker=%d", cfg.Workers, cfg.ChunkBuffer, cfg.ThreadsPerWorker)
 	}
 
 	// Create reporters

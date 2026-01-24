@@ -105,16 +105,17 @@ func ProcessChunked(
 
 	// Setup encode config
 	encCfg := &encode.EncodeConfig{
-		Workers:               cfg.Workers,
-		ChunkBuffer:           cfg.ChunkBuffer,
-		CRF:                   float32(quality),
-		Preset:                cfg.SVTAV1Preset,
-		Tune:                  cfg.SVTAV1Tune,
-		ACBias:                cfg.SVTAV1ACBias,
+		Workers:           cfg.Workers,
+		ChunkBuffer:       cfg.ChunkBuffer,
+		CRF:               float32(quality),
+		Preset:            cfg.SVTAV1Preset,
+		Tune:              cfg.SVTAV1Tune,
+		ACBias:            cfg.SVTAV1ACBias,
 		EnableVarianceBoost:   cfg.SVTAV1EnableVarianceBoost,
 		VarianceBoostStrength: cfg.SVTAV1VarianceBoostStrength,
 		VarianceOctile:        cfg.SVTAV1VarianceOctile,
 		LowPriority:           cfg.ResponsiveEncoding,
+		LogicalProcessors:     cfg.ThreadsPerWorker,
 	}
 
 	// Calculate actual workers (may be capped based on resolution and memory)
