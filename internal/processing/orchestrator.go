@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/five82/drapto/internal/config"
+	"github.com/five82/drapto/internal/encoder"
 	"github.com/five82/drapto/internal/ffmpeg"
 	"github.com/five82/drapto/internal/ffprobe"
 	"github.com/five82/drapto/internal/mediainfo"
@@ -151,23 +152,23 @@ func ProcessVideos(
 			Disabled: cfg.CropMode == "none",
 		})
 
-		// Setup encode parameters
-		encodeParams := setupEncodeParams(cfg, inputPath, outputPath, quality, videoProps, cropResult, audioChannels, audioStreams, hdrInfo)
+		// Setup encode parameters (for display only)
+		encodeParams := setupEncodeParams(cfg, quality, cropResult, hdrInfo)
 
 		// Format audio description for config display
 		audioDescConfig := FormatAudioDescriptionConfig(audioChannels, audioStreams)
 
 		// Emit encoding config
 		rep.EncodingConfig(reporter.EncodingConfigSummary{
-			Encoder:              "SVT-AV1",
-			Preset:               fmt.Sprintf("%d", encodeParams.Preset),
-			Tune:                 fmt.Sprintf("%d", encodeParams.Tune),
-			Quality:              formatQualityDescription(videoProps.Width, encodeParams.Quality),
-			PixelFormat:          encodeParams.PixelFormat,
-			MatrixCoefficients:   encodeParams.MatrixCoefficients,
-			AudioCodec:       "Opus",
-			AudioDescription: audioDescConfig,
-			SVTAV1Params:     encodeParams.SVTAV1CLIParams(),
+			Encoder:            "SVT-AV1",
+			Preset:             fmt.Sprintf("%d", encodeParams.Preset),
+			Tune:               fmt.Sprintf("%d", encodeParams.Tune),
+			Quality:            formatQualityDescription(videoProps.Width, encodeParams.Quality),
+			PixelFormat:        encodeParams.PixelFormat,
+			MatrixCoefficients: encodeParams.MatrixCoefficients,
+			AudioCodec:         "Opus",
+			AudioDescription:   audioDescConfig,
+			SVTAV1Params:       encoder.SvtParamsDisplay(cfg.SVTAV1ACBias, cfg.SVTAV1EnableVarianceBoost, cfg.SVTAV1Tune),
 		})
 
 		// Run chunked encoding with FFMS2 + SvtAv1EncApp
@@ -344,33 +345,15 @@ func formatQualityDescription(width uint32, crf uint32) string {
 
 func setupEncodeParams(
 	cfg *config.Config,
-	inputPath, outputPath string,
 	quality uint32,
-	props *ffprobe.VideoProperties,
 	crop CropResult,
-	audioChannels []uint32,
-	audioStreams []ffprobe.AudioStreamInfo,
 	hdrInfo mediainfo.HDRInfo,
 ) *ffmpeg.EncodeParams {
 	params := &ffmpeg.EncodeParams{
-		InputPath:             inputPath,
-		OutputPath:            outputPath,
-		Quality:               quality,
-		Preset:                cfg.SVTAV1Preset,
-		Tune:                  cfg.SVTAV1Tune,
-		ACBias:                cfg.SVTAV1ACBias,
-		EnableVarianceBoost:   cfg.SVTAV1EnableVarianceBoost,
-		VarianceBoostStrength: cfg.SVTAV1VarianceBoostStrength,
-		VarianceOctile:        cfg.SVTAV1VarianceOctile,
-		VideoDenoiseFilter:    cfg.VideoDenoiseFilter,
-		FilmGrain:             cfg.SVTAV1FilmGrain,
-		FilmGrainDenoise:      cfg.SVTAV1FilmGrainDenoise,
-		Duration:              props.DurationSecs,
-		AudioChannels:         audioChannels,
-		AudioStreams:          audioStreams,
-		VideoCodec:            "libsvtav1",
-		PixelFormat:           "yuv420p10le",
-		AudioCodec:            "libopus",
+		Quality:     quality,
+		Preset:      cfg.SVTAV1Preset,
+		Tune:        cfg.SVTAV1Tune,
+		PixelFormat: "yuv420p10le",
 	}
 
 	if crop.Required {

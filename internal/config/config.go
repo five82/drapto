@@ -47,11 +47,11 @@ const (
 	// ProgressLogIntervalPercent is the progress logging interval.
 	ProgressLogIntervalPercent uint8 = 5
 
-	// DefaultChunkDuration is the default chunk duration in seconds for non-4K content.
-	DefaultChunkDuration float64 = 10.0
-
-	// DefaultChunkDuration4K is the default chunk duration in seconds for 4K content.
-	DefaultChunkDuration4K float64 = 20.0
+	// Chunk duration defaults by resolution.
+	// Longer chunks provide better encoder efficiency and reduce concatenation overhead.
+	DefaultChunkDurationSD  float64 = 20.0 // SD/720p: faster encode, can use shorter chunks
+	DefaultChunkDurationHD  float64 = 30.0 // 1080p: balanced
+	DefaultChunkDurationUHD float64 = 45.0 // 4K: slower encode, needs longer warmup
 
 	// DefaultThreadsPerWorker is the default number of threads per encoder worker.
 	// 2 threads provides good balance: 16 workers × 2 threads = 32 total on a typical CPU.
@@ -86,11 +86,6 @@ type Config struct {
 	SVTAV1VarianceBoostStrength uint8
 	SVTAV1VarianceOctile        uint8
 
-	// Optional filters and film grain
-	VideoDenoiseFilter     string // Optional denoise filter (e.g., "hqdn3d=1.5:1.5:3:3")
-	SVTAV1FilmGrain        *uint8 // Optional film grain synthesis strength
-	SVTAV1FilmGrainDenoise *bool  // Optional film grain denoise toggle
-
 	// Quality settings (CRF value 0-63) by resolution
 	CRFSD  uint8 // CRF for SD content (<1920 width)
 	CRFHD  uint8 // CRF for HD content (>=1920, <3840 width)
@@ -102,12 +97,14 @@ type Config struct {
 	EncodeCooldownSecs uint64 // Cooldown between batch encodes
 
 	// Parallel encoding options
-	Workers           int // Number of parallel encoder workers
-	ChunkBuffer       int // Extra chunks to buffer in memory
-	ThreadsPerWorker  int // Threads per encoder worker (SVT-AV1 --lp flag)
+	Workers          int // Number of parallel encoder workers
+	ChunkBuffer      int // Extra chunks to buffer in memory
+	ThreadsPerWorker int // Threads per encoder worker (SVT-AV1 --lp flag)
 
-	// Chunk duration (set automatically based on resolution)
-	ChunkDuration float64 // Chunk duration in seconds
+	// Chunk duration settings by resolution (seconds)
+	ChunkDurationSD  float64 // Chunk duration for SD content (<1920 width)
+	ChunkDurationHD  float64 // Chunk duration for HD content (>=1920, <3840 width)
+	ChunkDurationUHD float64 // Chunk duration for UHD content (>=3840 width)
 
 	// Debug options
 	Verbose bool // Enable verbose output
@@ -136,7 +133,9 @@ func NewConfig(inputDir, outputDir, logDir string) *Config {
 		Workers:          workers,
 		ChunkBuffer:      buffer,
 		ThreadsPerWorker: DefaultThreadsPerWorker,
-		ChunkDuration:    DefaultChunkDuration,
+		ChunkDurationSD:  DefaultChunkDurationSD,
+		ChunkDurationHD:  DefaultChunkDurationHD,
+		ChunkDurationUHD: DefaultChunkDurationUHD,
 	}
 }
 
@@ -156,10 +155,6 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("crf-uhd must be 0-63, got %d", c.CRFUHD)
 	}
 
-	if c.SVTAV1FilmGrain == nil && c.SVTAV1FilmGrainDenoise != nil {
-		return fmt.Errorf("svt_av1_film_grain_denoise set without svt_av1_film_grain")
-	}
-
 	if c.Workers < 1 {
 		return fmt.Errorf("workers must be at least 1, got %d", c.Workers)
 	}
@@ -168,8 +163,18 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("chunk_buffer must be non-negative, got %d", c.ChunkBuffer)
 	}
 
-	if c.ChunkDuration < 1 || c.ChunkDuration > 120 {
-		return fmt.Errorf("chunk_duration must be between 1 and 120 seconds, got %g", c.ChunkDuration)
+	// Validate chunk durations
+	for _, cd := range []struct {
+		name  string
+		value float64
+	}{
+		{"chunk_duration_sd", c.ChunkDurationSD},
+		{"chunk_duration_hd", c.ChunkDurationHD},
+		{"chunk_duration_uhd", c.ChunkDurationUHD},
+	} {
+		if cd.value < 1 || cd.value > 120 {
+			return fmt.Errorf("%s must be between 1 and 120 seconds, got %g", cd.name, cd.value)
+		}
 	}
 
 	return nil
@@ -192,4 +197,15 @@ func (c *Config) CRFForWidth(width uint32) uint8 {
 		return c.CRFHD
 	}
 	return c.CRFSD
+}
+
+// ChunkDurationForWidth returns the appropriate chunk duration based on video width.
+func (c *Config) ChunkDurationForWidth(width uint32) float64 {
+	if width >= UHDWidthThreshold {
+		return c.ChunkDurationUHD
+	}
+	if width >= HDWidthThreshold {
+		return c.ChunkDurationHD
+	}
+	return c.ChunkDurationSD
 }

@@ -47,6 +47,10 @@ func MakeSvtCmd(cfg *EncConfig) *exec.Cmd {
 
 // buildSvtArgs constructs the argument list for SvtAv1EncApp.
 func buildSvtArgs(cfg *EncConfig) []string {
+	// Calculate keyint in frames (10 seconds worth)
+	fps := float64(cfg.Inf.FPSNum) / float64(cfg.Inf.FPSDen)
+	keyintFrames := int(fps * 10)
+
 	args := []string{
 		"-i", "stdin",
 		"--input-depth", "10", // Always 10-bit input (8-bit sources are converted)
@@ -59,9 +63,10 @@ func buildSvtArgs(cfg *EncConfig) []string {
 		"--height", fmt.Sprintf("%d", cfg.Height),
 		"--fps-num", fmt.Sprintf("%d", cfg.Inf.FPSNum),
 		"--fps-denom", fmt.Sprintf("%d", cfg.Inf.FPSDen),
-		"--keyint", "0",   // No forced keyframes (scene detection already handles this)
+		"--keyint", fmt.Sprintf("%d", keyintFrames), // Keyframe every 10 seconds
 		"--rc", "0",       // CRF mode
-		"--scd", "0",      // Disable internal scene detection
+		"--scd", "1",      // Enable scene change detection for keyframes within chunks
+		"--scm", "0",      // Screen content mode disabled
 		"--progress", "2", // Progress to stderr
 		"--frames", fmt.Sprintf("%d", cfg.Frames),
 		"--crf", fmt.Sprintf("%.0f", cfg.CRF),
@@ -121,6 +126,29 @@ func buildSvtArgs(cfg *EncConfig) []string {
 func SvtArgsString(cfg *EncConfig) string {
 	args := buildSvtArgs(cfg)
 	return strings.Join(args, " ")
+}
+
+// SvtParamsDisplay returns a human-readable colon-separated string of key SVT-AV1 parameters
+// for display purposes (similar to FFmpeg's -svtav1-params format).
+func SvtParamsDisplay(acBias float32, enableVarianceBoost bool, tune uint8) string {
+	params := []string{
+		fmt.Sprintf("ac-bias=%g", acBias),
+	}
+
+	if enableVarianceBoost {
+		params = append(params, "enable-variance-boost=1")
+	} else {
+		params = append(params, "enable-variance-boost=0")
+	}
+
+	params = append(params,
+		fmt.Sprintf("tune=%d", tune),
+		"keyint=10s",
+		"scd=1",
+		"scm=0",
+	)
+
+	return strings.Join(params, ":")
 }
 
 // IsSvtAvailable checks if SvtAv1EncApp is available in PATH.

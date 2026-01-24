@@ -85,8 +85,8 @@ func ProcessChunked(
 		return fmt.Errorf("failed to get video info: %w", err)
 	}
 
-	// Generate fixed-length chunks based on resolution
-	chunkDuration := keyframe.ChunkDurationForResolution(vidInf.Width, vidInf.Height)
+	// Generate fixed-length chunks based on resolution (using config values)
+	chunkDuration := cfg.ChunkDurationForWidth(vidInf.Width)
 	rep.StageProgress(reporter.StageProgress{Stage: "Chunking", Message: fmt.Sprintf("Creating %.0fs chunks", chunkDuration)})
 	sceneFile, err := keyframe.ExtractKeyframesIfNeeded(
 		inputPath,
@@ -94,8 +94,7 @@ func ProcessChunked(
 		vidInf.FPSNum,
 		vidInf.FPSDen,
 		vidInf.Frames,
-		vidInf.Width,
-		vidInf.Height,
+		chunkDuration,
 	)
 	if err != nil {
 		return fmt.Errorf("chunk generation failed: %w", err)

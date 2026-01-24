@@ -108,22 +108,6 @@ func WithResponsive() Option {
 	}
 }
 
-// WithFilmGrain enables SVT-AV1 film grain synthesis with the given strength.
-// Strength should be 0-50, where higher values add more synthetic grain.
-func WithFilmGrain(strength uint8) Option {
-	return func(c *config.Config) {
-		c.SVTAV1FilmGrain = &strength
-	}
-}
-
-// WithFilmGrainDenoise sets whether to denoise when using film grain synthesis.
-// When true (default), the source is denoised before adding synthetic grain.
-func WithFilmGrainDenoise(enable bool) Option {
-	return func(c *config.Config) {
-		c.SVTAV1FilmGrainDenoise = &enable
-	}
-}
-
 // WithWorkers sets the number of parallel encoder workers.
 // Default is 1. Higher values enable parallel chunk encoding.
 func WithWorkers(workers int) Option {

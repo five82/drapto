@@ -69,22 +69,14 @@ func TestConfigValidate(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "film_grain_denoise without film_grain is invalid",
-			modify: func(c *Config) {
-				b := true
-				c.SVTAV1FilmGrainDenoise = &b
-			},
+			name:    "chunk_duration_sd 0 is invalid",
+			modify:  func(c *Config) { c.ChunkDurationSD = 0 },
 			wantErr: true,
 		},
 		{
-			name: "film_grain with denoise is valid",
-			modify: func(c *Config) {
-				fg := uint8(6)
-				b := true
-				c.SVTAV1FilmGrain = &fg
-				c.SVTAV1FilmGrainDenoise = &b
-			},
-			wantErr: false,
+			name:    "chunk_duration_hd 121 is invalid",
+			modify:  func(c *Config) { c.ChunkDurationHD = 121 },
+			wantErr: true,
 		},
 	}
 
@@ -125,6 +117,36 @@ func TestCRFForWidth(t *testing.T) {
 			got := cfg.CRFForWidth(tt.width)
 			if got != tt.expected {
 				t.Errorf("CRFForWidth(%d) = %d, want %d", tt.width, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestChunkDurationForWidth(t *testing.T) {
+	cfg := NewConfig("/input", "/output", "/log")
+	cfg.ChunkDurationSD = 20.0
+	cfg.ChunkDurationHD = 30.0
+	cfg.ChunkDurationUHD = 45.0
+
+	tests := []struct {
+		width    uint32
+		expected float64
+	}{
+		{width: 720, expected: 20.0},   // SD
+		{width: 1280, expected: 20.0},  // SD (720p)
+		{width: 1919, expected: 20.0},  // Just below HD threshold
+		{width: 1920, expected: 30.0},  // HD threshold
+		{width: 2560, expected: 30.0},  // 1440p
+		{width: 3839, expected: 30.0},  // Just below UHD threshold
+		{width: 3840, expected: 45.0},  // UHD threshold
+		{width: 7680, expected: 45.0},  // 8K
+	}
+
+	for _, tt := range tests {
+		t.Run("", func(t *testing.T) {
+			got := cfg.ChunkDurationForWidth(tt.width)
+			if got != tt.expected {
+				t.Errorf("ChunkDurationForWidth(%d) = %f, want %f", tt.width, got, tt.expected)
 			}
 		})
 	}
