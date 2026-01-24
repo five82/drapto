@@ -79,6 +79,14 @@ func ProcessChunked(
 	}
 	defer idx.Close()
 
+	// Report crop detection result
+	rep.CropResult(reporter.CropSummary{
+		Message:  cropResult.Message,
+		Crop:     cropResult.CropFilter,
+		Required: cropResult.Required,
+		Disabled: cfg.CropMode == "none",
+	})
+
 	// Get video info (needs index)
 	vidInf, err := ffms.GetVidInf(idx)
 	if err != nil {

@@ -142,18 +142,8 @@ func ProcessVideos(
 			rep.Verbose(fmt.Sprintf("Color primaries: %s, transfer: %s", hdrInfo.ColourPrimaries, hdrInfo.TransferCharacteristics))
 		}
 
-		// Perform crop detection
-		cropResult := DetectCrop(inputPath, videoProps, cfg.CropMode == "none")
-
-		rep.CropResult(reporter.CropSummary{
-			Message:  cropResult.Message,
-			Crop:     cropResult.CropFilter,
-			Required: cropResult.Required,
-			Disabled: cfg.CropMode == "none",
-		})
-
 		// Setup encode parameters (for display only)
-		encodeParams := setupEncodeParams(cfg, quality, cropResult, hdrInfo)
+		encodeParams := setupEncodeParams(cfg, quality, hdrInfo)
 
 		// Format audio description for config display
 		audioDescConfig := FormatAudioDescriptionConfig(audioChannels, audioStreams)
@@ -346,7 +336,6 @@ func formatQualityDescription(width uint32, crf uint32) string {
 func setupEncodeParams(
 	cfg *config.Config,
 	quality uint32,
-	crop CropResult,
 	hdrInfo mediainfo.HDRInfo,
 ) *ffmpeg.EncodeParams {
 	params := &ffmpeg.EncodeParams{
@@ -354,10 +343,6 @@ func setupEncodeParams(
 		Preset:      cfg.SVTAV1Preset,
 		Tune:        cfg.SVTAV1Tune,
 		PixelFormat: "yuv420p10le",
-	}
-
-	if crop.Required {
-		params.CropFilter = crop.CropFilter
 	}
 
 	// Set matrix coefficients based on HDR
