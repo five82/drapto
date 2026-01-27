@@ -10,7 +10,7 @@ import "github.com/five82/drapto"
 // Create encoder with options
 encoder, err := drapto.New(
     drapto.WithPreset(drapto.PresetGrain),
-    drapto.WithQualityHD(27),
+    drapto.WithCRFHD(27),
 )
 if err != nil {
     log.Fatal(err)

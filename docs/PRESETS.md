@@ -8,24 +8,21 @@ When you omit `--drapto-preset`, Drapto uses the global defaults embedded in `Ne
 
 | Setting | Value | Notes |
 |---------|-------|-------|
-| `quality_sd / hd / uhd` | `25 / 27 / 29` | CRF by resolution |
-| `svt_av1_preset` | `6` | Balanced speed/quality |
-| `svt_av1_tune` | `0` | Matches upstream SVT defaults |
-| `svt_av1_ac_bias` | `0.10` | Helps preserve detail without massive bitrate growth |
-| `svt_av1_enable_variance_boost` | `false` | Adaptive quantization disabled by default |
-| `svt_av1_variance_boost_strength` | `0` | N/A when variance boost is disabled |
-| `svt_av1_variance_octile` | `0` | N/A when variance boost is disabled |
-| `video_denoise_filter` | _(none)_ | No denoising filter unless a preset enables it |
-| `svt_av1_film_grain` | _(none)_ | Film-grain synthesis disabled by default |
-| `svt_av1_film_grain_denoise` | _(none)_ | N/A unless `svt_av1_film_grain` is set |
+| `CRFSD / HD / UHD` | `25 / 27 / 29` | CRF by resolution |
+| `SVTAV1Preset` | `6` | Balanced speed/quality (0-13 scale) |
+| `SVTAV1Tune` | `0` | Matches upstream SVT defaults |
+| `SVTAV1ACBias` | `0.10` | Helps preserve detail without massive bitrate growth |
+| `SVTAV1EnableVarianceBoost` | `false` | Adaptive quantization disabled by default |
+| `VideoDenoiseFilter` | _(none)_ | No denoising filter unless explicitly set |
+| `SVTAV1FilmGrain` | _(none)_ | Film-grain synthesis disabled by default |
 
 ## Built-in Presets
 
-| Preset | CRF (SD/HD/UHD) | SVT Preset | Tune | AC Bias | Var Boost | Boost Strength | Octile | Denoise (`-vf`) | Film Grain | Grain Denoise | Intent |
-|--------|-----------------|------------|------|---------|-----------|----------------|--------|------------------|-----------|--------------|--------|
-| `grain` | `25 / 27 / 29` | `6` | `0` | `0.10` | `false` | `0` | `0` | _(none)_ | _(none)_ | _(none)_ | Currently matches defaults; placeholder for future film-grain tuning. |
-| `clean` | `27 / 29 / 31` | `6` | `0` | `0.05` | `false` | `0` | `0` | _(none)_ | _(none)_ | _(none)_ | Target already clean/animated content; prioritizes speed/size. |
-| `quick` | `32 / 35 / 36` | `8` | `0` | `0.00` | `false` | `0` | `0` | _(none)_ | _(none)_ | _(none)_ | Fast, non-archival encodes. |
+| Preset | CRF (SD/HD/UHD) | SVT Preset | AC Bias | Intent |
+|--------|-----------------|------------|---------|--------|
+| `grain` | `25 / 27 / 29` | `6` | `0.10` | Currently matches defaults; placeholder for future film-grain tuning. |
+| `clean` | `27 / 29 / 31` | `6` | `0.05` | Target already clean/animated content; prioritizes speed/size. |
+| `quick` | `32 / 35 / 36` | `8` | `0.10` | Fast, non-archival encodes. |
 
 Pass `--drapto-preset grain`, `clean`, or `quick` to apply one of these bundles before any per-flag overrides.
 
@@ -52,4 +49,4 @@ case PresetGrain:
 
 4. Run `go test ./...` (or `go build ./...`) to ensure everything still compiles.
 
-Remember: explicit CLI flags always win. If you run `--drapto-preset grain --quality-hd 28`, the HD CRF will be forced to 28 regardless of what the preset specifies.
+Remember: explicit CLI flags always win. If you run `--drapto-preset grain --crf 25,28,29`, the HD CRF will be forced to 28 regardless of what the preset specifies.

@@ -12,7 +12,7 @@ drapto encode -i input.mkv -o output/
 drapto encode -i /videos/ -o /encoded/
 
 # Override defaults
-drapto encode -i input.mkv -o output/ --quality-hd 24 --preset 6
+drapto encode -i input.mkv -o output/ --crf 25,24,29 --preset 6
 
 # Verbose output
 drapto encode -v -i input.mkv -o output/
@@ -26,26 +26,25 @@ drapto encode -v -i input.mkv -o output/
 
 **Common**
 - `-v, --verbose`: Verbose output with detailed status
-- `--no-color`: Disable colored output
 - `-l, --log-dir <DIR>`: Override the log directory (defaults to `~/.local/state/drapto/logs`)
 - `--preset <0-13>`: SVT-AV1 encoder speed/quality (default `6`, lower is slower but higher quality)
-- `--drapto-preset <grain|clean|quick>`: Project-defined bundles that set CRF, SVT preset/tune, and AC bias/variance boost
-- `--quality-sd/hd/uhd <CRF>`: Override CRF defaults (SD=25, HD=27, UHD=29)
-- `--responsive`: Reserve a few CPU threads so other apps stay responsive
+- `--drapto-preset <grain|clean|quick>`: Project-defined bundles that set CRF, SVT preset, and AC bias
+- `--crf <VALUE>`: CRF quality (0-63). Single value or SD,HD,UHD triple. Default: 25,27,29
+- `--responsive`: Use `nice -n 19` so other apps stay responsive
 - `--disable-autocrop`: Skip black-bar detection and cropping
 
-CLI overrides such as `--quality-hd` still take precedence over the preset-provided values, so you can start from a profile and tweak selectively per encode.
+CLI overrides such as `--crf` still take precedence over the preset-provided values, so you can start from a profile and tweak selectively per encode.
 
 ## Preset Profiles
 
-| Profile | CRF (SD/HD/UHD) | SVT Preset | Tune | AC Bias | Variance Boost | Boost Strength | Octile | Denoise (`-vf`) | Film Grain | Grain Denoise |
-|---------|-----------------|------------|------|---------|----------------|----------------|--------|------------------|-----------|--------------|
-| _Base defaults (no preset)_ | 25 / 27 / 29 | 6 | 0 | 0.10 | Disabled | 0 | 0 | _(none)_ | _(none)_ | _(none)_ |
-| `grain` | 25 / 27 / 29 | 6 | 0 | 0.10 | Disabled | 0 | 0 | _(none)_ | _(none)_ | _(none)_ |
-| `clean` | 27 / 29 / 31 | 6 | 0 | 0.05 | Disabled | 0 | 0 | _(none)_ | _(none)_ | _(none)_ |
-| `quick` | 32 / 35 / 36 | 8 | 0 | 0.00 | Disabled | 0 | 0 | _(none)_ | _(none)_ | _(none)_ |
+| Profile | CRF (SD/HD/UHD) | SVT Preset | AC Bias | Intent |
+|---------|-----------------|------------|---------|--------|
+| _(defaults)_ | 25 / 27 / 29 | 6 | 0.10 | Balanced quality/size |
+| `grain` | 25 / 27 / 29 | 6 | 0.10 | Placeholder for future film-grain tuning |
+| `clean` | 27 / 29 / 31 | 6 | 0.05 | Already clean/animated content |
+| `quick` | 32 / 35 / 36 | 8 | 0.10 | Fast, non-archival encodes |
 
-Each preset maps to a `DraptoPresetValues` struct inside `drapto-core/src/config/mod.rs`. For deeper guidance (including how to edit the constants), see `docs/PRESETS.md`.
+Each preset maps to a `PresetValues` struct inside `internal/config/config.go`. For deeper guidance (including how to edit the constants), see `docs/PRESETS.md`.
 
 ## HDR Support
 
@@ -81,14 +80,13 @@ Foreground runs show real-time progress with ETA, fps, bitrate, and reduction st
 ## Environment Variables
 
 - `NO_COLOR`: Disable colored output
-- `RUST_LOG`: Control logging verbosity (`debug`, `trace`, etc.)
 
 ## Debugging
 
-```bash
-# Debug-level logging
-RUST_LOG=debug drapto encode -i input.mkv -o output/
+Use the `--verbose` flag to enable detailed output:
 
-# Trace-level logging
-RUST_LOG=trace drapto encode --interactive -i input.mkv -o output/
+```bash
+drapto encode -v -i input.mkv -o output/
 ```
+
+Log files are written to `~/.local/state/drapto/logs` by default. Use `--log-dir` to override or `--no-log` to disable.

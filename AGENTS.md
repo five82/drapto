@@ -43,7 +43,7 @@ golangci-lint run                     # Lint
 
 ```
 drapto.go, events.go     # Public API: Encoder, Options, EventHandler
-cmd/drapto/main.go       # CLI wrapper (Cobra)
+cmd/drapto/main.go       # CLI wrapper (standard flag package)
 internal/
 ├── config/              # Configuration and presets
 ├── ffmpeg/              # FFmpeg command builder + executor

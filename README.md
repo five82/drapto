@@ -55,12 +55,11 @@ drapto encode -i input.mkv -o output/ --drapto-preset grain
 -o, --output         Output directory (required)
 -l, --log-dir        Log directory (defaults to ~/.local/state/drapto/logs)
     --drapto-preset  Apply preset: grain, clean, quick
-    --quality-sd     CRF for SD (<1920 width), default 25
-    --quality-hd     CRF for HD (>=1920 width), default 27
-    --quality-uhd    CRF for UHD (>=3840 width), default 29
+    --crf            CRF quality (0-63), single value or SD,HD,UHD triple
+                     Default: 25,27,29 (SD,HD,UHD)
     --preset         SVT-AV1 preset 0-13, default 6
     --disable-autocrop  Disable black bar detection
-    --responsive     Reserve CPU threads for responsiveness
+    --responsive     Use nice -n 19 for improved system responsiveness
     --no-log         Disable log file creation
 -v, --verbose        Verbose output
 ```
@@ -74,7 +73,7 @@ import "github.com/five82/drapto"
 
 encoder, err := drapto.New(
     drapto.WithPreset(drapto.PresetGrain),
-    drapto.WithQualityHD(27),
+    drapto.WithCRFHD(27),
 )
 if err != nil {
     log.Fatal(err)
@@ -105,7 +104,7 @@ drapto/
     ├── mediainfo/      # HDR detection
     ├── processing/     # Encoding orchestration, crop detection
     ├── validation/     # Post-encode validation
-    ├── reporter/       # Progress reporting (JSON, terminal)
+    ├── reporter/       # Progress reporting (terminal, composite, log)
     ├── discovery/      # Video file discovery
     └── util/           # Formatting utilities
 ```
