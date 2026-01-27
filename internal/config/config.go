@@ -8,14 +8,14 @@ import (
 
 // Default constants
 const (
-	// DefaultQualitySD is the CRF for Standard Definition videos (<1920 width).
-	DefaultQualitySD uint8 = 25
+	// DefaultCRFSD is the CRF for Standard Definition videos (<1920 width).
+	DefaultCRFSD uint8 = 25
 
-	// DefaultQualityHD is the CRF for High Definition videos (>=1920 width, <3840 width).
-	DefaultQualityHD uint8 = 27
+	// DefaultCRFHD is the CRF for High Definition videos (>=1920 width, <3840 width).
+	DefaultCRFHD uint8 = 27
 
-	// DefaultQualityUHD is the CRF for Ultra High Definition videos (>=3840 width).
-	DefaultQualityUHD uint8 = 29
+	// DefaultCRFUHD is the CRF for Ultra High Definition videos (>=3840 width).
+	DefaultCRFUHD uint8 = 29
 
 	// DefaultSVTAV1Preset is the SVT-AV1 preset (0-13, lower is slower/better).
 	DefaultSVTAV1Preset uint8 = 6
@@ -56,26 +56,26 @@ const (
 	// MaxCRF is the maximum valid CRF value.
 	MaxCRF uint8 = 63
 
-	// CleanPresetQualitySD is the CRF for SD videos in Clean preset.
-	CleanPresetQualitySD uint8 = 27
+	// CleanPresetCRFSD is the CRF for SD videos in Clean preset.
+	CleanPresetCRFSD uint8 = 27
 
-	// CleanPresetQualityHD is the CRF for HD videos in Clean preset.
-	CleanPresetQualityHD uint8 = 29
+	// CleanPresetCRFHD is the CRF for HD videos in Clean preset.
+	CleanPresetCRFHD uint8 = 29
 
-	// CleanPresetQualityUHD is the CRF for UHD videos in Clean preset.
-	CleanPresetQualityUHD uint8 = 31
+	// CleanPresetCRFUHD is the CRF for UHD videos in Clean preset.
+	CleanPresetCRFUHD uint8 = 31
 
 	// CleanPresetACBias is the AC bias for Clean preset.
 	CleanPresetACBias float32 = 0.05
 
-	// QuickPresetQualitySD is the CRF for SD videos in Quick preset.
-	QuickPresetQualitySD uint8 = 32
+	// QuickPresetCRFSD is the CRF for SD videos in Quick preset.
+	QuickPresetCRFSD uint8 = 32
 
-	// QuickPresetQualityHD is the CRF for HD videos in Quick preset.
-	QuickPresetQualityHD uint8 = 35
+	// QuickPresetCRFHD is the CRF for HD videos in Quick preset.
+	QuickPresetCRFHD uint8 = 35
 
-	// QuickPresetQualityUHD is the CRF for UHD videos in Quick preset.
-	QuickPresetQualityUHD uint8 = 36
+	// QuickPresetCRFUHD is the CRF for UHD videos in Quick preset.
+	QuickPresetCRFUHD uint8 = 36
 
 	// QuickPresetSVTAV1Preset is the SVT-AV1 preset for Quick mode.
 	QuickPresetSVTAV1Preset uint8 = 8
@@ -111,9 +111,9 @@ func (p Preset) String() string {
 
 // PresetValues contains bundled parameter values for a preset.
 type PresetValues struct {
-	QualitySD                   uint8
-	QualityHD                   uint8
-	QualityUHD                  uint8
+	CRFSD                       uint8
+	CRFHD                       uint8
+	CRFUHD                      uint8
 	SVTAV1Preset                uint8
 	SVTAV1Tune                  uint8
 	SVTAV1ACBias                float32
@@ -130,9 +130,9 @@ func GetPresetValues(p Preset) PresetValues {
 	switch p {
 	case PresetGrain:
 		return PresetValues{
-			QualitySD:                   DefaultQualitySD,
-			QualityHD:                   DefaultQualityHD,
-			QualityUHD:                  DefaultQualityUHD,
+			CRFSD:                       DefaultCRFSD,
+			CRFHD:                       DefaultCRFHD,
+			CRFUHD:                      DefaultCRFUHD,
 			SVTAV1Preset:                DefaultSVTAV1Preset,
 			SVTAV1Tune:                  DefaultSVTAV1Tune,
 			SVTAV1ACBias:                DefaultSVTAV1ACBias,
@@ -142,9 +142,9 @@ func GetPresetValues(p Preset) PresetValues {
 		}
 	case PresetClean:
 		return PresetValues{
-			QualitySD:                   CleanPresetQualitySD,
-			QualityHD:                   CleanPresetQualityHD,
-			QualityUHD:                  CleanPresetQualityUHD,
+			CRFSD:                       CleanPresetCRFSD,
+			CRFHD:                       CleanPresetCRFHD,
+			CRFUHD:                      CleanPresetCRFUHD,
 			SVTAV1Preset:                DefaultSVTAV1Preset,
 			SVTAV1Tune:                  DefaultSVTAV1Tune,
 			SVTAV1ACBias:                CleanPresetACBias,
@@ -154,9 +154,9 @@ func GetPresetValues(p Preset) PresetValues {
 		}
 	case PresetQuick:
 		return PresetValues{
-			QualitySD:                   QuickPresetQualitySD,
-			QualityHD:                   QuickPresetQualityHD,
-			QualityUHD:                  QuickPresetQualityUHD,
+			CRFSD:                       QuickPresetCRFSD,
+			CRFHD:                       QuickPresetCRFHD,
+			CRFUHD:                      QuickPresetCRFUHD,
 			SVTAV1Preset:                QuickPresetSVTAV1Preset,
 			SVTAV1Tune:                  DefaultSVTAV1Tune,
 			SVTAV1ACBias:                DefaultSVTAV1ACBias,
@@ -191,10 +191,10 @@ type Config struct {
 	SVTAV1FilmGrain        *uint8 // Optional film grain synthesis strength
 	SVTAV1FilmGrainDenoise *bool  // Optional film grain denoise toggle
 
-	// Quality settings (CRF values 0-63)
-	QualitySD  uint8
-	QualityHD  uint8
-	QualityUHD uint8
+	// CRF settings (values 0-63)
+	CRFSD  uint8
+	CRFHD  uint8
+	CRFUHD uint8
 
 	// Processing options
 	CropMode           string // "auto" or "none"
@@ -217,9 +217,9 @@ func NewConfig(inputDir, outputDir, logDir string) *Config {
 		SVTAV1EnableVarianceBoost:   DefaultSVTAV1EnableVarianceBoost,
 		SVTAV1VarianceBoostStrength: DefaultSVTAV1VarianceBoostStrength,
 		SVTAV1VarianceOctile:        DefaultSVTAV1VarianceOctile,
-		QualitySD:                   DefaultQualitySD,
-		QualityHD:                   DefaultQualityHD,
-		QualityUHD:                  DefaultQualityUHD,
+		CRFSD:                       DefaultCRFSD,
+		CRFHD:                       DefaultCRFHD,
+		CRFUHD:                      DefaultCRFUHD,
 		CropMode:                    DefaultCropMode,
 		ResponsiveEncoding:          false,
 		EncodeCooldownSecs:          DefaultEncodeCooldownSecs,
@@ -230,9 +230,9 @@ func NewConfig(inputDir, outputDir, logDir string) *Config {
 func (c *Config) ApplyPreset(p Preset) {
 	values := GetPresetValues(p)
 	c.DraptoPreset = &p
-	c.QualitySD = values.QualitySD
-	c.QualityHD = values.QualityHD
-	c.QualityUHD = values.QualityUHD
+	c.CRFSD = values.CRFSD
+	c.CRFHD = values.CRFHD
+	c.CRFUHD = values.CRFUHD
 	c.SVTAV1Preset = values.SVTAV1Preset
 	c.SVTAV1Tune = values.SVTAV1Tune
 	c.SVTAV1ACBias = values.SVTAV1ACBias
@@ -250,16 +250,16 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("%w: must be 0-%d, got %d", ErrInvalidSVTPreset, MaxSVTPreset, c.SVTAV1Preset)
 	}
 
-	if c.QualitySD > MaxCRF {
-		return fmt.Errorf("%w: quality_sd must be 0-%d, got %d", ErrInvalidCRF, MaxCRF, c.QualitySD)
+	if c.CRFSD > MaxCRF {
+		return fmt.Errorf("%w: crf_sd must be 0-%d, got %d", ErrInvalidCRF, MaxCRF, c.CRFSD)
 	}
 
-	if c.QualityHD > MaxCRF {
-		return fmt.Errorf("%w: quality_hd must be 0-%d, got %d", ErrInvalidCRF, MaxCRF, c.QualityHD)
+	if c.CRFHD > MaxCRF {
+		return fmt.Errorf("%w: crf_hd must be 0-%d, got %d", ErrInvalidCRF, MaxCRF, c.CRFHD)
 	}
 
-	if c.QualityUHD > MaxCRF {
-		return fmt.Errorf("%w: quality_uhd must be 0-%d, got %d", ErrInvalidCRF, MaxCRF, c.QualityUHD)
+	if c.CRFUHD > MaxCRF {
+		return fmt.Errorf("%w: crf_uhd must be 0-%d, got %d", ErrInvalidCRF, MaxCRF, c.CRFUHD)
 	}
 
 	if c.SVTAV1FilmGrain == nil && c.SVTAV1FilmGrainDenoise != nil {
@@ -275,4 +275,15 @@ func (c *Config) GetTempDir() string {
 		return c.TempDir
 	}
 	return c.OutputDir
+}
+
+// CRFForWidth returns the appropriate CRF value based on video width.
+func (c *Config) CRFForWidth(width uint32) uint8 {
+	if width >= UHDWidthThreshold {
+		return c.CRFUHD
+	}
+	if width >= HDWidthThreshold {
+		return c.CRFHD
+	}
+	return c.CRFSD
 }

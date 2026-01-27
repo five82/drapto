@@ -25,6 +25,8 @@ package drapto
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/five82/drapto/internal/config"
 	"github.com/five82/drapto/internal/discovery"
@@ -46,6 +48,57 @@ const (
 // Valid values are "grain", "clean", and "quick" (case-insensitive).
 func ParsePreset(s string) (Preset, error) {
 	return config.ParsePreset(s)
+}
+
+// ParseCRF parses a CRF string into SD, HD, and UHD values.
+// Accepts either a single value (applied to all resolutions) or a comma-separated
+// triple in SD,HD,UHD order. Returns an error if the format is invalid or values
+// are out of range (0-63).
+func ParseCRF(s string) (sd, hd, uhd uint8, err error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, 0, 0, fmt.Errorf("empty CRF value")
+	}
+
+	parts := strings.Split(s, ",")
+	switch len(parts) {
+	case 1:
+		// Single value for all resolutions
+		val, err := parseCRFValue(parts[0])
+		if err != nil {
+			return 0, 0, 0, err
+		}
+		return val, val, val, nil
+	case 3:
+		// SD,HD,UHD triple
+		sd, err := parseCRFValue(parts[0])
+		if err != nil {
+			return 0, 0, 0, fmt.Errorf("invalid SD CRF: %w", err)
+		}
+		hd, err := parseCRFValue(parts[1])
+		if err != nil {
+			return 0, 0, 0, fmt.Errorf("invalid HD CRF: %w", err)
+		}
+		uhd, err := parseCRFValue(parts[2])
+		if err != nil {
+			return 0, 0, 0, fmt.Errorf("invalid UHD CRF: %w", err)
+		}
+		return sd, hd, uhd, nil
+	default:
+		return 0, 0, 0, fmt.Errorf("CRF must be a single value or SD,HD,UHD triple, got %d values", len(parts))
+	}
+}
+
+func parseCRFValue(s string) (uint8, error) {
+	s = strings.TrimSpace(s)
+	val, err := strconv.ParseUint(s, 10, 8)
+	if err != nil {
+		return 0, fmt.Errorf("invalid CRF value %q: %w", s, err)
+	}
+	if val > uint64(config.MaxCRF) {
+		return 0, fmt.Errorf("CRF value %d exceeds maximum %d", val, config.MaxCRF)
+	}
+	return uint8(val), nil
 }
 
 // Encoder is the main entry point for video encoding.
@@ -97,24 +150,38 @@ func WithPreset(p Preset) Option {
 	}
 }
 
-// WithQualitySD sets the CRF quality for SD videos (<1920 width).
-func WithQualitySD(crf uint8) Option {
+// WithCRFSD sets the CRF quality for SD videos (<1920 width).
+func WithCRFSD(crf uint8) Option {
 	return func(c *config.Config) {
-		c.QualitySD = crf
+		c.CRFSD = crf
 	}
 }
 
-// WithQualityHD sets the CRF quality for HD videos (>=1920 width).
-func WithQualityHD(crf uint8) Option {
+// WithCRFHD sets the CRF quality for HD videos (>=1920 width).
+func WithCRFHD(crf uint8) Option {
 	return func(c *config.Config) {
-		c.QualityHD = crf
+		c.CRFHD = crf
 	}
 }
 
-// WithQualityUHD sets the CRF quality for UHD videos (>=3840 width).
-func WithQualityUHD(crf uint8) Option {
+// WithCRFUHD sets the CRF quality for UHD videos (>=3840 width).
+func WithCRFUHD(crf uint8) Option {
 	return func(c *config.Config) {
-		c.QualityUHD = crf
+		c.CRFUHD = crf
+	}
+}
+
+// WithCRF parses a CRF string (single value or "SD,HD,UHD" triple) and sets the values.
+// Examples: "27" sets all resolutions to CRF 27, "25,27,29" sets SD=25, HD=27, UHD=29.
+func WithCRF(crf string) Option {
+	return func(c *config.Config) {
+		sd, hd, uhd, err := ParseCRF(crf)
+		if err != nil {
+			return // Invalid input, leave defaults
+		}
+		c.CRFSD = sd
+		c.CRFHD = hd
+		c.CRFUHD = uhd
 	}
 }
 

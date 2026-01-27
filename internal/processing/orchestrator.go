@@ -335,12 +335,12 @@ func ProcessVideos(
 // determineQualitySettings selects quality based on resolution.
 func determineQualitySettings(props *ffprobe.VideoProperties, cfg *config.Config) (uint32, string) {
 	if props.Width >= config.UHDWidthThreshold {
-		return uint32(cfg.QualityUHD), "UHD"
+		return uint32(cfg.CRFUHD), "UHD"
 	}
 	if props.Width >= config.HDWidthThreshold {
-		return uint32(cfg.QualityHD), "HD"
+		return uint32(cfg.CRFHD), "HD"
 	}
-	return uint32(cfg.QualitySD), "SD"
+	return uint32(cfg.CRFSD), "SD"
 }
 
 func formatDynamicRange(isHDR bool) string {

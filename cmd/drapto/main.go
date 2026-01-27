@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"github.com/five82/drapto"
 	"github.com/five82/drapto/internal/config"
 	"github.com/five82/drapto/internal/discovery"
 	"github.com/five82/drapto/internal/logging"
@@ -63,18 +64,16 @@ Run '%s encode --help' for encode command options.
 
 // encodeArgs holds the parsed arguments for the encode command.
 type encodeArgs struct {
-	inputPath      string
-	outputDir      string
-	logDir         string
-	verbose        bool
-	qualitySD      uint
-	qualityHD      uint
-	qualityUHD     uint
-	preset         uint
-	draptoPreset   string
+	inputPath       string
+	outputDir       string
+	logDir          string
+	verbose         bool
+	crf             string
+	preset          uint
+	draptoPreset    string
 	disableAutocrop bool
-	responsive     bool
-	noLog          bool
+	responsive      bool
+	noLog           bool
 }
 
 func runEncode(args []string) error {
@@ -94,9 +93,8 @@ Options:
   -v, --verbose          Enable verbose output for troubleshooting
 
 Quality Settings:
-  --quality-sd <CRF>     CRF quality for SD videos (<1920 width). Default: %d
-  --quality-hd <CRF>     CRF quality for HD videos (≥1920 width). Default: %d
-  --quality-uhd <CRF>    CRF quality for UHD videos (≥3840 width). Default: %d
+  --crf <VALUE>          CRF quality (0-63). Single value or SD,HD,UHD triple.
+                         Default: %d,%d,%d (SD,HD,UHD)
   --preset <0-13>        SVT-AV1 encoder preset. Lower=slower/better. Default: %d
   --drapto-preset <NAME> Apply grouped Drapto defaults (grain, clean, quick)
 
@@ -106,7 +104,7 @@ Processing Options:
 
 Output Options:
   --no-log               Disable Drapto log file creation
-`, appName, config.DefaultQualitySD, config.DefaultQualityHD, config.DefaultQualityUHD, config.DefaultSVTAV1Preset)
+`, appName, config.DefaultCRFSD, config.DefaultCRFHD, config.DefaultCRFUHD, config.DefaultSVTAV1Preset)
 	}
 
 	var ea encodeArgs
@@ -124,9 +122,7 @@ Output Options:
 	fs.BoolVar(&ea.verbose, "verbose", false, "Enable verbose output")
 
 	// Quality settings
-	fs.UintVar(&ea.qualitySD, "quality-sd", 0, "CRF quality for SD videos")
-	fs.UintVar(&ea.qualityHD, "quality-hd", 0, "CRF quality for HD videos")
-	fs.UintVar(&ea.qualityUHD, "quality-uhd", 0, "CRF quality for UHD videos")
+	fs.StringVar(&ea.crf, "crf", "", "CRF quality (single value or SD,HD,UHD triple)")
 	fs.UintVar(&ea.preset, "preset", 0, "SVT-AV1 encoder preset (0-13)")
 	fs.StringVar(&ea.draptoPreset, "drapto-preset", "", "Drapto preset (grain, clean, quick)")
 
@@ -231,14 +227,14 @@ func executeEncode(ea encodeArgs) error {
 	}
 
 	// Override with explicit CLI arguments
-	if ea.qualitySD != 0 {
-		cfg.QualitySD = uint8(ea.qualitySD)
-	}
-	if ea.qualityHD != 0 {
-		cfg.QualityHD = uint8(ea.qualityHD)
-	}
-	if ea.qualityUHD != 0 {
-		cfg.QualityUHD = uint8(ea.qualityUHD)
+	if ea.crf != "" {
+		sd, hd, uhd, err := drapto.ParseCRF(ea.crf)
+		if err != nil {
+			return fmt.Errorf("invalid --crf value: %w", err)
+		}
+		cfg.CRFSD = sd
+		cfg.CRFHD = hd
+		cfg.CRFUHD = uhd
 	}
 	if ea.preset != 0 {
 		cfg.SVTAV1Preset = uint8(ea.preset)
@@ -256,7 +252,7 @@ func executeEncode(ea encodeArgs) error {
 	// Log configuration
 	if logger != nil {
 		logger.Info("Output directory: %s", outputDir)
-		logger.Info("Quality settings: SD=%d, HD=%d, UHD=%d", cfg.QualitySD, cfg.QualityHD, cfg.QualityUHD)
+		logger.Info("CRF settings: SD=%d, HD=%d, UHD=%d", cfg.CRFSD, cfg.CRFHD, cfg.CRFUHD)
 		logger.Info("SVT-AV1 preset: %d", cfg.SVTAV1Preset)
 		logger.Info("Crop mode: %s", cfg.CropMode)
 		logger.Info("Responsive encoding: %v", cfg.ResponsiveEncoding)

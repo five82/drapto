@@ -22,8 +22,8 @@ func TestNewConfig(t *testing.T) {
 	if cfg.SVTAV1Preset != DefaultSVTAV1Preset {
 		t.Errorf("expected SVTAV1Preset=%d, got %d", DefaultSVTAV1Preset, cfg.SVTAV1Preset)
 	}
-	if cfg.QualitySD != DefaultQualitySD {
-		t.Errorf("expected QualitySD=%d, got %d", DefaultQualitySD, cfg.QualitySD)
+	if cfg.CRFSD != DefaultCRFSD {
+		t.Errorf("expected CRFSD=%d, got %d", DefaultCRFSD, cfg.CRFSD)
 	}
 }
 
@@ -51,20 +51,20 @@ func TestConfigValidate(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:         "quality_sd 64 is invalid",
-			modify:       func(c *Config) { c.QualitySD = 64 },
+			name:         "crf_sd 64 is invalid",
+			modify:       func(c *Config) { c.CRFSD = 64 },
 			wantErr:      true,
 			wantSentinel: ErrInvalidCRF,
 		},
 		{
-			name:         "quality_hd 64 is invalid",
-			modify:       func(c *Config) { c.QualityHD = 64 },
+			name:         "crf_hd 64 is invalid",
+			modify:       func(c *Config) { c.CRFHD = 64 },
 			wantErr:      true,
 			wantSentinel: ErrInvalidCRF,
 		},
 		{
-			name:         "quality_uhd 64 is invalid",
-			modify:       func(c *Config) { c.QualityUHD = 64 },
+			name:         "crf_uhd 64 is invalid",
+			modify:       func(c *Config) { c.CRFUHD = 64 },
 			wantErr:      true,
 			wantSentinel: ErrInvalidCRF,
 		},
@@ -143,7 +143,7 @@ func TestApplyPreset(t *testing.T) {
 	cfg := NewConfig("/input", "/output", "/log")
 
 	// Modify some values
-	cfg.QualitySD = 1
+	cfg.CRFSD = 1
 	cfg.SVTAV1Preset = 13
 
 	// Apply preset
@@ -155,8 +155,8 @@ func TestApplyPreset(t *testing.T) {
 	}
 
 	grainValues := GetPresetValues(PresetGrain)
-	if cfg.QualitySD != grainValues.QualitySD {
-		t.Errorf("expected QualitySD=%d, got %d", grainValues.QualitySD, cfg.QualitySD)
+	if cfg.CRFSD != grainValues.CRFSD {
+		t.Errorf("expected CRFSD=%d, got %d", grainValues.CRFSD, cfg.CRFSD)
 	}
 	if cfg.SVTAV1Preset != grainValues.SVTAV1Preset {
 		t.Errorf("expected SVTAV1Preset=%d, got %d", grainValues.SVTAV1Preset, cfg.SVTAV1Preset)
@@ -164,14 +164,41 @@ func TestApplyPreset(t *testing.T) {
 }
 
 func TestGetPresetValues(t *testing.T) {
-	// Test that Quick preset has higher quality values (higher CRF = lower quality)
+	// Test that Quick preset has higher CRF values (higher CRF = lower quality)
 	quickValues := GetPresetValues(PresetQuick)
 	grainValues := GetPresetValues(PresetGrain)
 
-	if quickValues.QualitySD <= grainValues.QualitySD {
+	if quickValues.CRFSD <= grainValues.CRFSD {
 		t.Error("expected Quick preset to have higher CRF than Grain")
 	}
 	if quickValues.SVTAV1Preset <= grainValues.SVTAV1Preset {
 		t.Error("expected Quick preset to have higher (faster) preset than Grain")
+	}
+}
+
+func TestCRFForWidth(t *testing.T) {
+	cfg := NewConfig("/input", "/output", "/log")
+	cfg.CRFSD = 25
+	cfg.CRFHD = 27
+	cfg.CRFUHD = 29
+
+	tests := []struct {
+		width    uint32
+		expected uint8
+	}{
+		{1280, 25},  // SD
+		{1919, 25},  // SD (below HD threshold)
+		{1920, 27},  // HD
+		{2560, 27},  // HD
+		{3839, 27},  // HD (below UHD threshold)
+		{3840, 29},  // UHD
+		{7680, 29},  // UHD (8K)
+	}
+
+	for _, tt := range tests {
+		got := cfg.CRFForWidth(tt.width)
+		if got != tt.expected {
+			t.Errorf("CRFForWidth(%d) = %d, want %d", tt.width, got, tt.expected)
+		}
 	}
 }
