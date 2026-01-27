@@ -9,11 +9,11 @@ import (
 
 // Audio bitrate constants (kbps)
 const (
-	audioBitrateMono    = 64  // kbps for 1 channel
-	audioBitrateStereo  = 128 // kbps for 2 channels
-	audioBitrate51      = 256 // kbps for 5.1 surround
-	audioBitrate71      = 384 // kbps for 7.1 surround
-	audioBitratePerChan = 48  // kbps per channel (fallback for non-standard configs)
+	audioBitrateMono       = 64  // kbps for 1 channel
+	audioBitrateStereo     = 128 // kbps for 2 channels
+	audioBitrateSurround51 = 256 // kbps for 5.1 surround
+	audioBitrateSurround71 = 384 // kbps for 7.1 surround
+	audioBitratePerChan    = 48  // kbps per channel (fallback for non-standard configs)
 )
 
 // SVT-AV1 default parameters
@@ -210,9 +210,9 @@ func calculateAudioBitrate(channels uint32) uint32 {
 	case 2:
 		return audioBitrateStereo
 	case 6:
-		return audioBitrate51
+		return audioBitrateSurround51
 	case 8:
-		return audioBitrate71
+		return audioBitrateSurround71
 	default:
 		return channels * audioBitratePerChan
 	}

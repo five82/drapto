@@ -49,6 +49,36 @@ const (
 
 	// ProgressLogIntervalPercent is the progress logging interval.
 	ProgressLogIntervalPercent uint8 = 5
+
+	// MaxSVTPreset is the maximum valid SVT-AV1 preset value.
+	MaxSVTPreset uint8 = 13
+
+	// MaxCRF is the maximum valid CRF value.
+	MaxCRF uint8 = 63
+
+	// CleanPresetQualitySD is the CRF for SD videos in Clean preset.
+	CleanPresetQualitySD uint8 = 27
+
+	// CleanPresetQualityHD is the CRF for HD videos in Clean preset.
+	CleanPresetQualityHD uint8 = 29
+
+	// CleanPresetQualityUHD is the CRF for UHD videos in Clean preset.
+	CleanPresetQualityUHD uint8 = 31
+
+	// CleanPresetACBias is the AC bias for Clean preset.
+	CleanPresetACBias float32 = 0.05
+
+	// QuickPresetQualitySD is the CRF for SD videos in Quick preset.
+	QuickPresetQualitySD uint8 = 32
+
+	// QuickPresetQualityHD is the CRF for HD videos in Quick preset.
+	QuickPresetQualityHD uint8 = 35
+
+	// QuickPresetQualityUHD is the CRF for UHD videos in Quick preset.
+	QuickPresetQualityUHD uint8 = 36
+
+	// QuickPresetSVTAV1Preset is the SVT-AV1 preset for Quick mode.
+	QuickPresetSVTAV1Preset uint8 = 8
 )
 
 // Preset represents a Drapto preset grouping.
@@ -112,27 +142,27 @@ func GetPresetValues(p Preset) PresetValues {
 		}
 	case PresetClean:
 		return PresetValues{
-			QualitySD:                   27,
-			QualityHD:                   29,
-			QualityUHD:                  31,
+			QualitySD:                   CleanPresetQualitySD,
+			QualityHD:                   CleanPresetQualityHD,
+			QualityUHD:                  CleanPresetQualityUHD,
 			SVTAV1Preset:                DefaultSVTAV1Preset,
 			SVTAV1Tune:                  DefaultSVTAV1Tune,
-			SVTAV1ACBias:                0.05,
-			SVTAV1EnableVarianceBoost:   false,
-			SVTAV1VarianceBoostStrength: 0,
-			SVTAV1VarianceOctile:        0,
+			SVTAV1ACBias:                CleanPresetACBias,
+			SVTAV1EnableVarianceBoost:   DefaultSVTAV1EnableVarianceBoost,
+			SVTAV1VarianceBoostStrength: DefaultSVTAV1VarianceBoostStrength,
+			SVTAV1VarianceOctile:        DefaultSVTAV1VarianceOctile,
 		}
 	case PresetQuick:
 		return PresetValues{
-			QualitySD:                   32,
-			QualityHD:                   35,
-			QualityUHD:                  36,
-			SVTAV1Preset:                8,
+			QualitySD:                   QuickPresetQualitySD,
+			QualityHD:                   QuickPresetQualityHD,
+			QualityUHD:                  QuickPresetQualityUHD,
+			SVTAV1Preset:                QuickPresetSVTAV1Preset,
 			SVTAV1Tune:                  DefaultSVTAV1Tune,
-			SVTAV1ACBias:                0.0,
-			SVTAV1EnableVarianceBoost:   false,
-			SVTAV1VarianceBoostStrength: 0,
-			SVTAV1VarianceOctile:        0,
+			SVTAV1ACBias:                DefaultSVTAV1ACBias,
+			SVTAV1EnableVarianceBoost:   DefaultSVTAV1EnableVarianceBoost,
+			SVTAV1VarianceBoostStrength: DefaultSVTAV1VarianceBoostStrength,
+			SVTAV1VarianceOctile:        DefaultSVTAV1VarianceOctile,
 		}
 	default:
 		// Return grain preset as default
@@ -216,20 +246,20 @@ func (c *Config) ApplyPreset(p Preset) {
 
 // Validate checks the configuration for errors.
 func (c *Config) Validate() error {
-	if c.SVTAV1Preset > 13 {
-		return fmt.Errorf("%w: must be 0-13, got %d", ErrInvalidSVTPreset, c.SVTAV1Preset)
+	if c.SVTAV1Preset > MaxSVTPreset {
+		return fmt.Errorf("%w: must be 0-%d, got %d", ErrInvalidSVTPreset, MaxSVTPreset, c.SVTAV1Preset)
 	}
 
-	if c.QualitySD > 63 {
-		return fmt.Errorf("%w: quality_sd must be 0-63, got %d", ErrInvalidCRF, c.QualitySD)
+	if c.QualitySD > MaxCRF {
+		return fmt.Errorf("%w: quality_sd must be 0-%d, got %d", ErrInvalidCRF, MaxCRF, c.QualitySD)
 	}
 
-	if c.QualityHD > 63 {
-		return fmt.Errorf("%w: quality_hd must be 0-63, got %d", ErrInvalidCRF, c.QualityHD)
+	if c.QualityHD > MaxCRF {
+		return fmt.Errorf("%w: quality_hd must be 0-%d, got %d", ErrInvalidCRF, MaxCRF, c.QualityHD)
 	}
 
-	if c.QualityUHD > 63 {
-		return fmt.Errorf("%w: quality_uhd must be 0-63, got %d", ErrInvalidCRF, c.QualityUHD)
+	if c.QualityUHD > MaxCRF {
+		return fmt.Errorf("%w: quality_uhd must be 0-%d, got %d", ErrInvalidCRF, MaxCRF, c.QualityUHD)
 	}
 
 	if c.SVTAV1FilmGrain == nil && c.SVTAV1FilmGrainDenoise != nil {
