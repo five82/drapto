@@ -1,0 +1,30 @@
+{
+  "media": {
+    "track": [
+      {
+        "@type": "General",
+        "Format": "Matroska",
+        "Duration": "3600.000"
+      },
+      {
+        "@type": "Video",
+        "Format": "AV1",
+        "Width": "3840",
+        "Height": "2160",
+        "BitDepth": "10",
+        "ColorSpace": "YUV",
+        "ChromaSubsampling": "4:2:0",
+        "colour_primaries": "BT.2020",
+        "transfer_characteristics": "HLG",
+        "matrix_coefficients": "BT.2020 non-constant"
+      },
+      {
+        "@type": "Audio",
+        "Format": "Opus",
+        "Channels": "6",
+        "SamplingRate": "48000",
+        "BitRate": "256000"
+      }
+    ]
+  }
+}

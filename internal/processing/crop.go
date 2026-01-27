@@ -14,8 +14,38 @@ import (
 	"github.com/five82/drapto/internal/ffprobe"
 )
 
-// cropDetectionConcurrency is the maximum number of concurrent crop detection samples.
-const cropDetectionConcurrency = 8
+// Crop detection constants
+const (
+	// cropDetectionConcurrency is the maximum number of concurrent crop detection samples.
+	cropDetectionConcurrency = 8
+
+	// cropSampleStart is the start position for sampling (15% of video = 30/200).
+	cropSampleStart = 30
+
+	// cropSampleEnd is the end position for sampling (85% of video = 170/200).
+	cropSampleEnd = 170
+
+	// cropSampleDivisor converts sample positions to percentages.
+	cropSampleDivisor = 200.0
+
+	// cropThresholdSDR is the black bar detection threshold for SDR content.
+	cropThresholdSDR = 16
+
+	// cropThresholdHDR is the black bar detection threshold for HDR content.
+	cropThresholdHDR = 100
+
+	// cropDominantRatio is the minimum ratio for a crop to be considered dominant.
+	cropDominantRatio = 0.8
+
+	// cropSampleFrames is the number of frames to sample at each position.
+	cropSampleFrames = 10
+
+	// cropRound is the rounding value for cropdetect filter.
+	cropRound = 2
+
+	// cropReset is the reset value for cropdetect filter.
+	cropReset = 1
+)
 
 // CropResult contains the result of crop detection.
 type CropResult struct {
@@ -39,15 +69,15 @@ func DetectCrop(inputPath string, props *ffprobe.VideoProperties, disableCrop bo
 	}
 
 	// Set threshold based on HDR status
-	threshold := uint32(16)
+	threshold := uint32(cropThresholdSDR)
 	if props.HDRInfo.IsHDR {
-		threshold = 100
+		threshold = cropThresholdHDR
 	}
 
 	// Sample every 0.5% from 15% to 85% (141 points total)
 	var samplePoints []float64
-	for i := 30; i <= 170; i++ {
-		samplePoints = append(samplePoints, float64(i)/200.0)
+	for i := cropSampleStart; i <= cropSampleEnd; i++ {
+		samplePoints = append(samplePoints, float64(i)/cropSampleDivisor)
 	}
 	numSamples := len(samplePoints)
 
@@ -124,7 +154,7 @@ func DetectCrop(inputPath string, props *ffprobe.VideoProperties, disableCrop bo
 	ratio := float64(mostCommon.count) / float64(totalSamples)
 
 	// If one crop is dominant (>80% of samples), use it
-	if ratio > 0.8 {
+	if ratio > cropDominantRatio {
 		if !isEffectiveCrop(mostCommon.crop, props.Width, props.Height) {
 			return CropResult{
 				Required: false,
@@ -152,8 +182,8 @@ func sampleCropAtPosition(inputPath string, startTime float64, threshold uint32)
 		"-hide_banner",
 		"-ss", fmt.Sprintf("%.2f", startTime),
 		"-i", inputPath,
-		"-vframes", "10",
-		"-vf", fmt.Sprintf("cropdetect=limit=%d:round=2:reset=1", threshold),
+		"-vframes", fmt.Sprintf("%d", cropSampleFrames),
+		"-vf", fmt.Sprintf("cropdetect=limit=%d:round=%d:reset=%d", threshold, cropRound, cropReset),
 		"-f", "null",
 		"-",
 	)

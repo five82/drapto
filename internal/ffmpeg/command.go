@@ -7,6 +7,22 @@ import (
 	"github.com/five82/drapto/internal/ffprobe"
 )
 
+// Audio bitrate constants (kbps)
+const (
+	audioBitrateMono    = 64  // kbps for 1 channel
+	audioBitrateStereo  = 128 // kbps for 2 channels
+	audioBitrate51      = 256 // kbps for 5.1 surround
+	audioBitrate71      = 384 // kbps for 7.1 surround
+	audioBitratePerChan = 48  // kbps per channel (fallback for non-standard configs)
+)
+
+// SVT-AV1 default parameters
+const (
+	svtav1DefaultKeyint = "10s"
+	svtav1DefaultSCD    = "1" // scene change detection enabled
+	svtav1DefaultSCM    = "0" // scene change mode
+)
+
 // EncodeParams contains all parameters for an FFmpeg encode operation.
 type EncodeParams struct {
 	InputPath             string
@@ -45,9 +61,9 @@ func (p *EncodeParams) SVTAV1CLIParams() string {
 	}
 
 	builder = builder.WithTune(p.Tune).
-		AddParam("keyint", "10s").
-		AddParam("scd", "1").
-		AddParam("scm", "0")
+		AddParam("keyint", svtav1DefaultKeyint).
+		AddParam("scd", svtav1DefaultSCD).
+		AddParam("scm", svtav1DefaultSCM)
 
 	if p.FilmGrain != nil {
 		builder = builder.AddParam("film-grain", fmt.Sprintf("%d", *p.FilmGrain))
@@ -190,15 +206,15 @@ func buildDispositionValue(d ffprobe.StreamDisposition) string {
 func calculateAudioBitrate(channels uint32) uint32 {
 	switch channels {
 	case 1:
-		return 64 // Mono
+		return audioBitrateMono
 	case 2:
-		return 128 // Stereo
+		return audioBitrateStereo
 	case 6:
-		return 256 // 5.1 surround
+		return audioBitrate51
 	case 8:
-		return 384 // 7.1 surround
+		return audioBitrate71
 	default:
-		return channels * 48 // ~48 kbps per channel for non-standard configs
+		return channels * audioBitratePerChan
 	}
 }
 

@@ -1,0 +1,26 @@
+{
+  "format": {
+    "duration": "300.000000"
+  },
+  "streams": [
+    {
+      "codec_type": "audio",
+      "codec_name": "flac",
+      "channels": 2,
+      "disposition": {
+        "default": 1,
+        "dub": 0,
+        "original": 0,
+        "comment": 0,
+        "lyrics": 0,
+        "karaoke": 0,
+        "forced": 0,
+        "hearing_impaired": 0,
+        "visual_impaired": 0,
+        "clean_effects": 0,
+        "attached_pic": 0,
+        "timed_thumbnails": 0
+      }
+    }
+  ]
+}

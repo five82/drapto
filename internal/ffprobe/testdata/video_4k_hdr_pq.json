@@ -1,0 +1,57 @@
+{
+  "format": {
+    "duration": "7200.000000"
+  },
+  "streams": [
+    {
+      "codec_type": "video",
+      "codec_name": "hevc",
+      "width": 3840,
+      "height": 2160,
+      "pix_fmt": "yuv420p10le",
+      "bits_per_raw_sample": "10",
+      "color_primaries": "bt2020",
+      "color_transfer": "smpte2084",
+      "color_space": "bt2020nc",
+      "nb_frames": "172800"
+    },
+    {
+      "codec_type": "audio",
+      "codec_name": "truehd",
+      "channels": 8,
+      "disposition": {
+        "default": 1,
+        "dub": 0,
+        "original": 1,
+        "comment": 0,
+        "lyrics": 0,
+        "karaoke": 0,
+        "forced": 0,
+        "hearing_impaired": 0,
+        "visual_impaired": 0,
+        "clean_effects": 0,
+        "attached_pic": 0,
+        "timed_thumbnails": 0
+      }
+    },
+    {
+      "codec_type": "audio",
+      "codec_name": "ac3",
+      "channels": 6,
+      "disposition": {
+        "default": 0,
+        "dub": 1,
+        "original": 0,
+        "comment": 0,
+        "lyrics": 0,
+        "karaoke": 0,
+        "forced": 0,
+        "hearing_impaired": 0,
+        "visual_impaired": 0,
+        "clean_effects": 0,
+        "attached_pic": 0,
+        "timed_thumbnails": 0
+      }
+    }
+  ]
+}

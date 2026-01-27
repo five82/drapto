@@ -1,0 +1,37 @@
+{
+  "media": {
+    "track": [
+      {
+        "@type": "General",
+        "Format": "Matroska",
+        "Duration": "7200.000"
+      },
+      {
+        "@type": "Video",
+        "Format": "HEVC",
+        "Width": "3840",
+        "Height": "2160",
+        "BitDepth": "10",
+        "ColorSpace": "YUV",
+        "ChromaSubsampling": "4:2:0",
+        "colour_primaries": "BT.2020",
+        "transfer_characteristics": "PQ",
+        "matrix_coefficients": "BT.2020 non-constant"
+      },
+      {
+        "@type": "Audio",
+        "Format": "TrueHD",
+        "Channels": "8",
+        "SamplingRate": "48000",
+        "BitRate": "0"
+      },
+      {
+        "@type": "Audio",
+        "Format": "AC-3",
+        "Channels": "6",
+        "SamplingRate": "48000",
+        "BitRate": "640000"
+      }
+    ]
+  }
+}

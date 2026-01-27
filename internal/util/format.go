@@ -11,6 +11,11 @@ const (
 	KiB = 1024
 	MiB = KiB * 1024
 	GiB = MiB * 1024
+
+	// SecondsPerMinute is the number of seconds in a minute.
+	SecondsPerMinute = 60
+	// SecondsPerHour is the number of seconds in an hour.
+	SecondsPerHour = 3600
 )
 
 // FormatBytes formats bytes with appropriate binary units (B, KiB, MiB, GiB).
@@ -43,17 +48,17 @@ func FormatDuration(seconds float64) string {
 	}
 
 	totalSecs := int64(seconds)
-	hours := totalSecs / 3600
-	minutes := (totalSecs % 3600) / 60
-	secs := totalSecs % 60
+	hours := totalSecs / SecondsPerHour
+	minutes := (totalSecs % SecondsPerHour) / SecondsPerMinute
+	secs := totalSecs % SecondsPerMinute
 	return fmt.Sprintf("%02d:%02d:%02d", hours, minutes, secs)
 }
 
 // FormatDurationFromSecs formats seconds as HH:MM:SS from an int64.
 func FormatDurationFromSecs(secs int64) string {
-	hours := secs / 3600
-	minutes := (secs % 3600) / 60
-	seconds := secs % 60
+	hours := secs / SecondsPerHour
+	minutes := (secs % SecondsPerHour) / SecondsPerMinute
+	seconds := secs % SecondsPerMinute
 	return fmt.Sprintf("%02d:%02d:%02d", hours, minutes, seconds)
 }
 
@@ -79,7 +84,7 @@ func ParseFFmpegTime(timeStr string) (float64, bool) {
 		return 0, false
 	}
 
-	return hours*3600 + minutes*60 + seconds, true
+	return hours*SecondsPerHour + minutes*SecondsPerMinute + seconds, true
 }
 
 // CalculateSizeReduction calculates the percentage size reduction.

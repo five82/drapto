@@ -1,0 +1,38 @@
+{
+  "format": {
+    "duration": "120.500000"
+  },
+  "streams": [
+    {
+      "codec_type": "video",
+      "codec_name": "av1",
+      "width": 1920,
+      "height": 800,
+      "pix_fmt": "yuv420p10le",
+      "bits_per_raw_sample": "10",
+      "color_primaries": "bt709",
+      "color_transfer": "bt709",
+      "color_space": "bt709",
+      "nb_frames": "2892"
+    },
+    {
+      "codec_type": "audio",
+      "codec_name": "opus",
+      "channels": 2,
+      "disposition": {
+        "default": 1,
+        "dub": 0,
+        "original": 0,
+        "comment": 0,
+        "lyrics": 0,
+        "karaoke": 0,
+        "forced": 0,
+        "hearing_impaired": 0,
+        "visual_impaired": 0,
+        "clean_effects": 0,
+        "attached_pic": 0,
+        "timed_thumbnails": 0
+      }
+    }
+  ]
+}

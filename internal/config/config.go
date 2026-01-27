@@ -70,7 +70,7 @@ func ParsePreset(s string) (Preset, error) {
 	case "quick":
 		return PresetQuick, nil
 	default:
-		return "", fmt.Errorf("unknown preset '%s', valid options: grain, clean, quick", s)
+		return "", fmt.Errorf("%w: '%s', valid options: grain, clean, quick", ErrInvalidPreset, s)
 	}
 }
 
@@ -217,23 +217,23 @@ func (c *Config) ApplyPreset(p Preset) {
 // Validate checks the configuration for errors.
 func (c *Config) Validate() error {
 	if c.SVTAV1Preset > 13 {
-		return fmt.Errorf("svt_av1_preset must be 0-13, got %d", c.SVTAV1Preset)
+		return fmt.Errorf("%w: must be 0-13, got %d", ErrInvalidSVTPreset, c.SVTAV1Preset)
 	}
 
 	if c.QualitySD > 63 {
-		return fmt.Errorf("quality_sd must be 0-63, got %d", c.QualitySD)
+		return fmt.Errorf("%w: quality_sd must be 0-63, got %d", ErrInvalidCRF, c.QualitySD)
 	}
 
 	if c.QualityHD > 63 {
-		return fmt.Errorf("quality_hd must be 0-63, got %d", c.QualityHD)
+		return fmt.Errorf("%w: quality_hd must be 0-63, got %d", ErrInvalidCRF, c.QualityHD)
 	}
 
 	if c.QualityUHD > 63 {
-		return fmt.Errorf("quality_uhd must be 0-63, got %d", c.QualityUHD)
+		return fmt.Errorf("%w: quality_uhd must be 0-63, got %d", ErrInvalidCRF, c.QualityUHD)
 	}
 
 	if c.SVTAV1FilmGrain == nil && c.SVTAV1FilmGrainDenoise != nil {
-		return fmt.Errorf("svt_av1_film_grain_denoise set without svt_av1_film_grain")
+		return fmt.Errorf("%w: denoise set without film grain", ErrInvalidFilmGrain)
 	}
 
 	return nil

@@ -101,8 +101,14 @@ func runFFprobe(inputPath string) (*ffprobeOutput, error) {
 		return nil, fmt.Errorf("ffprobe failed: %w", err)
 	}
 
+	return parseFFprobeOutput(output)
+}
+
+// parseFFprobeOutput parses ffprobe JSON output into the internal structure.
+// This is exported for testing purposes.
+func parseFFprobeOutput(data []byte) (*ffprobeOutput, error) {
 	var result ffprobeOutput
-	if err := json.Unmarshal(output, &result); err != nil {
+	if err := json.Unmarshal(data, &result); err != nil {
 		return nil, fmt.Errorf("failed to parse ffprobe output: %w", err)
 	}
 
@@ -116,6 +122,12 @@ func GetMediaInfo(inputPath string) (*MediaInfo, error) {
 		return nil, err
 	}
 
+	return extractMediaInfo(probe), nil
+}
+
+// extractMediaInfo extracts MediaInfo from parsed ffprobe output.
+// This is exported for testing purposes.
+func extractMediaInfo(probe *ffprobeOutput) *MediaInfo {
 	info := &MediaInfo{}
 
 	// Parse duration from format
@@ -139,7 +151,7 @@ func GetMediaInfo(inputPath string) (*MediaInfo, error) {
 		}
 	}
 
-	return info, nil
+	return info
 }
 
 // GetVideoProperties returns video properties including HDR info.
@@ -149,6 +161,12 @@ func GetVideoProperties(inputPath string) (*VideoProperties, error) {
 		return nil, err
 	}
 
+	return extractVideoProperties(probe, inputPath)
+}
+
+// extractVideoProperties extracts VideoProperties from parsed ffprobe output.
+// This is exported for testing purposes.
+func extractVideoProperties(probe *ffprobeOutput, inputPath string) (*VideoProperties, error) {
 	// Parse duration
 	var durationSecs float64
 	if probe.Format.Duration != "" {
@@ -209,6 +227,12 @@ func GetAudioChannels(inputPath string) ([]uint32, error) {
 		return nil, err
 	}
 
+	return extractAudioChannels(probe), nil
+}
+
+// extractAudioChannels extracts audio channel counts from parsed ffprobe output.
+// This is exported for testing purposes.
+func extractAudioChannels(probe *ffprobeOutput) []uint32 {
 	var channels []uint32
 	for _, stream := range probe.Streams {
 		if stream.CodecType == "audio" && stream.Channels > 0 {
@@ -216,7 +240,7 @@ func GetAudioChannels(inputPath string) ([]uint32, error) {
 		}
 	}
 
-	return channels, nil
+	return channels
 }
 
 // GetAudioStreamInfo returns detailed audio stream information.
@@ -226,6 +250,12 @@ func GetAudioStreamInfo(inputPath string) ([]AudioStreamInfo, error) {
 		return nil, err
 	}
 
+	return extractAudioStreamInfo(probe), nil
+}
+
+// extractAudioStreamInfo extracts audio stream info from parsed ffprobe output.
+// This is exported for testing purposes.
+func extractAudioStreamInfo(probe *ffprobeOutput) []AudioStreamInfo {
 	var streams []AudioStreamInfo
 	audioIndex := 0
 
@@ -250,7 +280,7 @@ func GetAudioStreamInfo(inputPath string) ([]AudioStreamInfo, error) {
 		audioIndex++
 	}
 
-	return streams, nil
+	return streams
 }
 
 // detectHDR determines if content is HDR based on color metadata.

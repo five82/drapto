@@ -95,8 +95,14 @@ func GetMediaInfo(inputPath string) (*Response, error) {
 		return nil, fmt.Errorf("mediainfo failed: %w", err)
 	}
 
+	return parseMediaInfoOutput(output)
+}
+
+// parseMediaInfoOutput parses MediaInfo JSON output into the Response structure.
+// This is exported for testing purposes.
+func parseMediaInfoOutput(data []byte) (*Response, error) {
 	var result Response
-	if err := json.Unmarshal(output, &result); err != nil {
+	if err := json.Unmarshal(data, &result); err != nil {
 		return nil, fmt.Errorf("failed to parse mediainfo output: %w", err)
 	}
 

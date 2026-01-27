@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"testing"
 )
 
@@ -28,9 +29,10 @@ func TestNewConfig(t *testing.T) {
 
 func TestConfigValidate(t *testing.T) {
 	tests := []struct {
-		name    string
-		modify  func(*Config)
-		wantErr bool
+		name        string
+		modify      func(*Config)
+		wantErr     bool
+		wantSentinel error
 	}{
 		{
 			name:    "default config is valid",
@@ -38,9 +40,10 @@ func TestConfigValidate(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "preset 14 is invalid",
-			modify:  func(c *Config) { c.SVTAV1Preset = 14 },
-			wantErr: true,
+			name:         "preset 14 is invalid",
+			modify:       func(c *Config) { c.SVTAV1Preset = 14 },
+			wantErr:      true,
+			wantSentinel: ErrInvalidSVTPreset,
 		},
 		{
 			name:    "preset 13 is valid",
@@ -48,19 +51,22 @@ func TestConfigValidate(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "quality_sd 64 is invalid",
-			modify:  func(c *Config) { c.QualitySD = 64 },
-			wantErr: true,
+			name:         "quality_sd 64 is invalid",
+			modify:       func(c *Config) { c.QualitySD = 64 },
+			wantErr:      true,
+			wantSentinel: ErrInvalidCRF,
 		},
 		{
-			name:    "quality_hd 64 is invalid",
-			modify:  func(c *Config) { c.QualityHD = 64 },
-			wantErr: true,
+			name:         "quality_hd 64 is invalid",
+			modify:       func(c *Config) { c.QualityHD = 64 },
+			wantErr:      true,
+			wantSentinel: ErrInvalidCRF,
 		},
 		{
-			name:    "quality_uhd 64 is invalid",
-			modify:  func(c *Config) { c.QualityUHD = 64 },
-			wantErr: true,
+			name:         "quality_uhd 64 is invalid",
+			modify:       func(c *Config) { c.QualityUHD = 64 },
+			wantErr:      true,
+			wantSentinel: ErrInvalidCRF,
 		},
 		{
 			name: "film_grain_denoise without film_grain is invalid",
@@ -68,7 +74,8 @@ func TestConfigValidate(t *testing.T) {
 				b := true
 				c.SVTAV1FilmGrainDenoise = &b
 			},
-			wantErr: true,
+			wantErr:      true,
+			wantSentinel: ErrInvalidFilmGrain,
 		},
 		{
 			name: "film_grain with denoise is valid",
@@ -90,25 +97,29 @@ func TestConfigValidate(t *testing.T) {
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
 			}
+			if tt.wantSentinel != nil && !errors.Is(err, tt.wantSentinel) {
+				t.Errorf("Validate() error = %v, want sentinel %v", err, tt.wantSentinel)
+			}
 		})
 	}
 }
 
 func TestParsePreset(t *testing.T) {
 	tests := []struct {
-		input   string
-		want    Preset
-		wantErr bool
+		input        string
+		want         Preset
+		wantErr      bool
+		wantSentinel error
 	}{
-		{"grain", PresetGrain, false},
-		{"GRAIN", PresetGrain, false},
-		{"Grain", PresetGrain, false},
-		{"clean", PresetClean, false},
-		{"CLEAN", PresetClean, false},
-		{"quick", PresetQuick, false},
-		{"QUICK", PresetQuick, false},
-		{"invalid", "", true},
-		{"", "", true},
+		{"grain", PresetGrain, false, nil},
+		{"GRAIN", PresetGrain, false, nil},
+		{"Grain", PresetGrain, false, nil},
+		{"clean", PresetClean, false, nil},
+		{"CLEAN", PresetClean, false, nil},
+		{"quick", PresetQuick, false, nil},
+		{"QUICK", PresetQuick, false, nil},
+		{"invalid", "", true, ErrInvalidPreset},
+		{"", "", true, ErrInvalidPreset},
 	}
 
 	for _, tt := range tests {
@@ -117,6 +128,9 @@ func TestParsePreset(t *testing.T) {
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ParsePreset(%q) error = %v, wantErr %v", tt.input, err, tt.wantErr)
 				return
+			}
+			if tt.wantSentinel != nil && !errors.Is(err, tt.wantSentinel) {
+				t.Errorf("ParsePreset(%q) error = %v, want sentinel %v", tt.input, err, tt.wantSentinel)
 			}
 			if got != tt.want {
 				t.Errorf("ParsePreset(%q) = %v, want %v", tt.input, got, tt.want)

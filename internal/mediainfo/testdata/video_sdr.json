@@ -1,0 +1,30 @@
+{
+  "media": {
+    "track": [
+      {
+        "@type": "General",
+        "Format": "Matroska",
+        "Duration": "120.500"
+      },
+      {
+        "@type": "Video",
+        "Format": "AVC",
+        "Width": "1920",
+        "Height": "1080",
+        "BitDepth": "8",
+        "ColorSpace": "YUV",
+        "ChromaSubsampling": "4:2:0",
+        "colour_primaries": "BT.709",
+        "transfer_characteristics": "BT.709",
+        "matrix_coefficients": "BT.709"
+      },
+      {
+        "@type": "Audio",
+        "Format": "AAC",
+        "Channels": "2",
+        "SamplingRate": "48000",
+        "BitRate": "128000"
+      }
+    ]
+  }
+}

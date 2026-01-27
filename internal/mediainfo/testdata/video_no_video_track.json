@@ -1,0 +1,18 @@
+{
+  "media": {
+    "track": [
+      {
+        "@type": "General",
+        "Format": "FLAC",
+        "Duration": "300.000"
+      },
+      {
+        "@type": "Audio",
+        "Format": "FLAC",
+        "Channels": "2",
+        "SamplingRate": "96000",
+        "BitRate": "0"
+      }
+    ]
+  }
+}
