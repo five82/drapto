@@ -30,6 +30,7 @@ import (
 
 	"github.com/five82/drapto/internal/config"
 	"github.com/five82/drapto/internal/discovery"
+	"github.com/five82/drapto/internal/ffprobe"
 	"github.com/five82/drapto/internal/processing"
 	"github.com/five82/drapto/internal/reporter"
 	"github.com/five82/drapto/internal/util"
@@ -427,4 +428,73 @@ func (r *eventReporter) BatchComplete(s reporter.BatchSummary) {
 		TotalFiles:                s.TotalFiles,
 		TotalSizeReductionPercent: util.CalculateSizeReduction(s.TotalOriginalSize, s.TotalEncodedSize),
 	})
+}
+
+// CropDetectionResult contains the result of standalone crop detection.
+type CropDetectionResult struct {
+	// CropFilter is the FFmpeg crop filter string (e.g., "crop=3840:1608:0:276").
+	// Empty if no cropping is needed.
+	CropFilter string
+
+	// Required indicates whether cropping should be applied.
+	Required bool
+
+	// MultipleRatios indicates that multiple aspect ratios were detected
+	// and no single crop value was dominant enough to apply.
+	MultipleRatios bool
+
+	// Message is a human-readable summary of the detection result.
+	Message string
+
+	// Candidates contains all detected crop values with their frequencies.
+	// Useful for debugging when MultipleRatios is true.
+	Candidates []CropCandidate
+
+	// TotalSamples is the number of sample points analyzed.
+	TotalSamples int
+
+	// VideoWidth is the source video width in pixels.
+	VideoWidth uint32
+
+	// VideoHeight is the source video height in pixels.
+	VideoHeight uint32
+
+	// IsHDR indicates whether the source video is HDR.
+	IsHDR bool
+}
+
+// DetectCrop performs standalone crop detection on a video file.
+// This is useful for troubleshooting crop detection without running a full encode.
+// The context parameter is reserved for future use (e.g., cancellation).
+func DetectCrop(_ context.Context, inputPath string) (*CropDetectionResult, error) {
+	// Probe the video
+	props, err := ffprobe.GetVideoProperties(inputPath)
+	if err != nil {
+		return nil, fmt.Errorf("probe video: %w", err)
+	}
+
+	// Run crop detection
+	cropResult := processing.DetectCrop(inputPath, props, false)
+
+	// Convert candidates
+	candidates := make([]CropCandidate, 0, len(cropResult.Candidates))
+	for _, c := range cropResult.Candidates {
+		candidates = append(candidates, CropCandidate{
+			Crop:    c.Crop,
+			Count:   c.Count,
+			Percent: c.Percent,
+		})
+	}
+
+	return &CropDetectionResult{
+		CropFilter:     cropResult.CropFilter,
+		Required:       cropResult.Required,
+		MultipleRatios: cropResult.MultipleRatios,
+		Message:        cropResult.Message,
+		Candidates:     candidates,
+		TotalSamples:   cropResult.TotalSamples,
+		VideoWidth:     props.Width,
+		VideoHeight:    props.Height,
+		IsHDR:          props.HDRInfo.IsHDR,
+	}, nil
 }

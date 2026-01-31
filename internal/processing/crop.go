@@ -47,12 +47,21 @@ const (
 	cropReset = 1
 )
 
+// CropCandidate represents a detected crop value and its frequency.
+type CropCandidate struct {
+	Crop    string  // The crop value (e.g., "3840:1632:0:264")
+	Count   int     // Number of samples with this crop
+	Percent float64 // Percentage of total samples
+}
+
 // CropResult contains the result of crop detection.
 type CropResult struct {
-	CropFilter     string // The crop filter string (e.g., "crop=1920:800:0:140")
-	Required       bool   // Whether cropping is required
-	MultipleRatios bool   // Whether multiple aspect ratios were detected
-	Message        string // Human-readable message about the crop result
+	CropFilter     string          // The crop filter string (e.g., "crop=1920:800:0:140")
+	Required       bool            // Whether cropping is required
+	MultipleRatios bool            // Whether multiple aspect ratios were detected
+	Message        string          // Human-readable message about the crop result
+	Candidates     []CropCandidate // All detected crop values with frequencies (for debugging)
+	TotalSamples   int             // Total number of samples analyzed
 }
 
 // cropRegex matches FFmpeg cropdetect output.
@@ -113,29 +122,13 @@ func DetectCrop(inputPath string, props *ffprobe.VideoProperties, disableCrop bo
 	// Analyze results
 	if len(cropCounts) == 0 {
 		return CropResult{
-			Required: false,
-			Message:  sampleMsg,
+			Required:     false,
+			Message:      sampleMsg,
+			TotalSamples: numSamples,
 		}
 	}
 
-	if len(cropCounts) == 1 {
-		// Single crop detected
-		for crop := range cropCounts {
-			if !isEffectiveCrop(crop, props.Width, props.Height) {
-				return CropResult{
-					Required: false,
-					Message:  sampleMsg,
-				}
-			}
-			return CropResult{
-				CropFilter: "crop=" + crop,
-				Required:   true,
-				Message:    "Black bars detected",
-			}
-		}
-	}
-
-	// Multiple crops detected - find the most common
+	// Build sorted candidate list for all cases
 	type cropCount struct {
 		crop  string
 		count int
@@ -150,6 +143,40 @@ func DetectCrop(inputPath string, props *ffprobe.VideoProperties, disableCrop bo
 		return sorted[i].count > sorted[j].count
 	})
 
+	// Build candidates slice for debugging
+	buildCandidates := func() []CropCandidate {
+		candidates := make([]CropCandidate, 0, len(sorted))
+		for _, cc := range sorted {
+			candidates = append(candidates, CropCandidate{
+				Crop:    cc.crop,
+				Count:   cc.count,
+				Percent: float64(cc.count) / float64(totalSamples) * 100,
+			})
+		}
+		return candidates
+	}
+
+	if len(cropCounts) == 1 {
+		// Single crop detected
+		crop := sorted[0].crop
+		if !isEffectiveCrop(crop, props.Width, props.Height) {
+			return CropResult{
+				Required:     false,
+				Message:      sampleMsg,
+				Candidates:   buildCandidates(),
+				TotalSamples: totalSamples,
+			}
+		}
+		return CropResult{
+			CropFilter:   "crop=" + crop,
+			Required:     true,
+			Message:      "Black bars detected",
+			Candidates:   buildCandidates(),
+			TotalSamples: totalSamples,
+		}
+	}
+
+	// Multiple crops detected - find the most common
 	mostCommon := sorted[0]
 	ratio := float64(mostCommon.count) / float64(totalSamples)
 
@@ -157,14 +184,18 @@ func DetectCrop(inputPath string, props *ffprobe.VideoProperties, disableCrop bo
 	if ratio > cropDominantRatio {
 		if !isEffectiveCrop(mostCommon.crop, props.Width, props.Height) {
 			return CropResult{
-				Required: false,
-				Message:  sampleMsg,
+				Required:     false,
+				Message:      sampleMsg,
+				Candidates:   buildCandidates(),
+				TotalSamples: totalSamples,
 			}
 		}
 		return CropResult{
-			CropFilter: "crop=" + mostCommon.crop,
-			Required:   true,
-			Message:    "Black bars detected",
+			CropFilter:   "crop=" + mostCommon.crop,
+			Required:     true,
+			Message:      "Black bars detected",
+			Candidates:   buildCandidates(),
+			TotalSamples: totalSamples,
 		}
 	}
 
@@ -173,6 +204,8 @@ func DetectCrop(inputPath string, props *ffprobe.VideoProperties, disableCrop bo
 		Required:       false,
 		MultipleRatios: true,
 		Message:        "Multiple aspect ratios detected",
+		Candidates:     buildCandidates(),
+		TotalSamples:   totalSamples,
 	}
 }
 

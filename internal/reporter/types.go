@@ -19,12 +19,21 @@ type InitializationSummary struct {
 	AudioDescription string
 }
 
+// CropCandidate represents a detected crop value and its frequency.
+type CropCandidate struct {
+	Crop    string  // The crop value (e.g., "3840:1632:0:264")
+	Count   int     // Number of samples with this crop
+	Percent float64 // Percentage of total samples
+}
+
 // CropSummary contains crop detection results.
 type CropSummary struct {
-	Message  string
-	Crop     string
-	Required bool
-	Disabled bool
+	Message      string
+	Crop         string
+	Required     bool
+	Disabled     bool
+	Candidates   []CropCandidate // All detected crop values (for debugging multiple ratios)
+	TotalSamples int             // Total samples analyzed
 }
 
 // EncodingConfigSummary contains encoding configuration.

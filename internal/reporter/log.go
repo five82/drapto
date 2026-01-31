@@ -60,6 +60,19 @@ func (r *LogReporter) CropResult(summary CropSummary) {
 	} else {
 		r.log("INFO", "Crop detection: %s (no crop needed)", summary.Message)
 	}
+
+	// Log candidate details for debugging multiple aspect ratio issues
+	if len(summary.Candidates) > 0 {
+		r.log("DEBUG", "Crop candidates (%d samples, %d unique values):",
+			summary.TotalSamples, len(summary.Candidates))
+		for i, c := range summary.Candidates {
+			r.log("DEBUG", "  %d. crop=%s count=%d (%.1f%%)", i+1, c.Crop, c.Count, c.Percent)
+			if i >= 9 {
+				r.log("DEBUG", "  ... and %d more", len(summary.Candidates)-10)
+				break
+			}
+		}
+	}
 }
 
 func (r *LogReporter) EncodingConfig(summary EncodingConfigSummary) {

@@ -20,6 +20,9 @@ type HardwareSummary = reporter.HardwareSummary
 // InitializationSummary describes the current file before encoding.
 type InitializationSummary = reporter.InitializationSummary
 
+// CropCandidate represents a detected crop value and its frequency.
+type CropCandidate = reporter.CropCandidate
+
 // CropSummary contains crop detection results.
 type CropSummary = reporter.CropSummary
 

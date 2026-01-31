@@ -139,11 +139,23 @@ func ProcessVideos(
 		// Perform crop detection
 		cropResult := DetectCrop(inputPath, videoProps, cfg.CropMode == "none")
 
+		// Convert crop candidates to reporter format
+		var reporterCandidates []reporter.CropCandidate
+		for _, c := range cropResult.Candidates {
+			reporterCandidates = append(reporterCandidates, reporter.CropCandidate{
+				Crop:    c.Crop,
+				Count:   c.Count,
+				Percent: c.Percent,
+			})
+		}
+
 		rep.CropResult(reporter.CropSummary{
-			Message:  cropResult.Message,
-			Crop:     cropResult.CropFilter,
-			Required: cropResult.Required,
-			Disabled: cfg.CropMode == "none",
+			Message:      cropResult.Message,
+			Crop:         cropResult.CropFilter,
+			Required:     cropResult.Required,
+			Disabled:     cfg.CropMode == "none",
+			Candidates:   reporterCandidates,
+			TotalSamples: cropResult.TotalSamples,
 		})
 
 		// Setup encode parameters
