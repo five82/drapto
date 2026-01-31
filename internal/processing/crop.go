@@ -37,6 +37,14 @@ const (
 	// cropDominantRatio is the minimum ratio for a crop to be considered dominant.
 	cropDominantRatio = 0.8
 
+	// cropClearWinnerRatio is the minimum ratio for a "clear winner with noise" scenario.
+	// Used when the top candidate has this ratio AND second-best is below cropNoiseThreshold.
+	cropClearWinnerRatio = 0.6
+
+	// cropNoiseThreshold is the maximum ratio for the second-best candidate to be
+	// considered noise rather than a genuine alternative aspect ratio.
+	cropNoiseThreshold = 0.05
+
 	// cropSampleFrames is the number of frames to sample at each position.
 	cropSampleFrames = 10
 
@@ -196,6 +204,29 @@ func DetectCrop(inputPath string, props *ffprobe.VideoProperties, disableCrop bo
 			Message:      "Black bars detected",
 			Candidates:   buildCandidates(),
 			TotalSamples: totalSamples,
+		}
+	}
+
+	// Check for "clear winner with noise" scenario:
+	// Top candidate has >60% AND second-best has <5% (noise from HDR dark scenes, etc.)
+	if ratio > cropClearWinnerRatio && len(sorted) > 1 {
+		secondRatio := float64(sorted[1].count) / float64(totalSamples)
+		if secondRatio < cropNoiseThreshold {
+			if !isEffectiveCrop(mostCommon.crop, props.Width, props.Height) {
+				return CropResult{
+					Required:     false,
+					Message:      sampleMsg,
+					Candidates:   buildCandidates(),
+					TotalSamples: totalSamples,
+				}
+			}
+			return CropResult{
+				CropFilter:   "crop=" + mostCommon.crop,
+				Required:     true,
+				Message:      "Black bars detected (clear winner with noise)",
+				Candidates:   buildCandidates(),
+				TotalSamples: totalSamples,
+			}
 		}
 	}
 
