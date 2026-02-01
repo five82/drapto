@@ -79,6 +79,12 @@ internal/
 
 See `docs/spindle-integration.md` for library API usage and event types.
 
+**Versioning workflow:**
+- Spindle references drapto via `go.mod`. During active development, it uses `@main` (pseudo-versions).
+- After pushing drapto changes, update spindle with `go get github.com/five82/drapto@main`.
+- Formal version tags (v1.0.0, etc.) are deferred until the API stabilizes.
+- Breaking API changes are fine - just update spindle in the same session.
+
 ## Principles
 
 1. Keep it simple - small hobby project
