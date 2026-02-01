@@ -4,13 +4,14 @@ FFmpeg wrapper for AV1 encoding with SVT-AV1 and Opus audio. Uses opinionated de
 
 ## Features
 
-- Automatic black bar crop detection
+- Automatic black bar crop detection with multi-ratio handling
 - HDR10/HLG metadata preservation
 - Resolution-based CRF defaults (SD/HD/UHD)
-- Multi-track audio transcoding to Opus
-- Post-encode validation (codec, dimensions, duration, HDR)
+- Multi-track audio transcoding to Opus with per-layout bitrates
+- Post-encode validation (codec, bit depth, dimensions, duration, HDR, A/V sync)
 - Preset profiles: `grain`, `clean`, `quick`
-- Library API for embedding
+- Library API for Spindle integration
+- Standalone crop detection API for debugging
 
 ## Requirements
 
@@ -90,23 +91,43 @@ result, err := encoder.Encode(ctx, "input.mkv", "output/", func(event drapto.Eve
 })
 ```
 
+### Additional Library Methods
+
+```go
+// Batch encode multiple files
+batchResult, err := encoder.EncodeBatch(ctx, []string{"a.mkv", "b.mkv"}, "output/", handler)
+
+// Use custom Reporter for detailed progress
+result, err := encoder.EncodeWithReporter(ctx, "input.mkv", "output/", customReporter)
+
+// Standalone crop detection (no encoding)
+cropResult, err := drapto.DetectCrop(ctx, "input.mkv")
+
+// Find video files in directory
+files, err := drapto.FindVideos("/path/to/videos")
+```
+
+See `docs/spindle-integration.md` for event types and integration details.
+
 ## Project Structure
 
 ```
 drapto/
-├── drapto.go           # Public API
-├── events.go           # Event types for progress callbacks
-├── cmd/drapto/         # CLI
+├── drapto.go           # Public API: Encoder, Options, Result types
+├── events.go           # Event types for EventHandler callbacks
+├── reporter.go         # Re-exported Reporter interface and types
+├── cmd/drapto/         # CLI wrapper
 └── internal/
-    ├── config/         # Configuration and presets
+    ├── config/         # Configuration, presets, defaults
     ├── ffmpeg/         # FFmpeg command builder and executor
-    ├── ffprobe/        # Media analysis
-    ├── mediainfo/      # HDR detection
-    ├── processing/     # Encoding orchestration, crop detection
-    ├── validation/     # Post-encode validation
+    ├── ffprobe/        # Media analysis via ffprobe
+    ├── mediainfo/      # HDR detection via MediaInfo
+    ├── processing/     # Encoding orchestration, crop detection, audio
+    ├── validation/     # Post-encode validation checks
     ├── reporter/       # Progress reporting (terminal, composite, log)
     ├── discovery/      # Video file discovery
-    └── util/           # Formatting utilities
+    ├── logging/        # File logging
+    └── util/           # Formatting, file, and temp file utilities
 ```
 
 ## Development

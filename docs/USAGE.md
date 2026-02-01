@@ -21,8 +21,10 @@ drapto encode -v -i input.mkv -o output/
 ## Frequently Used Options
 
 **Required**
-- `-i, --input <PATH>`: Input file or directory containing `.mkv` files
+- `-i, --input <PATH>`: Input file or directory containing video files
 - `-o, --output <DIR>`: Output directory (or filename when single file)
+
+Supported video extensions: `.mkv`, `.mp4`, `.m4v`, `.avi`, `.mov`, `.webm`, `.wmv`, `.ts`, `.mpg`, `.mpeg`, `.flv`, `.m2ts`, `.ogv`, `.vob`
 
 **Common**
 - `-v, --verbose`: Verbose output with detailed status
@@ -56,11 +58,14 @@ Drapto automatically detects and preserves HDR content using MediaInfo for color
 ## Post-Encode Validation
 
 Validation catches mismatches before you archive or publish results:
-- **Video codec**: Ensures AV1 output and 10-bit depth
-- **Audio codec**: Confirms all audio streams are transcoded to Opus with the expected track count
-- **Dimensions**: Validates crop detection and output dimensions
-- **Duration**: Compares input and output durations
-- **HDR / Color space**: Uses MediaInfo to verify HDR flags and colorimetry
+- **Video codec**: Ensures AV1 output
+- **Bit depth**: Confirms 10-bit output
+- **Dimensions**: Validates output matches expected dimensions after crop
+- **Duration**: Compares input and output durations (1 second tolerance)
+- **HDR / Color space**: Uses MediaInfo to verify HDR flags and colorimetry preserved
+- **Audio codec**: Confirms all audio streams are transcoded to Opus
+- **Audio track count**: Verifies same number of tracks as input
+- **A/V sync**: Checks audio/video sync drift (<100ms tolerance)
 - **Failure reporting**: Emits warnings/errors plus JSON events for automation
 
 ## Multi-Stream Audio Handling
@@ -76,6 +81,17 @@ Validation catches mismatches before you archive or publish results:
 ## Progress Reporting
 
 Foreground runs show real-time progress with ETA, fps, bitrate, and reduction stats. For automation, use the library API with a custom event handler (see `docs/spindle-integration.md`).
+
+## Crop Detection Algorithm
+
+Drapto samples 141 points from 15%-85% of the video to detect black bars:
+- Runs FFmpeg's cropdetect filter at each sample point (10 frames per sample)
+- Uses different thresholds for SDR (16) and HDR (100) content
+- Applies the crop if a single value is detected or one is dominant (>80% of samples)
+- Handles "clear winner with noise" scenarios (>60% with <5% second-best)
+- Skips cropping when multiple significant aspect ratios are detected
+
+Use `--disable-autocrop` to skip this analysis.
 
 ## Environment Variables
 

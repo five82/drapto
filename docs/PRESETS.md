@@ -1,6 +1,6 @@
 # Drapto Presets
 
-The `--drapto-preset` flag lets you apply a curated set of encoding values in one shot. Each preset is defined in `internal/config/config.go` as a `PresetValues` struct, so editing the preset defaults is just a matter of changing literal numbers in that file.
+The `--drapto-preset` flag lets you apply a curated set of encoding values in one shot. Each preset is defined in `internal/config/config.go` as a `PresetValues` struct.
 
 ## Baseline Defaults (no preset)
 
@@ -8,13 +8,15 @@ When you omit `--drapto-preset`, Drapto uses the global defaults embedded in `Ne
 
 | Setting | Value | Notes |
 |---------|-------|-------|
-| `CRFSD / HD / UHD` | `25 / 27 / 29` | CRF by resolution |
-| `SVTAV1Preset` | `6` | Balanced speed/quality (0-13 scale) |
+| `CRFSD / HD / UHD` | `25 / 27 / 29` | CRF by resolution tier |
+| `SVTAV1Preset` | `6` | Balanced speed/quality (0-13 scale, lower = slower/better) |
 | `SVTAV1Tune` | `0` | Matches upstream SVT defaults |
 | `SVTAV1ACBias` | `0.10` | Helps preserve detail without massive bitrate growth |
 | `SVTAV1EnableVarianceBoost` | `false` | Adaptive quantization disabled by default |
 | `VideoDenoiseFilter` | _(none)_ | No denoising filter unless explicitly set |
 | `SVTAV1FilmGrain` | _(none)_ | Film-grain synthesis disabled by default |
+
+Resolution tiers: SD (<1920 width), HD (1920-3839 width), UHD (≥3840 width)
 
 ## Built-in Presets
 

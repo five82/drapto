@@ -42,8 +42,8 @@ golangci-lint run                     # Lint
 ## Architecture
 
 ```
-drapto.go, events.go     # Public API: Encoder, Options, EventHandler
-cmd/drapto/main.go       # CLI wrapper (standard flag package)
+drapto.go, events.go, reporter.go  # Public API: Encoder, Options, EventHandler, Reporter
+cmd/drapto/main.go                 # CLI wrapper (standard flag package)
 internal/
 ├── config/              # Configuration and presets
 ├── ffmpeg/              # FFmpeg command builder + executor
@@ -51,9 +51,10 @@ internal/
 ├── mediainfo/           # HDR detection
 ├── processing/          # Orchestrator, crop detection, audio
 ├── validation/          # Post-encode validation checks
-├── reporter/            # Progress: Terminal, Composite
+├── reporter/            # Progress: Terminal, Composite, Log
 ├── discovery/           # Video file discovery
-└── util/                # Formatting, file utils
+├── logging/             # File logging
+└── util/                # Formatting, file, temp file utils
 ```
 
 ## Entry Points
@@ -70,7 +71,7 @@ internal/
 
 ## CLI Output Style
 
-1. Four sections in human mode: Hardware -> Video -> Encoding -> Validation -> Results
+1. Five sections in human mode: Hardware → Video → Encoding → Validation → Results
 2. Colors via `fatih/color`, progress via `schollz/progressbar`
 3. Show progress info once (progress bar during encode, summary after validation)
 4. Natural language sentences; emphatic formatting for key values only
