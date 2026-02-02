@@ -15,7 +15,7 @@ const (
 	DefaultCRFHD uint8 = 27
 
 	// DefaultCRFUHD is the CRF for Ultra High Definition videos (>=3840 width).
-	DefaultCRFUHD uint8 = 29
+	DefaultCRFUHD uint8 = 27
 
 	// DefaultSVTAV1Preset is the SVT-AV1 preset (0-13, lower is slower/better).
 	DefaultSVTAV1Preset uint8 = 6
@@ -63,7 +63,7 @@ const (
 	CleanPresetCRFHD uint8 = 29
 
 	// CleanPresetCRFUHD is the CRF for UHD videos in Clean preset.
-	CleanPresetCRFUHD uint8 = 31
+	CleanPresetCRFUHD uint8 = 29
 
 	// CleanPresetACBias is the AC bias for Clean preset.
 	CleanPresetACBias float32 = 0.05
