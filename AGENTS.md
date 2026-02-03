@@ -36,3 +36,12 @@ golangci-lint run
 1. Keep it simple - small hobby project
 2. Prefer unit tests over actual encodes
 3. Use 120s+ timeout when running drapto
+
+## Spindle Integration
+
+Spindle consumes drapto as a Go module. After pushing drapto changes:
+```bash
+cd ~/projects/spindle
+go get github.com/five82/drapto@main && go mod tidy
+```
+Version tags (v0.5.0, etc.) are optional markers; spindle tracks `@main`.
