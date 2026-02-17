@@ -1,4 +1,4 @@
-# Drapto
+# drapto
 
 FFmpeg wrapper for AV1 encoding with SVT-AV1 and Opus audio. Provides opinionated defaults, automatic crop detection, HDR preservation, and post-encode validation.
 
