@@ -200,6 +200,14 @@ func WithResponsive() Option {
 	}
 }
 
+// WithSVTAV1Preset sets the SVT-AV1 encoder preset (0-13, lower is slower/better).
+// Default is 6. This overrides the preset value set by WithPreset.
+func WithSVTAV1Preset(preset uint8) Option {
+	return func(c *config.Config) {
+		c.SVTAV1Preset = preset
+	}
+}
+
 // WithFilmGrain enables SVT-AV1 film grain synthesis with the given strength.
 // Strength should be 0-50, where higher values add more synthetic grain.
 func WithFilmGrain(strength uint8) Option {
