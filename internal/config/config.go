@@ -9,13 +9,13 @@ import (
 // Default constants
 const (
 	// DefaultCRFSD is the CRF for Standard Definition videos (<1920 width).
-	DefaultCRFSD uint8 = 25
+	DefaultCRFSD uint8 = 24
 
 	// DefaultCRFHD is the CRF for High Definition videos (>=1920 width, <3840 width).
-	DefaultCRFHD uint8 = 27
+	DefaultCRFHD uint8 = 26
 
 	// DefaultCRFUHD is the CRF for Ultra High Definition videos (>=3840 width).
-	DefaultCRFUHD uint8 = 27
+	DefaultCRFUHD uint8 = 26
 
 	// DefaultSVTAV1Preset is the SVT-AV1 preset (0-13, lower is slower/better).
 	DefaultSVTAV1Preset uint8 = 6
