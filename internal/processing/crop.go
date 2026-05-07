@@ -34,17 +34,6 @@ const (
 	// cropThresholdHDR is the black bar detection threshold for HDR content.
 	cropThresholdHDR = 100
 
-	// cropDominantRatio is the minimum ratio for a crop to be considered dominant.
-	cropDominantRatio = 0.8
-
-	// cropClearWinnerRatio is the minimum ratio for a "clear winner with noise" scenario.
-	// Used when the top candidate has this ratio AND second-best is below cropNoiseThreshold.
-	cropClearWinnerRatio = 0.6
-
-	// cropNoiseThreshold is the maximum ratio for the second-best candidate to be
-	// considered noise rather than a genuine alternative aspect ratio.
-	cropNoiseThreshold = 0.05
-
 	// cropSampleFrames is the number of frames to sample at each position.
 	cropSampleFrames = 10
 
@@ -127,117 +116,181 @@ func DetectCrop(inputPath string, props *ffprobe.VideoProperties, disableCrop bo
 
 	sampleMsg := fmt.Sprintf("Analyzed %d samples", numSamples)
 
-	// Analyze results
+	return analyzeCropCounts(cropCounts, props.Width, props.Height, sampleMsg, numSamples)
+}
+
+type cropCount struct {
+	crop  string
+	count int
+}
+
+type cropMargins struct {
+	top    uint32
+	bottom uint32
+	left   uint32
+	right  uint32
+}
+
+func analyzeCropCounts(cropCounts map[string]int, sourceWidth, sourceHeight uint32, sampleMsg string, expectedSamples int) CropResult {
 	if len(cropCounts) == 0 {
 		return CropResult{
 			Required:     false,
 			Message:      sampleMsg,
-			TotalSamples: numSamples,
+			TotalSamples: expectedSamples,
 		}
 	}
 
-	// Build sorted candidate list for all cases
-	type cropCount struct {
-		crop  string
-		count int
-	}
-	var sorted []cropCount
+	sorted := sortedCropCounts(cropCounts)
 	totalSamples := 0
+	for _, cc := range sorted {
+		totalSamples += cc.count
+	}
+	candidates := cropCandidates(sorted, totalSamples)
+
+	crop, ok := leastAggressiveCrop(sorted, sourceWidth, sourceHeight)
+	if !ok {
+		return CropResult{
+			Required:     false,
+			Message:      sampleMsg,
+			Candidates:   candidates,
+			TotalSamples: totalSamples,
+		}
+	}
+
+	if !isEffectiveCrop(crop, sourceWidth, sourceHeight) {
+		result := CropResult{
+			Required:     false,
+			Message:      sampleMsg,
+			Candidates:   candidates,
+			TotalSamples: totalSamples,
+		}
+		if len(cropCounts) > 1 {
+			result.MultipleRatios = true
+			result.Message = "Multiple aspect ratios detected"
+		}
+		return result
+	}
+
+	return CropResult{
+		CropFilter:   "crop=" + crop,
+		Required:     true,
+		Message:      "Black bars detected",
+		Candidates:   candidates,
+		TotalSamples: totalSamples,
+	}
+}
+
+func sortedCropCounts(cropCounts map[string]int) []cropCount {
+	sorted := make([]cropCount, 0, len(cropCounts))
 	for crop, count := range cropCounts {
-		sorted = append(sorted, cropCount{crop, count})
-		totalSamples += count
+		sorted = append(sorted, cropCount{crop: crop, count: count})
 	}
 	sort.Slice(sorted, func(i, j int) bool {
+		if sorted[i].count == sorted[j].count {
+			return sorted[i].crop < sorted[j].crop
+		}
 		return sorted[i].count > sorted[j].count
 	})
+	return sorted
+}
 
-	// Build candidates slice for debugging
-	buildCandidates := func() []CropCandidate {
-		candidates := make([]CropCandidate, 0, len(sorted))
-		for _, cc := range sorted {
-			candidates = append(candidates, CropCandidate{
-				Crop:    cc.crop,
-				Count:   cc.count,
-				Percent: float64(cc.count) / float64(totalSamples) * 100,
-			})
+func cropCandidates(sorted []cropCount, totalSamples int) []CropCandidate {
+	candidates := make([]CropCandidate, 0, len(sorted))
+	for _, cc := range sorted {
+		candidates = append(candidates, CropCandidate{
+			Crop:    cc.crop,
+			Count:   cc.count,
+			Percent: float64(cc.count) / float64(totalSamples) * 100,
+		})
+	}
+	return candidates
+}
+
+func leastAggressiveCrop(sorted []cropCount, sourceWidth, sourceHeight uint32) (string, bool) {
+	var best cropMargins
+	haveBest := false
+	for _, cc := range sorted {
+		margins, ok := parseCropMargins(cc.crop, sourceWidth, sourceHeight)
+		if !ok {
+			continue
 		}
-		return candidates
+		margins = margins.even()
+		if !haveBest {
+			best = margins
+			haveBest = true
+			continue
+		}
+		best = minCropMargins(best, margins)
+	}
+	if !haveBest {
+		return "", false
+	}
+	return best.crop(sourceWidth, sourceHeight)
+}
+
+func parseCropMargins(crop string, sourceWidth, sourceHeight uint32) (cropMargins, bool) {
+	parts := strings.Split(crop, ":")
+	if len(parts) != 4 {
+		return cropMargins{}, false
 	}
 
-	if len(cropCounts) == 1 {
-		// Single crop detected
-		crop := sorted[0].crop
-		if !isEffectiveCrop(crop, props.Width, props.Height) {
-			return CropResult{
-				Required:     false,
-				Message:      sampleMsg,
-				Candidates:   buildCandidates(),
-				TotalSamples: totalSamples,
-			}
-		}
-		return CropResult{
-			CropFilter:   "crop=" + crop,
-			Required:     true,
-			Message:      "Black bars detected",
-			Candidates:   buildCandidates(),
-			TotalSamples: totalSamples,
-		}
+	width, err := strconv.ParseUint(parts[0], 10, 32)
+	if err != nil {
+		return cropMargins{}, false
+	}
+	height, err := strconv.ParseUint(parts[1], 10, 32)
+	if err != nil {
+		return cropMargins{}, false
+	}
+	left, err := strconv.ParseUint(parts[2], 10, 32)
+	if err != nil {
+		return cropMargins{}, false
+	}
+	top, err := strconv.ParseUint(parts[3], 10, 32)
+	if err != nil {
+		return cropMargins{}, false
 	}
 
-	// Multiple crops detected - find the most common
-	mostCommon := sorted[0]
-	ratio := float64(mostCommon.count) / float64(totalSamples)
-
-	// If one crop is dominant (>80% of samples), use it
-	if ratio > cropDominantRatio {
-		if !isEffectiveCrop(mostCommon.crop, props.Width, props.Height) {
-			return CropResult{
-				Required:     false,
-				Message:      sampleMsg,
-				Candidates:   buildCandidates(),
-				TotalSamples: totalSamples,
-			}
-		}
-		return CropResult{
-			CropFilter:   "crop=" + mostCommon.crop,
-			Required:     true,
-			Message:      "Black bars detected",
-			Candidates:   buildCandidates(),
-			TotalSamples: totalSamples,
-		}
+	w, h, x, y := uint32(width), uint32(height), uint32(left), uint32(top)
+	if x > sourceWidth || w > sourceWidth-x || y > sourceHeight || h > sourceHeight-y {
+		return cropMargins{}, false
 	}
+	return cropMargins{
+		top:    y,
+		bottom: sourceHeight - y - h,
+		left:   x,
+		right:  sourceWidth - x - w,
+	}, true
+}
 
-	// Check for "clear winner with noise" scenario:
-	// Top candidate has >60% AND second-best has <5% (noise from HDR dark scenes, etc.)
-	if ratio > cropClearWinnerRatio && len(sorted) > 1 {
-		secondRatio := float64(sorted[1].count) / float64(totalSamples)
-		if secondRatio < cropNoiseThreshold {
-			if !isEffectiveCrop(mostCommon.crop, props.Width, props.Height) {
-				return CropResult{
-					Required:     false,
-					Message:      sampleMsg,
-					Candidates:   buildCandidates(),
-					TotalSamples: totalSamples,
-				}
-			}
-			return CropResult{
-				CropFilter:   "crop=" + mostCommon.crop,
-				Required:     true,
-				Message:      "Black bars detected (clear winner with noise)",
-				Candidates:   buildCandidates(),
-				TotalSamples: totalSamples,
-			}
-		}
+func minCropMargins(a, b cropMargins) cropMargins {
+	return cropMargins{
+		top:    min(a.top, b.top),
+		bottom: min(a.bottom, b.bottom),
+		left:   min(a.left, b.left),
+		right:  min(a.right, b.right),
 	}
+}
 
-	// Multiple significant aspect ratios - don't crop
-	return CropResult{
-		Required:       false,
-		MultipleRatios: true,
-		Message:        "Multiple aspect ratios detected",
-		Candidates:     buildCandidates(),
-		TotalSamples:   totalSamples,
+func (m cropMargins) even() cropMargins {
+	return cropMargins{
+		top:    m.top &^ 1,
+		bottom: m.bottom &^ 1,
+		left:   m.left &^ 1,
+		right:  m.right &^ 1,
 	}
+}
+
+func (m cropMargins) crop(sourceWidth, sourceHeight uint32) (string, bool) {
+	if m.left >= sourceWidth || m.right >= sourceWidth-m.left || m.top >= sourceHeight || m.bottom >= sourceHeight-m.top {
+		return "", false
+	}
+	width := sourceWidth - m.left - m.right
+	height := sourceHeight - m.top - m.bottom
+	if width == 0 || height == 0 || width%2 != 0 || height%2 != 0 {
+		return "", false
+	}
+	return fmt.Sprintf("%d:%d:%d:%d", width, height, m.left, m.top), true
 }
 
 // sampleCropAtPosition samples crop detection at a specific position.
