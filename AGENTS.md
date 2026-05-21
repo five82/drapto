@@ -1,12 +1,9 @@
 # AGENTS.md
 
-CLAUDE.md and GEMINI.md are symlinks to this file.
-
 ## TL;DR
 
 - Do not run `git commit` or `git push` unless explicitly instructed
 - Run `./check-ci.sh` before handing work back
-- Use Context7 MCP for library/API docs without being asked
 
 ## Project
 
