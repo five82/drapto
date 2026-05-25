@@ -363,6 +363,38 @@ func TestValidateWithAnalyzer_DurationExceedsTolerance(t *testing.T) {
 	}
 }
 
+func TestValidateWithAnalyzer_AudioDurationMismatch(t *testing.T) {
+	bitDepth := uint8(10)
+	mock := &mockAnalyzer{
+		videoProps: &AnalyzerVideoProperties{
+			Width:        1920,
+			Height:       1080,
+			DurationSecs: 7813.0,
+			BitDepth:     &bitDepth,
+		},
+		audioStreams: []AnalyzerAudioStream{
+			{Codec: "opus", Channels: 8, DurationSecs: 291.53},
+			{Codec: "opus", Channels: 2, DurationSecs: 7813.0},
+		},
+		videoCodec:        "av1",
+		hdrInfo:           &AnalyzerHDRInfo{IsHDR: false, BitDepth: &bitDepth},
+		hdrDetectionAvail: true,
+	}
+
+	expectedDuration := 7813.0
+	result, err := ValidateWithAnalyzer(mock, "/fake/path.mkv", Options{ExpectedDuration: &expectedDuration})
+	if err != nil {
+		t.Fatalf("ValidateWithAnalyzer() error = %v", err)
+	}
+	if result.IsAudioDurationCorrect {
+		t.Fatal("IsAudioDurationCorrect = true, want false for truncated audio")
+	}
+	want := "Audio stream 0 duration mismatch: got 291.5s, expected 7813.0s (diff: 7521.5s)"
+	if result.AudioDurationMessage != want {
+		t.Fatalf("AudioDurationMessage = %q, want %q", result.AudioDurationMessage, want)
+	}
+}
+
 func TestValidateWithAnalyzer_AudioTrackCountMismatch(t *testing.T) {
 	bitDepth := uint8(10)
 	mock := &mockAnalyzer{

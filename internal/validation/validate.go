@@ -11,6 +11,8 @@ const (
 	durationToleranceSecs = 1.0
 	// maxSyncDriftMs is the maximum allowed audio/video sync drift in milliseconds.
 	maxSyncDriftMs = 100.0
+	// audioDurationToleranceSecs is the maximum allowed duration gap for each kept audio stream.
+	audioDurationToleranceSecs = 5.0
 	// requiredBitDepth is the minimum bit depth required for AV1 output validation.
 	requiredBitDepth = 10
 )
@@ -73,6 +75,7 @@ func ValidateWithAnalyzer(analyzer MediaAnalyzer, outputPath string, opts Option
 		IsHDRCorrect:             true,
 		IsAudioOpus:              true,
 		IsAudioTrackCountCorrect: true,
+		IsAudioDurationCorrect:   true,
 		IsSyncPreserved:          true,
 	}
 
@@ -192,6 +195,10 @@ func ValidateWithAnalyzer(analyzer MediaAnalyzer, outputPath string, opts Option
 		result.IsAudioOpus, result.IsAudioTrackCountCorrect, result.AudioCodecs, result.AudioMessage = validateAudioStreams(
 			audioStreams, opts.ExpectedAudioTracks,
 		)
+		result.IsAudioDurationCorrect, result.AudioDurationMessage = validateAudioDurations(audioStreams, opts.ExpectedDuration)
+	}
+	if result.AudioDurationMessage == "" {
+		result.AudioDurationMessage = "Audio duration validation skipped"
 	}
 
 	// Validate A/V sync
@@ -207,6 +214,29 @@ func ValidateWithAnalyzer(analyzer MediaAnalyzer, outputPath string, opts Option
 }
 
 // validateAudioStreams checks audio codec and track count.
+func validateAudioDurations(streams []AnalyzerAudioStream, expectedDuration *float64) (bool, string) {
+	if expectedDuration == nil {
+		return true, "Audio duration validation skipped"
+	}
+	checked := 0
+	for i, stream := range streams {
+		if stream.DurationSecs <= 0 {
+			continue
+		}
+		checked++
+		if diff := math.Abs(stream.DurationSecs - *expectedDuration); diff > audioDurationToleranceSecs {
+			return false, fmt.Sprintf("Audio stream %d duration mismatch: got %.1fs, expected %.1fs (diff: %.1fs)", i, stream.DurationSecs, *expectedDuration, diff)
+		}
+	}
+	if checked == 0 {
+		return true, "Audio duration unavailable - validation skipped"
+	}
+	if checked == 1 {
+		return true, "Audio duration matches video"
+	}
+	return true, fmt.Sprintf("%d audio stream durations match video", checked)
+}
+
 func validateAudioStreams(streams []AnalyzerAudioStream, expectedTracks *int) (bool, bool, []string, string) {
 	isOpus := true
 	var codecs []string

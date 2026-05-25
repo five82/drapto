@@ -10,25 +10,27 @@ type Result struct {
 	IsHDRCorrect             bool
 	IsAudioOpus              bool
 	IsAudioTrackCountCorrect bool
+	IsAudioDurationCorrect   bool
 	IsSyncPreserved          bool
 
 	// Details
-	CodecName          string
-	PixelFormat        string
-	BitDepth           *uint8
-	ActualDimensions   *[2]uint32
-	ExpectedDimensions *[2]uint32
-	CropMessage        string
-	ActualDuration     *float64
-	ExpectedDuration   *float64
-	DurationMessage    string
-	ExpectedHDR        *bool
-	ActualHDR          *bool
-	HDRMessage         string
-	AudioCodecs        []string
-	AudioMessage       string
-	SyncDriftMs        *float64
-	SyncMessage        string
+	CodecName            string
+	PixelFormat          string
+	BitDepth             *uint8
+	ActualDimensions     *[2]uint32
+	ExpectedDimensions   *[2]uint32
+	CropMessage          string
+	ActualDuration       *float64
+	ExpectedDuration     *float64
+	DurationMessage      string
+	ExpectedHDR          *bool
+	ActualHDR            *bool
+	HDRMessage           string
+	AudioCodecs          []string
+	AudioMessage         string
+	AudioDurationMessage string
+	SyncDriftMs          *float64
+	SyncMessage          string
 }
 
 // ValidationStep represents a single validation check.
@@ -47,6 +49,7 @@ func (r *Result) IsValid() bool {
 		r.IsHDRCorrect &&
 		r.IsAudioOpus &&
 		r.IsAudioTrackCountCorrect &&
+		r.IsAudioDurationCorrect &&
 		r.IsSyncPreserved
 }
 
@@ -82,6 +85,11 @@ func (r *Result) GetValidationSteps() []ValidationStep {
 			Name:    "Audio tracks",
 			Passed:  r.IsAudioOpus && r.IsAudioTrackCountCorrect,
 			Details: r.AudioMessage,
+		},
+		{
+			Name:    "Audio durations",
+			Passed:  r.IsAudioDurationCorrect,
+			Details: r.AudioDurationMessage,
 		},
 		{
 			Name:    "Audio/video sync",

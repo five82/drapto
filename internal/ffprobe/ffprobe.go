@@ -36,12 +36,13 @@ type HDRInfo struct {
 
 // AudioStreamInfo contains information about an audio stream.
 type AudioStreamInfo struct {
-	Channels    uint32
-	CodecName   string
-	Profile     string
-	Index       int
-	IsSpatial   bool // Always false (spatial support removed)
-	Disposition StreamDisposition
+	Channels     uint32
+	CodecName    string
+	Profile      string
+	Index        int
+	DurationSecs float64
+	IsSpatial    bool // Always false (spatial support removed)
+	Disposition  StreamDisposition
 }
 
 // StreamDisposition contains stream disposition flags.
@@ -77,12 +78,14 @@ type ffprobeStream struct {
 	Width            int64             `json:"width"`
 	Height           int64             `json:"height"`
 	Channels         int               `json:"channels"`
+	Duration         string            `json:"duration"`
 	NbFrames         string            `json:"nb_frames"`
 	PixFmt           string            `json:"pix_fmt"`
 	ColorPrimaries   string            `json:"color_primaries"`
 	ColorTransfer    string            `json:"color_transfer"`
 	ColorSpace       string            `json:"color_space"`
 	BitsPerRawSample string            `json:"bits_per_raw_sample"`
+	Tags             map[string]string `json:"tags"`
 	Disposition      StreamDisposition `json:"disposition"`
 }
 
@@ -269,18 +272,39 @@ func extractAudioStreamInfo(probe *ffprobeOutput) []AudioStreamInfo {
 		}
 
 		streams = append(streams, AudioStreamInfo{
-			Channels:    uint32(stream.Channels),
-			CodecName:   stream.CodecName,
-			Profile:     stream.Profile,
-			Index:       audioIndex,
-			IsSpatial:   false, // Spatial audio support removed
-			Disposition: stream.Disposition,
+			Channels:     uint32(stream.Channels),
+			CodecName:    stream.CodecName,
+			Profile:      stream.Profile,
+			Index:        audioIndex,
+			DurationSecs: streamDurationSecs(stream),
+			IsSpatial:    false, // Spatial audio support removed
+			Disposition:  stream.Disposition,
 		})
 
 		audioIndex++
 	}
 
 	return streams
+}
+
+func streamDurationSecs(stream ffprobeStream) float64 {
+	for _, raw := range []string{stream.Duration, stream.Tags["DURATION"], stream.Tags["duration"]} {
+		duration, err := strconv.ParseFloat(raw, 64)
+		if err == nil && duration > 0 {
+			return duration
+		}
+		parts := strings.Split(raw, ":")
+		if len(parts) != 3 {
+			continue
+		}
+		hours, hErr := strconv.Atoi(parts[0])
+		minutes, mErr := strconv.Atoi(parts[1])
+		seconds, sErr := strconv.ParseFloat(parts[2], 64)
+		if hErr == nil && mErr == nil && sErr == nil {
+			return float64(hours*3600+minutes*60) + seconds
+		}
+	}
+	return 0
 }
 
 // detectHDR determines if content is HDR based on color metadata.

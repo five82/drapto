@@ -249,6 +249,23 @@ func TestExtractAudioStreamInfo(t *testing.T) {
 	}
 }
 
+func TestExtractAudioStreamInfoReadsMatroskaDurationTag(t *testing.T) {
+	probe := &ffprobeOutput{Streams: []ffprobeStream{{
+		CodecType: "audio",
+		CodecName: "opus",
+		Channels:  8,
+		Tags:      map[string]string{"DURATION": "00:04:51.530000000"},
+	}}}
+
+	streams := extractAudioStreamInfo(probe)
+	if len(streams) != 1 {
+		t.Fatalf("len(streams) = %d, want 1", len(streams))
+	}
+	if streams[0].DurationSecs != 291.53 {
+		t.Fatalf("DurationSecs = %v, want 291.53", streams[0].DurationSecs)
+	}
+}
+
 func TestExtractMediaInfo(t *testing.T) {
 	data := loadTestData(t, "video_1080p_sdr.json")
 	probe, err := parseFFprobeOutput(data)
@@ -273,53 +290,53 @@ func TestExtractMediaInfo(t *testing.T) {
 
 func TestDetectHDR(t *testing.T) {
 	tests := []struct {
-		name     string
+		name      string
 		primaries string
 		transfer  string
 		matrix    string
-		wantHDR  bool
+		wantHDR   bool
 	}{
 		{
-			name:     "SDR BT709",
+			name:      "SDR BT709",
 			primaries: "bt709",
 			transfer:  "bt709",
 			matrix:    "bt709",
-			wantHDR:  false,
+			wantHDR:   false,
 		},
 		{
-			name:     "HDR PQ with BT2020",
+			name:      "HDR PQ with BT2020",
 			primaries: "bt2020",
 			transfer:  "smpte2084",
 			matrix:    "bt2020nc",
-			wantHDR:  true,
+			wantHDR:   true,
 		},
 		{
-			name:     "HDR HLG",
+			name:      "HDR HLG",
 			primaries: "bt2020",
 			transfer:  "arib-std-b67",
 			matrix:    "bt2020nc",
-			wantHDR:  true,
+			wantHDR:   true,
 		},
 		{
-			name:     "BT2020 primaries only",
+			name:      "BT2020 primaries only",
 			primaries: "bt2020",
 			transfer:  "bt709",
 			matrix:    "bt709",
-			wantHDR:  true,
+			wantHDR:   true,
 		},
 		{
-			name:     "PQ transfer only",
+			name:      "PQ transfer only",
 			primaries: "bt709",
 			transfer:  "smpte2084",
 			matrix:    "bt709",
-			wantHDR:  true,
+			wantHDR:   true,
 		},
 		{
-			name:     "Empty values",
+			name:      "Empty values",
 			primaries: "",
 			transfer:  "",
 			matrix:    "",
-			wantHDR:  false,
+			wantHDR:   false,
 		},
 	}
 

@@ -38,19 +38,28 @@ type Result struct {
 
 var timeRegex = regexp.MustCompile(`time=(\d{2}:\d{2}:\d{2}\.?\d*)`)
 
+// RunCommand executes an FFmpeg command without progress reporting.
+func RunCommand(ctx context.Context, args []string, lowPriority bool) Result {
+	cmd := ffmpegCommand(ctx, args, lowPriority)
+	out, err := cmd.CombinedOutput()
+	stderrStr := string(out)
+	if err != nil {
+		if ctx.Err() != nil {
+			return Result{Success: false, Error: fmt.Errorf("encoding cancelled: %w", ctx.Err()), Stderr: stderrStr}
+		}
+		if strings.Contains(stderrStr, "No streams found") {
+			return Result{Success: false, Error: fmt.Errorf("no streams found in input file"), Stderr: stderrStr}
+		}
+		return Result{Success: false, Error: fmt.Errorf("ffmpeg failed: %w", err), Stderr: stderrStr}
+	}
+	return Result{Success: true, Stderr: stderrStr}
+}
+
 // RunEncode executes an FFmpeg encode operation with progress reporting.
 // If LowPriority is set, the command is wrapped with nice -n 19.
 func RunEncode(ctx context.Context, params *EncodeParams, disableAudio bool, totalFrames uint64, callback ProgressCallback) Result {
 	args := BuildCommand(params, disableAudio)
-
-	var cmd *exec.Cmd
-	if params.LowPriority {
-		// Wrap with nice for low priority execution
-		niceArgs := append([]string{"-n", "19", "ffmpeg"}, args...)
-		cmd = exec.CommandContext(ctx, "nice", niceArgs...)
-	} else {
-		cmd = exec.CommandContext(ctx, "ffmpeg", args...)
-	}
+	cmd := ffmpegCommand(ctx, args, params.LowPriority)
 
 	// Get stderr for progress parsing
 	stderr, err := cmd.StderrPipe()
@@ -105,6 +114,14 @@ func RunEncode(ctx context.Context, params *EncodeParams, disableAudio bool, tot
 		Success: true,
 		Stderr:  stderrStr,
 	}
+}
+
+func ffmpegCommand(ctx context.Context, args []string, lowPriority bool) *exec.Cmd {
+	if lowPriority {
+		niceArgs := append([]string{"-n", "19", "ffmpeg"}, args...)
+		return exec.CommandContext(ctx, "nice", niceArgs...)
+	}
+	return exec.CommandContext(ctx, "ffmpeg", args...)
 }
 
 // parseProgress reads FFmpeg stderr and parses progress updates.

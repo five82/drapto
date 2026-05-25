@@ -30,8 +30,9 @@ type AnalyzerVideoProperties struct {
 
 // AnalyzerAudioStream contains audio stream information.
 type AnalyzerAudioStream struct {
-	Codec    string
-	Channels int
+	Codec        string
+	Channels     int
+	DurationSecs float64
 }
 
 // AnalyzerHDRInfo contains HDR detection results.

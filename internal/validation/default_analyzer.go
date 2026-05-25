@@ -37,8 +37,9 @@ func (a *DefaultAnalyzer) GetAudioStreams(path string) ([]AnalyzerAudioStream, e
 	result := make([]AnalyzerAudioStream, len(streams))
 	for i, s := range streams {
 		result[i] = AnalyzerAudioStream{
-			Codec:    s.CodecName,
-			Channels: int(s.Channels),
+			Codec:        s.CodecName,
+			Channels:     int(s.Channels),
+			DurationSecs: s.DurationSecs,
 		}
 	}
 	return result, nil

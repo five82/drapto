@@ -3,6 +3,7 @@ package processing
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"time"
 
 	"github.com/five82/drapto/internal/config"
@@ -188,8 +189,23 @@ func ProcessVideos(
 
 		rep.EncodingStarted(totalFrames)
 
-		// Run encode
-		result := ffmpeg.RunEncode(ctx, encodeParams, false, totalFrames, func(progress ffmpeg.Progress) {
+		tempDir, err := util.CreateTempDir(cfg.OutputDir, "drapto")
+		if err != nil {
+			rep.Error(reporter.ReporterError{
+				Title:      "Encoding Error",
+				Message:    fmt.Sprintf("Could not create temporary directory for %s: %v", inputFilename, err),
+				Context:    fmt.Sprintf("Output directory: %s", cfg.OutputDir),
+				Suggestion: "Check output directory permissions and free space",
+			})
+			continue
+		}
+
+		finalOutputPath := encodeParams.OutputPath
+		encodeParams.OutputPath = filepath.Join(tempDir.Path(), "video.mkv")
+
+		// Run video encode without audio. Each audio stream is encoded below in its own FFmpeg process
+		// to avoid multi-stream decoder/encoder truncation bugs.
+		result := ffmpeg.RunEncode(ctx, encodeParams, true, totalFrames, func(progress ffmpeg.Progress) {
 			rep.EncodingProgress(reporter.ProgressSnapshot{
 				CurrentFrame: progress.CurrentFrame,
 				TotalFrames:  progress.TotalFrames,
@@ -202,6 +218,7 @@ func ProcessVideos(
 		})
 
 		if !result.Success {
+			_ = tempDir.Cleanup()
 			rep.Error(reporter.ReporterError{
 				Title:      "Encoding Error",
 				Message:    fmt.Sprintf("FFmpeg failed to encode %s: %v", inputFilename, result.Error),
@@ -209,6 +226,44 @@ func ProcessVideos(
 				Suggestion: "Check FFmpeg logs for more details",
 			})
 			continue
+		}
+
+		audioPaths := make([]string, 0, len(audioStreams))
+		audioOK := true
+		for i, stream := range audioStreams {
+			audioPath := filepath.Join(tempDir.Path(), fmt.Sprintf("audio_%02d.mka", i))
+			result = ffmpeg.RunCommand(ctx, ffmpeg.BuildAudioCommand(encodeParams, stream, audioPath), encodeParams.LowPriority)
+			if !result.Success {
+				audioOK = false
+				_ = tempDir.Cleanup()
+				rep.Error(reporter.ReporterError{
+					Title:      "Encoding Error",
+					Message:    fmt.Sprintf("FFmpeg failed to encode audio stream %d for %s: %v", stream.Index, inputFilename, result.Error),
+					Context:    fmt.Sprintf("File: %s", inputPath),
+					Suggestion: "Check FFmpeg logs for more details",
+				})
+				break
+			}
+			audioPaths = append(audioPaths, audioPath)
+		}
+		if !audioOK {
+			continue
+		}
+
+		encodeParams.OutputPath = finalOutputPath
+		result = ffmpeg.RunCommand(ctx, ffmpeg.BuildMuxCommand(encodeParams, filepath.Join(tempDir.Path(), "video.mkv"), audioPaths), encodeParams.LowPriority)
+		cleanupErr := tempDir.Cleanup()
+		if !result.Success {
+			rep.Error(reporter.ReporterError{
+				Title:      "Encoding Error",
+				Message:    fmt.Sprintf("FFmpeg failed to mux %s: %v", inputFilename, result.Error),
+				Context:    fmt.Sprintf("File: %s", inputPath),
+				Suggestion: "Check FFmpeg logs for more details",
+			})
+			continue
+		}
+		if cleanupErr != nil {
+			rep.Warning(fmt.Sprintf("Could not clean temporary files for %s: %v", inputFilename, cleanupErr))
 		}
 
 		fileElapsedTime := time.Since(fileStartTime)
