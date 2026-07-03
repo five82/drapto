@@ -9,16 +9,6 @@
 
 Drapto is an FFmpeg wrapper for AV1 encoding. Single-developer hobby project.
 
-## Related Repos
-
-| Repo | Path | Role |
-|------|------|------|
-| drapto | `~/projects/drapto/` | FFmpeg encoding wrapper (this repo) |
-| spindle | `~/projects/spindle/` | Orchestrator that uses Drapto as a library |
-| flyer | `~/projects/flyer/` | Read-only TUI for Spindle |
-
-GitHub: [drapto](https://github.com/five82/drapto) | [spindle](https://github.com/five82/spindle) | [flyer](https://github.com/five82/flyer)
-
 ## Commands
 
 ```bash
@@ -33,12 +23,3 @@ golangci-lint run
 1. Keep it simple - small hobby project
 2. Prefer unit tests over actual encodes
 3. Use 120s+ timeout when running drapto
-
-## Spindle Integration
-
-Spindle consumes drapto as a Go module. After pushing drapto changes:
-```bash
-cd ~/projects/spindle
-go get github.com/five82/drapto@main && go mod tidy
-```
-Version tags (v0.5.0, etc.) are optional markers; spindle tracks `@main`.

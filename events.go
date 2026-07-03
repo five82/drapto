@@ -3,7 +3,7 @@ package drapto
 
 import "time"
 
-// Event types for Spindle integration.
+// Event types emitted by the encoder.
 const (
 	EventTypeHardware           = "hardware"
 	EventTypeInitialization     = "initialization"
