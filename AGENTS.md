@@ -2,7 +2,6 @@
 
 ## TL;DR
 
-- Do not run `git commit` or `git push` unless explicitly instructed
 - Run `./check-ci.sh` before handing work back
 
 ## Project
