@@ -13,7 +13,7 @@ This repository is shared as is. Drapto is a personal encoding tool I built for 
 
 ## Requirements
 
-- Go 1.26+
+- Go 1.26.6+
 - FFmpeg with libsvtav1 and libopus
 - MediaInfo
 
