@@ -23,6 +23,16 @@ This repository is shared as is. Drapto is a personal encoding tool I built for 
 go install github.com/five82/drapto/cmd/drapto@latest
 ```
 
+To deploy a source checkout over the `drapto` on `PATH`:
+
+```bash
+./check-ci.sh
+./deploy.sh
+```
+
+The deploy script keeps the previous binary beside the installed one and
+verifies the installed copy.
+
 ## Usage
 
 ```bash
